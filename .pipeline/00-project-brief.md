@@ -39,18 +39,19 @@ Committed first milestone = **V0 (data foundation) + V1 (first product) + fund d
 - Corporate actions
 - KAP disclosures
 - Fund data foundation: NAV history, performance, holdings where publicly available — data only, no fund UI in V1
-- Historical data as first-class: every fact stored with its date/period, so point-in-time screens ("what passed this screen in 2021?") are possible later
+- Historical data as first-class: every fact stored with its date/period, so point-in-time screens ("what passed this screen in 2021?") are possible later; ingest depth target: 10 years, or as far back as the sources allow
 
 **V1 — product (bilingual: Turkish default, English toggle):**
-- **BIST dashboard**: BIST 100 and BIST 30 levels, sector performance, market breadth, biggest gainers/losers, volume, market-wide valuation overview (market P/E, dividend yield), basic macro indicators
-- **Stock screener** with user-saved screens, across five metric families:
+- **BIST dashboard**: BIST 100 and BIST 30 levels, sector performance, market breadth, biggest gainers/losers, volume, market-wide valuation overview (market P/E, dividend yield), macro indicators: inflation (official TÜİK CPI plus an independent measure — the builder considers the official figures understated), CBRT policy rate (1-week repo), USD/TRY, EUR/TRY, gold price (the 10Y government bond yield was considered and rejected)
+- **Stock screener** with user-saved screens (persisted server-side per user account), across five metric families:
   - Valuation: P/E, P/B, EV/EBITDA, EV/FCF, FCF yield
   - Quality: ROIC, ROE, gross margin, operating margin
   - Growth: revenue CAGR, EPS CAGR, FCF CAGR
   - Financial Health: net debt/EBITDA, interest coverage, current ratio
   - Dividends: dividend yield, dividend CAGR, payout ratio
-- **Stock pages** with sections: business description; valuation (incl. historical valuation); financials (revenue → EBITDA → EBIT → net income → FCF); profitability (ROIC / ROE / margins); growth (3Y / 5Y / 10Y CAGR); balance sheet; dividend history
+- **Stock pages** with sections: business description (produced by an offline, build-time AI drafting pipeline from KAP filings, reviewed and corrected by the builder; bilingual TR + EN); valuation (incl. historical valuation); financials (revenue → EBITDA → EBIT → net income → FCF); profitability (ROIC / ROE / margins); growth (3Y / 5Y / 10Y CAGR — 10Y targeted; where a company's history is shorter, e.g., recent IPOs, CAGRs are computed from the available history); balance sheet; dividend history
 - **Simple, fully user-adjustable DCF**: a per-stock DCF calculator where the user can adjust every model assumption (discount rate and the rest); based on the user's own inputs, it shows how cheap the stock's current (daily) price is relative to the computed fair value — presented in plain language an ordinary investor can understand
+- **User accounts**: registration/login; saved screens are stored server-side per account
 - Publicly deployed web app (free/cheap hosting) with a public repo + README
 
 ## 6. Scope — Out
@@ -64,7 +65,7 @@ Committed first milestone = **V0 (data foundation) + V1 (first product) + fund d
 - BIST Value Score (proprietary 0–100 scoring)
 - Historical backtesting of screens
 - Advanced charts, side-by-side company comparison, alerts
-- KAP intelligence / AI summaries
+- KAP intelligence / AI summaries (user-facing AI features — distinct from the offline, build-time AI drafting pipeline that produces V1 business descriptions)
 - Investment thesis builder
 
 **Permanent exclusions (never):**
@@ -82,25 +83,27 @@ Committed first milestone = **V0 (data foundation) + V1 (first product) + fund d
 - **Timeline** — intensive build (full-time-ish). Target: publicly accessible V1 by end of December 2026. The bulk of the work is targeted for October 2026 while the builder has high daily AI-assist capacity (evren API: 10M daily token limit; actual usage around 100M tokens/day with cache). Slippage into later months is acceptable.
 - **Team: solo builder.**
 - **Regulatory: informational only** — no investment recommendations, no personalized advice, disclaimers in place. (Personalized investment advice is a licensed activity in Turkey — SPK.)
-- **Language: bilingual** — Turkish default, English toggle.
+- **Language: bilingual** — Turkish default, English toggle. Everything the platform displays (UI, dashboard text, stock page content, business descriptions) exists in both TR and EN; KAP source documents remain in their original Turkish; financial figures are language-neutral.
 - **Deployment: publicly accessible web app on free/cheap hosting.**
 - **Development approach: AI-assisted development is central** to the plan and to the timeline assumptions.
 
 ## 8. Assumptions
 
-- ASM-001: The chosen sources — KAP reports as the primary source, plus candidate free public APIs such as the İşbank API — can adequately cover BIST 100 daily prices, financial statements, dividends, corporate actions, and index data for V1. *Validation: verify per-data-type coverage and quality during the V0 build, before the screener depends on it.*
+- ASM-001: The chosen sources — KAP reports as the primary source, plus candidate free public APIs such as the İşbank API — can adequately cover BIST 100 daily prices, financial statements, dividends, corporate actions, and index data for V1. *Validation: verify per-data-type coverage and quality during the V0 build, before the screener depends on it — including how far back financial-statement history goes (10-year target).*
 - ASM-002: Public sources (e.g., TEFAS) provide sufficient fund NAV, performance, and holdings data for future fund features; holdings may be available only for some funds. *Validation: measure coverage during the fund data foundation work and record gaps.*
 - ASM-003: The BIST 100 universe is sufficient for the first milestone; expansion to all BIST-listed equities is a post-V1 decision. *Validation: builder decision after V1.*
 - ASM-004: An informational-only framing (no recommendations, no personalized advice, disclaimers) keeps the platform outside SPK's licensed-advice territory. *Validation: re-verify before any monetization or commercial launch step.*
 - ASM-005: The V0–V6 roadmap remains a generally valid guide for post-V1 phases. *Validation: re-plan each phase before committing to it; the roadmap is explicitly modifiable.*
 - ASM-006: The builder's current intensive availability and AI-assist capacity hold long enough to reach V1. *Validation: progress review at the end of the October 2026 sprint.*
 - ASM-007: "Adjustable in every way" for the DCF means a finite, definable set of user-editable model parameters; the discount rate is confirmed, and the full parameter list is a design decision. *Validation: finalize the parameter list during V1 DCF design.*
+- ASM-008: User accounts collect personal data, so KVKK (Turkey's personal data protection law) applies; minimal data collection at registration plus a basic compliance review is sufficient for V1. *Validation: review the collected account data before launch.*
+- ASM-009: Free sources cover the five macro indicators — TÜİK CPI, an independent inflation measure (e.g., ENAG; the builder considers the official figures understated), CBRT policy rate, USD/TRY, EUR/TRY, and gold price. *Validation: verify each source's availability and terms during V0, especially the independent inflation measure, which has no official API.*
 
 ## 9. Success Criteria
 
 - SC-001: A publicly accessible bilingual V1 is live by end of December 2026. [OBJ-001]
 - SC-002: The core loop works end-to-end on the covered universe: dashboard → screener → stock page → DCF. [OBJ-002]
-- SC-003: The screener supports saved screens across all five metric families (valuation, quality, growth, financial health, dividends). [OBJ-002]
+- SC-003: The screener supports saved screens, persisted server-side per user account, across all five metric families (valuation, quality, growth, financial health, dividends). [OBJ-002]
 - SC-004: A fully user-adjustable DCF (discount rate and other model assumptions) is available for every covered stock and shows how the current daily price compares to the user's computed fair value. [OBJ-002]
 - SC-005: The data pipeline refreshes daily without manual intervention. [OBJ-001, OBJ-002]
 - SC-006: The builder completes at least one full personal research session using only the platform. [OBJ-003]
@@ -118,6 +121,9 @@ Committed first milestone = **V0 (data foundation) + V1 (first product) + fund d
 | İşbank API | The free public API of İş Bankası (Turkey); a candidate source for market data such as daily prices |
 | TEFAS | Turkey's public platform for investment-fund data (NAV, performance, holdings) |
 | SPK | Capital Markets Board of Turkey; personalized investment advice is a licensed activity |
+| KVKK | Turkey's personal data protection law; applies because the platform has user accounts |
+| TÜİK | Turkish Statistical Institute — the official CPI source |
+| ENAG | Independent inflation research group publishing an alternative CPI estimate; the candidate independent inflation source |
 | DCF | Discounted cash flow — the builder's personal first-look valuation method; estimates what future cash flows are worth today |
 | Fair value / margin of safety (MOS) | DCF-estimated intrinsic value; margin of safety = the discount of current price to fair value |
 | Core investing loop | discover → screen → research → value → decide |
