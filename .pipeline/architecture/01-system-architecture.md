@@ -1,9 +1,9 @@
-# System Architecture — v1.1
+# System Architecture — v1.2
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 (v1.0 → v1.1 same day)
-**Status:** submitted for builder approval — v1.1 is a builder-directed amendment (admin dashboard extension); change record in §13.1
-**Inputs:** `.pipeline/00-project-brief.md` · `.pipeline/analysis/*` (7 approved domain reports + domain map + brief delta) · `.pipeline/ux/*` (11 screens, 128 UXRs, mutation matrix, audit — all approved)
+**Prepared by:** architect · **Date:** 2026-10-06 (v1.0 → v1.1 → v1.2 same day)
+**Status:** submitted for builder approval — v1.1 is a builder-directed amendment (admin dashboard extension); v1.2 is a small additive amendment (admin descriptions payload serves KAP source refs — UXR-MDF-020); change records in §13.1
+**Inputs:** `.pipeline/00-project-brief.md` · `.pipeline/analysis/*` (7 approved domain reports + domain map + brief delta) · `.pipeline/ux/*` (12 screens, 156 UXRs, mutation matrix, audit — all approved; SCR-012 admin dashboard added 2026-10-06 per AD-13)
 **Builder decisions incorporated (2026-10-06):** mobile delayed to post-V1 versions (D-01); cheap VPS hosting (D-02); public repo `github.com/sarperim/degerli` (D-03); domain via GitHub Student Pack, ETA ≈2026-10-09 (D-04); market P/E = cap-weighted aggregate (D-05); CI required (D-06).
 
 ---
@@ -76,7 +76,7 @@ One VPS, one database, one backend process, one SPA — plus an offline content 
 
 | ID | Component | Responsibilities | Boundaries — does NOT |
 |----|-----------|------------------|----------------------|
-| **C1** | **Web SPA** (React 19 + Vite + TS) | All 11 screens (SCR-001..011); global header (language toggle, auth state, stock search); disclaimers; honest-data markers; a builder-only `/admin` area (daily ops summary, quarantine review, aggregate user stats — §03 §8; description review/edit/publish, metric visibility, coverage report). TR default, EN toggle. | Compute any financial figure (BR-RES-004); store server state; call any external service directly. |
+| **C1** | **Web SPA** (React 19 + Vite + TS) | All 11 public screens (SCR-001..011); global header (language toggle, auth state, stock search); disclaimers; honest-data markers; a builder-only `/admin` area (SCR-012: daily ops summary, quarantine review, aggregate user stats — §03 §8; description review/edit/publish, metric visibility, coverage report). TR default, EN toggle. | Compute any financial figure (BR-RES-004); store server state; call any external service directly. |
 | **C2** | **Public API** (ASP.NET Core, .NET 10) | REST/JSON under `/api/v1`; feature modules mirror domains; Identity (register/login/verify/reset, cookie auth, lockout, rate limiting); DCF compute (pure endpoint); saved screens & scenarios CRUD; admin endpoints (role-gated). | Talk to external sources on user request; own metric formulas (delegates to C3b results in DB); send transactional e-mail outside Identity flows. |
 | **C3** | **Data Platform** (in-process workers in the API container) | **C3a Ingestion**: source adapters (KAP primary; İşbank candidate for prices; TÜİK/ENAG/CBRT/FX/gold macro; TEFAS funds), validation, quarantine, idempotent upserts, backfill mode. **C3b Metrics Engine**: all canonical metrics (18 screener + display metrics), CAGRs with window indication, market snapshot (breadth, movers, market P/E, market div yield), sector medians, DCF baseline generation. **C3c Scheduler**: cron-triggered jobs (Cronos) with a DB run ledger; retries with backoff. **C3d Alerting**: builder e-mails + log alerts on failures/staleness. | Serve HTTP (runs inside C2's process but no endpoints of its own); nothing user-triggered except admin-triggered jobs. |
 | **C4** | **Content Pipeline** (console CLI, offline) | Build-time AI drafting of bilingual business descriptions from KAP disclosures (evren API); DCF baseline regeneration. Runs on the VPS via `docker compose run --rm contentpipeline …`; review/edit/publish happens through C1 admin + C2 admin endpoints. | Run on user request (BR-RES-002/NFR-RES-006: never on-demand AI); publish without builder review (FR-RES-020 gate lives in C2). |
@@ -366,7 +366,7 @@ All FRs from the 7 domain reports. Component codes from §3. Won't FRs are liste
 | UXR-ACC-012..015 (SCR-009 reset) | request → neutral confirmation; link → set-password; expiry handling + re-request |
 | UXR-ACC-016..020 (SCR-010 settings) | language (immediate + persisted), password change, entry points, deletion w/ cascade + sign-out, verification status + resend |
 
-**Coverage check:** all 128 UXRs (30 global + 98 per-screen) are mapped; none lacks a mechanism.
+**Coverage check:** all 128 UXRs (30 global + 98 per-screen) are mapped; none lacks a mechanism. *(SCR-012 note, 2026-10-06: the UX package has since added 28 admin UXRs — UXR-MDF-001..028 — which this table predates; they are served by the AD-13 admin surface, i.e. the `03` §8 admin endpoints plus the global mechanisms above, including UXR-MDF-020 via the v1.2 `GET /admin/descriptions` response sketch (`03` §8). Row-by-row mapping is deliberately not re-derived here — minimal-amendment posture; see §13.1.)*
 
 ### 8.4 Mutation matrix → invalidation contract
 
@@ -479,7 +479,7 @@ Every data-bearing response includes: `asOf` (ISO date), `stale` (bool); histori
 | AD-10 | Market P/E = cap-weighted aggregate (Σcap/Σearnings, loss-makers excluded, disclosed) | standard index convention; user decision D-05; sector strip stays median-based per OQ-UX-002 |
 | AD-11 | Hetzner VPS + Caddy + docker-compose + GHCR + Actions CI/CD | cheapest robust option; portfolio artifact; user decisions D-02/D-06 |
 | AD-12 | Public monorepo incl. `.pipeline/` planning docs | transparency for portfolio audience; contains no secrets (verified 2026-10-06) |
-| AD-13 | Builder admin dashboard extension (v1.1): `GET /admin/summary` (pipeline health + freshness + content coverage one-glance), `quarantined_facts` store + review/dismiss endpoints, `GET /admin/stats` (aggregate-only counts) | builder instruction 2026-10-06; every piece traces to existing items (UC-MDF-001b, UC-MDF-004, UC-MOV-005, FR-MDF-012, BR-MDF-007, SC-008/OBJ-005) — no new FRs; the quarantine store closes a v1.0 gap (UC-MDF-001 alternate b mandated quarantine but gave it no home). Rejected: per-user data browsing, traffic/event analytics, log-viewer UI, feature-flag UI — no BA trace and several conflict with the KVKK-minimal / no-tracking posture (BR-ACC-002/008); logs remain on-box via `docker logs` |
+| AD-13 | Builder admin dashboard extension (v1.1): `GET /admin/summary` (pipeline health + freshness + content coverage one-glance), `quarantined_facts` store + review/dismiss endpoints, `GET /admin/stats` (aggregate-only counts) | builder instruction 2026-10-06; every piece traces to existing items (UC-MDF-001b, UC-MDF-004, UC-MOV-005, FR-MDF-012, BR-MDF-007, SC-008/OBJ-005) — no new FRs; the quarantine store closes a v1.0 gap (UC-MDF-001 alternate b mandated quarantine but gave it no home). Rejected: per-user data browsing, traffic/event analytics, log-viewer UI, feature-flag UI — no BA trace and several conflict with the KVKK-minimal / no-tracking posture (BR-ACC-002/008); logs remain on-box via `docker logs`. **v1.2 follow-up:** SCR-012's UXR-MDF-020 (KAP source references in the description editor) is confirmed via an additive response sketch on `GET /admin/descriptions` (`03` §8; change record §13.1) |
 
 ## 12. Flagged items & deviations (require builder awareness; none block)
 
@@ -495,7 +495,7 @@ Every data-bearing response includes: `asOf` (ISO date), `stale` (bool); histori
 
 ## 13. Change propagation & change record
 
-Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets for re-validation — the same rule the UX package follows (`99-ux-audit.md` §6). The change record (§13.1) tracks every version. As of v1.1 the test-planner and planner have not yet derived artifacts, so no downstream re-validation is pending — they must derive from **v1.1**.
+Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets for re-validation — the same rule the UX package follows (`99-ux-audit.md` §6). The change record (§13.1) tracks every version. As of v1.2 the test-planner and planner have not yet derived artifacts, so no downstream re-validation is pending — they must derive from **v1.2**.
 
 ### 13.1 Change record
 
@@ -503,3 +503,4 @@ Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets 
 |---|---|---|---|---|
 | v1.0 | 2026-10-06 | Initial architecture (submitted for approval) | — | — (first version) |
 | v1.1 | 2026-10-06 | Builder-directed **admin dashboard extension** (AD-13): `GET /api/v1/admin/summary` (ops one-glance), `quarantined_facts` table + `GET /admin/quarantine` + `POST /admin/quarantine/{id}/dismiss` (gives UC-MDF-001 alternate b's "quarantine" a storage home — a v1.0 gap), `GET /admin/stats` (aggregate-only SC-008/OBJ-005 measurement) | FR-MDF-012 mechanism (components C3a+C3d+C2+C1); UC-MDF-001/004 + UC-MOV-005 coverage rows (`03` §10); data model (`02` §3.1, §2, §7); admin API (`03` §8, §9) | None pending — test-planner/planner not yet run; derive from v1.1 |
+| v1.2 | 2026-10-06 | **Admin descriptions payload — UXR-MDF-020 confirmation** (UX audit `99-ux-audit.md` §8 flag ruling 3, builder-approved 2026-10-06): response sketch added for `GET /api/v1/admin/descriptions` (`03` §8) — each queue entry explicitly serves its KAP source references (`sourceRefs`, projected from `business_descriptions.source_refs_json` resolved against `kap_disclosures`) alongside the editable texts. Additive response documentation only (versioning rule `03` §11): no new endpoints, no request changes, no schema change — `02` untouched (`source_refs_json` exists since v1.0). UXR-MDF-015/028 (run-ledger auto-refresh / manual refresh) verified client-side only — no architectural change (`/admin` 60 req/min accommodates polling, `03` §12) | UC-RES-004 (step 2 — review); UXR-MDF-020 (Should) — payload mechanism; admin API `03` §8 | None pending — test-planner/planner not yet run; derive from v1.2 |

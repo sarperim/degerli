@@ -1,7 +1,7 @@
-# API Design — v1.1
+# API Design — v1.2
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 adds admin dashboard endpoints (change record in `01-system-architecture.md` §13.1)
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 added the admin dashboard endpoints; v1.2 adds the `GET /admin/descriptions` response sketch serving KAP source refs (UXR-MDF-020; change records in `01-system-architecture.md` §13.1)
 **Serves:** the React SPA (C1) — the only first-party client; designed consumable by any future JSON client (mobile is delayed per builder decision D-01 and requires a brief amendment before being built).
 **Style:** REST over JSON, HTTPS only, prefix `/api/v1`. OpenAPI document served at `GET /api/v1/openapi.json` (Microsoft.AspNetCore.OpenApi, anonymous).
 
@@ -210,7 +210,7 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
 | `GET /api/v1/admin/coverage?scope=instrument\|fund` | coverage report (equity + funds) | UC-MDF-004, UC-FDF-003 |
 | `GET /api/v1/admin/ingest-runs?job=&status=` | run-ledger monitoring | UC-MDF-001 (ops), UC-MOV-005, UC-FDF-002 (ops) |
 | `POST /api/v1/admin/ingest/{job}/run` | trigger/backfill — `{job}` ∈ job codes below; body may carry `{backfillFrom}` | UC-MDF-002 |
-| `GET /api/v1/admin/descriptions?status=draft\|reviewed\|published` | review queue | UC-RES-004 |
+| `GET /api/v1/admin/descriptions?status=draft\|reviewed\|published` | **review queue + editor payload (v1.2 sketch below)**: per entry — stock, status, version, both texts, KAP source refs (`sourceRefs`), review/publication stamps | UC-RES-004, UXR-MDF-020 |
 | `PATCH /api/v1/admin/descriptions/{id}` `{textTr?, textEn?}` | edit both languages (FR-RES-021) | UC-RES-004 |
 | `POST /api/v1/admin/descriptions/{id}/publish` | publication gate — rejects if either language empty (FR-RES-020, BR-RES-003) | UC-RES-004 |
 | `PATCH /api/v1/admin/screener-metrics/{code}` `{isScreenable}` | hide/unhide metric without code change (FR-SCR-017) | UC-SCR-004 |
@@ -233,6 +233,39 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
   "openQuarantineCount": 4
 }
 ```
+
+`GET /api/v1/admin/descriptions` — response sketch (v1.2; `status` filter per the table above):
+
+```json
+{
+  "descriptions": [
+    {
+      "id": 412,
+      "symbol": "ASELS",
+      "name": "Aselsan",
+      "version": 3,
+      "status": "draft",
+      "textTr": "Aselsan, Türkiye'nin savunma elektronik…",
+      "textEn": "Aselsan is Türkiye's leading defence-electronics…",
+      "sourceRefs": [
+        {
+          "disclosureId": 8841,
+          "disclosureType": "annual_report",
+          "publishDate": "2026-03-14",
+          "title": "2025 Faaliyet Raporu",
+          "sourceUrl": "https://www.kap.org.tr/tr/BildirimTurkce/8841"
+        }
+      ],
+      "lastReviewedAt": null,
+      "publishedAt": null
+    }
+  ]
+}
+```
+
+- **`sourceRefs` (v1.2)** projects `business_descriptions.source_refs_json` (§02 §3.4) resolved against `kap_disclosures` — id, type, publish date, title, KAP URL — so the editor presents each description's KAP source references alongside the editable texts (UXR-MDF-020; UC-RES-004 step 2, the factual-accuracy review). An id that no longer resolves is served as a `{disclosureId}`-only stub — never silently dropped (§01 §10.7 posture).
+- Source refs are **provenance, not editable content**: `PATCH /admin/descriptions/{id}` still accepts only `{textTr?, textEn?}` (FR-RES-021); refs are written by the C4 drafting pipeline, never hand-edited (§02 §5.5).
+- The queue payload **is** the editor payload — both texts ride the list (there is no `GET …/descriptions/{id}`; the queue is bounded by the covered universe, §2 no-pagination posture). The wrapped root (`descriptions[]`) keeps the response additively evolvable (§11 — a bare-array root could not gain top-level fields without a breaking change).
 
 Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-actions`, `disclosures`, `universe-sync`, `macro-daily`, `macro-cpi`, `metrics-recompute`, `snapshot`, `medians`, `fund-nav`, `fund-holdings`, `fund-performance`.
 
