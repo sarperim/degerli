@@ -1,8 +1,8 @@
-# System Architecture — v1.0
+# System Architecture — v1.1
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06
-**Status:** submitted for builder approval
+**Prepared by:** architect · **Date:** 2026-10-06 (v1.0 → v1.1 same day)
+**Status:** submitted for builder approval — v1.1 is a builder-directed amendment (admin dashboard extension); change record in §13.1
 **Inputs:** `.pipeline/00-project-brief.md` · `.pipeline/analysis/*` (7 approved domain reports + domain map + brief delta) · `.pipeline/ux/*` (11 screens, 128 UXRs, mutation matrix, audit — all approved)
 **Builder decisions incorporated (2026-10-06):** mobile delayed to post-V1 versions (D-01); cheap VPS hosting (D-02); public repo `github.com/sarperim/degerli` (D-03); domain via GitHub Student Pack, ETA ≈2026-10-09 (D-04); market P/E = cap-weighted aggregate (D-05); CI required (D-06).
 
@@ -76,7 +76,7 @@ One VPS, one database, one backend process, one SPA — plus an offline content 
 
 | ID | Component | Responsibilities | Boundaries — does NOT |
 |----|-----------|------------------|----------------------|
-| **C1** | **Web SPA** (React 19 + Vite + TS) | All 11 screens (SCR-001..011); global header (language toggle, auth state, stock search); disclaimers; honest-data markers; a builder-only `/admin` area (description review/edit/publish, metric visibility, coverage report). TR default, EN toggle. | Compute any financial figure (BR-RES-004); store server state; call any external service directly. |
+| **C1** | **Web SPA** (React 19 + Vite + TS) | All 11 screens (SCR-001..011); global header (language toggle, auth state, stock search); disclaimers; honest-data markers; a builder-only `/admin` area (daily ops summary, quarantine review, aggregate user stats — §03 §8; description review/edit/publish, metric visibility, coverage report). TR default, EN toggle. | Compute any financial figure (BR-RES-004); store server state; call any external service directly. |
 | **C2** | **Public API** (ASP.NET Core, .NET 10) | REST/JSON under `/api/v1`; feature modules mirror domains; Identity (register/login/verify/reset, cookie auth, lockout, rate limiting); DCF compute (pure endpoint); saved screens & scenarios CRUD; admin endpoints (role-gated). | Talk to external sources on user request; own metric formulas (delegates to C3b results in DB); send transactional e-mail outside Identity flows. |
 | **C3** | **Data Platform** (in-process workers in the API container) | **C3a Ingestion**: source adapters (KAP primary; İşbank candidate for prices; TÜİK/ENAG/CBRT/FX/gold macro; TEFAS funds), validation, quarantine, idempotent upserts, backfill mode. **C3b Metrics Engine**: all canonical metrics (18 screener + display metrics), CAGRs with window indication, market snapshot (breadth, movers, market P/E, market div yield), sector medians, DCF baseline generation. **C3c Scheduler**: cron-triggered jobs (Cronos) with a DB run ledger; retries with backoff. **C3d Alerting**: builder e-mails + log alerts on failures/staleness. | Serve HTTP (runs inside C2's process but no endpoints of its own); nothing user-triggered except admin-triggered jobs. |
 | **C4** | **Content Pipeline** (console CLI, offline) | Build-time AI drafting of bilingual business descriptions from KAP disclosures (evren API); DCF baseline regeneration. Runs on the VPS via `docker compose run --rm contentpipeline …`; review/edit/publish happens through C1 admin + C2 admin endpoints. | Run on user request (BR-RES-002/NFR-RES-006: never on-demand AI); publish without builder review (FR-RES-020 gate lives in C2). |
@@ -171,7 +171,7 @@ All FRs from the 7 domain reports. Component codes from §3. Won't FRs are liste
 | FR-MDF-009 daily auto refresh | Must | C3c | cron 20:30 Europe/Istanbul each trading day; retries; run ledger |
 | FR-MDF-010 backfill to 10Y/limit + record depth | Must | C3a+C2 | backfill mode in adapters + admin trigger; achieved depth in `coverage_metadata` |
 | FR-MDF-011 coverage metadata exposed | Must | C3a+C2+C1 | `coverage_metadata` table + admin coverage endpoint/report |
-| FR-MDF-012 anomaly alerts (log + e-mail) | Should | C3d | Serilog + Brevo alert to builder e-mail |
+| FR-MDF-012 anomaly alerts (log + e-mail) | Should | C3a+C3d+C2+C1 | invalid facts quarantined in `quarantined_facts` (never written to fact tables, UC-MDF-001b); Serilog + Brevo alert; admin quarantine review endpoints |
 | FR-MDF-013 canonical metrics, 5 families | Must | C3b | Metrics Engine → `derived_metrics` (definitions in `/src/Core`, documented in data model) |
 | FR-MDF-014 CAGR from available history + window | Must | C3b | CAGR SQL computes over actual span; `window_years` column carries the actual window |
 | FR-MDF-015 no overwrite, as-of retrieval | Must | C5 | append-only fact tables; restatements as new versions; dated rows |
@@ -389,7 +389,7 @@ In-place rename updates use mutation-response data (no refetch of whole lists). 
 |---|---|
 | NFR-MDF-001 freshness | EOD job starts 20:30 TRT each trading day; target completion 23:59 TRT; failure → retry ×3 (backoff 5/15/60 min) → alert e-mail; last-known-good served with `stale` flag. Macro: FX/gold daily by 09:00 next day; CPI within 24h of release; policy rate within 24h of CBRT decision. |
 | NFR-MDF-002 retention | All fact tables append-only; no TTL/deletion jobs anywhere; 10Y ingest target where sources allow; DB sized for life-of-platform growth (§02 §6). |
-| NFR-MDF-003 coverage transparency | `coverage_metadata` row per instrument×data-type; 100% of universe covered or explicitly recorded as gap; admin coverage report endpoint; gaps render as honest no-data states (never silently dropped). |
+| NFR-MDF-003 coverage transparency | `coverage_metadata` row per instrument×data-type; 100% of universe covered or explicitly recorded as gap; admin coverage report endpoint + ops summary; quarantine dismissals record the accepted gap with a note (BR-MDF-007); gaps render as honest no-data states (never silently dropped). |
 | NFR-MDF-004 provenance | `source_ref` + `recorded_at` NOT NULL on every fact table; ingestion refuses facts without provenance (validation → quarantine). |
 | NFR-MDF-005 public reproducibility | Monorepo + docker-compose + README (sources, model, cadence) + CI green badge; a fresh clone runs the full stack + seeded fixtures locally in ≤ 10 commands (documented quickstart). |
 | NFR-MDF-006 cost | $0 data: adapters only for KAP/İşbank/TEFAS/TÜİK/ENAG/CBRT/free FX-gold. Infra ≤ ~€5/mo VPS + free tiers (B2, UptimeRobot, Brevo, GH Actions) + domain $0 (Student Pack year 1). |
@@ -479,6 +479,7 @@ Every data-bearing response includes: `asOf` (ISO date), `stale` (bool); histori
 | AD-10 | Market P/E = cap-weighted aggregate (Σcap/Σearnings, loss-makers excluded, disclosed) | standard index convention; user decision D-05; sector strip stays median-based per OQ-UX-002 |
 | AD-11 | Hetzner VPS + Caddy + docker-compose + GHCR + Actions CI/CD | cheapest robust option; portfolio artifact; user decisions D-02/D-06 |
 | AD-12 | Public monorepo incl. `.pipeline/` planning docs | transparency for portfolio audience; contains no secrets (verified 2026-10-06) |
+| AD-13 | Builder admin dashboard extension (v1.1): `GET /admin/summary` (pipeline health + freshness + content coverage one-glance), `quarantined_facts` store + review/dismiss endpoints, `GET /admin/stats` (aggregate-only counts) | builder instruction 2026-10-06; every piece traces to existing items (UC-MDF-001b, UC-MDF-004, UC-MOV-005, FR-MDF-012, BR-MDF-007, SC-008/OBJ-005) — no new FRs; the quarantine store closes a v1.0 gap (UC-MDF-001 alternate b mandated quarantine but gave it no home). Rejected: per-user data browsing, traffic/event analytics, log-viewer UI, feature-flag UI — no BA trace and several conflict with the KVKK-minimal / no-tracking posture (BR-ACC-002/008); logs remain on-box via `docker logs` |
 
 ## 12. Flagged items & deviations (require builder awareness; none block)
 
@@ -492,6 +493,13 @@ Every data-bearing response includes: `asOf` (ISO date), `stale` (bool); histori
 | FLG-06 | **Source OQs open by design** (OQ-MDF-001/002/005, OQ-MOV-001/002, OQ-SCR-003, OQ-FDF-002) — accommodated via adapter pattern + honest states; resolved during V0 per the reports' owners. | No action for architecture |
 | FLG-07 | **Single-instance, no HA** (99.0% monthly target, RPO 24h) — honest to the cheap-hosting constraint; documented in NFR translation. | Accepted by constraint |
 
-## 13. Change propagation
+## 13. Change propagation & change record
 
-This is the **first version** of the architecture documents; no FR/UC/TC or tickets derived from a prior architecture exist yet, so no downstream re-validation is triggered. The test-planner (next agent) and planner will derive their artifacts from **this** version. Any future amendment to these documents must list affected FRs/UCs/UXRs, TCs, and tickets for re-validation — the same rule the UX package follows (`99-ux-audit.md` §6).
+Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets for re-validation — the same rule the UX package follows (`99-ux-audit.md` §6). The change record (§13.1) tracks every version. As of v1.1 the test-planner and planner have not yet derived artifacts, so no downstream re-validation is pending — they must derive from **v1.1**.
+
+### 13.1 Change record
+
+| Version | Date | Change | Affected items | Downstream re-validation |
+|---|---|---|---|---|
+| v1.0 | 2026-10-06 | Initial architecture (submitted for approval) | — | — (first version) |
+| v1.1 | 2026-10-06 | Builder-directed **admin dashboard extension** (AD-13): `GET /api/v1/admin/summary` (ops one-glance), `quarantined_facts` table + `GET /admin/quarantine` + `POST /admin/quarantine/{id}/dismiss` (gives UC-MDF-001 alternate b's "quarantine" a storage home — a v1.0 gap), `GET /admin/stats` (aggregate-only SC-008/OBJ-005 measurement) | FR-MDF-012 mechanism (components C3a+C3d+C2+C1); UC-MDF-001/004 + UC-MOV-005 coverage rows (`03` §10); data model (`02` §3.1, §2, §7); admin API (`03` §8, §9) | None pending — test-planner/planner not yet run; derive from v1.1 |

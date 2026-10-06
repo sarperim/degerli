@@ -1,7 +1,7 @@
-# Data Model — v1.0
+# Data Model — v1.1
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 adds `quarantined_facts` (admin dashboard extension; change record in `01-system-architecture.md` §13.1)
 **Implements:** all Data Entities sections of the 7 approved domain reports, consolidated; resolves the cross-domain conflicts listed in §5.
 **Engine:** PostgreSQL 17+ · **Access:** EF Core 10 (migrations, CRUD) + raw SQL for metric computation · **Conventions:** snake_case tables/columns; all timestamps `timestamptz` (UTC); all monetary values `numeric(18,4)` with explicit `currency` where multi-currency possible (TRY default); dates `date`.
 
@@ -32,7 +32,7 @@
  indices ── index_levels                            sector_metric_medians
  derived_metrics (Metrics Engine output)             VAL: dcf_baselines
  FDF: funds ── fund_navs / fund_performances / fund_holdings
- Ops: ingest_runs · metric_catalog · coverage_metadata · data_freshness(view)
+ Ops: ingest_runs · quarantined_facts · metric_catalog · coverage_metadata · data_freshness(view)
 ```
 
 ## 3. Tables (consolidated from all domain reports)
@@ -113,6 +113,8 @@ Append-only by date; the Metrics Engine writes one row per instrument × metric 
 **`coverage_metadata`** (FR-MDF-011, FR-FDF-004): `id`, `scope` (`instrument`/`fund`/`universe`), `instrument_id`/`fund_id` NULL, `data_type`, `available_from`, `available_to`, `notes`. Written by adapters during backfill/refresh; read by admin coverage report and the honest no-data states.
 
 **`ingest_runs`** — scheduler run ledger (UC-MDF-001 alternates; operational): `id`, `job_code`, `started_at`, `finished_at`, `status` (`succeeded/failed/partial`), `stats_json` (counts), `error` text. Also backs `data_freshness` staleness logic (FR-MDF-016) via view `v_data_freshness` (last success per job/data type).
+
+**`quarantined_facts`** — validation-failure store (v1.1; UC-MDF-001 alternate b, FR-MDF-012, BR-MDF-007): `id`, `job_code`, `source_ref`, `payload_json` (the rejected fact, retained for inspection and re-ingestion after a fix), `reason_code` (validation-failure class), `quarantined_at`, `status` (`open`/`dismissed`), `resolution_note` text NULL. Written by C3a validation — a fact failing validation is **never** written to a fact table. Reviewed via admin endpoints (`03` §8); dismissal records the accepted gap with a note (BR-MDF-007: gaps are recorded, never silently ignored); re-ingestion is re-triggering the job after a fix. Volume is exception-driven (expected small) — sustained growth is itself an anomaly signal (C3d alert threshold).
 
 ### 3.2 Market Overview & Macro
 
@@ -290,7 +292,7 @@ Parameters (confirmed set, OQ-UX-001): `base_fcf, growth_rate, horizon_years (1.
 | kap_disclosures | 20k–100k | metadata only; documents on disk |
 | fund_navs | ~2–4M | equity+equity-heavy funds (BR-FDF-006 bound keeps this finite) |
 | fund_holdings | ~2–5M | periodic snapshots × ~30 lines |
-| everything else | < 150k combined | macro, snapshots, medians, users, content |
+| everything else | < 150k combined | macro, snapshots, medians, users, content, quarantined facts (exception-driven) |
 
 Total DB estimate **2–6 GB** → fits Backblaze B2 free tier (10 GB) for the 30-day backup window (§01 §10.8). All facts retained for the life of the platform (NFR-MDF-002/NFR-FDF-002) — no TTL anywhere. Partitioning (`derived_metrics`, `fund_navs` by year) is a documented future optimization, deliberately not built now — at these sizes plain B-tree indexes on the PKs suffice; premature partitioning would complicate EF mappings for no measured benefit.
 

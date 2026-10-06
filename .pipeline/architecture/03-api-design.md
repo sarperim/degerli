@@ -1,7 +1,7 @@
-# API Design — v1.0
+# API Design — v1.1
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 adds admin dashboard endpoints (change record in `01-system-architecture.md` §13.1)
 **Serves:** the React SPA (C1) — the only first-party client; designed consumable by any future JSON client (mobile is delayed per builder decision D-01 and requires a brief amendment before being built).
 **Style:** REST over JSON, HTTPS only, prefix `/api/v1`. OpenAPI document served at `GET /api/v1/openapi.json` (Microsoft.AspNetCore.OpenApi, anonymous).
 
@@ -204,14 +204,35 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
 
 | Endpoint | Serves | UC trace |
 |---|---|---|
-| `GET /api/v1/admin/coverage?scope=instrument|fund` | coverage report (equity + funds) | UC-MDF-004, UC-FDF-003 |
+| `GET /api/v1/admin/summary` | **ops one-glance (v1.1)**: last run per job, freshness/staleness per data type, description coverage (published/draft vs universe), open-quarantine count — aggregated from existing tables (`ingest_runs`, `v_data_freshness`, `coverage_metadata`, `business_descriptions`) | UC-MDF-004, UC-MOV-005, FR-MDF-016 |
+| `GET /api/v1/admin/quarantine?status=open\|dismissed` | **validation-failure review queue (v1.1)**: rejected payloads + reason per item | UC-MDF-001 (alternate b), FR-MDF-012 |
+| `POST /api/v1/admin/quarantine/{id}/dismiss` `{note}` | record the accepted gap (BR-MDF-007); re-ingestion = re-triggering the job (endpoint below) after a fix | UC-MDF-001 (alternate b), BR-MDF-007 |
+| `GET /api/v1/admin/coverage?scope=instrument\|fund` | coverage report (equity + funds) | UC-MDF-004, UC-FDF-003 |
 | `GET /api/v1/admin/ingest-runs?job=&status=` | run-ledger monitoring | UC-MDF-001 (ops), UC-MOV-005, UC-FDF-002 (ops) |
 | `POST /api/v1/admin/ingest/{job}/run` | trigger/backfill — `{job}` ∈ job codes below; body may carry `{backfillFrom}` | UC-MDF-002 |
-| `GET /api/v1/admin/descriptions?status=draft|reviewed|published` | review queue | UC-RES-004 |
+| `GET /api/v1/admin/descriptions?status=draft\|reviewed\|published` | review queue | UC-RES-004 |
 | `PATCH /api/v1/admin/descriptions/{id}` `{textTr?, textEn?}` | edit both languages (FR-RES-021) | UC-RES-004 |
 | `POST /api/v1/admin/descriptions/{id}/publish` | publication gate — rejects if either language empty (FR-RES-020, BR-RES-003) | UC-RES-004 |
 | `PATCH /api/v1/admin/screener-metrics/{code}` `{isScreenable}` | hide/unhide metric without code change (FR-SCR-017) | UC-SCR-004 |
 | `POST /api/v1/admin/dcf-baselines/regenerate` | rebuild baselines from canonical facts (version bump) | UC-VAL-003 |
+| `GET /api/v1/admin/stats` | **aggregate-only counts (v1.1)**: `{accounts: {registered, verified}, savedScreens, dcfScenarios}` — the SC-008/OBJ-005 (10-external-users) measurement without any tracking; **no per-user data** (KVKK posture, BR-ACC-002/008) | SC-008, OBJ-005 — see §10 direction-check note |
+
+`GET /api/v1/admin/summary` — response sketch:
+
+```json
+{
+  "asOf": "2026-10-06",
+  "jobs": [
+    { "job": "prices", "lastRun": { "status": "succeeded", "finishedAt": "2026-10-06T21:14:03Z" } }
+  ],
+  "freshness": [
+    { "dataType": "prices", "lastSuccess": "2026-10-06", "stale": false },
+    { "dataType": "macro-indep-cpi", "lastSuccess": "2026-09-03", "stale": true }
+  ],
+  "contentCoverage": { "descriptionsPublished": 61, "descriptionsDraft": 12, "universe": 100 },
+  "openQuarantineCount": 4
+}
+```
 
 Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-actions`, `disclosures`, `universe-sync`, `macro-daily`, `macro-cpi`, `metrics-recompute`, `snapshot`, `medians`, `fund-nav`, `fund-holdings`, `fund-performance`.
 
@@ -219,7 +240,7 @@ Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-a
 
 | Operation (component) | Cadence/trigger | UC trace |
 |---|---|---|
-| EOD ingest chain: prices → statements/dividends/actions/disclosures → metrics-recompute → snapshot → medians (C3a/C3b/C3c) | cron 20:30 TRT trading days; retries ×3; run ledger; alerts (C3d) | UC-MDF-001 (incl. alternates a/b), UC-MDF-003 |
+| EOD ingest chain: prices → statements/dividends/actions/disclosures → metrics-recompute → snapshot → medians (C3a/C3b/C3c) | cron 20:30 TRT trading days; retries ×3; run ledger; validation failures → `quarantined_facts` (never into fact tables); alerts (C3d) | UC-MDF-001 (incl. alternates a/b), UC-MDF-003 |
 | Backfill mode of the same chain | admin trigger (`POST /admin/ingest/{job}/run`) | UC-MDF-002 |
 | Macro ingest jobs `macro-daily` / `macro-cpi` (+ per-release repo rate) | cron per cadence | UC-MOV-002 |
 | Macro failure detection + staleness marking + builder alert | inside macro jobs | UC-MOV-005 |
@@ -233,16 +254,16 @@ Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-a
 
 | UC | Operations |
 |---|---|
-| UC-MDF-001 refresh daily | worker EOD chain; monitored via `GET /admin/ingest-runs` |
+| UC-MDF-001 refresh daily | worker EOD chain (validation failures → `quarantined_facts`); monitored via `GET /admin/summary`, `GET /admin/ingest-runs`; quarantined items reviewed/dismissed via `GET/POST /admin/quarantine` |
 | UC-MDF-002 backfill | `POST /admin/ingest/{job}/run`; coverage via `GET /admin/coverage` |
 | UC-MDF-003 universe maintenance | worker `universe-sync` |
-| UC-MDF-004 validate coverage | `GET /admin/coverage` (equity scope) |
+| UC-MDF-004 validate coverage | `GET /admin/coverage` (equity scope) + `GET /admin/summary` (freshness & content coverage at a glance) |
 | UC-MDF-005 serve facts/metrics | all public read endpoints (§3) — canonical values + coverage/stale/window semantics |
 | UC-MOV-001 check market state | `GET /market/overview` + `GET /market/macro`; SPA SCR-001 |
 | UC-MOV-002 ingest macro | workers `macro-daily`/`macro-cpi` |
 | UC-MOV-003 compare inflation | `GET /market/macro` (paired payload); SPA renders pair |
 | UC-MOV-004 navigate from dashboard | SPA routes (movers→SCR-005, sector→SCR-002 filtered, screener→SCR-003) — no API (client-side links) |
-| UC-MOV-005 macro failure detection | worker alerting; `GET /admin/ingest-runs` |
+| UC-MOV-005 macro failure detection | worker alerting; `GET /admin/summary` (staleness), `GET /admin/ingest-runs` |
 | UC-SCR-001 ad-hoc screen | `GET /screener/metrics` + `POST /screener/run` |
 | UC-SCR-002 save screen | `POST /me/screens` (+ auth hop: §3 auth endpoints) |
 | UC-SCR-003 re-run/manage | `GET /me/screens`, `POST /screener/run` (with stored criteria; `droppedCriteria`), `PATCH`, `DELETE` |
@@ -264,7 +285,7 @@ Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-a
 | UC-FDF-002 fund refresh | fund workers (cron) |
 | UC-FDF-003 fund coverage | fund coverage measurement + `GET /admin/coverage?scope=fund` |
 
-**Direction check:** every endpoint in §3–§8 traces to ≥1 UC (tables above); every UC (30 of 30) has ≥1 operation — HTTP endpoint, worker job, CLI, or documented manual procedure. Navigation-only UCs (UC-MOV-004, UC-RES-005) are satisfied by SPA routing and are flagged as such, not orphaned. No endpoint exists without a use case.
+**Direction check:** every endpoint in §3–§8 traces to ≥1 UC (tables above); every UC (30 of 30) has ≥1 operation — HTTP endpoint, worker job, CLI, or documented manual procedure. Navigation-only UCs (UC-MOV-004, UC-RES-005) are satisfied by SPA routing and are flagged as such, not orphaned. **One recorded exception (v1.1, builder-approved AD-13):** `GET /admin/stats` traces to success criteria SC-008/OBJ-005 rather than a UC — it is the only endpoint without a UC trace, and it exists to *measure* a success criterion rather than serve a use case.
 
 ## 11. Versioning
 
