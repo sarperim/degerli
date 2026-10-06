@@ -1,7 +1,7 @@
-# API Design — v1.2
+# API Design — v1.3
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 added the admin dashboard endpoints; v1.2 adds the `GET /admin/descriptions` response sketch serving KAP source refs (UXR-MDF-020; change records in `01-system-architecture.md` §13.1)
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 added the admin dashboard endpoints; v1.2 adds the `GET /admin/descriptions` response sketch serving KAP source refs (UXR-MDF-020); v1.3 (2026-10-07) renames the DCF baseline param `net_debt` → `debt` (F-VAL-1 builder clarification — total debt ST+LT; change records in `01-system-architecture.md` §13.1)
 **Serves:** the React SPA (C1) — the only first-party client; designed consumable by any future JSON client (mobile is delayed per builder decision D-01 and requires a brief amendment before being built).
 **Style:** REST over JSON, HTTPS only, prefix `/api/v1`. OpenAPI document served at `GET /api/v1/openapi.json` (Microsoft.AspNetCore.OpenApi, anonymous).
 
@@ -103,7 +103,7 @@ Duplicate-name rejection is backed by the DB unique constraint (§02 §3.3) — 
     "params": {
       "base_fcf": 15230000000, "growth_rate": 0.12, "horizon_years": 5,
       "terminal_growth": 0.04, "discount_rate": 0.15,
-      "net_debt": 8000000000, "cash": 21000000000, "share_count": 7900000000
+      "debt": 8000000000, "cash": 21000000000, "share_count": 7900000000
     },
     "canonicalFactRefs": { "base_fcf": {"asOf": "2026-09-30", "restated": true}, "…": "…" }
   },

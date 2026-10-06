@@ -1,7 +1,7 @@
-# Data Model — v1.1
+# Data Model — v1.2
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 adds `quarantined_facts` (admin dashboard extension; change record in `01-system-architecture.md` §13.1)
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** approved — v1.1 added `quarantined_facts`; v1.2 (2026-10-07) applied the builder final-review mirror patches: DCF `debt`-parameter clarification (F-VAL-1), rights-issue adjustment factor (Q3), window-suffixed CAGR codes + volume correction (Q5). Change records in `01-system-architecture.md` §13.1.
 **Implements:** all Data Entities sections of the 7 approved domain reports, consolidated; resolves the cross-domain conflicts listed in §5.
 **Engine:** PostgreSQL 17+ · **Access:** EF Core 10 (migrations, CRUD) + raw SQL for metric computation · **Conventions:** snake_case tables/columns; all timestamps `timestamptz` (UTC); all monetary values `numeric(18,4)` with explicit `currency` where multi-currency possible (TRY default); dates `date`.
 
@@ -94,13 +94,15 @@ One instrument → * statements; each statement → * line items.
 
 **`corporate_actions`** — *Corporate action* (FR-MDF-004): `id`, `instrument_id` FK, `action_type` (split / rights_issue / bonus_issue / other), `action_date`, `terms_json` jsonb (ratio, terms), `source_ref`. Feeds adjustment-factor computation (C3b).
 
+Adjustment-factor system (BR-MDF-010; Q3 resolution 2026-10-07): split 1-for-n → `1/n`; bonus b-new-per-1 → `1/(1+b)`; rights q-new-per-1 at subscription `P_S`, cum price `P_C` (last raw close on/before `action_date`) → `(P_C + q·P_S)/((1+q)·P_C)` (theoretical ex-rights basis); factors compose multiplicatively over time; `close_adjusted = close_raw × Π factors of all actions after the price date`; degenerate rights inputs (q ≤ 0 or P_C ≤ 0) invalidate the action.
+
 **`kap_disclosures`** — *KAP disclosure* (FR-MDF-005): `id`, `instrument_id` FK, `disclosure_type`, `publish_date`, `title`, `source_url`, `document_path` (on-disk/VPS path — documents live outside the DB to keep it lean), `source_ref`. Input to the C4 drafting pipeline (UC-RES-004).
 
 **`derived_metrics`** — *Derived metric* (MDF §7; FR-MDF-013/014/018/019)
 | column | type | notes |
 |---|---|---|
 | instrument_id | bigint FK PK-part | |
-| metric_code | text PK-part | one of the catalog codes (§6.2) |
+| metric_code | text PK-part | one of the catalog codes (§6.2); windowed CAGRs are window-suffixed, e.g. `rev_cagr_3y` (Q5, 2026-10-07) |
 | as_of_date | date PK-part | computation date; current = max per (instrument, metric) |
 | value | numeric | NULL = not meaningful (e.g., P/E for loss-maker) — never 0-for-missing |
 | window_years | int NULL | actual window used for CAGRs (FR-MDF-014) |
@@ -108,7 +110,7 @@ One instrument → * statements; each statement → * line items.
 | is_rested | bool | computed from restated statement version (FR-MDF-019) |
 | computed_at | timestamptz | |
 
-Append-only by date; the Metrics Engine writes one row per instrument × metric per trading day for all 18 screener metrics (≈450k rows/yr — §7 volumes). **Rejected alternative:** separate current-table (upserted) + history-table — two code paths for one concept; volume does not justify it.
+Append-only by date; the Metrics Engine writes one row per instrument × metric per trading day for all 18 concepts / 26 window-suffixed metric codes (≈650k rows/yr — §7 volumes). **Rejected alternative:** separate current-table (upserted) + history-table — two code paths for one concept; volume does not justify it.
 
 **`coverage_metadata`** (FR-MDF-011, FR-FDF-004): `id`, `scope` (`instrument`/`fund`/`universe`), `instrument_id`/`fund_id` NULL, `data_type`, `available_from`, `available_to`, `notes`. Written by adapters during backfill/refresh; read by admin coverage report and the honest no-data states.
 
@@ -262,7 +264,7 @@ Serving rule: latest `published` version per instrument; none → `preparing` st
 | `div_cagr` | dividends | CAGR of DPS over window | <2 payments → NULL |
 | `payout_ratio` | dividends | Σ DIV_TTM / NI_TTM | NI ≤ 0 → NULL (may exceed 1 — displayed honestly) |
 
-`FCF = NI + DEPR_AMORT − ΔWC − CAPEX` (indirect method, canonical). `mcap = close_raw × SHARES_DILUTED`. Growth criteria store the chosen window (3/5/10Y) in the criterion (FR-SCR-015).
+`FCF = NI + DEPR_AMORT − ΔWC − CAPEX` (indirect method, canonical). `mcap = close_raw × SHARES_DILUTED`. Growth criteria store the chosen window (3/5/10Y) in the criterion (FR-SCR-015). **Windowed CAGR storage (Q5 resolution, 2026-10-07): window-suffixed metric codes** — `rev_cagr_3y/5y/10y`, `eps_cagr_3y/5y/10y`, `fcf_cagr_3y/5y/10y`, `div_cagr_3y/5y/10y` — 14 non-growth + 12 windowed = **26 metric codes**; `derived_metrics.window_years` records the interval actually used when history is shorter than the nominal window (FR-MDF-014 honesty).
 
 ### 6.3 Market & sector aggregates
 
@@ -276,18 +278,18 @@ Serving rule: latest `published` version per instrument; none → `preparing` st
 ```
 PV_explicit = Σ_{t=1..N}  FCF₀·(1+g)^t / (1+r)^t
 TV           = FCF₀·(1+g)^N·(1+g_t) / (r − g_t)          [requires r > g_t]
-EquityValue  = PV_explicit + TV/(1+r)^N + Cash − NetDebt
+EquityValue  = PV_explicit + TV/(1+r)^N + Cash − Debt
 FairValuePS  = EquityValue / SharesDiluted
 MOS          = (FairValuePS − Price) / FairValuePS        (plain-language verdict, client-rendered)
 ```
-Parameters (confirmed set, OQ-UX-001): `base_fcf, growth_rate, horizon_years (1..10), terminal_growth, discount_rate, net_debt, cash, share_count` — all user-editable (BR-VAL-002). Sensitivity grid: `discount_rate × terminal_growth` (default 5×5 centered on user values). Not computable → `DCF_NOT_COMPUTABLE` with the violated constraint named (UXR-VAL-009 analog for math, not missing data).
+Parameters (confirmed set, OQ-UX-001; builder clarification 2026-10-07): `base_fcf, growth_rate, horizon_years (1..10), terminal_growth, discount_rate, debt, cash, share_count` — all user-editable (BR-VAL-002); **`debt` = total debt (ST+LT)**, not net — `cash` and `debt` are distinct parameters, both affect the result (NFR-VAL-004 no-black-box; F-VAL-1 ruling). Sensitivity grid: `discount_rate × terminal_growth` (default 5×5 centered on user values). Not computable → `DCF_NOT_COMPUTABLE` with the violated constraint named (UXR-VAL-009 analog for math, not missing data).
 
 ## 7. Volume estimates & retention
 
 | Table | Rows (steady state, 10Y depth) | Notes |
 |---|---|---|
 | daily_prices | ~250k (100 × ~2,500 days) | + index_levels ~5k |
-| derived_metrics | ~4.5M (100 × 18 × ~2,500 days) | largest equity table; single append table (see §3.1) |
+| derived_metrics | ~6.5M (100 × 26 × ~2,500 days) | largest equity table; single append table (see §3.1) — 26 = 18 concepts with window-suffixed CAGR codes (Q5 correction, 2026-10-07) |
 | fin statements/line items | ~12k / ~720k | 100 × 40 periods × 3 × ~60 lines |
 | kap_disclosures | 20k–100k | metadata only; documents on disk |
 | fund_navs | ~2–4M | equity+equity-heavy funds (BR-FDF-006 bound keeps this finite) |
