@@ -15,7 +15,7 @@ public sealed class CachingMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        switch (CachingPolicies.Classify(context.Request.Path))
+        switch (CachingPolicies.Classify(context.Request.Method, context.Request.Path))
         {
             case CachePolicy.None:
                 await _next(context);

@@ -7,7 +7,19 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Two SDK test projects share tests/Api.IntegrationTests: this one
+         (schema/migrations/seed + the foundation-006 harness) and Api.IntegrationTests
+         (API infrastructure / mechanism tests). The SDK's default Compile glob is
+         recursive, so each project must list its own sources or both compile every
+         .cs in the folder. Keep this list in sync when adding test files here. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="MigrationsAndSeedTests.cs" />
+    <Compile Include="PostgresFixture.cs" />
+    <Compile Include="SchemaConformanceTests.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />

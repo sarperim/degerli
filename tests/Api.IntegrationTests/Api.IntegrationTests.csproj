@@ -3,7 +3,27 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Two SDK test projects share tests/Api.IntegrationTests: this one (API
+         infrastructure / mechanism tests) and Degerli.Api.IntegrationTests
+         (schema + harness). The SDK's default Compile glob is recursive, so each
+         project must list its own sources or both compile every .cs in the folder.
+         Keep this list in sync when adding test files here. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="ApiFactory.cs" />
+    <Compile Include="DataEnvelopeTests.cs" />
+    <Compile Include="HealthEndpointTests.cs" />
+    <Compile Include="InternalErrorTests.cs" />
+    <Compile Include="Usings.cs" />
+    <Compile Include="Xc009SecurityHeadersTests.cs" />
+    <Compile Include="Xc010CsrfTests.cs" />
+    <Compile Include="Xc011RateLimitTests.cs" />
+    <Compile Include="Xc015CachingTests.cs" />
+    <Compile Include="Xc015MutationNoStoreTests.cs" />
+    <Compile Include="Xc018OpenApiTests.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
