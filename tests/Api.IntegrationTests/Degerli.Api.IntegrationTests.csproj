@@ -7,18 +7,33 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- Two SDK test projects share tests/Api.IntegrationTests: this one
-         (schema/migrations/seed + the foundation-006 harness) and Api.IntegrationTests
-         (API infrastructure / mechanism tests). The SDK's default Compile glob is
-         recursive, so each project must list its own sources or both compile every
-         .cs in the folder. Keep this list in sync when adding test files here. -->
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
+  <!-- Two SDK test projects share tests/Api.IntegrationTests: this one
+       (schema/migrations/seed + the foundation-006 harness) and Api.IntegrationTests
+       (API infrastructure / mechanism tests). Default Compile items stay ON (so a
+       newly added .cs is never silently dropped); this project removes the sibling
+       project's sources plus both obj/bin trees. Because Directory.Build.props gives
+       each project a per-project BaseIntermediateOutputPath/BaseOutputPath, the SDK's
+       own DefaultItemExcludes only covers *this* project's tree, so the sibling's
+       generated obj/*.g.cs files must be removed explicitly or they would be swept
+       into the compile glob on an incremental build. -->
   <ItemGroup>
-    <Compile Include="MigrationsAndSeedTests.cs" />
-    <Compile Include="PostgresFixture.cs" />
-    <Compile Include="SchemaConformanceTests.cs" />
+    <!-- Api.IntegrationTests sources -->
+    <Compile Remove="ApiFactory.cs" />
+    <Compile Remove="DataEnvelopeTests.cs" />
+    <Compile Remove="HealthEndpointTests.cs" />
+    <Compile Remove="InternalErrorTests.cs" />
+    <Compile Remove="Usings.cs" />
+    <Compile Remove="Xc009SecurityHeadersTests.cs" />
+    <Compile Remove="Xc010CsrfTests.cs" />
+    <Compile Remove="Xc011RateLimitTests.cs" />
+    <Compile Remove="Xc015CachingTests.cs" />
+    <Compile Remove="Xc015MutationNoStoreTests.cs" />
+    <Compile Remove="Xc018OpenApiTests.cs" />
+    <!-- generated outputs for either shared project -->
+    <Compile Remove="obj/**" />
+    <Compile Remove="bin/**" />
   </ItemGroup>
 
   <ItemGroup>

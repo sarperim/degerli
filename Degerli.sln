@@ -124,7 +124,6 @@ Global
 		{84C9EAC3-AF38-4B80-A7B6-D490A0B1DD74}.Release|x86.ActiveCfg = Release|Any CPU
 		{84C9EAC3-AF38-4B80-A7B6-D490A0B1DD74}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
-	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection

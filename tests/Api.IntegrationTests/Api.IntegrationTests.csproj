@@ -3,26 +3,25 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- Two SDK test projects share tests/Api.IntegrationTests: this one (API
-         infrastructure / mechanism tests) and Degerli.Api.IntegrationTests
-         (schema + harness). The SDK's default Compile glob is recursive, so each
-         project must list its own sources or both compile every .cs in the folder.
-         Keep this list in sync when adding test files here. -->
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
+  <!-- Two SDK test projects share tests/Api.IntegrationTests: this one (API
+       infrastructure / mechanism tests) and Degerli.Api.IntegrationTests
+       (schema + harness). Default Compile items stay ON (so a newly added .cs is
+       never silently dropped); this project removes the sibling project's sources
+       plus both obj/bin trees. Because Directory.Build.props gives each project a
+       per-project BaseIntermediateOutputPath/BaseOutputPath, the SDK's own
+       DefaultItemExcludes only covers *this* project's tree, so the sibling's
+       generated obj/*.g.cs files must be removed explicitly or they would be
+       swept into the compile glob on an incremental build. -->
   <ItemGroup>
-    <Compile Include="ApiFactory.cs" />
-    <Compile Include="DataEnvelopeTests.cs" />
-    <Compile Include="HealthEndpointTests.cs" />
-    <Compile Include="InternalErrorTests.cs" />
-    <Compile Include="Usings.cs" />
-    <Compile Include="Xc009SecurityHeadersTests.cs" />
-    <Compile Include="Xc010CsrfTests.cs" />
-    <Compile Include="Xc011RateLimitTests.cs" />
-    <Compile Include="Xc015CachingTests.cs" />
-    <Compile Include="Xc015MutationNoStoreTests.cs" />
-    <Compile Include="Xc018OpenApiTests.cs" />
+    <!-- Degerli.Api.IntegrationTests sources -->
+    <Compile Remove="MigrationsAndSeedTests.cs" />
+    <Compile Remove="PostgresFixture.cs" />
+    <Compile Remove="SchemaConformanceTests.cs" />
+    <!-- generated outputs for either shared project -->
+    <Compile Remove="obj/**" />
+    <Compile Remove="bin/**" />
   </ItemGroup>
 
   <ItemGroup>
