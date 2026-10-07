@@ -1,6 +1,7 @@
 # Regenerable plan views and review transcripts (source of record = ticket files)
 .pipeline/plan/board.md
 .pipeline/plan/reviews/
+.pipeline/plan/run-report.md
 
 # secrets
 .env
