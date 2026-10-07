@@ -1,6 +1,7 @@
 # TKT-foundation-006: Backend test harness
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/6
 - Size: M
 - Scope: `/tests/Core.UnitTests` + `/tests/Api.IntegrationTests` scaffolding: Testcontainers Postgres base (fresh migrated+seeded container per test class, order-independent tests); WireMock.Net server helper; fake `TimeProvider` wiring; in-process mail dispatcher double; Serilog test sink; fixture-builder helpers for creating users/screens/scenarios via the API. Must NOT implement the fixture universe data itself (TKT-foundation-007) or the canned source payloads (TKT-foundation-008).
 - Traces to: foundation (test strategy §5.1–§5.2, §7 doubles policy)
