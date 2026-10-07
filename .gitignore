@@ -11,3 +11,6 @@ node_modules/
 dist/
 bin/
 obj/
+
+# runtime logs (Serilog rolling files)
+logs/

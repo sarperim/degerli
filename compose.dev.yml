@@ -1,0 +1,103 @@
+# Reproducible local development stack (NFR-MDF-005).
+#
+#   cp .env.example .env      # optional: override defaults
+#   docker compose -f compose.dev.yml up
+#
+# Starts PostgreSQL 17, MailPit (SMTP + web UI) and the API with hot reload.
+name: degerli-dev
+
+x-api-environment: &api-environment
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:8080
+  DOTNET_USE_POLLING_FILE_WATCHER: "true"
+  ConnectionStrings__Default: ${ConnectionStrings__Default:-Host=postgres;Port=5432;Database=degerli;Username=degerli;Password=degerli}
+  Smtp__Host: ${Smtp__Host:-mailpit}
+  Smtp__Port: ${Smtp__Port:-1025}
+  Smtp__User: ${Smtp__User:-}
+  Smtp__Password: ${Smtp__Password:-}
+  Smtp__From: ${Smtp__From:-no-reply@degerli.local}
+  Smtp__UseStartTls: ${Smtp__UseStartTls:-false}
+  Evren__ApiKey: ${Evren__ApiKey:-}
+  APP_URL: ${APP_URL:-http://localhost:5173}
+  ALERT_EMAIL: ${ALERT_EMAIL:-builder@degerli.local}
+
+x-api-volumes: &api-volumes
+  - ./src:/app/src
+  - ./Degerli.sln:/app/Degerli.sln
+  - ./Directory.Build.props:/app/Directory.Build.props
+  - api-obj:/app/src/Api/obj
+  - api-bin:/app/src/Api/bin
+  - core-obj:/app/src/Core/obj
+  - core-bin:/app/src/Core/bin
+  - ingestion-obj:/app/src/Ingestion/obj
+  - ingestion-bin:/app/src/Ingestion/bin
+  - contentpipeline-obj:/app/src/ContentPipeline/obj
+  - contentpipeline-bin:/app/src/ContentPipeline/bin
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-degerli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-degerli}
+      POSTGRES_DB: ${POSTGRES_DB:-degerli}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-degerli} -d ${POSTGRES_DB:-degerli}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile.dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *api-environment
+    ports:
+      - "8080:8080"
+    volumes: *api-volumes
+
+  # Alternate entrypoint of the same image (C4). Not started by `up`; run on demand:
+  #   docker compose -f compose.dev.yml run --rm contentpipeline
+  contentpipeline:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *api-environment
+    entrypoint: ["dotnet", "run", "--project", "src/ContentPipeline/Degerli.ContentPipeline.csproj"]
+    volumes: *api-volumes
+
+volumes:
+  postgres-data:
+  api-obj:
+  api-bin:
+  core-obj:
+  core-bin:
+  ingestion-obj:
+  ingestion-bin:
+  contentpipeline-obj:
+  contentpipeline-bin:

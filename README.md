@@ -429,6 +429,63 @@ Every ticket points back to the permanent specification instead of creating anot
 
 ---
 
+# Local Development
+
+The backend runs entirely with Docker Compose — PostgreSQL 17, MailPit and the API
+(with hot reload). A fresh clone needs no `.env` file: every value has a safe local
+default.
+
+### Prerequisites
+
+* Docker + Docker Compose
+* .NET 10 SDK (only if you build or run without Docker)
+
+### Quickstart
+
+```bash
+git clone https://github.com/sarperim/degerli.git
+cd degerli
+docker compose -f compose.dev.yml up
+```
+
+Then:
+
+* API liveness — <http://localhost:8080/health> → `200 Healthy`
+* MailPit inbox — <http://localhost:8025>
+* PostgreSQL — `localhost:5432` (user / password / database: `degerli`)
+
+Sources under `src/` are bind-mounted, so editing a `.cs` file rebuilds and reloads
+the running API.
+
+### Configuration
+
+Copy `.env.example` to `.env` only when you need to override a default:
+
+```bash
+cp .env.example .env
+```
+
+`.env` is git-ignored and never committed. The architecture's secrets are
+`ConnectionStrings__Default`, `Smtp__*`, `Evren__ApiKey`, `APP_URL` and `ALERT_EMAIL`.
+
+### Building and running without Docker
+
+```bash
+dotnet build Degerli.sln
+dotnet run --project src/Api
+```
+
+### Content pipeline (offline)
+
+The AI-assisted content pipeline is an alternate entrypoint of the same image and is
+run on demand:
+
+```bash
+docker compose -f compose.dev.yml run --rm contentpipeline
+```
+
+---
+
 # Scope
 
 ### V1
