@@ -1,0 +1,11 @@
+# TKT-foundation-011: Design system foundations (design tool — Figma or Penpot)
+
+- Status: todo
+- Size: M
+- Scope: in the chosen design tool (decision **D-UX-TOOL** — flagged for the builder: Figma has direct MCP integration in this workflow; Penpot is open-source/self-hostable, fitting the $0/public-repo posture; tickets below are tool-agnostic): design tokens (color, spacing, type scale covering TR + EN), core components (buttons, inputs with validation states, semantic tables, badges — stale / not-meaningful / restated / adjusted, focus-trapping dialogs/confirmations, section navigation, loading skeletons, empty/no-data states), the global shell (header with language toggle, auth-state area, stock search, primary navigation), and the informational-only disclaimer component. Export artifacts to `/design/foundations/` with an index README. Must NOT touch `/src/**` or `.github/**`.
+- Traces to: UX-lane (visual design layer — post-UX-spec by design; the UX package fixes structure/behavior, this fixes layout/styling/copy direction)
+- Acceptance (explicit, no TCs — design work): covers every global non-screen surface in `00-screen-inventory.md` §3 (language toggle, global stock search, auth-state display, admin entry point, disclaimer); renders the honest-data marker vocabulary (as-of, stale, restated, adjusted, no-data/preparing) as reusable visual components; addresses TR + EN typography; responsive behavior shown at narrow width; builder approves the exported artifacts; **any behavioral decision discovered during design flows back through the ux-designer into the UX spec — never silently applied in code**.
+- Architecture refs: `01-system-architecture.md` §5 (UI kit row — Tailwind + shadcn/Radix primitives the design must stay compatible with), §8.1 (M-8)
+- UX refs: `00-screen-inventory.md` §3; UXR-G-013, UXR-G-014, UXR-G-016, UXR-G-025, UXR-G-026, UXR-G-027, UXR-G-028
+- Dependencies: none
+- Parallel group: P-1

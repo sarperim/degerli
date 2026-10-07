@@ -1,0 +1,12 @@
+# Regenerable plan views and review transcripts (source of record = ticket files)
+.pipeline/plan/board.md
+.pipeline/plan/reviews/
+
+# secrets
+.env
+
+# build artifacts
+node_modules/
+dist/
+bin/
+obj/
