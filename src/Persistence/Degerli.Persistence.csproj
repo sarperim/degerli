@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Persistence layer (C5): the single EF Core model, migrations and seed data for
+       every table in `02-data-model.md` §3. Referenced by C2 (Api) — and by C3a
+       (Ingestion) once the ingestion tickets land — so the schema and its mappings
+       have exactly one definition (BR-MDF-009 posture applied to storage). -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+  </ItemGroup>
+
+  <!-- Migrations are generated into this assembly so both `dotnet ef` and the
+       compose `migrate` service have a single, stable migration target. -->
+
+</Project>
