@@ -88,11 +88,16 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
     {
         await using var db = _fixture.CreateContext();
 
+        // Fact and derived tables named in the ticket scope (02 §3.1, §3.2, §7):
+        // retained for the life of the platform, so no TTL/expiry/DELETE artifact
+        // may appear on any of them.
         string[] factTables =
         [
             "instruments", "index_constituents", "daily_prices", "index_levels",
             "financial_statements", "dividends", "corporate_actions", "kap_disclosures",
-            "macro_values", "funds", "fund_navs", "fund_performances", "fund_holdings",
+            "derived_metrics", "quarantined_facts",
+            "macro_values", "market_snapshots",
+            "funds", "fund_navs", "fund_performances", "fund_holdings",
         ];
 
         // Facts are retained for the life of the platform (02 §7, NFR-MDF-002): no
@@ -149,8 +154,9 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
 
         // Read the actual indexed columns from the catalog rather than pg_indexes.indexdef:
         // indexdef embeds the index *name* (which itself contains the column names), so
-        // matching on it can false-pass. Grouped by index, the column set must equal the
-        // required set (not merely be a superset of substrings).
+        // matching on it can false-pass. Only key columns (ord <= indnkeyatts) are read —
+        // INCLUDE payload columns must not count toward the unique key. Grouped by index,
+        // the column set must equal the required set (not merely be a superset of substrings).
         var rows = await QueryAsync(db, $"""
             SELECT i.relname AS index_name, a.attname AS column_name
             FROM pg_index ix
@@ -161,6 +167,7 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
             WHERE n.nspname = 'public' AND t.relname = '{table}'
               AND (ix.indisunique OR ix.indisprimary)
+              AND k.ord <= ix.indnkeyatts
             """);
 
         var required = columns.ToHashSet(StringComparer.OrdinalIgnoreCase);

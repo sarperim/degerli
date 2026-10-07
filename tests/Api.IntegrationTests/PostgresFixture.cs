@@ -23,6 +23,12 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // The seed's builder-password guard fails closed: the checked-in dev/CI
+        // default is only selectable in an explicitly declared Development/Test
+        // environment. Declare Test before migrations (which run the seed) so the
+        // harness exercises the intended dev/CI path (CWE-798; 02 §8).
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Test");
+
         await _container.StartAsync();
         Options = DegerliDbContextOptions.Build(_container.GetConnectionString());
 

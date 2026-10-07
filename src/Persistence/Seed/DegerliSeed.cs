@@ -16,14 +16,17 @@ public static class DegerliSeed
 
     /// <summary>
     /// Default bootstrap builder password, used only for local development and CI.
-    /// Outside Development/Test the checked-in value is deliberately refused and the
-    /// deployed environment must supply <see cref="BuilderPasswordEnvironmentKey"/>
-    /// (CWE-798; 02 §8 bootstrap account).
+    /// It is refused unless the process explicitly declares a Development or Test
+    /// environment; any other or unset environment must supply
+    /// <see cref="BuilderPasswordEnvironmentKey"/> (CWE-798; 02 §8 bootstrap account).
     /// </summary>
     public const string BuilderPassword = "Degerli-Builder-2026";
 
     /// <summary>Environment variable that supplies the bootstrap builder password in any environment.</summary>
     public const string BuilderPasswordEnvironmentKey = "DEGERLI_BUILDER_PASSWORD";
+
+    /// <summary>Minimum length accepted for a caller-supplied bootstrap builder password.</summary>
+    public const int MinimumBuilderPasswordLength = 12;
 
     private const string NormalizedBuilderEmail = "BUILDER@DEGERLI.LOCAL";
 
@@ -105,22 +108,32 @@ public static class DegerliSeed
     /// <summary>
     /// Resolves the bootstrap builder password: the <see cref="BuilderPasswordEnvironmentKey"/>
     /// environment value when supplied, otherwise the checked-in dev/CI default. The
-    /// default is refused in an explicitly deployed environment (anything other than
-    /// Development/Test) so a repository-known credential can never reach production.
+    /// guard fails closed: the default is refused unless the process explicitly declares
+    /// a Development or Test environment (an unset/empty environment is treated as
+    /// deployed), so the repository-known credential cannot be selected wherever the
+    /// environment is not explicitly dev/CI (CWE-798; 02 §8 bootstrap account).
     /// </summary>
     public static string ResolveBuilderPassword()
     {
         var configured = Environment.GetEnvironmentVariable(BuilderPasswordEnvironmentKey);
         if (!string.IsNullOrWhiteSpace(configured))
         {
+            if (configured.Length < MinimumBuilderPasswordLength)
+            {
+                throw new InvalidOperationException(
+                    $"{BuilderPasswordEnvironmentKey} must be at least " +
+                    $"{MinimumBuilderPasswordLength} characters.");
+            }
+
             return configured;
         }
 
         if (IsDeployedEnvironment())
         {
             throw new InvalidOperationException(
-                $"{BuilderPasswordEnvironmentKey} must be supplied outside Development/Test: the " +
-                "checked-in builder password is a dev/CI-only default (CWE-798, 02 §8).");
+                $"{BuilderPasswordEnvironmentKey} must be supplied unless the environment is " +
+                "explicitly Development or Test: the checked-in builder password is a dev/CI-only " +
+                "default (CWE-798, 02 §8).");
         }
 
         return BuilderPassword;
@@ -138,13 +151,27 @@ public static class DegerliSeed
             ResolveBuilderPassword());
     }
 
+    /// <summary>
+    /// Fails closed: returns <c>true</c> (deployed) unless the process explicitly declares
+    /// a Development or Test environment. An unset or empty environment is treated as
+    /// deployed so the checked-in default is never used by default. This preserves
+    /// ASP.NET Core's host precedence — <c>ASPNETCORE_ENVIRONMENT</c> over
+    /// <c>DOTNET_ENVIRONMENT</c>.
+    /// </summary>
     private static bool IsDeployedEnvironment()
     {
-        var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        var aspNetCoreEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var dotNetEnvironment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        var environment = !string.IsNullOrWhiteSpace(aspNetCoreEnvironment)
+            ? aspNetCoreEnvironment
+            : dotNetEnvironment;
 
-        return !string.IsNullOrWhiteSpace(environment)
-            && !environment.Equals("Development", StringComparison.OrdinalIgnoreCase)
+        if (string.IsNullOrWhiteSpace(environment))
+        {
+            return true;
+        }
+
+        return !environment.Equals("Development", StringComparison.OrdinalIgnoreCase)
             && !environment.Equals("Test", StringComparison.OrdinalIgnoreCase);
     }
 
