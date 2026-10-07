@@ -16,7 +16,9 @@ x-api-environment: &api-environment
   Smtp__User: ${Smtp__User:-}
   Smtp__Password: ${Smtp__Password:-}
   Smtp__From: ${Smtp__From:-no-reply@degerli.local}
-  Smtp__UseStartTls: ${Smtp__UseStartTls:-false}
+  # The dev stack always talks to MailPit, which does not support STARTTLS; force
+  # it off here so copying .env.example (whose VPS-oriented default is true) is safe.
+  Smtp__UseStartTls: "false"
   Evren__ApiKey: ${Evren__ApiKey:-}
   APP_URL: ${APP_URL:-http://localhost:5173}
   ALERT_EMAIL: ${ALERT_EMAIL:-builder@degerli.local}
@@ -31,8 +33,17 @@ x-api-volumes: &api-volumes
   - core-bin:/app/src/Core/bin
   - ingestion-obj:/app/src/Ingestion/obj
   - ingestion-bin:/app/src/Ingestion/bin
-  - contentpipeline-obj:/app/src/ContentPipeline/obj
-  - contentpipeline-bin:/app/src/ContentPipeline/bin
+
+# The content pipeline compiles Degerli.Core too; give it its own build-output
+# volumes so running it while the API is up cannot race on shared Core obj/bin.
+x-contentpipeline-volumes: &contentpipeline-volumes
+  - ./src:/app/src
+  - ./Degerli.sln:/app/Degerli.sln
+  - ./Directory.Build.props:/app/Directory.Build.props
+  - cp-core-obj:/app/src/Core/obj
+  - cp-core-bin:/app/src/Core/bin
+  - cp-contentpipeline-obj:/app/src/ContentPipeline/obj
+  - cp-contentpipeline-bin:/app/src/ContentPipeline/bin
 
 services:
   postgres:
@@ -43,7 +54,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-degerli}
       POSTGRES_DB: ${POSTGRES_DB:-degerli}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -53,11 +64,11 @@ services:
       retries: 12
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.31.4
     restart: unless-stopped
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # web UI
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
@@ -73,7 +84,7 @@ services:
     environment:
       <<: *api-environment
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes: *api-volumes
 
   # Alternate entrypoint of the same image (C4). Not started by `up`; run on demand:
@@ -89,7 +100,7 @@ services:
     environment:
       <<: *api-environment
     entrypoint: ["dotnet", "run", "--project", "src/ContentPipeline/Degerli.ContentPipeline.csproj"]
-    volumes: *api-volumes
+    volumes: *contentpipeline-volumes
 
 volumes:
   postgres-data:
@@ -99,5 +110,7 @@ volumes:
   core-bin:
   ingestion-obj:
   ingestion-bin:
-  contentpipeline-obj:
-  contentpipeline-bin:
+  cp-core-obj:
+  cp-core-bin:
+  cp-contentpipeline-obj:
+  cp-contentpipeline-bin:

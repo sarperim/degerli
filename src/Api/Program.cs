@@ -19,11 +19,8 @@ var app = builder.Build();
 
 app.UseSerilogRequestLogging();
 
-// Liveness endpoint used by the compose healthcheck, the deploy smoke-check and
-// UptimeRobot (architecture §10.3).
+// Liveness endpoint used by the deploy smoke-check and UptimeRobot (architecture §10.3).
 app.MapHealthChecks("/health");
-
-app.MapGet("/", () => Results.Ok(new { name = "Degerli API", status = "ok" }));
 
 app.Run();
 
