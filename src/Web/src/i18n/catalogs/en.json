@@ -1,0 +1,85 @@
+{
+  "app": {
+    "name": "Değerli",
+    "tagline": "BIST value investing research platform"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "retry": "Try again"
+  },
+  "header": {
+    "ariaLabel": "Site header",
+    "primaryNav": "Primary navigation",
+    "languageToggle": "Language selection",
+    "turkish": "Turkish",
+    "english": "English",
+    "searchLabel": "Search stocks",
+    "searchPlaceholder": "Search by code or company name",
+    "signIn": "Sign in",
+    "register": "Register",
+    "anonymous": "Guest"
+  },
+  "nav": {
+    "marketOverview": "Market Overview",
+    "stocks": "Stocks",
+    "screener": "Screener",
+    "savedScreens": "My Saved Screens",
+    "dcfScenarios": "My DCF Scenarios",
+    "admin": "Admin"
+  },
+  "placeholder": {
+    "badge": "Scaffold",
+    "note": "This screen exists as a structural placeholder under TKT-foundation-002."
+  },
+  "screens": {
+    "marketOverview": {
+      "title": "Market Overview",
+      "description": "Entry point for BIST 100/30 indices, sectors, market breadth, movers and macro indicators."
+    },
+    "stockList": {
+      "title": "Stocks",
+      "description": "Filter all covered stocks by sector and search by name or code."
+    },
+    "screener": {
+      "title": "Screener",
+      "description": "Build AND-combined criteria across five metric families and see matching stocks."
+    },
+    "savedScreens": {
+      "title": "My Saved Screens",
+      "description": "Re-run your saved screens against the latest EOD data, rename and delete them."
+    },
+    "stockPage": {
+      "title": "Stock Page",
+      "description": "Business description, valuation, financials, profitability, growth, balance sheet and dividend sections for one stock."
+    },
+    "dcfCalculator": {
+      "title": "DCF Calculator",
+      "description": "Value a stock with your own assumptions and explore the sensitivity grid."
+    },
+    "register": {
+      "title": "Register",
+      "description": "Create an account with e-mail and password; return to your in-progress work."
+    },
+    "signIn": {
+      "title": "Sign In",
+      "description": "Authenticate with e-mail and password; your stored language preference is applied."
+    },
+    "passwordReset": {
+      "title": "Password Reset",
+      "description": "Set a new password via the e-mailed time-limited link."
+    },
+    "accountSettings": {
+      "title": "Account Settings",
+      "description": "Manage language preference, password change, saved work and account deletion."
+    },
+    "dcfScenarios": {
+      "title": "My DCF Scenarios",
+      "description": "Open, rename and delete your saved DCF scenarios grouped by stock."
+    },
+    "admin": {
+      "title": "Admin Dashboard",
+      "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger."
+    }
+  }
+}
