@@ -12,6 +12,7 @@ ENV DOTNET_USE_POLLING_FILE_WATCHER=true \
 
 COPY Degerli.sln ./
 COPY Directory.Build.props ./
+COPY .config/ ./.config/
 COPY src/ ./src/
 
 EXPOSE 8080

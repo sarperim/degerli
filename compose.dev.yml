@@ -33,6 +33,8 @@ x-api-volumes: &api-volumes
   - core-bin:/app/src/Core/bin
   - ingestion-obj:/app/src/Ingestion/obj
   - ingestion-bin:/app/src/Ingestion/bin
+  - persistence-obj:/app/src/Persistence/obj
+  - persistence-bin:/app/src/Persistence/bin
 
 # The content pipeline compiles Degerli.Core too; give it its own build-output
 # volumes so running it while the API is up cannot race on shared Core obj/bin.
@@ -102,6 +104,22 @@ services:
     entrypoint: ["dotnet", "run", "--project", "src/ContentPipeline/Degerli.ContentPipeline.csproj"]
     volumes: *contentpipeline-volumes
 
+  # One-shot migration runner: applies the forward-only EF migrations (schema +
+  # views + idempotent seed) before the API serves traffic. Run on demand:
+  #   docker compose -f compose.dev.yml run --rm migrate
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *api-environment
+    entrypoint: ["sh", "-c", "dotnet tool restore && dotnet restore src/Persistence/Degerli.Persistence.csproj && dotnet ef database update --project src/Persistence/Degerli.Persistence.csproj"]
+    volumes: *api-volumes
+
 volumes:
   postgres-data:
   api-obj:
@@ -110,6 +128,8 @@ volumes:
   core-bin:
   ingestion-obj:
   ingestion-bin:
+  persistence-obj:
+  persistence-bin:
   cp-core-obj:
   cp-core-bin:
   cp-contentpipeline-obj:

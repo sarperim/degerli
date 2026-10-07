@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../Core/Degerli.Core.csproj" />
     <ProjectReference Include="../Ingestion/Degerli.Ingestion.csproj" />
+    <ProjectReference Include="../Persistence/Degerli.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>
