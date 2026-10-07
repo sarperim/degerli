@@ -1,6 +1,6 @@
 # TKT-foundation-002: Web SPA scaffold, i18n catalogs & app shell
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - Scope: create `/src/Web`: Vite + React 19 + TypeScript; Tailwind CSS v4 + shadcn/ui; react-i18next with `tr.json` (default) + `en.json` catalogs; TanStack Query client; zustand draft store persisted to sessionStorage (M-3 skeleton); React Router v7 (library mode) with placeholder routes for SCR-001..012; global header shell (language toggle, auth-state placeholder, stock-search placeholder); `scripts/i18n-parity` script wired into package.json (`check:i18n`). Must NOT touch `/src/Api`, `/src/Core`, `/src/Ingestion`, `/src/ContentPipeline`.
 - Traces to: foundation (architecture AD-03, AD-09; i18n discipline §10.6)

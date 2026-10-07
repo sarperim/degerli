@@ -1,0 +1,85 @@
+{
+  "app": {
+    "name": "Değerli",
+    "tagline": "BIST değer yatırımı araştırma platformu"
+  },
+  "common": {
+    "loading": "Yükleniyor…",
+    "error": "Bir şeyler ters gitti",
+    "retry": "Yeniden dene"
+  },
+  "header": {
+    "ariaLabel": "Site başlığı",
+    "primaryNav": "Ana menü",
+    "languageToggle": "Dil seçimi",
+    "turkish": "Türkçe",
+    "english": "İngilizce",
+    "searchLabel": "Hisse ara",
+    "searchPlaceholder": "Kod veya şirket adı ara",
+    "signIn": "Giriş yap",
+    "register": "Kayıt ol",
+    "anonymous": "Ziyaretçi"
+  },
+  "nav": {
+    "marketOverview": "Piyasa Genel Görünümü",
+    "stocks": "Hisse Senetleri",
+    "screener": "Tarayıcı",
+    "savedScreens": "Kayıtlı Taramalarım",
+    "dcfScenarios": "DCF Senaryolarım",
+    "admin": "Yönetim"
+  },
+  "placeholder": {
+    "badge": "İskelet",
+    "note": "Bu ekran TKT-foundation-002 kapsamında yalnızca yapı iskeleti olarak yer alır."
+  },
+  "screens": {
+    "marketOverview": {
+      "title": "Piyasa Genel Görünümü",
+      "description": "BIST 100/30 endeksleri, sektörler, piyasa genişliği, hareket edenler ve makro göstergeler için giriş noktası."
+    },
+    "stockList": {
+      "title": "Hisse Senetleri",
+      "description": "Kapsanan tüm hisseleri sektöre göre filtreleyin ve ada/koda göre arayın."
+    },
+    "screener": {
+      "title": "Tarayıcı",
+      "description": "Beş metrik ailesi üzerinden VE mantığıyla ölçüt kurun ve eşleşen hisseleri görün."
+    },
+    "savedScreens": {
+      "title": "Kayıtlı Taramalarım",
+      "description": "Kayıtlı taramalarınızı en güncel EOD verisiyle yeniden çalıştırın, adlandırın ve silin."
+    },
+    "stockPage": {
+      "title": "Hisse Sayfası",
+      "description": "Bir hissenin iş tanımı, değerleme, finansallar, kârlılık, büyüme, bilanço ve temettü bölümleri."
+    },
+    "dcfCalculator": {
+      "title": "DCF Hesaplayıcı",
+      "description": "Kendi varsayımlarınızla bir hissenin adil değerini hesaplayın ve duyarlılık tablosunu inceleyin."
+    },
+    "register": {
+      "title": "Kayıt Ol",
+      "description": "E-posta ve parola ile hesap oluşturun; yarım kalan işinize dönün."
+    },
+    "signIn": {
+      "title": "Giriş Yap",
+      "description": "E-posta ve parola ile oturum açın; kayıtlı dil tercihiniz uygulanır."
+    },
+    "passwordReset": {
+      "title": "Parola Sıfırlama",
+      "description": "E-posta ile gönderilen bağlantı üzerinden parolanızı yenileyin."
+    },
+    "accountSettings": {
+      "title": "Hesap Ayarları",
+      "description": "Dil tercihi, parola değişikliği, kayıtlı işler ve hesap silme işlemlerini yönetin."
+    },
+    "dcfScenarios": {
+      "title": "DCF Senaryolarım",
+      "description": "Hisselere göre gruplanmış kayıtlı DCF senaryolarınızı açın, adlandırın ve silin."
+    },
+    "admin": {
+      "title": "Yönetim Paneli",
+      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
+    }
+  }
+}
