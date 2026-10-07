@@ -1,6 +1,6 @@
 # TKT-foundation-009: Web test harness (Vitest + Testing Library + MSW)
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - Scope: Vitest + Testing Library + MSW setup for `/src/Web` (colocated or `/tests/Web` per test strategy §12): test setup files; MSW server + typed handler helpers mirroring the `03` payload shapes (honest-data envelope included); TanStack Query test wrapper; i18n test loading `tr.json`/`en.json` from the repo at test time; a11y assertion helpers; sample component test + sample MSW-backed query test.
 - Traces to: foundation (test strategy §5.3, decision B)
