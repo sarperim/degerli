@@ -1,6 +1,6 @@
 # TKT-foundation-001: Backend solution scaffold & dev environment
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/2
 - Size: M
 - Scope: create the .NET 10 monorepo backend: solution file + `/src/Api` (ASP.NET Core Minimal API host), `/src/Core` (shared quantitative class lib), `/src/Ingestion` (worker class lib), `/src/ContentPipeline` (console app, alternate entrypoint of the same image); Serilog structured JSON logging (rolling files + stdout); `/health` liveness endpoint; `compose.dev.yml` (Postgres 17, MailPit, API with hot-reload mounts); `.env.example`; extend the repo README (which exists since 2026-10-07) with the local-dev quickstart section. Must NOT touch `/src/Web` or `.github/`.
