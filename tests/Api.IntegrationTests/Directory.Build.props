@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- Two SDK test projects share this folder (Api.IntegrationTests and
+       Degerli.Api.IntegrationTests). Without distinct intermediate/output paths they
+       share obj/ and bin/, so each project's restore assets overwrite the other's and
+       the solution build fails non-deterministically. These properties must be set
+       before Microsoft.Common.props is imported, hence this Directory.Build.props.
+
+       MSBuild only auto-imports the nearest Directory.Build.props, so import the
+       repo-root one explicitly to keep the shared backend settings. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..'))" />
+
+  <PropertyGroup>
+    <!-- Unique per project so restore assets (obj/project.assets.json) AND build
+         outputs (bin/.../xunit.runner.visualstudio.testadapter.dll, deps.json,
+         runtimeconfig.json) do not overwrite each other. The shared adapter
+         otherwise flips between the branch project's v2.8.2 and dev's v3.1.5,
+         which hangs the test host. -->
+    <BaseIntermediateOutputPath>obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+
+</Project>
