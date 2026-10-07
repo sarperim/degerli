@@ -21,6 +21,13 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public DbContextOptions<DegerliDbContext> Options { get; private set; } = null!;
 
+    /// <summary>
+    /// The live container connection string, for harness pieces that build their own
+    /// client — e.g. the in-process API host (<see cref="Harness.DegerliAppFactory"/>)
+    /// and the fixture builder.
+    /// </summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     public async Task InitializeAsync()
     {
         // The seed's builder-password guard fails closed: the checked-in dev/CI
