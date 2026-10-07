@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared quantitative core (C3b inputs): every canonical metric, CAGR and DCF
+       formula is defined once here and consumed by the API and the ingestion workers
+       (BR-MDF-009, AD-06). -->
+
+</Project>

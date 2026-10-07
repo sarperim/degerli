@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Degerli.ContentPipeline</AssemblyName>
+    <RootNamespace>Degerli.ContentPipeline</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Core/Degerli.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+  </ItemGroup>
+
+  <!-- Offline, build-time content pipeline (C4): AI-assisted bilingual business
+       descriptions and DCF baseline regeneration. Runs on demand through the compose
+       tools profile; never on user request (FR-RES-019, NFR-RES-006). -->
+
+</Project>

@@ -1,0 +1,11 @@
+# Keep the build context small and reproducible.
+.git
+.gitignore
+.github
+.pipeline
+node_modules
+**/bin
+**/obj
+logs
+*.user
+.env
