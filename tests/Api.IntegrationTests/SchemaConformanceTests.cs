@@ -83,6 +83,61 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
         }
     }
 
+    [Fact]
+    public async Task Fact_tables_have_no_delete_or_ttl_artifacts()
+    {
+        await using var db = _fixture.CreateContext();
+
+        string[] factTables =
+        [
+            "instruments", "index_constituents", "daily_prices", "index_levels",
+            "financial_statements", "dividends", "corporate_actions", "kap_disclosures",
+            "macro_values", "funds", "fund_navs", "fund_performances", "fund_holdings",
+        ];
+
+        // Facts are retained for the life of the platform (02 §7, NFR-MDF-002): no
+        // TTL/expiry-style column may exist on a fact table.
+        var ttlColumns = (await QueryAsync(db, """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name ~* 'ttl|expir|retention|purge|delete'
+                """))
+            .Where(r => factTables.Contains((string)r[0]!, StringComparer.Ordinal))
+            .Select(r => $"{r[0]}.{r[1]}")
+            .ToList();
+        Assert.True(ttlColumns.Count == 0,
+            $"TTL/expiry columns found on fact tables: {string.Join(", ", ttlColumns)}");
+
+        // No DELETE triggers on fact tables.
+        var deleteTriggers = (await QueryAsync(db, """
+                SELECT c.relname, t.tgname
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND NOT t.tgisinternal
+                  AND (t.tgtype & 8) <> 0
+                """))
+            .Where(r => factTables.Contains((string)r[0]!, StringComparer.Ordinal))
+            .Select(r => $"{r[0]}.{r[1]}")
+            .ToList();
+        Assert.True(deleteTriggers.Count == 0,
+            $"DELETE triggers found on fact tables: {string.Join(", ", deleteTriggers)}");
+
+        // No rewrite rules on fact tables (a rule could rewrite a protected DELETE).
+        var factRules = (await QueryAsync(db, """
+                SELECT tablename, rulename
+                FROM pg_rules
+                WHERE schemaname = 'public'
+                """))
+            .Where(r => factTables.Contains((string)r[0]!, StringComparer.Ordinal))
+            .Select(r => $"{r[0]}.{r[1]}")
+            .ToList();
+        Assert.True(factRules.Count == 0,
+            $"Rewrite rules found on fact tables: {string.Join(", ", factRules)}");
+    }
+
     [Theory]
     [InlineData("financial_statements", new[] { "instrument_id", "period_type", "period_end_date", "statement_type", "version" })]
     [InlineData("daily_prices", new[] { "instrument_id", "price_date" })]
@@ -92,18 +147,31 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
     {
         await using var db = _fixture.CreateContext();
 
-        var indexDefs = (await QueryAsync(db,
-                $"SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = '{table}'"))
-            .Select(r => (string)r[0]!)
+        // Read the actual indexed columns from the catalog rather than pg_indexes.indexdef:
+        // indexdef embeds the index *name* (which itself contains the column names), so
+        // matching on it can false-pass. Grouped by index, the column set must equal the
+        // required set (not merely be a superset of substrings).
+        var rows = await QueryAsync(db, $"""
+            SELECT i.relname AS index_name, a.attname AS column_name
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_class t ON t.oid = ix.indrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+            WHERE n.nspname = 'public' AND t.relname = '{table}'
+              AND (ix.indisunique OR ix.indisprimary)
+            """);
+
+        var required = columns.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var indexes = rows
+            .GroupBy(r => (string)r[0]!)
+            .Select(g => g.Select(r => (string)r[1]!).ToHashSet(StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-        var match = indexDefs.Any(def =>
-            (def.Contains("PRIMARY KEY", StringComparison.OrdinalIgnoreCase)
-             || def.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase))
-            && columns.All(c => def.Contains(c, StringComparison.OrdinalIgnoreCase)));
-
-        Assert.True(match,
-            $"No unique/primary index on {table} covering ({string.Join(", ", columns)}). Found: {string.Join(" | ", indexDefs)}");
+        Assert.True(indexes.Any(cols => cols.SetEquals(required)),
+            $"No unique/primary index on {table} whose columns equal ({string.Join(", ", columns)}). " +
+            $"Found: {string.Join(" | ", indexes.Select(i => string.Join(", ", i)))}");
     }
 
     [Fact]

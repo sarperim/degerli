@@ -1,5 +1,3 @@
-using Degerli.Persistence.Entities;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Persistence.Seed;
@@ -15,12 +13,7 @@ public static class DegerliDbSeeder
         DegerliDbContext context,
         CancellationToken cancellationToken = default)
     {
-        var hasher = new PasswordHasher<ApplicationUser>();
-        var passwordHash = hasher.HashPassword(
-            new ApplicationUser { UserName = DegerliSeed.BuilderEmail, Email = DegerliSeed.BuilderEmail },
-            DegerliSeed.BuilderPassword);
-
-        foreach (var statement in DegerliSeed.Statements(passwordHash))
+        foreach (var statement in DegerliSeed.Statements())
         {
             await context.Database.ExecuteSqlRawAsync(statement, cancellationToken);
         }

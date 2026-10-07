@@ -12,12 +12,22 @@ public static class DegerliDbContextOptions
 {
     public const string MigrationsAssembly = "Degerli.Persistence";
 
-    public static DbContextOptions<DegerliDbContext> Build(string connectionString)
+    /// <summary>
+    /// Applies the platform Npgsql options to an existing builder. Callers that
+    /// need to compose on top of the shared configuration (e.g. the DI registration)
+    /// must go through this method rather than repeating the chain.
+    /// </summary>
+    public static void Configure(DbContextOptionsBuilder builder, string connectionString)
     {
-        var builder = new DbContextOptionsBuilder<DegerliDbContext>();
         builder
             .UseNpgsql(connectionString, npgsql => npgsql.MigrationsAssembly(MigrationsAssembly))
             .UseSnakeCaseNamingConvention();
+    }
+
+    public static DbContextOptions<DegerliDbContext> Build(string connectionString)
+    {
+        var builder = new DbContextOptionsBuilder<DegerliDbContext>();
+        Configure(builder, connectionString);
         return builder.Options;
     }
 }

@@ -14,8 +14,16 @@ public static class DegerliSeed
     /// <summary>Bootstrap builder e-mail. Overridable is a deployment concern; the seed default is local/CI.</summary>
     public const string BuilderEmail = "builder@degerli.local";
 
-    /// <summary>Bootstrap builder password (dev/CI). Production must rotate it after first login.</summary>
+    /// <summary>
+    /// Default bootstrap builder password, used only for local development and CI.
+    /// Outside Development/Test the checked-in value is deliberately refused and the
+    /// deployed environment must supply <see cref="BuilderPasswordEnvironmentKey"/>
+    /// (CWE-798; 02 §8 bootstrap account).
+    /// </summary>
     public const string BuilderPassword = "Degerli-Builder-2026";
+
+    /// <summary>Environment variable that supplies the bootstrap builder password in any environment.</summary>
+    public const string BuilderPasswordEnvironmentKey = "DEGERLI_BUILDER_PASSWORD";
 
     private const string NormalizedBuilderEmail = "BUILDER@DEGERLI.LOCAL";
 
@@ -62,16 +70,25 @@ public static class DegerliSeed
         WHERE NOT EXISTS (SELECT 1 FROM asp_net_roles WHERE normalized_name = 'BUILDER');
         """;
 
-    private static string BuilderAccountSql(string passwordHash) => $"""
+    /// <summary>
+    /// Account bootstrap statement. The password hash is hex-encoded and decoded inside
+    /// SQL, so the rendered statement cannot break out of its literal regardless of the
+    /// input — there is no string-interpolation injection sink (CWE-89).
+    /// </summary>
+    private static string BuilderAccountSql(string passwordHash)
+    {
+        var hexHash = Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(passwordHash));
+        return $@"
         INSERT INTO asp_net_users
             (email, normalized_email, user_name, normalized_user_name, email_confirmed, password_hash,
              security_stamp, concurrency_stamp, phone_number_confirmed, two_factor_enabled,
              lockout_enabled, access_failed_count, language_pref)
         SELECT '{BuilderEmail}', '{NormalizedBuilderEmail}', '{BuilderEmail}', '{NormalizedBuilderEmail}',
-               true, '{passwordHash}', 'SEEDED-SECURITY-STAMP', gen_random_uuid()::text,
+               true, convert_from(decode('{hexHash}', 'hex'), 'UTF8'), 'SEEDED-SECURITY-STAMP', gen_random_uuid()::text,
                false, false, true, 0, 'tr'
         WHERE NOT EXISTS (SELECT 1 FROM asp_net_users WHERE normalized_email = '{NormalizedBuilderEmail}');
-        """;
+        ";
+    }
 
     private const string BuilderUserRoleSql = """
         INSERT INTO asp_net_user_roles (user_id, role_id)
@@ -86,27 +103,61 @@ public static class DegerliSeed
         """;
 
     /// <summary>
-    /// Hashes the bootstrap builder password with Identity's password hasher so the
-    /// stored value verifies against <see cref="BuilderPassword"/>.
+    /// Resolves the bootstrap builder password: the <see cref="BuilderPasswordEnvironmentKey"/>
+    /// environment value when supplied, otherwise the checked-in dev/CI default. The
+    /// default is refused in an explicitly deployed environment (anything other than
+    /// Development/Test) so a repository-known credential can never reach production.
+    /// </summary>
+    public static string ResolveBuilderPassword()
+    {
+        var configured = Environment.GetEnvironmentVariable(BuilderPasswordEnvironmentKey);
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        if (IsDeployedEnvironment())
+        {
+            throw new InvalidOperationException(
+                $"{BuilderPasswordEnvironmentKey} must be supplied outside Development/Test: the " +
+                "checked-in builder password is a dev/CI-only default (CWE-798, 02 §8).");
+        }
+
+        return BuilderPassword;
+    }
+
+    /// <summary>
+    /// Hashes the resolved bootstrap builder password with Identity's password hasher
+    /// so the stored value verifies against <see cref="ResolveBuilderPassword"/>.
     /// </summary>
     public static string HashBuilderPassword()
     {
         var hasher = new PasswordHasher<ApplicationUser>();
         return hasher.HashPassword(
             new ApplicationUser { UserName = BuilderEmail, Email = BuilderEmail },
-            BuilderPassword);
+            ResolveBuilderPassword());
+    }
+
+    private static bool IsDeployedEnvironment()
+    {
+        var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+
+        return !string.IsNullOrWhiteSpace(environment)
+            && !environment.Equals("Development", StringComparison.OrdinalIgnoreCase)
+            && !environment.Equals("Test", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// All seed statements in application order, parameterized by an already-hashed
-    /// builder password so callers control the hasher/salt.
+    /// All seed statements in application order. The builder password is resolved and
+    /// hashed internally — no caller-supplied string is ever placed into SQL text.
     /// </summary>
-    public static IReadOnlyList<string> Statements(string builderPasswordHash) =>
+    public static IReadOnlyList<string> Statements() =>
     [
         MetricCatalogSql,
         MacroSeriesSql,
         BuilderRoleSql,
-        BuilderAccountSql(builderPasswordHash),
+        BuilderAccountSql(HashBuilderPassword()),
         BuilderUserRoleSql,
     ];
 }

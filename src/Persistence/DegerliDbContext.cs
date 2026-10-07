@@ -275,8 +275,13 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
         {
             b.ToTable("market_snapshots");
             b.HasKey(x => x.SnapshotDate);
-            b.Property(x => x.Xu100ChangePct).HasPrecision(18, 6);
-            b.Property(x => x.Xu30ChangePct).HasPrecision(18, 6);
+            // The snake_case convention does not insert an underscore between a
+            // digit and a following word, so the XU100/XU30 columns are named
+            // explicitly to match the pinned data model (02 §3.2).
+            b.Property(x => x.Xu100Level).HasColumnName("xu100_level");
+            b.Property(x => x.Xu100ChangePct).HasColumnName("xu100_change_pct").HasPrecision(18, 6);
+            b.Property(x => x.Xu30Level).HasColumnName("xu30_level");
+            b.Property(x => x.Xu30ChangePct).HasColumnName("xu30_change_pct").HasPrecision(18, 6);
             b.Property(x => x.MarketPe).HasPrecision(18, 6);
             b.Property(x => x.MarketDivYield).HasPrecision(18, 6);
             b.Property(x => x.GainersJson).HasColumnType("jsonb");
@@ -313,6 +318,11 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     {
         builder.Entity<BusinessDescription>(b =>
         {
+            // NOTE (K3): 02 §3.4 "one published version active per instrument" is an
+            // application-level serving rule, not a DB constraint in this ticket —
+            // acceptance enumerates only the publish-gate CHECK. A partial unique
+            // index (instrument_id) WHERE status = 'published' is a deliberate
+            // deferral; downstream tickets must not assume the DB enforces it.
             b.ToTable("business_descriptions", t =>
                 t.HasCheckConstraint(
                     "ck_business_descriptions_published_texts",
@@ -338,6 +348,10 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     {
         builder.Entity<DcfBaseline>(b =>
         {
+            // NOTE (K3): 02 §3.5 "one active baseline per instrument" is enforced by
+            // the generating code path, not by a DB constraint in this ticket — the
+            // acceptance list omits it. A partial unique index (instrument_id) WHERE
+            // is_active is a deliberate deferral; do not assume DB enforcement.
             b.ToTable("dcf_baselines");
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedOnAdd();
@@ -362,6 +376,10 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     {
         builder.Entity<ConsentRecord>(b =>
         {
+            // NOTE (K3): 02 §3.6 "one consent record per account per notice version"
+            // is not constraint-enforced in this ticket (acceptance omits it). A
+            // unique index (user_id, notice_version) is a deliberate deferral; the
+            // application write path must uphold the invariant.
             b.ToTable("consent_records");
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedOnAdd();

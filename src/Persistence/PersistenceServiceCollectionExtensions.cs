@@ -22,10 +22,8 @@ public static class PersistenceServiceCollectionExtensions
             ?? throw new InvalidOperationException(
                 "ConnectionStrings:Default is not configured (architecture §10.4).");
 
-        services.AddDbContext<DegerliDbContext>(options => options
-            .UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsAssembly(DegerliDbContextOptions.MigrationsAssembly))
-            .UseSnakeCaseNamingConvention());
+        services.AddDbContext<DegerliDbContext>(options =>
+            DegerliDbContextOptions.Configure(options, connectionString));
 
         return services;
     }

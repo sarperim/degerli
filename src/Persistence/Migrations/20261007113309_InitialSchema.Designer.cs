@@ -1181,22 +1181,22 @@ namespace Degerli.Persistence.Migrations
                     b.Property<decimal?>("Xu100ChangePct")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)")
-                        .HasColumnName("xu100change_pct");
+                        .HasColumnName("xu100_change_pct");
 
                     b.Property<decimal?>("Xu100Level")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)")
-                        .HasColumnName("xu100level");
+                        .HasColumnName("xu100_level");
 
                     b.Property<decimal?>("Xu30ChangePct")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)")
-                        .HasColumnName("xu30change_pct");
+                        .HasColumnName("xu30_change_pct");
 
                     b.Property<decimal?>("Xu30Level")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)")
-                        .HasColumnName("xu30level");
+                        .HasColumnName("xu30_level");
 
                     b.HasKey("SnapshotDate")
                         .HasName("pk_market_snapshots");

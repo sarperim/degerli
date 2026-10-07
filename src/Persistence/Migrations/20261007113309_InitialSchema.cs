@@ -144,10 +144,10 @@ namespace Degerli.Persistence.Migrations
                 columns: table => new
                 {
                     snapshot_date = table.Column<DateOnly>(type: "date", nullable: false),
-                    xu100level = table.Column<decimal>(type: "numeric(18,4)", precision: 18, scale: 4, nullable: true),
-                    xu100change_pct = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: true),
-                    xu30level = table.Column<decimal>(type: "numeric(18,4)", precision: 18, scale: 4, nullable: true),
-                    xu30change_pct = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: true),
+                    xu100_level = table.Column<decimal>(type: "numeric(18,4)", precision: 18, scale: 4, nullable: true),
+                    xu100_change_pct = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: true),
+                    xu30_level = table.Column<decimal>(type: "numeric(18,4)", precision: 18, scale: 4, nullable: true),
+                    xu30_change_pct = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: true),
                     breadth_advancing = table.Column<int>(type: "integer", nullable: true),
                     breadth_declining = table.Column<int>(type: "integer", nullable: true),
                     breadth_unchanged = table.Column<int>(type: "integer", nullable: true),
@@ -967,7 +967,7 @@ namespace Degerli.Persistence.Migrations
 
             // Checked-in, idempotent seed data (02 §8): 18 metric-catalog rows,
             // 6 macro series, and the builder role + bootstrap account.
-            foreach (var seedStatement in DegerliSeed.Statements(DegerliSeed.HashBuilderPassword()))
+            foreach (var seedStatement in DegerliSeed.Statements())
             {
                 migrationBuilder.Sql(seedStatement);
             }
