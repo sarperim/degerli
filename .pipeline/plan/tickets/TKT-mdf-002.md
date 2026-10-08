@@ -1,6 +1,6 @@
 # TKT-mdf-002: Price ingestion adapter & fact-storage invariants
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/15
 - Size: L
 - Scope: the source-adapter framework in `/src/Ingestion` (adapter interface, HTTP source client, idempotent upserts keyed on the fact PKs, append-only writes, provenance enforcement, conflicting-value detection → `quarantined_facts`) and the `prices` job (EOD prices + volume; real-source wiring against İşbank/KAP is builder V0 validation — automated tests run against WireMock doubles). Establishes the per-job registration-extension convention later jobs follow. Must NOT touch other adapters or the scheduler (TKT-mdf-005).
