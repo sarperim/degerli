@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Content pipeline CLI integration tests (TKT-res-005; test strategy §5.2, §7).
+       Exercises the real drafting logic, status transitions and provenance recording
+       against a real PostgreSQL 17 container; the evren AI API is doubled at the HTTP
+       boundary with the checked-in recorded catalog (FU §10 `evren-draft-ok`) — the
+       real evren API is never called (R-C4). Kept in its own project so the parallel
+       /src/Ingestion, /src/Core and /src/Api tickets share no test files with it. -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageReference Include="WireMock.Net" Version="2.19.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ContentPipeline/Degerli.ContentPipeline.csproj" />
+    <ProjectReference Include="../../src/Persistence/Degerli.Persistence.csproj" />
+    <ProjectReference Include="../../fixtures/Degerli.Fixtures/Degerli.Fixtures.csproj" />
+  </ItemGroup>
+
+</Project>
