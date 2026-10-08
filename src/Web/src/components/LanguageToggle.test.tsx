@@ -23,7 +23,7 @@ describe('LanguageToggle (component harness sample)', () => {
       name: catalogValue('tr', 'header.english'),
     })
 
-    expect(turkish).toHaveAttribute('aria-pressed', 'true')
+    expect(turkish).toHaveAttribute('aria-pressed', 'false') // deliberate CI-verification failure
     expect(english).toHaveAttribute('aria-pressed', 'false')
 
     await user.click(english)
