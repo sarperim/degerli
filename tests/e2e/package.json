@@ -1,0 +1,18 @@
+{
+  "name": "degerli-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "L4 end-to-end harness: Playwright (Chromium) against the compose.ci stack + MailPit.",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "stack:up": "docker compose -f ../../compose.ci.yml up --build -d --wait",
+    "stack:down": "docker compose -f ../../compose.ci.yml down -v --remove-orphans"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

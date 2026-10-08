@@ -1,6 +1,7 @@
 # TKT-foundation-010: E2E harness (compose.ci + Playwright + MailPit)
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/9
 - Size: M
 - Scope: `compose.ci.yml` (API + Postgres + MailPit + now-anchored fixture seeding); `/tests/e2e` Playwright project (Chromium; fixed browser locale tr-TR, timezone Europe/Istanbul); MailPit API helper retrieving message links with bounded polling (≤10 s, explicit error on timeout); network-quiet window assertion helper; smoke spec (stack boots → `GET /health` 200 → root renders TR). Must NOT write product feature specs (those belong to domain tickets).
 - Traces to: foundation (test strategy §5.4)

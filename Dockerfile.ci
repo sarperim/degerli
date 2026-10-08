@@ -1,0 +1,40 @@
+# CI end-to-end image (architecture §6.1 e2e job; test strategy §5.4, §9.1).
+#
+# One image carries both CI entrypoints so the compose.ci stack builds a single
+# artifact:
+#   * API  — `dotnet /app/api/Degerli.Api.dll` (default ENTRYPOINT)
+#   * fixtures seeding — `dotnet /app/fixtures/Degerli.Fixtures.dll` (entrypoint
+#     override in compose.ci.yml), which migrates and applies the now-anchored
+#     fixture universe against ConnectionStrings__Default.
+#
+# This is never the production image (deploy.yml owns that); it exists only so a
+# clean checkout can bring up the full stack for Playwright (TC-XC-016).
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+
+WORKDIR /app
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=true \
+    DOTNET_NOLOGO=true \
+    ASPNETCORE_URLS=http://+:8080
+
+# curl backs the API healthcheck in compose.ci.yml (the stack must report healthy).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Degerli.sln Directory.Build.props ./
+COPY .config/ ./.config/
+COPY src/ ./src/
+COPY fixtures/ ./fixtures/
+
+# Framework-dependent publishes keep the image small and the runtime deterministic.
+# Output paths must NOT be ancestors of a project directory: MSBuild's default item
+# excludes drop every source under a publish output directory, which would strip the
+# fixtures project's sources (it would compile with no files). /app/dist is disjoint.
+RUN dotnet publish src/Api/Degerli.Api.csproj -c Release -o /app/dist/api \
+    && dotnet publish fixtures/Degerli.Fixtures/Degerli.Fixtures.csproj -c Release -o /app/dist/fixtures
+
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "/app/dist/api/Degerli.Api.dll"]
