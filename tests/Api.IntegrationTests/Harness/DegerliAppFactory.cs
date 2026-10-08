@@ -50,6 +50,9 @@ public sealed class DegerliAppFactory : WebApplicationFactory<Program>
             // Registered after the app's own composition, so these win on resolution.
             services.AddSingleton<TimeProvider>(Clock);
             services.AddSingleton<IMailDispatcher>(Mail);
+            // The application resolves its own mail seam (Degerli.Api.Mail); the same
+            // recording double satisfies both the harness alias and the app interface.
+            services.AddSingleton<Degerli.Api.Mail.IMailDispatcher>(Mail);
             // The API's Serilog pipeline calls ReadFrom.Services; registered sinks are
             // discovered and receive every emitted event.
             services.AddSingleton<ILogEventSink>(Logs);

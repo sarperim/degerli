@@ -41,6 +41,10 @@ public static class ApiInfrastructureExtensions
         app.UseExceptionHandler();
         app.UseMiddleware<SecurityHeadersMiddleware>();
         app.UseRouting();
+        // Authentication must run before the antiforgery check: an antiforgery
+        // request token is bound to the authenticated user, so validating it while
+        // the principal is still empty would reject tokens minted after sign-in.
+        app.UseAuthentication();
         app.UseRateLimiter();
         app.UseMiddleware<CsrfProtectionMiddleware>();
         app.UseMiddleware<CachingMiddleware>();
