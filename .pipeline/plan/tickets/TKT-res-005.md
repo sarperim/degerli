@@ -1,6 +1,7 @@
 # TKT-res-005: Content pipeline CLI (build-time AI drafting)
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/14
 - Size: M
 - Scope: `/src/ContentPipeline` `draft` command (`docker compose run --rm contentpipeline draft [--symbol=]`): reads MDF `kap_disclosures`, calls the evren API (doubled by recorded fixtures in tests — never in CI), writes bilingual draft rows into `business_descriptions` (status `draft`, version lineage, `source_refs_json` pointing at disclosure ids); drafts never publicly served. Must NOT touch the admin endpoints or the API host.
 - Traces to: FR-RES-019; UC-RES-004 step 1; NFR-RES-006; BR-RES-002
