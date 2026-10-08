@@ -1,6 +1,6 @@
 # TKT-foundation-003: CI pipeline (ci.yml)
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/10
 - Size: M
 - Scope: create `.github/workflows/ci.yml` with the three jobs per architecture §6.1: **backend** (restore/build/test; Testcontainers Postgres service container; migrations applied; suite runs), **web** (`npm ci`, ESLint, `tsc --noEmit`, Vitest, i18n parity check, `vite build`), **e2e** (needs the other two; `docker compose -f compose.ci.yml up` stack + Playwright + MailPit; 5-minute budget gate). Must NOT touch `deploy.yml` (that is TKT-int-006) or product code.
