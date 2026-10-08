@@ -1,6 +1,6 @@
 # TKT-acc-002: Identity core — registration, consent & session
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/13
 - Size: L
 - Scope: `/src/Api` Identity module: ASP.NET Core Identity + cookie auth (HttpOnly; Secure; SameSite=Lax), `POST /api/v1/auth/register` (e-mail + password + consent `{noticeVersion}`; consent records; minimal-field posture; 409 `EMAIL_TAKEN`; password policy min 10 chars, no composition rules, server re-validation), `GET /api/v1/auth/session` (shape per `03` §6, no-store), `asp_net_users.language_pref` extension, PBKDF2 ≥100k iterations, bilingual e-mail dispatch plumbing via the SMTP double (real Brevo wiring is config, per FLG-04). Establishes the auth route-group file later ACC tickets extend with own endpoint files. Must NOT touch verify/reset/settings endpoints.

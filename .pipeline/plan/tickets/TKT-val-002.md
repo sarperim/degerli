@@ -1,6 +1,6 @@
 # TKT-val-002: DCF model core math (pure /src/Core)
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/12
 - Size: M
 - Scope: the DCF fair-value model as pure functions in `/src/Core` (AD-08): PV_explicit, TV (requires r > g_t), EquityValue = PV + TV_pv + Cash − Debt (**`debt` = total debt ST+LT** — F-VAL-1 ruling), FairValuePS, MOS, the 5×5 sensitivity grid (axes discount_rate × terminal_growth, step 0.01 centered on user values, r ≤ g_t cells → NULL per I-VAL-1), not-computable constraints (r ≤ g_t; horizon outside 1..10), full determinism (no state, clock, or randomness). No DB, no HTTP.
