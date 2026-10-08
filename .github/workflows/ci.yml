@@ -124,6 +124,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend, web]
     timeout-minutes: 25
+    env:
+      # GitHub's ubuntu runners resolve `localhost` to `::1` before `127.0.0.1`.
+      # Vite's preview server (spawned by the Playwright webServer) binds whatever
+      # `localhost` resolves to first, so it would listen on `::1` only and the
+      # harness's default `http://127.0.0.1:5173` would never answer (webServer
+      # timeout). Prefer the IPv4 result so Vite binds `127.0.0.1`, matching
+      # E2E_WEB_BASE_URL.
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - name: Checkout
         uses: actions/checkout@v4
