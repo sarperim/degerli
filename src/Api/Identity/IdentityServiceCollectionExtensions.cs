@@ -56,11 +56,17 @@ public static class IdentityServiceCollectionExtensions
                 options.Lockout.MaxFailedAccessAttempts = 10;
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
                 options.Lockout.AllowedForNewUsers = true;
+
+                // 01 §10.1: reset tokens 2h single-use, driven by the fake-clock-aware
+                // provider registered below (distinct from the 48h default used by
+                // verification).
+                options.Tokens.PasswordResetTokenProvider = "ResetPassword";
             })
             .AddRoles<ApplicationRole>()
             .AddEntityFrameworkStores<DegerliDbContext>()
             .AddSignInManager()
-            .AddDefaultTokenProviders();
+            .AddDefaultTokenProviders()
+            .AddTokenProvider<ResetPasswordTokenProvider>("ResetPassword");
 
         // NFR-ACC-002: PBKDF2 >= 100k iterations.
         services.Configure<PasswordHasherOptions>(options => options.IterationCount = 100_000);

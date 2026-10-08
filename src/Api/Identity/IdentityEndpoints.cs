@@ -30,6 +30,9 @@ public static class IdentityEndpoints
         var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
         auth.MapPost("/register", RegisterAsync).AllowAnonymous();
         auth.MapGet("/session", SessionAsync).AllowAnonymous();
+
+        // Later ACC tickets extend the auth surface with their own endpoint files.
+        api.MapDegerliPasswordResetEndpoints();
         return api;
     }
 

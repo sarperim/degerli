@@ -1,6 +1,6 @@
 # TKT-acc-005: Password reset
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - Scope: `/src/Api` Identity module (own endpoint files): `POST /api/v1/auth/forgot-password {email}` (always-200 neutral confirmation; enumeration-neutral; reset e-mail with 2h single-use token only for registered addresses) and `POST /api/v1/auth/reset-password {token, newPassword}` (policy enforced on reset; may establish session; 410 on expired/reused). Must NOT touch verification or settings endpoints.
 - Traces to: FR-ACC-009; UC-ACC-004 (main + alternate a); NFR-ACC-002
