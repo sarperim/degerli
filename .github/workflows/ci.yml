@@ -1,0 +1,188 @@
+# Continuous integration (architecture 01-system-architecture.md §6.1; test
+# strategy 00-test-strategy.md §5 / §9.1).
+#
+# Three jobs, all on free public-repo GitHub-hosted runners, no secrets required:
+#   1. backend — restore · build · test (xUnit + Testcontainers PostgreSQL 17;
+#      migrations applied; fixture-universe golden values).
+#   2. web     — npm ci · ESLint · tsc --noEmit · Vitest · i18n parity · vite build.
+#   3. e2e     — compose.ci.yml stack (API + PostgreSQL + seeded fixtures + MailPit)
+#      then the Playwright smoke suite, bounded by its 5-minute budget gate.
+#
+# This workflow must NOT push to or merge into `main` (deploy.yml / TKT-int-006 owns
+# CD). `main` is protected; the integration branch for this run is `dev`, so the
+# workflow runs on pushes to and PRs targeting both `dev` and `main`.
+
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+# Public repo: read-only token is enough (no deploy secrets, no GHCR push here).
+permissions:
+  contents: read
+
+# One run per ref; a newer push supersedes an in-flight run for the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Backend — xUnit L1 + L2. The L2 integration suite starts a throwaway
+  #    PostgreSQL 17 container via Testcontainers and applies the EF migrations,
+  #    so the runner's Docker daemon must be available (it is on ubuntu-latest).
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend (restore · build · test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore Degerli.sln
+
+      - name: Build
+        run: dotnet build Degerli.sln -c Release --no-restore
+
+      # Testcontainers spins up postgres:17 per test class; migrations are applied
+      # by the harness, so no `services:` block is needed (architecture §6.1).
+      - name: Test
+        run: dotnet test Degerli.sln -c Release --no-build --logger "trx;LogFileName=backend.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 2. Web — SPA lint, typecheck, unit/component tests, the i18n parity gate
+  #    (NFR-MOV-002 / NFR-SCR-001: every TR/EN key present and referenced), and
+  #    the production build (architecture §6.1; NFR-MOV-001).
+  # ---------------------------------------------------------------------------
+  web:
+    name: Web (lint · typecheck · test · i18n · build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src/Web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/Web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Unit and component tests (Vitest)
+        run: npm test
+
+      - name: i18n parity check (TR/EN)
+        run: npm run check:i18n
+
+      - name: Build (vite)
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # 3. E2E — bring up the compose.ci stack (API + PostgreSQL + seeded fixtures +
+  #    MailPit), wait for `GET /health` 200, run Playwright/Chromium. The suite's
+  #    5-minute budget gate is the Playwright `globalTimeout` in the harness
+  #    (architecture §9; TC-XC-014). Needs the other two jobs (architecture §6.1).
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E (compose · Playwright · MailPit)
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            src/Web/package-lock.json
+            tests/e2e/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix src/Web
+
+      - name: Install e2e dependencies
+        run: npm ci --prefix tests/e2e
+
+      - name: Install Playwright Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      # Builds Dockerfile.ci and brings the stack up; --wait blocks until the API
+      # healthcheck passes (fixtures service must complete first).
+      - name: Start compose.ci stack
+        run: docker compose -f compose.ci.yml up -d --build --wait
+
+      - name: Wait for API health (GET /health 200)
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+              echo "API healthy after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy within 120s."
+          docker compose -f compose.ci.yml ps
+          docker compose -f compose.ci.yml logs
+          exit 1
+
+      # globalTimeout = 5 min in playwright.config.ts is the budget gate.
+      - name: Run Playwright suite (5-minute budget gate)
+        run: npm test --prefix tests/e2e
+        env:
+          CI: "true"
+          E2E_API_BASE_URL: http://127.0.0.1:8080
+          E2E_MAILPIT_BASE_URL: http://127.0.0.1:8025
+          E2E_WEB_BASE_URL: http://127.0.0.1:5173
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Tear down compose.ci stack
+        if: always()
+        run: docker compose -f compose.ci.yml down -v --remove-orphans
