@@ -53,7 +53,7 @@ public sealed class SchedulerTickSampleTests
         Assert.Equal(start.AddMinutes(60), scheduler.Ticks[^1]);
 
         clock.Advance(TimeSpan.FromMinutes(30));
-        Assert.Equal(999, scheduler.Ticks.Count); // deliberate CI-verification failure
+        Assert.Equal(3, scheduler.Ticks.Count);
         Assert.Equal(start.AddMinutes(90), scheduler.Ticks[^1]);
     }
 

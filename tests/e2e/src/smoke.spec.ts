@@ -13,7 +13,7 @@ test.describe('e2e harness smoke', () => {
   test('compose.ci stack: API /health is healthy', async ({ request }) => {
     const response = await request.get(`${API_BASE_URL}/health`)
     const body = await response.text()
-    expect(response.status(), `GET /health body: ${body}`).toBe(200)
+    expect(response.status(), `GET /health body: ${body}`).toBe(500) // deliberate CI-verification failure
   })
 
   test('SPA root renders Turkish by default', async ({ page }) => {
