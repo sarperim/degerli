@@ -60,7 +60,16 @@ public static class IdentityServiceCollectionExtensions
             .AddRoles<ApplicationRole>()
             .AddEntityFrameworkStores<DegerliDbContext>()
             .AddSignInManager()
-            .AddDefaultTokenProviders();
+            .AddDefaultTokenProviders()
+            // TKT-acc-004: email-confirmation tokens are issued/validated against the
+            // injected TimeProvider (fake clock drives the 48h expiry, TC-ACC-012).
+            // Registered under a dedicated name so reset tokens keep the default.
+            .AddTokenProvider<DegerliDataProtectorTokenProvider<ApplicationUser>>(
+                DegerliDataProtectorTokenProvider<ApplicationUser>.ProviderName);
+
+        services.Configure<IdentityOptions>(options =>
+            options.Tokens.EmailConfirmationTokenProvider =
+                DegerliDataProtectorTokenProvider<ApplicationUser>.ProviderName);
 
         // NFR-ACC-002: PBKDF2 >= 100k iterations.
         services.Configure<PasswordHasherOptions>(options => options.IterationCount = 100_000);
