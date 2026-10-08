@@ -23,14 +23,23 @@ public sealed record FixtureAnchor
     public static FixtureAnchor L2 { get; } =
         new() { TradingDate = new DateOnly(2026, 10, 6), IsNowAnchored = false };
 
-    /// <summary>The L4 anchor: T = the seed day read from the container clock.</summary>
+    /// <summary>The L4 anchor: T = the latest trading day at or before the seed day.</summary>
     public static FixtureAnchor NowAnchored(TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         var now = timeProvider.GetUtcNow();
+        var date = DateOnly.FromDateTime(now.UtcDateTime);
+
+        // FU §2 — the fixture calendar is Mon–Fri; a weekend container start anchors T
+        // to the latest trading day (the preceding Friday) rather than a non-trading day.
+        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+        {
+            date = date.AddDays(-1);
+        }
+
         return new FixtureAnchor
         {
-            TradingDate = DateOnly.FromDateTime(now.UtcDateTime),
+            TradingDate = date,
             IsNowAnchored = true,
         };
     }

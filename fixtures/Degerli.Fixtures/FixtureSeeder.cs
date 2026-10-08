@@ -10,6 +10,13 @@ namespace Degerli.Fixtures;
 /// written so that re-running is a no-op: rows are matched on their natural keys and
 /// only the missing ones are inserted (test strategy §8.3 — idempotent and
 /// re-runnable). Both the L2 and L4 variants go through this one entry point.
+/// <para>
+/// <b>Precondition:</b> the target database must already be migrated and run the
+/// application seed first — the macro values hold a foreign key to
+/// <c>macro_series</c> (02 §3.2), which is created by <c>DegerliSeed</c> during
+/// migration. The compose.ci L4 stack must therefore migrate/seed before invoking
+/// <see cref="ApplyAsync"/>.
+/// </para>
 /// </summary>
 public static class FixtureSeeder
 {
@@ -23,6 +30,8 @@ public static class FixtureSeeder
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(set);
+
+        EnsureFixtureEnvironment();
 
         await SeedSectorsAndIndicesAsync(db, set, cancellationToken).ConfigureAwait(false);
         await SeedInstrumentsAsync(db, set, cancellationToken).ConfigureAwait(false);
@@ -43,6 +52,34 @@ public static class FixtureSeeder
 
     private static DateTimeOffset At(FixtureAnchor anchor, int dayOffset = 0) =>
         new(anchor.T.AddDays(dayOffset).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+    /// <summary>
+    /// Fails closed before the checked-in privileged fixture password (FU §9) is written:
+    /// the repository-known credential may only be seeded where the process explicitly
+    /// declares a Development or Test environment — an unset/empty environment is treated
+    /// as deployed. Mirrors the production seed's guard (CWE-798;
+    /// <c>src/Persistence/Seed/DegerliSeed.cs</c>).
+    /// </summary>
+    private static void EnsureFixtureEnvironment()
+    {
+        var aspNetCoreEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var dotNetEnvironment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        var environment = !string.IsNullOrWhiteSpace(aspNetCoreEnvironment)
+            ? aspNetCoreEnvironment
+            : dotNetEnvironment;
+
+        if (!string.IsNullOrWhiteSpace(environment)
+            && (environment.Equals("Development", StringComparison.OrdinalIgnoreCase)
+                || environment.Equals("Test", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "The fixture universe seeds a repository-known builder password and may only run " +
+            "when ASPNETCORE_ENVIRONMENT (or DOTNET_ENVIRONMENT) is explicitly Development or " +
+            "Test (CWE-798, FU §9).");
+    }
 
     private static async Task SeedSectorsAndIndicesAsync(
         DegerliDbContext db,

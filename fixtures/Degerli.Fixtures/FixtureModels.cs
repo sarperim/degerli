@@ -111,7 +111,17 @@ public sealed record FixtureAccount(
     string Password,
     bool Verified,
     string Role,
-    string Language);
+    string Language)
+{
+    /// <summary>
+    /// Redacts the password from the positional record's default <c>ToString</c>:
+    /// an assertion failure over the seeded accounts would otherwise print the
+    /// repository-known credential into public CI logs (CWE-798).
+    /// </summary>
+    public override string ToString() =>
+        $"{nameof(FixtureAccount)} {{ Email = {Email}, Password = ***, " +
+        $"Verified = {Verified}, Role = {Role}, Language = {Language} }}";
+}
 
 /// <summary>Pre-seeded saved screen (FU §9).</summary>
 public sealed record FixtureSavedScreen(string UserEmail, string Name, string CriteriaJson);
@@ -146,7 +156,8 @@ public sealed record FixtureCoverage(
 
 /// <summary>
 /// Per-series freshness emitted by the module (FU §7; never a wall-clock date):
-/// the age of the latest value in days relative to T and whether it is stale.
+/// the age in days of the latest ingest (<c>recorded_at</c>) relative to T and
+/// whether that ingest has overrun the series' cadence window.
 /// </summary>
 public sealed record FixtureMacroFreshness(string SeriesCode, int AgeDays, bool IsStale);
 

@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Degerli.Fixtures;
 
 /// <summary>
@@ -77,11 +75,14 @@ public static class FixtureUniverse
     {
         ArgumentNullException.ThrowIfNull(anchor);
 
-        var fyLatest = anchor.FiscalYear(1);
-        var fyLatestEnd = new DateOnly(fyLatest, 12, 31);
+        // FU §5/§5.1 — the statement set is an absolute structural fact pinned to
+        // FY2025 (the tabulated series and the ALFA deep-history years); it is NOT
+        // shifted by the anchor. Only "fresh" rows — prices, index levels, macro,
+        // funds and saved-content timestamps — are now-anchored (FU §1.4/§8.3).
+        const int fyLatest = 2025;
 
         var prices = BuildPrices(anchor);
-        var statements = BuildStatements(anchor, fyLatest);
+        var statements = BuildStatements(fyLatest);
         var dividends = BuildDividends(anchor);
         var macroValues = BuildMacroValues(anchor);
 
@@ -216,8 +217,8 @@ public static class FixtureUniverse
 
         var coverage = new List<FixtureCoverage>
         {
+            // FU §8 — TEF0002 is the only fund whose holdings coverage gap is recorded.
             new("fund", null, "TEF0002", "holdings", null, null, "Holdings coverage gap recorded (BR-FDF-004)."),
-            new("fund", null, "TEF0003", "holdings", null, null, "Partial holdings coverage."),
         };
 
         return new FixtureSet
@@ -316,7 +317,7 @@ public static class FixtureUniverse
         decimal CurAssets,
         decimal CurLiab);
 
-    private static List<FixtureStatement> BuildStatements(FixtureAnchor anchor, int fyLatest)
+    private static List<FixtureStatement> BuildStatements(int fyLatest)
     {
         var statements = new List<FixtureStatement>();
         var fy = fyLatest;
@@ -376,21 +377,28 @@ public static class FixtureUniverse
             string symbol,
             int year,
             long shares,
-            decimal rev,
+            decimal? rev,
             decimal ni,
             decimal depr,
             decimal dwc,
             decimal fcf)
         {
             var end = new DateOnly(year, 12, 31);
+            var incomeLines = new Dictionary<string, decimal>
+            {
+                [FinItemCodes.DeprAmort] = depr,
+                [FinItemCodes.Ni] = ni,
+            };
+            // FU §5.2 does not specify REV for the KAPPA deep-history rows: leave the
+            // line absent (honest missing) rather than seeding a false zero revenue.
+            if (rev is not null)
+            {
+                incomeLines[FinItemCodes.Rev] = rev.Value;
+            }
+
             statements.Add(new FixtureStatement(
                 symbol, "FY", end, year, "IS", "as_reported", null, null,
-                new Dictionary<string, decimal>
-                {
-                    [FinItemCodes.Rev] = rev,
-                    [FinItemCodes.DeprAmort] = depr,
-                    [FinItemCodes.Ni] = ni,
-                }));
+                incomeLines));
             statements.Add(new FixtureStatement(
                 symbol, "FY", end, year, "BS", "as_reported", null, null,
                 new Dictionary<string, decimal>
@@ -459,26 +467,26 @@ public static class FixtureUniverse
         }
 
         // FU §5.1 — ALFA FY2025 quarterly statements summing to the FY row.
-        AddQuarter("ALFA", fy, 1, new DateOnly(fy, 3, 31), 220, 130, 60, 20, 10, 10, 30, 10, 100);
-        AddQuarter("ALFA", fy, 2, new DateOnly(fy, 6, 30), 240, 145, 70, 25, 12, 11, 35, 12, 100);
-        AddQuarter("ALFA", fy, 3, new DateOnly(fy, 9, 30), 260, 155, 75, 25, 13, 13, 40, 13, 100);
-        AddQuarter("ALFA", fy, 4, new DateOnly(fy, 12, 31), 280, 170, 95, 30, 15, 16, 45, 15, 100);
+        AddQuarter("ALFA", fy, new DateOnly(fy, 3, 31), 220, 130, 60, 20, 10, 10, 30, 10, 100);
+        AddQuarter("ALFA", fy, new DateOnly(fy, 6, 30), 240, 145, 70, 25, 12, 11, 35, 12, 100);
+        AddQuarter("ALFA", fy, new DateOnly(fy, 9, 30), 260, 155, 75, 25, 13, 13, 40, 13, 100);
+        AddQuarter("ALFA", fy, new DateOnly(fy, 12, 31), 280, 170, 95, 30, 15, 16, 45, 15, 100);
 
         // FU §5.2 — ZETA exactly 2 FYs (FY2024 REV 80 / EPS 1.00 / FCF 10).
         AddDeep("ZETA", fy - 1, 50, 80, 50, 8, 3, 10);
 
         // FU §5.2 — KAPPA FCF series with a FY sign change (+20, +25, +10, −5, −30).
-        AddDeep("KAPPA", fy - 4, 150, 0, 30, 20, 10, 20);
-        AddDeep("KAPPA", fy - 3, 150, 0, 30, 20, 10, 25);
-        AddDeep("KAPPA", fy - 2, 150, 0, 30, 20, 10, 10);
-        AddDeep("KAPPA", fy - 1, 150, 0, 30, 20, 10, -5);
+        // REV is not specified by FU §5.2 for these years, so it is left absent.
+        AddDeep("KAPPA", fy - 4, 150, null, 30, 20, 10, 20);
+        AddDeep("KAPPA", fy - 3, 150, null, 30, 20, 10, 25);
+        AddDeep("KAPPA", fy - 2, 150, null, 30, 20, 10, 10);
+        AddDeep("KAPPA", fy - 1, 150, null, 30, 20, 10, -5);
 
         return statements;
 
         void AddQuarter(
             string symbol,
             int year,
-            int quarter,
             DateOnly end,
             decimal rev,
             decimal cogs,
@@ -519,7 +527,6 @@ public static class FixtureUniverse
                     [FinItemCodes.SharesDiluted] = shares,
                     [FinItemCodes.SharesOut] = shares,
                 }));
-            _ = quarter;
         }
     }
 
@@ -593,22 +600,38 @@ public static class FixtureUniverse
         ];
     }
 
+    // FU §7 — staleness is a missed ingest, not the vintage of the published value.
+    // Each series is stale only when its latest ingest (recorded_at) has overrun the
+    // tolerable window for its cadence (02 §5.6 macro_series.cadence). GOLD is the
+    // only stale fixture: a daily series whose last successful ingest was T−10.
+    // per_release has no fixed window, so it is stale only on an explicit failure
+    // (which the fixture set does not model) — hence null.
+    private static readonly Dictionary<string, int?> MacroCadenceToleranceDays = new(StringComparer.Ordinal)
+    {
+        ["TUIK_CPI"] = 31,
+        ["INDEP_CPI"] = 31,
+        ["CBRT_REPO"] = null,
+        ["USD_TRY"] = 1,
+        ["EUR_TRY"] = 1,
+        ["GOLD"] = 1,
+    };
+
     private static List<FixtureMacroFreshness> BuildMacroFreshness(FixtureAnchor anchor)
     {
         var macroValues = BuildMacroValues(anchor);
-        var latestPerSeries = macroValues
+        return macroValues
             .GroupBy(v => v.SeriesCode, StringComparer.Ordinal)
-            .ToDictionary(
-                g => g.Key,
-                g => g.MaxBy(v => v.ValueDate)!.ValueDate,
-                StringComparer.Ordinal);
-
-        return latestPerSeries
-            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => new FixtureMacroFreshness(
-                kv.Key,
-                anchor.T.DayNumber - kv.Value.DayNumber,
-                anchor.T.DayNumber - kv.Value.DayNumber >= 10))
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                // FU §7 / FR-MOV-014 — canonical ingest is the most recently recorded
+                // row; age is measured against that ingest, never the value_date.
+                var latestIngest = g.MaxBy(v => v.RecordedAt)!;
+                var ingestedOn = DateOnly.FromDateTime(latestIngest.RecordedAt.UtcDateTime);
+                var ageDays = anchor.T.DayNumber - ingestedOn.DayNumber;
+                var tolerance = MacroCadenceToleranceDays[g.Key];
+                return new FixtureMacroFreshness(g.Key, ageDays, tolerance is int maxAge && ageDays > maxAge);
+            })
             .ToList();
     }
 
@@ -617,13 +640,4 @@ public static class FixtureUniverse
 
     private static decimal Round(decimal value) =>
         Math.Round(value, 4, MidpointRounding.AwayFromZero);
-
-    /// <summary>Serializes the L2/L4 anchor's T as an ISO date (diagnostics helpers).</summary>
-    public static string DescribeAnchor(FixtureAnchor anchor) =>
-        JsonSerializer.Serialize(
-            new
-            {
-                tradingDate = anchor.T.ToString("yyyy-MM-dd"),
-                nowAnchored = anchor.IsNowAnchored,
-            });
 }
