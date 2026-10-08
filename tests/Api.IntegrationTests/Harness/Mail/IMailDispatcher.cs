@@ -1,19 +1,13 @@
 namespace Degerli.Api.IntegrationTests.Harness.Mail;
 
 /// <summary>
-/// One outbound transactional/alert e-mail. Bilingual by design — the platform sends
-/// both TR and EN bodies in a single message so no server-side locale guess is needed
-/// (`01` §10.5).
+/// The mail seam now lives in the application (<c>Degerli.Api.Mail</c>, established
+/// by TKT-acc-002); the harness aliases the application types so the foundation
+/// sample tests keep compiling while tests and production resolve one interface.
 /// </summary>
-public sealed record OutboundMail(string To, string Subject, string BodyTr, string BodyEn);
+public record OutboundMail(string To, string Subject, string BodyTr, string BodyEn)
+    : Degerli.Api.Mail.OutboundMail(To, Subject, BodyTr, BodyEn);
 
-/// <summary>
-/// Mail-dispatch seam. Production wires an SMTP/Brevo-backed implementation (C2
-/// transactional e-mail, C3d alerting); L2 integration tests replace it with
-/// <see cref="RecordingMailDispatcher"/> so dispatch content and trigger conditions
-/// are asserted while real delivery never happens (test strategy §7).
-/// </summary>
-public interface IMailDispatcher
+public interface IMailDispatcher : Degerli.Api.Mail.IMailDispatcher
 {
-    Task SendAsync(OutboundMail mail, CancellationToken cancellationToken = default);
 }

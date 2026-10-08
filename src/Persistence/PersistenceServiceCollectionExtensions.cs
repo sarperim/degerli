@@ -18,12 +18,20 @@ public static class PersistenceServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("Default")
-            ?? throw new InvalidOperationException(
-                "ConnectionStrings:Default is not configured (architecture §10.4).");
+        // Resolve the connection string from the built service provider rather than
+        // eagerly from the configuration snapshot: under WebApplicationFactory the
+        // test host's configuration overrides are applied after this registration
+        // runs, so an eager read would miss them.
+        services.AddDbContext<DegerliDbContext>((serviceProvider, options) =>
+        {
+            var resolved = serviceProvider.GetRequiredService<IConfiguration>();
+            var connectionString = resolved.GetConnectionString("Default")
+                ?? configuration.GetConnectionString("Default")
+                ?? throw new InvalidOperationException(
+                    "ConnectionStrings:Default is not configured (architecture §10.4).");
 
-        services.AddDbContext<DegerliDbContext>(options =>
-            DegerliDbContextOptions.Configure(options, connectionString));
+            DegerliDbContextOptions.Configure(options, connectionString);
+        });
 
         return services;
     }

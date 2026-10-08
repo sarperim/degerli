@@ -1,5 +1,7 @@
+using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
 using Degerli.Ingestion;
+using Degerli.Persistence;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
@@ -18,6 +20,10 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) => loggerConfig
 // headers, caching policy and the OpenAPI document.
 builder.Services.AddApiInfrastructure(builder.Configuration, builder.Environment);
 
+// Single EF Core model + the Identity/auth module (registration, consent, session).
+builder.Services.AddDegerliPersistence(builder.Configuration);
+builder.Services.AddDegerliIdentity(builder.Configuration);
+
 // Data platform workers run in-process in this container (AD-04).
 builder.Services.AddHostedService<IngestionHostedService>();
 
@@ -25,6 +31,7 @@ var app = builder.Build();
 
 app.UseSerilogRequestLogging();
 app.UseApiInfrastructure();
+app.UseAuthorization();
 
 // Liveness + database check used by the deploy smoke-check and UptimeRobot (§10.3).
 app.MapHealthChecks("/health");
@@ -38,6 +45,11 @@ var api = app.MapGroup("/api/v1");
 // under /api/v1 must present the token in the X-CSRF-Token header.
 var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
 auth.MapGet("/csrf-token", CsrfToken).AllowAnonymous();
+
+// Identity module endpoints (TKT-acc-002): registration + session; the /me read
+// asserts the minimal-data posture. Later ACC tickets extend these groups.
+api.MapDegerliIdentityEndpoints();
+api.MapDegerliMeEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 
