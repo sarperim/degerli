@@ -12,5 +12,9 @@ dist/
 bin/
 obj/
 
+# Playwright (L4 e2e) artifacts
+test-results/
+playwright-report/
+
 # runtime logs (Serilog rolling files)
 logs/

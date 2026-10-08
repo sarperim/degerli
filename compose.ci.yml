@@ -1,0 +1,99 @@
+# CI end-to-end stack (architecture §6.1 e2e job; test strategy §5.4, §9.1).
+#
+#   docker compose -f compose.ci.yml up --build --wait
+#
+# Brings up the deployable stack the L4 Playwright suite runs against from a clean
+# checkout (TC-XC-016 / NFR-MDF-005): PostgreSQL 17, MailPit, a one-shot service
+# that migrates and seeds the **now-anchored** fixture universe (T = container
+# start; flags/offsets, never wall-clock dates — FU §8.3), then the API.
+#
+# The web SPA is served by the Playwright `webServer` (see tests/e2e); the e2e
+# stack under test here is the API + data platform, matching the architecture's
+# "API+Postgres+seeded fixture data+MailPit" (§6.1). No production secrets are
+# required — MailPit is the SMTP double (test strategy §7).
+#
+# Not to be confused with compose.dev.yml (hot-reload local development).
+
+name: degerli-ci
+
+x-ci-environment: &ci-environment
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:8080
+  ConnectionStrings__Default: Host=postgres;Port=5432;Database=degerli;Username=degerli;Password=degerli
+  Smtp__Host: mailpit
+  Smtp__Port: "1025"
+  Smtp__User: ""
+  Smtp__Password: ""
+  Smtp__From: no-reply@degerli.local
+  # MailPit does not speak STARTTLS — the CI stack must force it off.
+  Smtp__UseStartTls: "false"
+  APP_URL: http://127.0.0.1:5173
+  ALERT_EMAIL: builder@degerli.local
+
+services:
+  postgres:
+    image: postgres:17
+    restart: "no"
+    environment:
+      POSTGRES_USER: degerli
+      POSTGRES_PASSWORD: degerli
+      POSTGRES_DB: degerli
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U degerli -d degerli"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    restart: "no"
+    # SMTP 1025 stays internal (the API talks to `mailpit:1025`); the HTTP API/UI
+    # on 8025 is published because the Playwright MailPit helper reads messages.
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  # One-shot: migrate + apply the now-anchored fixture universe, then exit 0.
+  # Its entrypoint runs migrations (and the application seed) itself, so the API
+  # only starts once the schema and fixtures are in place.
+  fixtures:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *ci-environment
+    entrypoint: ["dotnet", "/app/dist/fixtures/Degerli.Fixtures.dll"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      fixtures:
+        condition: service_completed_successfully
+    environment:
+      <<: *ci-environment
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+
+volumes:
+  postgres-data:

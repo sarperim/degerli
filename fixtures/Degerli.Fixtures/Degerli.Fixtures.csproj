@@ -7,9 +7,16 @@
        the L4 now-anchored variant are the same module with a different
        FixtureAnchor. It is deliberately a fixtures-only assembly — no product
        behavior lives here. -->
+  <!-- It is also the L4 seeding entrypoint: `dotnet Degerli.Fixtures.dll` applies
+       migrations + the now-anchored variant against ConnectionStrings__Default
+       (compose.ci.yml `fixtures` one-shot service). The seeded-universe types stay
+       usable as a library from the integration tests. -->
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Degerli.Fixtures</AssemblyName>
+    <RootNamespace>Degerli.Fixtures</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
