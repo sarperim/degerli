@@ -30,6 +30,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Api/Degerli.Api.csproj" />
+    <!-- The checked-in fixture-universe module (TKT-foundation-007) shared by L2 and L4. -->
+    <ProjectReference Include="../../fixtures/Degerli.Fixtures/Degerli.Fixtures.csproj" />
   </ItemGroup>
 
 </Project>

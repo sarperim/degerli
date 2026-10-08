@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The checked-in fixture-universe module (test strategy §12, decision F): one
+       synthetic dataset shared by the L2 integration suite and the L4 compose.ci
+       stack. It is a plain library over Degerli.Persistence so both callers seed
+       through exactly one deterministic code path; the L2 absolute-date variant and
+       the L4 now-anchored variant are the same module with a different
+       FixtureAnchor. It is deliberately a fixtures-only assembly — no product
+       behavior lives here. -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Persistence/Degerli.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>
