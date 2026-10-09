@@ -9,6 +9,7 @@ using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
+using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,7 @@ public static class IngestionServiceCollectionExtensions
         services.TryAddSingleton<IIngestionAlerter, LoggingIngestionAlerter>();
 
         services.Configure<PricesSourceOptions>(configuration.GetSection(PricesSourceOptions.SectionName));
+        services.Configure<UniverseSourceOptions>(configuration.GetSection(UniverseSourceOptions.SectionName));
 
         // C3c scheduler: Cronos cron + trading calendar + the run-ledger retry ladder.
         // The hosted loop is added by the API host; the engine is resolvable on its own
@@ -99,6 +101,11 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
         services.AddScoped<DailyPriceStore>();
 
+        // Universe, sector and index-levels sync (FR-MDF-006/007).
+        services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
+        services.AddScoped<ISourceAdapter<IndexLevelsPayload>, IndexLevelsSourceAdapter>();
+        services.AddScoped<UniverseSyncStore>();
+
         services.AddScoped<ISourceAdapter<StatementsPayload>, StatementsSourceAdapter>();
         services.AddScoped<FinancialStatementStore>();
 
@@ -113,6 +120,7 @@ public static class IngestionServiceCollectionExtensions
 
         // Per-job registrations (the convention): add one line per job as it lands.
         services.AddScoped<IIngestJob, PricesJob>();
+        services.AddScoped<IIngestJob, UniverseSyncJob>();
         services.AddScoped<IIngestJob, StatementsJob>();
         services.AddScoped<IIngestJob, DividendsJob>();
         services.AddScoped<IIngestJob, CorporateActionsJob>();
