@@ -9,8 +9,14 @@ namespace Degerli.Ingestion.Jobs;
 /// ranges extend this in TKT-mdf-007.</summary>
 public sealed record IngestionRequest(DateOnly Date);
 
-/// <summary>Outcome of one job run, recorded in the run ledger (<c>ingest_runs</c>).</summary>
-public sealed record IngestResult(string JobCode, int Written, int Unchanged, int Quarantined, string Status)
+/// <summary>
+/// Outcome of one job run, recorded in the run ledger (<c>ingest_runs</c>).
+/// <see cref="Skipped"/> counts facts/entities deliberately excluded by a scope bound
+/// rather than by a data-quality failure (e.g. out-of-scope fund types, BR-FDF-006) —
+/// it rides the ledger's <c>stats_json</c> alongside the written/unchanged/quarantined
+/// counts.
+/// </summary>
+public sealed record IngestResult(string JobCode, int Written, int Unchanged, int Quarantined, string Status, int Skipped = 0)
 {
     public const string Succeeded = "succeeded";
     public const string Partial = "partial";
@@ -104,6 +110,7 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
                 written = result.Written,
                 unchanged = result.Unchanged,
                 quarantined = result.Quarantined,
+                skipped = result.Skipped,
             });
 
         _db.IngestRuns.Add(new IngestRun

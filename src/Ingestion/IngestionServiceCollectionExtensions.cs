@@ -1,4 +1,5 @@
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
@@ -66,8 +67,30 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
         services.AddScoped<DailyPriceStore>();
 
+        // TEFAS fund ingestion (FR-FDF-001..003): its own source client, bound to the
+        // funds base address, so the fund adapter never shares the prices client.
+        services.Configure<TefasSourceOptions>(configuration.GetSection(TefasSourceOptions.SectionName));
+        services.AddKeyedSingleton<ISourceClient>(TefasSourceOptions.ClientKey, (provider, _) =>
+        {
+            var options = provider.GetRequiredService<IOptions<TefasSourceOptions>>().Value;
+            var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
+            return new HttpSourceClient(new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl, UriKind.Absolute),
+                Timeout = TimeSpan.FromSeconds(30),
+            });
+        });
+        services.AddScoped<ISourceAdapter<TefasUniversePayload>>(provider =>
+            new TefasSourceAdapter(
+                provider.GetRequiredKeyedService<ISourceClient>(TefasSourceOptions.ClientKey),
+                provider.GetRequiredService<IOptions<TefasSourceOptions>>()));
+        services.AddScoped<TefasFundStore>();
+
         // Per-job registrations (the convention): add one line per job as it lands.
         services.AddScoped<IIngestJob, PricesJob>();
+        services.AddScoped<IIngestJob, FundNavJob>();
+        services.AddScoped<IIngestJob, FundPerformanceJob>();
+        services.AddScoped<IIngestJob, FundHoldingsJob>();
 
         services.AddScoped<IIngestionJobRunner, IngestionJobRunner>();
 
