@@ -1,6 +1,6 @@
 # TKT-val-005: DCF scenario CRUD
 
-- Status: todo
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/26
 - Size: M
 - Scope: `/src/Api` DCF module `/me/scenarios` endpoints: `GET ?symbol=`, `POST {symbol, name, params}` (8-param schema), `PATCH {name}`, `DELETE {id}` — auth + verified-e-mail gates, duplicate name per (user, stock) → 409 `DUPLICATE_NAME`, cross-stock same name allowed, ownership isolation via 404, exact params round-trip. **Should-level feature (FR-VAL-009/010): deferral is the builder's explicit call, recorded on the ticket — never half-shipped.**
 - Traces to: FR-VAL-009, FR-VAL-010 (API side); UC-VAL-002; UXR-VAL-012, UXR-VAL-017, UXR-VAL-018 (API side); Gate 1 decision C
