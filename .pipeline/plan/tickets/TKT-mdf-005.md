@@ -1,6 +1,6 @@
 # TKT-mdf-005: Scheduler, run ledger, retry ladder & alerting
 
-- Status: in-review — https://github.com/sarperim/degerli/pull/25
+- Status: done — https://github.com/sarperim/degerli/pull/25
 - Size: M
 - Scope: C3c in-process `IHostedService` workers + Cronos cron (20:30 Europe/Istanbul, trading days, holiday calendar as config) with the DB run ledger (`ingest_runs`); retry ladder 5/15/60 min with backoff; C3d alerting (builder e-mail via SMTP + Serilog alert events); last-known-good posture groundwork via `v_data_freshness`. Job codes registered per the TKT-mdf-002 registration convention. Must NOT implement the EOD chain's cross-domain job order (that wiring is TKT-int-001).
 - Traces to: FR-MDF-009; NFR-MDF-001; UC-MDF-001 (alternate a)
