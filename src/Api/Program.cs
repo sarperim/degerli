@@ -1,5 +1,6 @@
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
+using Degerli.Api.Stocks;
 using Degerli.Api.Valuation;
 using Degerli.Ingestion;
 using Degerli.Persistence;
@@ -61,6 +62,10 @@ api.MapDegerliMeEndpoints();
 
 // Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
 api.MapDegerliDcfEndpoints();
+
+// Stocks module (TKT-res-002): the current-universe list/filter/search and the
+// lightweight header typeahead (FR-RES-001..004).
+api.MapDegerliStockEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 
