@@ -42,6 +42,9 @@ public sealed class DegerliAppFactory : WebApplicationFactory<Program>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] = _connectionString,
+                // The in-process API host would otherwise run the C3c scheduler (TKT-mdf-005)
+                // as a live background worker; tests drive the scheduler explicitly instead.
+                ["Ingestion:Scheduler:Enabled"] = "false",
             });
         });
 

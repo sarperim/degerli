@@ -1,6 +1,7 @@
 # TKT-acc-004: E-mail verification & resend
 
-- Status: todo
+- Status: done
+- PR: https://github.com/sarperim/degerli/pull/18
 - Size: M
 - Scope: `/src/Api` Identity module (own endpoint files): `POST /api/v1/auth/verify-email {token}` (48h single-use; 410 `TOKEN_EXPIRED`; session gains verified state immediately — M-9 groundwork), `POST /api/v1/auth/resend-verification` (session-scoped; no enumeration surface; benign no-op for verified accounts per I-ACC-2). This is the gate behind UXR-G-030 (persistence requires verified e-mail) consumed by the SCR/VAL `/me` endpoints. Must NOT touch reset or settings endpoints.
 - Traces to: FR-ACC-008; UXR-ACC-006, UXR-ACC-021; UXR-G-030; RISK-ACC-002

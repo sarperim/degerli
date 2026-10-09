@@ -280,6 +280,14 @@ public static class CannedSourceCatalog
         Serialize(new
         {
             sourceRef = "kap://universe",
+            // Reference data the universe-sync job upserts before resolving links
+            // (FR-MDF-006): sectors (bilingual labels, flat in FU §3) and indices.
+            sectors = set.Sectors
+                .Select(s => new UniverseSectorItem(s.Code, s.NameTr, s.NameEn, null))
+                .ToList(),
+            indices = set.Indices
+                .Select(i => new UniverseIndexItem(i.Code, i.NameTr, i.NameEn))
+                .ToList(),
             instruments = set.Instruments
                 .Select(i => new UniverseInstrumentItem(i.Symbol, i.Name, i.SectorCode, i.ListingDate))
                 .ToList(),
@@ -293,6 +301,14 @@ public static class CannedSourceCatalog
         {
             sourceRef = "kap://universe/changes",
             effectiveDate,
+            // The change set may also carry reference data so a cold database can
+            // resolve its membership changes (idempotent on a warm one).
+            sectors = set.Sectors
+                .Select(s => new UniverseSectorItem(s.Code, s.NameTr, s.NameEn, null))
+                .ToList(),
+            indices = set.Indices
+                .Select(i => new UniverseIndexItem(i.Code, i.NameTr, i.NameEn))
+                .ToList(),
             instruments = new[] { sigma },
             add = new[] { new MembershipChangeItem("XU100", "SIGMA") },
             remove = new[] { new MembershipChangeItem("XU100", "NEWP") },
@@ -408,6 +424,14 @@ public static class CannedSourceCatalog
         DateOnly PublishDate,
         string Title,
         string SourceUrl);
+
+    private sealed record UniverseSectorItem(
+        string Code,
+        string NameTr,
+        string NameEn,
+        string? ParentCode);
+
+    private sealed record UniverseIndexItem(string Code, string NameTr, string NameEn);
 
     private sealed record UniverseInstrumentItem(
         string Symbol,
