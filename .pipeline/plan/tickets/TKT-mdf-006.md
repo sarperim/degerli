@@ -1,6 +1,7 @@
 # TKT-mdf-006: Validation & quarantine pipeline
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/20
 - Size: M
 - Scope: the validation framework behind ingestion: reason-code catalog per FU §2 (`NEGATIVE_PRICE`, `MISSING_PROVENANCE`, `SCHEMA_MISMATCH`, `UNPARSEABLE_PAYLOAD`, `MISSING_CLASSIFICATION`, `CONFLICTING_VALUE`), partial-batch behavior (valid items in a payload ingest while invalid ones quarantine), `quarantined_facts` payload retention, alert-on-quarantine (mail double + Serilog event). Builds on the quarantine write path started in TKT-mdf-002. Must NOT touch admin endpoints (TKT-mdf-010/011).
 - Traces to: FR-MDF-012; UC-MDF-001 (alternate b); BR-MDF-007 (recorded-gap posture)

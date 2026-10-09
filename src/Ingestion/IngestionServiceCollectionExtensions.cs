@@ -10,6 +10,7 @@ using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Ingestion.Universe;
+using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -98,6 +99,8 @@ public static class IngestionServiceCollectionExtensions
         services.Configure<DisclosuresSourceOptions>(configuration.GetSection(DisclosuresSourceOptions.SectionName));
 
         services.AddScoped<IQuarantineWriter, QuarantineWriter>();
+        services.AddScoped<IQuarantineService, QuarantineService>();
+        services.AddSingleton<IPayloadSchemaValidator, JsonPayloadSchemaValidator>();
         services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
         services.AddScoped<DailyPriceStore>();
 

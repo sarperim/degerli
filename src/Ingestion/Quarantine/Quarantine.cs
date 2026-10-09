@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 
@@ -39,12 +40,36 @@ public sealed class QuarantineWriter : IQuarantineWriter
         {
             JobCode = entry.JobCode,
             SourceRef = entry.SourceRef,
-            PayloadJson = entry.PayloadJson,
+            PayloadJson = NormalizePayloadJson(entry.PayloadJson),
             ReasonCode = entry.ReasonCode,
             QuarantinedAt = entry.QuarantinedAt,
             Status = "open",
         });
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <c>payload_json</c> is a <c>jsonb</c> column, so an unparseable source body (the
+    /// UNPARSEABLE_PAYLOAD class) must still be retained as valid JSON: it is stored as a
+    /// JSON string, preserving the exact rejected bytes for inspection and re-ingestion.
+    /// Parseable facts are stored verbatim.
+    /// </summary>
+    private static string? NormalizePayloadJson(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return payloadJson;
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(payloadJson);
+            return payloadJson;
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(payloadJson);
+        }
     }
 }
