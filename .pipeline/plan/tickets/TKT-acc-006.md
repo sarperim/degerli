@@ -1,6 +1,6 @@
 # TKT-acc-006: Account settings endpoints
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/16
 - Size: M
 - Scope: `/src/Api` `/me` endpoints (own endpoint files): `GET /api/v1/me` (documented fields only), `PATCH /api/v1/me {languagePref}` (persisted, applied at sign-in; invalid → 400), `PATCH /api/v1/me/password {current, newPassword}` (wrong current → 400 field error per I-ACC-1; session preserved on success), `DELETE /api/v1/me` (hard delete + cascade screens/scenarios; consent retained anonymized per `02` §5.4; session revoked). Must NOT touch auth endpoints.
