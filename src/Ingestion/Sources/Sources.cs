@@ -77,3 +77,16 @@ public interface ISourceAdapter<TPayload> where TPayload : class
     /// <summary>Fetches and parses the payload for the requested date.</summary>
     Task<SourcePayload<TPayload>> FetchAsync(DateOnly date, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Backfill capability of a source adapter (TKT-mdf-007, FR-MDF-010). A backfill run
+/// asks the source for its historical range starting at <c>from</c>; the source returns
+/// whatever history it holds, so the adapter surfaces the payload as-is and the job
+/// records the achieved depth (BR-MDF-006 — never fabricate beyond the source). The
+/// payload shape (<typeparamref name="TPayload"/>) may differ from the incremental one.
+/// </summary>
+public interface IBackfillSourceAdapter<TPayload> where TPayload : class
+{
+    /// <summary>Fetches and parses the source's historical payload from <paramref name="from"/>.</summary>
+    Task<SourcePayload<TPayload>> FetchBackfillAsync(DateOnly from, CancellationToken cancellationToken = default);
+}

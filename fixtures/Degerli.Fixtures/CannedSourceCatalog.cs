@@ -38,6 +38,7 @@ public static class CannedSourceCatalog
     public const string PricesConflictingValue = "prices-conflicting-value";
     public const string PricesSourceDown = "prices-source-down";
     public const string PricesSourceSlow = "prices-source-slow";
+    public const string PricesBackfillSourceLimited = "prices-backfill-source-limited";
     public const string PricesVariantThreshold = "prices-variant-threshold";
     public const string StatementsOkAlfaFy2025 = "statements-ok-alfa-fy2025";
     public const string StatementsRestatedRest = "statements-restated-rest";
@@ -54,6 +55,13 @@ public static class CannedSourceCatalog
     public const string TefasTef0002 = "tefas-tef0002";
     public const string TefasTef0003 = "tefas-tef0003";
     public const string EvrenDraftOk = "evren-draft-ok";
+
+    /// <summary>
+    /// The price source's real history limit for the backfill fixture (TKT-mdf-007): the
+    /// canned history begins here, well short of a 10Y target, so the achieved-depth
+    /// recording is exercised (BR-MDF-006, TC-MDF-016).
+    /// </summary>
+    public static readonly DateOnly BackfillSourceLimit = new(2021, 1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -72,6 +80,7 @@ public static class CannedSourceCatalog
         PricesConflictingValue,
         PricesSourceDown,
         PricesSourceSlow,
+        PricesBackfillSourceLimited,
         PricesVariantThreshold,
         StatementsOkAlfaFy2025,
         StatementsRestatedRest,
@@ -110,6 +119,7 @@ public static class CannedSourceCatalog
                 BuildPricesBody(set, set.Anchor.T, closeOverrides: new Dictionary<string, decimal>(StringComparer.Ordinal) { ["ALFA"] = 21.00m })),
             [PricesSourceDown] = Payload(PricesSourceDown, "isbank", Serialize(new { error = "source unavailable" }), statusCode: 500),
             [PricesSourceSlow] = Payload(PricesSourceSlow, "isbank", BuildPricesBody(set, set.Anchor.T), delayMs: 5_000),
+            [PricesBackfillSourceLimited] = Payload(PricesBackfillSourceLimited, "isbank", BuildBackfillHistoryBody(set)),
             [StatementsOkAlfaFy2025] = Payload(StatementsOkAlfaFy2025, "kap", BuildStatementsBody(set, "ALFA")),
             [StatementsRestatedRest] = Payload(StatementsRestatedRest, "kap", BuildStatementsBody(set, "REST")),
             [StatementsNoCfPart] = Payload(StatementsNoCfPart, "kap", BuildStatementsBody(set, "PART")),
@@ -198,6 +208,41 @@ public static class CannedSourceCatalog
         return includeProvenance
             ? Serialize(new { sourceRef = $"isbank://eod/{date:yyyy-MM-dd}", date, items })
             : Serialize(new { date, items });
+    }
+
+    /// <summary>
+    /// The backfill history payload (TKT-mdf-007): a sparse, dated range per instrument
+    /// that begins at the source's real limit (<see cref="BackfillSourceLimit"/>) and runs
+    /// to the anchor day. The source holds no earlier history, so a 10Y target cannot be
+    /// reached — the fixture for TC-MDF-016.
+    /// </summary>
+    private static string BuildBackfillHistoryBody(FixtureSet set)
+    {
+        var latest = set.Prices
+            .Where(p => p.Date == set.Anchor.T)
+            .OrderBy(p => p.Symbol, StringComparer.Ordinal)
+            .ToList();
+
+        var rows = new List<HistoryItem>();
+        foreach (var price in latest)
+        {
+            for (var year = BackfillSourceLimit.Year; year <= set.Anchor.T.Year; year++)
+            {
+                rows.Add(new HistoryItem(
+                    price.Symbol,
+                    new DateOnly(year, 1, 1),
+                    price.Open,
+                    price.High,
+                    price.Low,
+                    price.CloseRaw,
+                    price.Volume));
+            }
+
+            // The anchor day closes the range so the recorded depth ends at T.
+            rows.Add(new HistoryItem(price.Symbol, set.Anchor.T, price.Open, price.High, price.Low, price.CloseRaw, price.Volume));
+        }
+
+        return Serialize(new { sourceRef = "isbank://eod/history", rows });
     }
 
     private static string BuildVariantThresholdBody(FixtureSet set)
@@ -388,6 +433,15 @@ public static class CannedSourceCatalog
     private sealed record PriceItem(
         string Symbol,
         decimal PreviousClose,
+        decimal Open,
+        decimal High,
+        decimal Low,
+        decimal Close,
+        long Volume);
+
+    private sealed record HistoryItem(
+        string Symbol,
+        DateOnly Date,
         decimal Open,
         decimal High,
         decimal Low,

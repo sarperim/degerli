@@ -1,5 +1,6 @@
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.CorporateActions;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Disclosures;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Funds;
@@ -102,8 +103,13 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IQuarantineWriter, QuarantineWriter>();
         services.AddScoped<IQuarantineService, QuarantineService>();
         services.AddSingleton<IPayloadSchemaValidator, JsonPayloadSchemaValidator>();
-        services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
+        // The price adapter is both the incremental and the backfill source (TKT-mdf-007);
+        // one instance is registered and exposed through both seams.
+        services.AddScoped<PricesSourceAdapter>();
+        services.AddScoped<ISourceAdapter<PricesPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
+        services.AddScoped<IBackfillSourceAdapter<PricesHistoryPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
         services.AddScoped<DailyPriceStore>();
+        services.AddScoped<CoverageRecorder>();
 
         // Universe, sector and index-levels sync (FR-MDF-006/007).
         services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
