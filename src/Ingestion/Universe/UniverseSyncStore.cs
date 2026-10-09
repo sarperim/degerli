@@ -4,19 +4,33 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Ingestion.Universe;
 
-/// <summary>Outcome of one universe/classification sync batch.</summary>
+/// <summary>
+/// Outcome of one universe/classification sync batch. <see cref="RejectedMemberships"/>
+/// carries membership changes whose index code or symbol resolved to no stored
+/// reference row: they are never silently dropped (NFR-MDF-003, FR-MDF-012) — the
+/// caller quarantines and counts them.
+/// </summary>
 public sealed record UniverseSyncResult(
     int InstrumentsWritten,
     int InstrumentsUnchanged,
     int MembershipsAdded,
     int MembershipsClosed,
-    IReadOnlyList<UniverseInstrument> Unclassified);
-
-/// <summary>Outcome of one index-levels sync batch.</summary>
-public sealed record IndexLevelsSyncResult(int Written, int Unchanged);
+    IReadOnlyList<UniverseInstrument> Unclassified,
+    IReadOnlyList<MembershipChange> RejectedMemberships);
 
 /// <summary>
-/// Fact storage for the universe tables (FR-MDF-006/007; 02 §3.1): instruments,
+/// Outcome of one index-levels sync batch. <see cref="Rejected"/> carries levels whose
+/// index code resolved to no stored reference row (quarantined by the caller, never
+/// silently dropped).
+/// </summary>
+public sealed record IndexLevelsSyncResult(
+    int Written,
+    int Unchanged,
+    IReadOnlyList<IndexLevelFact> Rejected);
+
+/// <summary>
+/// Fact storage for the universe tables (FR-MDF-006/007; 02 §3.1): sector and index
+/// reference rows (upserted by natural key from the payload), instruments,
 /// sector links (kept current per instrument), effective-dated append-only
 /// <c>index_constituents</c> and <c>index_levels</c>. Instruments are matched on
 /// their natural key (symbol); a re-send with no changed fields is an idempotent
@@ -39,9 +53,10 @@ public sealed class UniverseSyncStore
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
         ArgumentNullException.ThrowIfNull(payload);
 
-        var sectors = await _db.Sectors
-            .ToDictionaryAsync(s => s.Code, s => s.Id, StringComparer.Ordinal, cancellationToken)
-            .ConfigureAwait(false);
+        // Sector and index reference data are synced first (FR-MDF-006) so that the
+        // instrument links and membership changes in the same payload can resolve them.
+        var sectors = await UpsertSectorsAsync(payload.Sectors, cancellationToken).ConfigureAwait(false);
+        var indices = await UpsertIndicesAsync(payload.Indices, cancellationToken).ConfigureAwait(false);
         var stored = await _db.Instruments
             .ToDictionaryAsync(i => i.Symbol, StringComparer.Ordinal, cancellationToken)
             .ConfigureAwait(false);
@@ -113,54 +128,58 @@ public sealed class UniverseSyncStore
 
         var membershipsAdded = 0;
         var membershipsClosed = 0;
+        var rejected = new List<MembershipChange>();
         if (payload.EffectiveDate is { } effective
             && ((payload.Add?.Count ?? 0) > 0 || (payload.Remove?.Count ?? 0) > 0))
         {
-            var indexIds = await _db.Indices
-                .ToDictionaryAsync(i => i.Code, i => i.Id, StringComparer.Ordinal, cancellationToken)
-                .ConfigureAwait(false);
             var instrumentIds = await _db.Instruments
                 .ToDictionaryAsync(i => i.Symbol, i => i.Id, StringComparer.Ordinal, cancellationToken)
                 .ConfigureAwait(false);
 
+            // Load the open intervals once and track the batch's staged decisions in
+            // memory. Re-querying the database mid-batch would not see edits still
+            // staged in the change tracker: a duplicate add would insert two open
+            // rows, and a remove+add of the same member would silently keep it closed
+            // (BR-MDF-007, S1).
+            var openRows = (await _db.IndexConstituents
+                    .Where(c => c.EffectiveTo == null)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false))
+                .ToDictionary(c => (c.IndexId, c.InstrumentId));
+            var openPairs = new HashSet<(long IndexId, long InstrumentId)>(openRows.Keys);
+
             foreach (var change in payload.Remove ?? [])
             {
-                if (!indexIds.TryGetValue(change.IndexCode, out var indexId)
+                if (!indices.TryGetValue(change.IndexCode, out var indexId)
                     || !instrumentIds.TryGetValue(change.Symbol, out var instrumentId))
                 {
+                    rejected.Add(change);
                     continue;
                 }
 
                 // Close the open interval — never delete the row, never change its start.
-                var open = await _db.IndexConstituents
-                    .FirstOrDefaultAsync(
-                        c => c.IndexId == indexId
-                            && c.InstrumentId == instrumentId
-                            && c.EffectiveTo == null
-                            && c.EffectiveFrom < effective,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (open is not null)
+                if (openPairs.Contains((indexId, instrumentId))
+                    && openRows.TryGetValue((indexId, instrumentId), out var open)
+                    && open.EffectiveFrom < effective)
                 {
                     open.EffectiveTo = effective;
+                    openPairs.Remove((indexId, instrumentId));
                     membershipsClosed++;
                 }
             }
 
             foreach (var change in payload.Add ?? [])
             {
-                if (!indexIds.TryGetValue(change.IndexCode, out var indexId)
+                if (!indices.TryGetValue(change.IndexCode, out var indexId)
                     || !instrumentIds.TryGetValue(change.Symbol, out var instrumentId))
                 {
+                    rejected.Add(change);
                     continue;
                 }
 
-                var alreadyOpen = await _db.IndexConstituents
-                    .AnyAsync(
-                        c => c.IndexId == indexId && c.InstrumentId == instrumentId && c.EffectiveTo == null,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (alreadyOpen)
+                // Already open in the database *or* staged by an earlier add in this
+                // same batch — an idempotent no-op either way.
+                if (!openPairs.Add((indexId, instrumentId)))
                 {
                     continue;
                 }
@@ -183,7 +202,13 @@ public sealed class UniverseSyncStore
             }
         }
 
-        return new UniverseSyncResult(written, unchanged, membershipsAdded, membershipsClosed, unclassified);
+        return new UniverseSyncResult(
+            written,
+            unchanged,
+            membershipsAdded,
+            membershipsClosed,
+            unclassified,
+            rejected);
     }
 
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(
@@ -201,11 +226,15 @@ public sealed class UniverseSyncStore
 
         var written = 0;
         var unchanged = 0;
+        var rejected = new List<IndexLevelFact>();
 
         foreach (var level in payload.Levels ?? [])
         {
             if (!indexIds.TryGetValue(level.IndexCode, out var indexId))
             {
+                // Unknown index reference: quarantined by the caller, never dropped
+                // (NFR-MDF-003, FR-MDF-012).
+                rejected.Add(level);
                 continue;
             }
 
@@ -237,6 +266,149 @@ public sealed class UniverseSyncStore
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return new IndexLevelsSyncResult(written, unchanged);
+        return new IndexLevelsSyncResult(written, unchanged, rejected);
+    }
+
+    /// <summary>
+    /// Upserts sector reference data by natural key (FR-MDF-006; 02 §3.1). A missing
+    /// sector is created with the published bilingual labels; an existing one has its
+    /// labels refreshed. Parent links (2-level hierarchy) are resolved by code once
+    /// every referenced sector has an id, so a parent published in the same payload
+    /// resolves. Returns code → id for the instrument-link and membership phases.
+    /// </summary>
+    private async Task<Dictionary<string, long>> UpsertSectorsAsync(
+        IReadOnlyList<UniverseSector>? references,
+        CancellationToken cancellationToken)
+    {
+        var sectors = await _db.Sectors
+            .ToDictionaryAsync(s => s.Code, StringComparer.Ordinal, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (references is { Count: > 0 })
+        {
+            var changed = false;
+            foreach (var reference in references)
+            {
+                if (string.IsNullOrWhiteSpace(reference.Code))
+                {
+                    continue;
+                }
+
+                if (sectors.TryGetValue(reference.Code, out var existing))
+                {
+                    if (!string.IsNullOrWhiteSpace(reference.NameTr) && existing.NameTr != reference.NameTr)
+                    {
+                        existing.NameTr = reference.NameTr!;
+                        changed = true;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(reference.NameEn) && existing.NameEn != reference.NameEn)
+                    {
+                        existing.NameEn = reference.NameEn!;
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    var sector = new Sector
+                    {
+                        Code = reference.Code,
+                        NameTr = string.IsNullOrWhiteSpace(reference.NameTr) ? reference.Code : reference.NameTr!,
+                        NameEn = string.IsNullOrWhiteSpace(reference.NameEn) ? reference.Code : reference.NameEn!,
+                    };
+                    _db.Sectors.Add(sector);
+                    sectors[reference.Code] = sector;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var hierarchyChanged = false;
+            foreach (var reference in references)
+            {
+                if (string.IsNullOrWhiteSpace(reference.ParentCode)
+                    || !sectors.TryGetValue(reference.Code, out var child)
+                    || !sectors.TryGetValue(reference.ParentCode, out var parent))
+                {
+                    continue;
+                }
+
+                if (child.ParentSectorId != parent.Id)
+                {
+                    child.ParentSectorId = parent.Id;
+                    hierarchyChanged = true;
+                }
+            }
+
+            if (hierarchyChanged)
+            {
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return sectors.ToDictionary(kv => kv.Key, kv => kv.Value.Id, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Upserts index reference data by natural key (FR-MDF-006; 02 §3.1) so membership
+    /// changes and index levels can resolve their index code. Returns code → id.
+    /// </summary>
+    private async Task<Dictionary<string, long>> UpsertIndicesAsync(
+        IReadOnlyList<UniverseIndex>? references,
+        CancellationToken cancellationToken)
+    {
+        var indices = await _db.Indices
+            .ToDictionaryAsync(i => i.Code, StringComparer.Ordinal, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (references is { Count: > 0 })
+        {
+            var changed = false;
+            foreach (var reference in references)
+            {
+                if (string.IsNullOrWhiteSpace(reference.Code))
+                {
+                    continue;
+                }
+
+                if (indices.TryGetValue(reference.Code, out var existing))
+                {
+                    if (!string.IsNullOrWhiteSpace(reference.NameTr) && existing.NameTr != reference.NameTr)
+                    {
+                        existing.NameTr = reference.NameTr!;
+                        changed = true;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(reference.NameEn) && existing.NameEn != reference.NameEn)
+                    {
+                        existing.NameEn = reference.NameEn!;
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    var index = new MarketIndex
+                    {
+                        Code = reference.Code,
+                        NameTr = string.IsNullOrWhiteSpace(reference.NameTr) ? reference.Code : reference.NameTr!,
+                        NameEn = string.IsNullOrWhiteSpace(reference.NameEn) ? reference.Code : reference.NameEn!,
+                    };
+                    _db.Indices.Add(index);
+                    indices[reference.Code] = index;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return indices.ToDictionary(kv => kv.Key, kv => kv.Value.Id, StringComparer.Ordinal);
     }
 }

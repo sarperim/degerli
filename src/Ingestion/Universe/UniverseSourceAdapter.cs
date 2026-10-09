@@ -7,9 +7,16 @@ namespace Degerli.Ingestion.Universe;
 /// <summary>
 /// Source wiring for the <c>universe-sync</c> job (config section
 /// <c>Ingestion:Universe</c>). <see cref="Path"/> is the instrument/classification
-/// (or membership change) resource; <see cref="IndexLevelsPath"/> is the BIST index
-/// levels resource (FR-MDF-006). The base address comes from the shared
-/// <see cref="ISourceClient"/>.
+/// (or membership change) resource; <see cref="IndexLevelsPath"/> is the KAP-hosted
+/// BIST index levels resource (FR-MDF-006).
+/// <para>
+/// <b>Deferred wiring (F4, NFR-MDF-006):</b> the base address comes from the shared
+/// <see cref="ISourceClient"/>, which in production is built from
+/// <c>Ingestion:Prices:BaseUrl</c> (İşbank). KAP and İşbank are distinct hosts, so a
+/// per-source base address/client is still required; that source-wiring change belongs
+/// to the ticket that wires the real production sources and is intentionally not done
+/// here (this ticket is scoped to the <c>universe-sync</c> job).
+/// </para>
 /// </summary>
 public sealed class UniverseSourceOptions
 {
@@ -70,8 +77,8 @@ public sealed class UniverseSourceAdapter : ISourceAdapter<UniversePayload>
 }
 
 /// <summary>
-/// The BIST index-levels adapter (FR-MDF-006): fetches the index level payload
-/// through the shared <see cref="ISourceClient"/> and parses it.
+/// The KAP index-levels adapter (BIST index levels; FR-MDF-006): fetches the index
+/// level payload through the shared <see cref="ISourceClient"/> and parses it.
 /// </summary>
 public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload>
 {

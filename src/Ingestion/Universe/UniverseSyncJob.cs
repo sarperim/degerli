@@ -81,6 +81,24 @@ public sealed class UniverseSyncJob : IIngestJob
             .ConfigureAwait(false);
 
         var quarantined = 0;
+
+        // A membership change referencing an unknown index/instrument is an integrity
+        // gap: quarantine and count it rather than dropping it (NFR-MDF-003, FR-MDF-012).
+        foreach (var rejected in universe.RejectedMemberships)
+        {
+            _logger.LogWarning(
+                "universe-sync: membership change references unknown index/instrument (UNKNOWN_REFERENCE): {IndexCode}/{Symbol}",
+                rejected.IndexCode,
+                rejected.Symbol);
+            await QuarantineAsync(
+                    fetched.SourceRef,
+                    Serialize(rejected),
+                    "UNKNOWN_REFERENCE",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            quarantined++;
+        }
+
         foreach (var unclassified in universe.Unclassified)
         {
             _logger.LogWarning(
@@ -124,6 +142,21 @@ public sealed class UniverseSyncJob : IIngestJob
                     .ConfigureAwait(false);
                 indexWritten = result.Written;
                 indexUnchanged = result.Unchanged;
+
+                // Unknown index references are an integrity gap: quarantine, never drop.
+                foreach (var rejected in result.Rejected)
+                {
+                    _logger.LogWarning(
+                        "universe-sync: index level references unknown index (UNKNOWN_REFERENCE): {IndexCode}",
+                        rejected.IndexCode);
+                    await QuarantineAsync(
+                            levels.SourceRef,
+                            Serialize(rejected),
+                            "UNKNOWN_REFERENCE",
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    quarantined++;
+                }
             }
         }
         catch (SourcePayloadException exception)
@@ -134,7 +167,12 @@ public sealed class UniverseSyncJob : IIngestJob
             quarantined++;
         }
 
-        var written = universe.InstrumentsWritten + universe.MembershipsAdded + indexWritten;
+        // A closed membership interval is a recorded fact change too (F5) — count it
+        // alongside the added memberships and newly written levels.
+        var written = universe.InstrumentsWritten
+            + universe.MembershipsAdded
+            + universe.MembershipsClosed
+            + indexWritten;
         var unchanged = universe.InstrumentsUnchanged + indexUnchanged;
         var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
 
@@ -150,6 +188,6 @@ public sealed class UniverseSyncJob : IIngestJob
             new QuarantineEntry(Code, sourceRef, payloadJson, reasonCode, _clock.GetUtcNow()),
             cancellationToken);
 
-    private static string Serialize(UniverseInstrument instrument) =>
-        JsonSerializer.Serialize(instrument, JsonOptions);
+    private static string Serialize<T>(T value) =>
+        JsonSerializer.Serialize(value, JsonOptions);
 }

@@ -54,7 +54,9 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
     [Fact]
     public async Task TC_MDF_007_Index_levels_and_sector_sync()
     {
-        await ResetUniverseAsync();
+        // Clear the fixture-seeded sector/index reference rows so this test proves the
+        // job itself syncs them (F1/F6), not the fixture.
+        await ResetUniverseAsync(clearReferenceData: true);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
         await using var host = BuildIngestion(UniversePath, IndexPath);
@@ -273,6 +275,122 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         }
     }
 
+    /// <summary>F2 — unknown index/instrument references are quarantined, never dropped.</summary>
+    [Fact]
+    public async Task Unknown_references_are_quarantined_not_dropped()
+    {
+        await ResetUniverseAsync();
+
+        var effective = T.AddDays(1);
+        var body = JsonSerializer.Serialize(new
+        {
+            sourceRef = "kap://universe/unknown",
+            effectiveDate = effective.ToString("yyyy-MM-dd"),
+            instruments = Array.Empty<object>(),
+            add = new[]
+            {
+                new { indexCode = "XU999", symbol = "ALFA" },
+                new { indexCode = "XU100", symbol = "ZZZZ" },
+            },
+            remove = new[] { new { indexCode = "XU100", symbol = "NOPE" } },
+        }, JsonOptions);
+        const string unknownPath = "/canned-sources/universe-unknown";
+        _wireMock.StubJson(unknownPath, body);
+
+        var levelsBody = JsonSerializer.Serialize(new
+        {
+            sourceRef = "kap://index-levels/unknown",
+            levels = new[] { new { indexCode = "XU999", date = T, close = 1.00m } },
+        }, JsonOptions);
+        const string unknownIndexPath = "/canned-sources/index-levels-unknown";
+        _wireMock.StubJson(unknownIndexPath, levelsBody);
+
+        await using var host = BuildIngestion(unknownPath, unknownIndexPath);
+
+        var result = await RunAsync(host, "universe-sync");
+
+        // Two adds + one remove + one index level.
+        Assert.Equal(4, result.Quarantined);
+        Assert.Equal(IngestResult.Partial, result.Status);
+
+        await using var db = _postgres.CreateContext();
+        var quarantined = await db.QuarantinedFacts
+            .Where(q => q.ReasonCode == "UNKNOWN_REFERENCE")
+            .ToListAsync();
+        Assert.Equal(4, quarantined.Count);
+        Assert.All(quarantined, q => Assert.Equal("universe-sync", q.JobCode));
+        Assert.Contains(quarantined, q => q.PayloadJson!.Contains("XU999"));
+        Assert.Contains(quarantined, q => q.PayloadJson!.Contains("ZZZZ"));
+        Assert.Contains(quarantined, q => q.PayloadJson!.Contains("NOPE"));
+    }
+
+    /// <summary>S1 — one payload's remove+re-add and duplicate adds stay consistent:
+    /// no double-open row, no silently-kept-closed membership (BR-MDF-007).</summary>
+    [Fact]
+    public async Task Batch_remove_readd_and_duplicate_add_are_consistent()
+    {
+        await ResetUniverseAsync();
+
+        var effective = T.AddDays(1);
+        var body = JsonSerializer.Serialize(new
+        {
+            sourceRef = "kap://universe/batch",
+            effectiveDate = effective.ToString("yyyy-MM-dd"),
+            instruments = new[]
+            {
+                new
+                {
+                    symbol = "SIGMA",
+                    name = "Sigma Enerji A.Ş.",
+                    sectorCode = "B",
+                    listingDate = effective.ToString("yyyy-MM-dd"),
+                },
+            },
+            add = new[]
+            {
+                new { indexCode = "XU100", symbol = "SIGMA" },
+                new { indexCode = "XU100", symbol = "SIGMA" },
+                new { indexCode = "XU100", symbol = "NEWP" },
+            },
+            remove = new[] { new { indexCode = "XU100", symbol = "NEWP" } },
+        }, JsonOptions);
+        const string batchPath = "/canned-sources/universe-batch";
+        _wireMock.StubJson(batchPath, body);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
+        await using var host = BuildIngestion(batchPath, IndexPath);
+
+        await RunAsync(host, "universe-sync");
+
+        await using var db = _postgres.CreateContext();
+        var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+        var sigma = await db.Instruments.Where(i => i.Symbol == "SIGMA").Select(i => i.Id).SingleAsync();
+        var newp = await db.Instruments.Where(i => i.Symbol == "NEWP").Select(i => i.Id).SingleAsync();
+
+        // A duplicate add in one payload inserts exactly one open row.
+        var sigmaRows = await db.IndexConstituents
+            .Where(c => c.IndexId == xu100 && c.InstrumentId == sigma)
+            .ToListAsync();
+        var sigmaRow = Assert.Single(sigmaRows);
+        Assert.Equal(effective, sigmaRow.EffectiveFrom);
+        Assert.Null(sigmaRow.EffectiveTo);
+
+        // Remove + re-add in one payload closes the old interval and opens a new one.
+        var newpRows = await db.IndexConstituents
+            .Where(c => c.IndexId == xu100 && c.InstrumentId == newp)
+            .OrderBy(c => c.EffectiveFrom)
+            .ToListAsync();
+        Assert.Equal(2, newpRows.Count);
+        Assert.Equal(effective, newpRows[0].EffectiveTo);
+        Assert.Equal(effective, newpRows[1].EffectiveFrom);
+        Assert.Null(newpRows[1].EffectiveTo);
+
+        var current = (await QueryAsync(db, "SELECT symbol FROM v_current_universe"))
+            .Select(r => (string)r[0]!)
+            .ToList();
+        Assert.Contains("SIGMA", current);
+        Assert.Contains("NEWP", current);
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -322,7 +440,7 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
     /// through the one fixture entry point, then removes the index levels and sector
     /// links so each test's job re-establishes them.
     /// </summary>
-    private async Task ResetUniverseAsync()
+    private async Task ResetUniverseAsync(bool clearReferenceData = false)
     {
         await using var db = _postgres.CreateContext();
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
@@ -332,6 +450,15 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
         await db.Database.ExecuteSqlRawAsync("UPDATE instruments SET sector_id = NULL");
+
+        if (clearReferenceData)
+        {
+            // Drop the fixture-seeded sectors/indices (and their dependents) so the job's
+            // own reference-data upsert is the only writer (F1/F6).
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM indices");
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM sectors");
+        }
     }
 
     private static async Task<List<object?[]>> QueryAsync(DegerliDbContext db, string sql)
