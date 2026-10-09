@@ -2,11 +2,16 @@
 
   <ItemGroup>
     <ProjectReference Include="../Core/Degerli.Core.csproj" />
+    <!-- C3a writes the fact tables, so the ingestion adapters own their persistence
+         through the one shared EF model (`Degerli.Persistence` header note). -->
+    <ProjectReference Include="../Persistence/Degerli.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
   </ItemGroup>
 
   <!-- Data platform workers (C3a/C3c): source adapters, validation, scheduler and the

@@ -23,6 +23,11 @@ builder.Services.AddApiInfrastructure(builder.Configuration, builder.Environment
 // Single EF Core model + the Identity/auth module (registration, consent, session).
 builder.Services.AddDegerliPersistence(builder.Configuration);
 builder.Services.AddDegerliIdentity(builder.Configuration);
+builder.Services.AddDegerliAuthSessionRevocation();
+
+// Data platform ingestion (C3a): source adapters, fact storage and the per-job
+// registration convention (TKT-mdf-002). Later ingestion tickets add their jobs there.
+builder.Services.AddMarketDataIngestion(builder.Configuration);
 
 // Data platform workers run in-process in this container (AD-04).
 builder.Services.AddHostedService<IngestionHostedService>();
@@ -49,6 +54,7 @@ auth.MapGet("/csrf-token", CsrfToken).AllowAnonymous();
 // Identity module endpoints (TKT-acc-002): registration + session; the /me read
 // asserts the minimal-data posture. Later ACC tickets extend these groups.
 api.MapDegerliIdentityEndpoints();
+api.MapDegerliAuthSessionEndpoints();
 api.MapDegerliMeEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);

@@ -32,7 +32,10 @@ public static class IdentityEndpoints
         auth.MapGet("/session", SessionAsync).AllowAnonymous();
 
         // Later ACC tickets extend the auth surface with their own endpoint files.
+        // TKT-acc-005: reset endpoints own their own /auth group, so map from the root.
         api.MapDegerliPasswordResetEndpoints();
+        // TKT-acc-004: verification endpoints map relative paths onto the /auth group.
+        auth.MapDegerliEmailVerificationEndpoints();
         return api;
     }
 
