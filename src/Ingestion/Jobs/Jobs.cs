@@ -18,6 +18,17 @@ public sealed record IngestResult(string JobCode, int Written, int Unchanged, in
 }
 
 /// <summary>
+/// Retry-ladder context for a run-ledger row (C3c, NFR-MDF-001): which attempt this is
+/// and how many are allowed. The scheduler supplies it so the ledger records the
+/// attempt count of a recovered run; direct/admin callers omit it.
+/// </summary>
+public sealed record IngestionRunContext(int Attempt, int MaxAttempts)
+{
+    /// <summary>Retry ordinal (0 for the first attempt).</summary>
+    public int Retries => Attempt - 1;
+}
+
+/// <summary>
 /// One ingestion job (the per-job seam of TKT-mdf-002). Jobs carry a stable
 /// <see cref="JobCode"/> — the key the run ledger, admin triggers (TKT-mdf-010) and
 /// the scheduler (TKT-mdf-005) use — and register themselves through
@@ -33,7 +44,20 @@ public interface IIngestJob
 /// <summary>Resolves and executes a registered job, recording the run ledger row.</summary>
 public interface IIngestionJobRunner
 {
+    /// <summary>
+    /// Registered job codes in registration order — the scheduler's default run set when
+    /// no explicit chain order is configured (the TKT-mdf-002 registration convention).
+    /// </summary>
+    IReadOnlyCollection<string> JobCodes { get; }
+
     Task<IngestResult> RunAsync(string jobCode, IngestionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Runs a job and tags its ledger row with the retry-ladder attempt context.</summary>
+    Task<IngestResult> RunAsync(
+        string jobCode,
+        IngestionRequest request,
+        IngestionRunContext context,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -46,6 +70,7 @@ public interface IIngestionJobRunner
 public sealed class IngestionJobRunner : IIngestionJobRunner
 {
     private readonly IReadOnlyDictionary<string, IIngestJob> _jobs;
+    private readonly IReadOnlyList<string> _jobCodes;
     private readonly DegerliDbContext _db;
     private readonly TimeProvider _clock;
     private readonly ILogger<IngestionJobRunner> _logger;
@@ -56,17 +81,40 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         TimeProvider clock,
         ILogger<IngestionJobRunner> logger)
     {
-        _jobs = jobs.ToDictionary(job => job.JobCode, StringComparer.Ordinal);
+        var registered = jobs.ToList();
+        _jobs = registered.ToDictionary(job => job.JobCode, StringComparer.Ordinal);
+        _jobCodes = registered.Select(job => job.JobCode).ToList();
         _db = db;
         _clock = clock;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async Task<IngestResult> RunAsync(
+    public IReadOnlyCollection<string> JobCodes => _jobCodes;
+
+    /// <inheritdoc />
+    public Task<IngestResult> RunAsync(
         string jobCode,
         IngestionRequest request,
+        CancellationToken cancellationToken = default) =>
+        RunCoreAsync(jobCode, request, context: null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IngestResult> RunAsync(
+        string jobCode,
+        IngestionRequest request,
+        IngestionRunContext context,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return RunCoreAsync(jobCode, request, context, cancellationToken);
+    }
+
+    private async Task<IngestResult> RunCoreAsync(
+        string jobCode,
+        IngestionRequest request,
+        IngestionRunContext? context,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jobCode);
 
@@ -79,13 +127,14 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         try
         {
             var result = await job.RunAsync(request, cancellationToken).ConfigureAwait(false);
-            await RecordAsync(jobCode, startedAt, result.Status, result, cancellationToken).ConfigureAwait(false);
+            await RecordAsync(jobCode, startedAt, result.Status, result, context, cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogError(exception, "Ingestion job {JobCode} failed", jobCode);
-            await RecordAsync(jobCode, startedAt, IngestResult.Failed, result: null, cancellationToken).ConfigureAwait(false);
+            await RecordAsync(jobCode, startedAt, IngestResult.Failed, result: null, context, cancellationToken)
+                .ConfigureAwait(false);
             throw;
         }
     }
@@ -95,16 +144,18 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         DateTimeOffset startedAt,
         string status,
         IngestResult? result,
+        IngestionRunContext? context,
         CancellationToken cancellationToken)
     {
-        var stats = result is null
-            ? "{}"
-            : JsonSerializer.Serialize(new
-            {
-                written = result.Written,
-                unchanged = result.Unchanged,
-                quarantined = result.Quarantined,
-            });
+        var stats = JsonSerializer.Serialize(new
+        {
+            written = result?.Written ?? 0,
+            unchanged = result?.Unchanged ?? 0,
+            quarantined = result?.Quarantined ?? 0,
+            attempt = context?.Attempt,
+            retries = context?.Retries,
+            maxAttempts = context?.MaxAttempts,
+        });
 
         _db.IngestRuns.Add(new IngestRun
         {

@@ -6,6 +6,7 @@ using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
@@ -55,6 +56,14 @@ public static class IngestionServiceCollectionExtensions
         services.TryAddSingleton<IIngestionAlerter, LoggingIngestionAlerter>();
 
         services.Configure<PricesSourceOptions>(configuration.GetSection(PricesSourceOptions.SectionName));
+
+        // C3c scheduler: Cronos cron + trading calendar + the run-ledger retry ladder.
+        // The hosted loop is added by the API host; the engine is resolvable on its own
+        // so tests and admin triggers share one scheduling rule.
+        services.Configure<IngestionSchedulerOptions>(configuration.GetSection(IngestionSchedulerOptions.SectionName));
+        services.Configure<TradingCalendarOptions>(configuration.GetSection(TradingCalendarOptions.SectionName));
+        services.TryAddSingleton<IIngestionCalendar, ConfiguredTradingCalendar>();
+        services.TryAddSingleton<IngestionScheduler>();
 
         services.AddSingleton<ISourceClient>(provider =>
         {
