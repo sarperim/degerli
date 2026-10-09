@@ -62,6 +62,20 @@ public sealed class Acc005PasswordResetTests : IClassFixture<PostgresFixture>
         const string newPassword = "BrandNewPass456!";
         await CreateUserAsync(factory, email, oldPassword);
 
+        // TC-ACC-016 "saved work intact": seed a screen and a DCF scenario owned by
+        // this user before the reset, so the post-reset assertion can actually detect a
+        // reset regression that destroyed the account's work.
+        long savedScreenId;
+        long savedScenarioId;
+        await using (var seedDb = _postgres.CreateContext())
+        {
+            var builder = new FixtureBuilder(seedDb);
+            var seededUserId = (await seedDb.Users.SingleAsync(u => u.NormalizedEmail == email.ToUpperInvariant())).Id;
+            var instrument = await builder.CreateInstrumentAsync($"ACC016-{Guid.NewGuid():N}");
+            savedScreenId = (await builder.CreateScreenAsync(seededUserId, "ACC-016 saved screen")).Id;
+            savedScenarioId = (await builder.CreateScenarioAsync(seededUserId, instrument.Id, "ACC-016 saved scenario")).Id;
+        }
+
         using var forgot = await PostAsync(client, "/api/v1/auth/forgot-password", new { email });
         Assert.Equal(HttpStatusCode.OK, forgot.StatusCode);
         var token = ExtractToken(Assert.Single(factory.Mail.Sent));
@@ -80,9 +94,11 @@ public sealed class Acc005PasswordResetTests : IClassFixture<PostgresFixture>
         Assert.True((await signInManager.CheckPasswordSignInAsync(user!, newPassword, lockoutOnFailure: false)).Succeeded);
         Assert.False((await signInManager.CheckPasswordSignInAsync(user!, oldPassword, lockoutOnFailure: false)).Succeeded);
 
-        // Saved work is intact: the account survives the reset untouched.
+        // Saved work is intact: the user's screen and DCF scenario survive the reset.
         await using var db = _postgres.CreateContext();
-        Assert.True(await db.Users.AnyAsync(u => u.NormalizedEmail == email.ToUpperInvariant()));
+        Assert.True(await db.Users.AnyAsync(u => u.Id == user!.Id));
+        Assert.True(await db.SavedScreens.AnyAsync(s => s.Id == savedScreenId && s.UserId == user!.Id));
+        Assert.True(await db.DcfScenarios.AnyAsync(s => s.Id == savedScenarioId && s.UserId == user!.Id));
     }
 
     // TC-ACC-017 — expired reset token; re-request path.
