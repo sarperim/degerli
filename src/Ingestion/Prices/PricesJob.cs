@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
+using Degerli.Ingestion.Validation;
 using Microsoft.Extensions.Logging;
 
 namespace Degerli.Ingestion.Prices;
@@ -21,23 +21,20 @@ public sealed class PricesJob : IIngestJob
 
     private readonly ISourceAdapter<PricesPayload> _adapter;
     private readonly DailyPriceStore _store;
-    private readonly IQuarantineWriter _quarantine;
-    private readonly IIngestionAlerter _alerter;
+    private readonly IQuarantineService _quarantine;
     private readonly TimeProvider _clock;
     private readonly ILogger<PricesJob> _logger;
 
     public PricesJob(
         ISourceAdapter<PricesPayload> adapter,
         DailyPriceStore store,
-        IQuarantineWriter quarantine,
-        IIngestionAlerter alerter,
+        IQuarantineService quarantine,
         TimeProvider clock,
         ILogger<PricesJob> logger)
     {
         _adapter = adapter;
         _store = store;
         _quarantine = quarantine;
-        _alerter = alerter;
         _clock = clock;
         _logger = logger;
     }
@@ -57,7 +54,7 @@ public sealed class PricesJob : IIngestJob
         }
         catch (SourcePayloadException exception)
         {
-            await QuarantineAsync(request, null, exception.RawJson, "UNPARSEABLE_PAYLOAD", cancellationToken)
+            await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
                 .ConfigureAwait(false);
             return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
         }
@@ -68,7 +65,7 @@ public sealed class PricesJob : IIngestJob
             _logger.LogWarning(
                 "prices: payload for {Date} carries no provenance (MISSING_PROVENANCE)",
                 request.Date);
-            await QuarantineAsync(request, null, fetched.RawJson, "MISSING_PROVENANCE", cancellationToken)
+            await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
                 .ConfigureAwait(false);
             return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
         }
@@ -85,9 +82,8 @@ public sealed class PricesJob : IIngestJob
                 "prices: conflicting value for {Symbol} on {Date}; stored fact kept (CONFLICTING_VALUE)",
                 conflict.Symbol,
                 request.Date);
-            await QuarantineAsync(request, fetched.SourceRef, Serialize(conflict), "CONFLICTING_VALUE", cancellationToken)
+            await QuarantineAsync(request, fetched.SourceRef, Serialize(conflict), QuarantineReason.ConflictingValue, cancellationToken)
                 .ConfigureAwait(false);
-            await RaiseAlertAsync(fetched.SourceRef, conflict, request, cancellationToken).ConfigureAwait(false);
             quarantined++;
         }
 
@@ -113,23 +109,8 @@ public sealed class PricesJob : IIngestJob
         string? payloadJson,
         string reasonCode,
         CancellationToken cancellationToken) =>
-        _quarantine.WriteAsync(
+        _quarantine.QuarantineAsync(
             new QuarantineEntry(Code, sourceRef, payloadJson, reasonCode, _clock.GetUtcNow()),
-            cancellationToken);
-
-    private Task RaiseAlertAsync(
-        string sourceRef,
-        PriceFact conflict,
-        IngestionRequest request,
-        CancellationToken cancellationToken) =>
-        _alerter.RaiseAsync(
-            new IngestionAlert(
-                Code,
-                "CONFLICTING_VALUE",
-                Subject: $"Degerli alert: prices CONFLICTING_VALUE for {conflict.Symbol}",
-                BodyTr: $"prices işi {request.Date:yyyy-MM-dd} tarihinde {conflict.Symbol} için çelişen bir fiyat değeri buldu; saklanan değer korundu.",
-                BodyEn: $"The prices job found a conflicting price value for {conflict.Symbol} on {request.Date:yyyy-MM-dd}; the stored value was kept.",
-                SourceRef: sourceRef),
             cancellationToken);
 
     private static string Serialize(PriceFact fact) => JsonSerializer.Serialize(fact, JsonOptions);

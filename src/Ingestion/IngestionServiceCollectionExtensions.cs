@@ -3,6 +3,7 @@ using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
+using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -63,6 +64,8 @@ public static class IngestionServiceCollectionExtensions
         });
 
         services.AddScoped<IQuarantineWriter, QuarantineWriter>();
+        services.AddScoped<IQuarantineService, QuarantineService>();
+        services.AddSingleton<IPayloadSchemaValidator, JsonPayloadSchemaValidator>();
         services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
         services.AddScoped<DailyPriceStore>();
 
