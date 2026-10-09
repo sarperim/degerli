@@ -62,6 +62,9 @@ api.MapDegerliMeEndpoints();
 // Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
 api.MapDegerliDcfEndpoints();
 
+// Valuation module (TKT-val-005): per-account DCF scenario CRUD (`/me/scenarios`).
+api.MapDegerliDcfScenarioEndpoints();
+
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 
 // Non-production probes let the infrastructure tests exercise the mechanisms without
