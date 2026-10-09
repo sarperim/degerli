@@ -1,6 +1,6 @@
 # TKT-mdf-004: Universe, sectors, indices & constituent sync
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/21
 - Size: M
 - Scope: `/src/Ingestion` `universe-sync` job: instruments, sectors (bilingual labels, 2-level hierarchy), indices, effective-dated append-only `index_constituents`, `index_levels` sync, sector reclassification handling, unclassified-sector anomaly flagging. Must NOT touch prices/statements adapters or the scheduler.

@@ -1,6 +1,6 @@
 # TKT-fdf-001: TEFAS ingestion adapters
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/22
 - Size: L
 - Scope: `/src/Ingestion` TEFAS adapters on the TKT-mdf-002 framework: `fund-nav`, `fund-performance`, `fund-holdings` jobs — fund universe sync bounded to equity + equity-heavy mixed funds (out-of-scope types skipped-and-counted in run stats per I-FDF-1, never quarantined), dated idempotent NAV rows, performances as published, holdings snapshots with symbol matching to MDF instruments (`instrument_id` nullable, `name_raw` retained for unmatched — never dropped), append-only retention, conflicting values follow the Q1 quarantine policy. Real TEFAS access is builder V0 validation (OQ-FDF-002); tests run against WireMock. Must NOT touch the scheduler wiring or admin coverage endpoints.
