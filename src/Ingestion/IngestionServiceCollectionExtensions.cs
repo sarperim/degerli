@@ -3,6 +3,7 @@ using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
+using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +51,7 @@ public static class IngestionServiceCollectionExtensions
         services.TryAddSingleton<IIngestionAlerter, LoggingIngestionAlerter>();
 
         services.Configure<PricesSourceOptions>(configuration.GetSection(PricesSourceOptions.SectionName));
+        services.Configure<UniverseSourceOptions>(configuration.GetSection(UniverseSourceOptions.SectionName));
 
         services.AddSingleton<ISourceClient>(provider =>
         {
@@ -66,8 +68,14 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
         services.AddScoped<DailyPriceStore>();
 
+        // Universe, sector and index-levels sync (FR-MDF-006/007).
+        services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
+        services.AddScoped<ISourceAdapter<IndexLevelsPayload>, IndexLevelsSourceAdapter>();
+        services.AddScoped<UniverseSyncStore>();
+
         // Per-job registrations (the convention): add one line per job as it lands.
         services.AddScoped<IIngestJob, PricesJob>();
+        services.AddScoped<IIngestJob, UniverseSyncJob>();
 
         services.AddScoped<IIngestionJobRunner, IngestionJobRunner>();
 
