@@ -30,6 +30,11 @@ public static class IdentityEndpoints
         var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
         auth.MapPost("/register", RegisterAsync).AllowAnonymous();
         auth.MapGet("/session", SessionAsync).AllowAnonymous();
+
+        // Later ACC tickets extend the auth surface with their own endpoint files.
+        // TKT-acc-005: reset endpoints own their own /auth group, so map from the root.
+        api.MapDegerliPasswordResetEndpoints();
+        // TKT-acc-004: verification endpoints map relative paths onto the /auth group.
         auth.MapDegerliEmailVerificationEndpoints();
         return api;
     }
