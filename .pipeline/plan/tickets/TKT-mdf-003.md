@@ -1,6 +1,7 @@
 # TKT-mdf-003: Statements, dividends, corporate actions & KAP disclosures ingestion
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/24
 - Size: L
 - Scope: `/src/Ingestion` adapters on the TKT-mdf-002 framework: `statements` job (XBRL/PDF parse → `financial_statements` + `fin_line_items` mapped to the canonical chart of accounts, versioned as_reported/restated, `OTHER_*` passthrough, GROSS_PROFIT/EBITDA derivation when unreported), `dividends` job, `corporate-actions` job (terms JSON), `disclosures` job (KAP metadata; documents to disk outside the DB). Must NOT touch the prices adapter or universe sync.
 - Traces to: FR-MDF-002, FR-MDF-003, FR-MDF-004, FR-MDF-005; BR-MDF-004
