@@ -1,3 +1,4 @@
+using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -47,7 +48,14 @@ public sealed class DailyPriceStore
         {
             if (!instrumentIds.TryGetValue(fact.Symbol, out var instrumentId) || fact.Close is null)
             {
-                rejected.Add(new RejectedPriceFact(fact, "SCHEMA_MISMATCH"));
+                rejected.Add(new RejectedPriceFact(fact, QuarantineReason.SchemaMismatch));
+                continue;
+            }
+
+            if (fact.Close.Value < 0m)
+            {
+                // A negative price is never a real market fact (FR-MDF-012, FU §2).
+                rejected.Add(new RejectedPriceFact(fact, QuarantineReason.NegativePrice));
                 continue;
             }
 

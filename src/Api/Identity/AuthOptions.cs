@@ -26,4 +26,7 @@ public sealed class AuthOptions
 
     /// <summary>Verification-token lifetime (`01` §10.1: 48h single-use).</summary>
     public TimeSpan VerificationTokenLifespan { get; set; } = TimeSpan.FromHours(48);
+
+    /// <summary>Reset-token lifetime (`01` §10.1: 2h single-use).</summary>
+    public TimeSpan ResetTokenLifespan { get; set; } = TimeSpan.FromHours(2);
 }
