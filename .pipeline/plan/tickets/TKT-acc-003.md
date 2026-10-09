@@ -1,6 +1,7 @@
 # TKT-acc-003: Sign-in, lockout, sign-out & session endpoint
 
-- Status: todo
+- Status: done
+- PR: https://github.com/sarperim/degerli/pull/19
 - Size: M
 - Scope: `/src/Api` Identity module (own endpoint files): `POST /api/v1/auth/login` (session + `{languagePref}`; generic 401 `INVALID_CREDENTIALS`; 429 `LOCKED_OUT` after 10 fails / 15 min per account), `POST /api/v1/auth/logout` (revokes session). Must NOT touch registration/verification/reset/settings.
 - Traces to: FR-ACC-002, FR-ACC-003, FR-ACC-004 (return side); UC-ACC-002 (main + alternate a); NFR-ACC-002

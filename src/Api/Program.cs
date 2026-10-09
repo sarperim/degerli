@@ -1,5 +1,6 @@
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
+using Degerli.Api.Valuation;
 using Degerli.Ingestion;
 using Degerli.Persistence;
 using Microsoft.AspNetCore.Antiforgery;
@@ -23,6 +24,7 @@ builder.Services.AddApiInfrastructure(builder.Configuration, builder.Environment
 // Single EF Core model + the Identity/auth module (registration, consent, session).
 builder.Services.AddDegerliPersistence(builder.Configuration);
 builder.Services.AddDegerliIdentity(builder.Configuration);
+builder.Services.AddDegerliAuthSessionRevocation();
 
 // Data platform ingestion (C3a): source adapters, fact storage and the per-job
 // registration convention (TKT-mdf-002). Later ingestion tickets add their jobs there.
@@ -30,6 +32,7 @@ builder.Services.AddMarketDataIngestion(builder.Configuration);
 
 // Data platform workers run in-process in this container (AD-04).
 builder.Services.AddHostedService<IngestionHostedService>();
+builder.Services.AddHostedService<Degerli.Ingestion.Scheduling.IngestionSchedulerHostedService>();
 
 var app = builder.Build();
 
@@ -53,7 +56,11 @@ auth.MapGet("/csrf-token", CsrfToken).AllowAnonymous();
 // Identity module endpoints (TKT-acc-002): registration + session; the /me read
 // asserts the minimal-data posture. Later ACC tickets extend these groups.
 api.MapDegerliIdentityEndpoints();
+api.MapDegerliAuthSessionEndpoints();
 api.MapDegerliMeEndpoints();
+
+// Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
+api.MapDegerliDcfEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 

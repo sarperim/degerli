@@ -56,11 +56,28 @@ public static class IdentityServiceCollectionExtensions
                 options.Lockout.MaxFailedAccessAttempts = 10;
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
                 options.Lockout.AllowedForNewUsers = true;
+
+                // 01 §10.1: reset tokens 2h single-use, driven by the fake-clock-aware
+                // provider registered below (distinct from the 48h default used by
+                // verification).
+                options.Tokens.PasswordResetTokenProvider = "ResetPassword";
             })
             .AddRoles<ApplicationRole>()
             .AddEntityFrameworkStores<DegerliDbContext>()
             .AddSignInManager()
-            .AddDefaultTokenProviders();
+            .AddDefaultTokenProviders()
+            // TKT-acc-005: reset tokens use the fake-clock-aware provider for the 2h
+            // single-use expiry (driven by TimeProvider), distinct from verification.
+            .AddTokenProvider<ResetPasswordTokenProvider>("ResetPassword")
+            // TKT-acc-004: email-confirmation tokens are issued/validated against the
+            // injected TimeProvider (fake clock drives the 48h expiry, TC-ACC-012).
+            // Registered under a dedicated name so reset tokens keep their own provider.
+            .AddTokenProvider<DegerliDataProtectorTokenProvider<ApplicationUser>>(
+                DegerliDataProtectorTokenProvider<ApplicationUser>.ProviderName);
+
+        services.Configure<IdentityOptions>(options =>
+            options.Tokens.EmailConfirmationTokenProvider =
+                DegerliDataProtectorTokenProvider<ApplicationUser>.ProviderName);
 
         // NFR-ACC-002: PBKDF2 >= 100k iterations.
         services.Configure<PasswordHasherOptions>(options => options.IterationCount = 100_000);
