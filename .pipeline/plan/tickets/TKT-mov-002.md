@@ -1,6 +1,6 @@
 # TKT-mov-002: Macro ingestion jobs
 
-- Status: in-progress
+- Status: in-review — https://github.com/sarperim/degerli/pull/29
 - Size: L
 - Scope: `/src/Ingestion` macro adapters + jobs on the TKT-mdf-002 adapter framework and TKT-mdf-005 scheduler: `macro-daily` (USD_TRY, EUR_TRY, GOLD — daily by 09:00 next day), `macro-cpi` (TÜİK + independent measure, within 24h of release), per-release CBRT repo rate; revisions append (never overwrite), canonical = latest `recorded_at`; per-series staleness + failure alerts (mail double + Serilog). Real sources (TÜİK/ENAG/CBRT/FX/gold) are builder V0 validation; tests run against WireMock. Must NOT touch the snapshot job or public endpoints.
 - Traces to: FR-MOV-014, FR-MOV-015, FR-MOV-016; UC-MOV-002 (main + alternates), UC-MOV-005; NFR-MOV-001 (macro rows); FR-MDF-015 (revision append — MDF-plan-owned TC below)
