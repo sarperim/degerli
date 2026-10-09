@@ -1,5 +1,6 @@
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
+using Degerli.Api.Valuation;
 using Degerli.Ingestion;
 using Degerli.Persistence;
 using Microsoft.AspNetCore.Antiforgery;
@@ -57,6 +58,9 @@ auth.MapGet("/csrf-token", CsrfToken).AllowAnonymous();
 api.MapDegerliIdentityEndpoints();
 api.MapDegerliAuthSessionEndpoints();
 api.MapDegerliMeEndpoints();
+
+// Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
+api.MapDegerliDcfEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 
