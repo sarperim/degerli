@@ -30,6 +30,7 @@ public static class IdentityEndpoints
         var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
         auth.MapPost("/register", RegisterAsync).AllowAnonymous();
         auth.MapGet("/session", SessionAsync).AllowAnonymous();
+        auth.MapDegerliEmailVerificationEndpoints();
         return api;
     }
 
