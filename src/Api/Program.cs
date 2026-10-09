@@ -30,6 +30,7 @@ builder.Services.AddMarketDataIngestion(builder.Configuration);
 
 // Data platform workers run in-process in this container (AD-04).
 builder.Services.AddHostedService<IngestionHostedService>();
+builder.Services.AddHostedService<Degerli.Ingestion.Scheduling.IngestionSchedulerHostedService>();
 
 var app = builder.Build();
 
