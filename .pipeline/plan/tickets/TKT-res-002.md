@@ -1,6 +1,6 @@
 # TKT-res-002: Stock list & search endpoints
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/27
 - Size: M
 - Scope: `/src/Api` stocks module: `GET /api/v1/stocks?sector=&q=` (current-universe view: symbol, name, sector identity, listingDate; ILIKE on name/symbol; unknown sector → empty 200) and `GET /api/v1/stocks/search?q=` (lightweight symbol + name for header typeahead). Must NOT touch the stock-page section endpoints.

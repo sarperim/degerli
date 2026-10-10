@@ -1,6 +1,6 @@
 # TKT-mdf-007: Backfill mode & coverage metadata recording
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/28
 - Size: M
 - Scope: backfill mode in the adapters (historical range ingestion with `{backfillFrom}` semantics at the job level), achieved-depth recording into `coverage_metadata` (never fabricating rows before the source limit), coverage notes for source limitations, and the no-silent-gaps consistency rule (every instrument × data type has data or an explicit gap record). Must NOT implement the admin HTTP trigger (that endpoint is TKT-mdf-010, which carries TC-MDF-015/043).
