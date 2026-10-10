@@ -1,11 +1,13 @@
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.CorporateActions;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Disclosures;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Macro;
+using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Scheduling;
@@ -103,8 +105,13 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IQuarantineWriter, QuarantineWriter>();
         services.AddScoped<IQuarantineService, QuarantineService>();
         services.AddSingleton<IPayloadSchemaValidator, JsonPayloadSchemaValidator>();
-        services.AddScoped<ISourceAdapter<PricesPayload>, PricesSourceAdapter>();
+        // The price adapter is both the incremental and the backfill source (TKT-mdf-007);
+        // one instance is registered and exposed through both seams.
+        services.AddScoped<PricesSourceAdapter>();
+        services.AddScoped<ISourceAdapter<PricesPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
+        services.AddScoped<IBackfillSourceAdapter<PricesHistoryPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
         services.AddScoped<DailyPriceStore>();
+        services.AddScoped<CoverageRecorder>();
 
         // Universe, sector and index-levels sync (FR-MDF-006/007).
         services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
@@ -122,6 +129,10 @@ public static class IngestionServiceCollectionExtensions
 
         services.AddScoped<ISourceAdapter<DisclosuresPayload>, DisclosuresSourceAdapter>();
         services.AddScoped<DisclosureStore>();
+
+        // C3b Metrics Engine (FR-MDF-013/014): canonical metric computation + storage.
+        services.AddScoped<MetricsEngine>();
+        services.AddScoped<DerivedMetricStore>();
 
         // TEFAS fund ingestion (FR-FDF-001..003): its own source client, bound to the
         // funds base address, so the fund adapter never shares the prices client.
@@ -169,6 +180,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, DividendsJob>();
         services.AddScoped<IIngestJob, CorporateActionsJob>();
         services.AddScoped<IIngestJob, DisclosuresJob>();
+        services.AddScoped<IIngestJob, MetricsRecomputeJob>();
         services.AddScoped<IIngestJob, FundNavJob>();
         services.AddScoped<IIngestJob, FundPerformanceJob>();
         services.AddScoped<IIngestJob, FundHoldingsJob>();
