@@ -1,6 +1,6 @@
 # TKT-val-003: DCF baseline generation & GET endpoint
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/38
 - Size: M
 - Scope: the baseline generation job (C3b, own job files per the TKT-mdf-008 convention): `dcf_baselines` rows derived from canonical facts (FCF, total debt, cash, share count) + builder default rules for growth/horizon/rates (config), one active version per stock, version bump on regeneration; and `/src/Api` DCF module `GET /api/v1/stocks/{symbol}/dcf` (baseline + params + `canonicalFactRefs` with as-of/restated flags + canonical price; `state: "missing_inputs"` naming what is missing; unknown symbol 404). Must NOT touch the compute endpoint (TKT-val-004) or regeneration admin trigger (TKT-val-009).

@@ -1,6 +1,6 @@
 # TKT-res-003: Overview & valuation section endpoints + sector medians job
 
-- Status: in-review (PR #39)
+- Status: done
 - Size: L
 - Scope: `/src/Api` stocks module: `GET /stocks/{symbol}/overview` (published description in both languages, `preparing` state, `lastReviewedAt`) and `GET /stocks/{symbol}/valuation` (current multiples, historical series with `adjusted: true`, vs.-sector strip `{value, sectorMedian, peerCount, excludedCount}` + not-meaningful states); plus the `medians` job (own job files per the TKT-mdf-008 convention) computing `sector_metric_medians` — five valuation-family metrics, sector-level peers, current basis, P/E medians excluding loss-makers with counts. Must NOT touch the other section endpoints or the C4 CLI.
 - Traces to: FR-RES-005, FR-RES-006, FR-RES-007, FR-RES-022, FR-RES-026; SD-002; UC-RES-002 (main + alt a), UC-RES-003; FR-MDF-018 (serving side)
