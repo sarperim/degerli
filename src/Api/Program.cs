@@ -1,5 +1,6 @@
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
+using Degerli.Api.Screener;
 using Degerli.Api.Stocks;
 using Degerli.Api.Valuation;
 using Degerli.Ingestion;
@@ -69,6 +70,10 @@ api.MapDegerliDcfScenarioEndpoints();
 // Stocks module (TKT-res-002): the current-universe list/filter/search and the
 // lightweight header typeahead (FR-RES-001..004).
 api.MapDegerliStockEndpoints();
+
+// Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
+// (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
+api.MapDegerliScreenerEndpoints();
 
 var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
 
