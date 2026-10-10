@@ -4,8 +4,11 @@ import {
   API_ERROR_STATUS,
   API_ERROR_TITLE,
   type ApiErrorCode,
+  type AuthenticatedSession,
+  type AnonymousSession,
   type MacroResponse,
   type ProblemDetails,
+  type SessionResponse,
 } from '@/lib/api/contracts'
 
 /** API prefix from `03-api-design.md` §1. */
@@ -128,4 +131,64 @@ export function problemHandler(
 /** `GET /api/v1/market/macro` handler, typed against `MacroResponse`. */
 export function marketMacroHandler(body: MacroResponse = FRESH_MACRO_FIXTURE) {
   return http.get(`${API_BASE}/market/macro`, () => HttpResponse.json(body))
+}
+
+/* ------------------------------------------------------------------ *
+ * Identity handlers (`03` §6) — TKT-acc-007 (SCR-007 register + verify).
+ * ------------------------------------------------------------------ */
+
+/** Deterministic fixture: an anonymous session. */
+export const ANONYMOUS_SESSION_FIXTURE: AnonymousSession = { authenticated: false }
+
+/** Deterministic fixture: a signed-in but unverified account. */
+export const UNVERIFIED_SESSION_FIXTURE: AuthenticatedSession = {
+  authenticated: true,
+  email: 'unverified@example.test',
+  verified: false,
+  languagePref: 'tr',
+  role: 'user',
+}
+
+/** Deterministic fixture: a signed-in, verified account. */
+export const VERIFIED_SESSION_FIXTURE: AuthenticatedSession = {
+  authenticated: true,
+  email: 'verified@example.test',
+  verified: true,
+  languagePref: 'tr',
+  role: 'user',
+}
+
+/** `GET /api/v1/auth/session` handler, typed against `SessionResponse`. */
+export function sessionHandler(body: SessionResponse = ANONYMOUS_SESSION_FIXTURE) {
+  return http.get(`${API_BASE}/auth/session`, () => HttpResponse.json(body))
+}
+
+/** `POST /api/v1/auth/register` handler — 201 + session (default verified user). */
+export function registerHandler(
+  body: SessionResponse = {
+    authenticated: true,
+    email: 'new-user@example.test',
+    verified: false,
+    languagePref: 'tr',
+    role: 'user',
+  },
+) {
+  return http.post(`${API_BASE}/auth/register`, () =>
+    HttpResponse.json(body, { status: 201 }),
+  )
+}
+
+/** `POST /api/v1/auth/verify-email` handler — 200 verified. */
+export function verifyEmailHandler() {
+  return http.post(`${API_BASE}/auth/verify-email`, () =>
+    HttpResponse.json({ verified: true }),
+  )
+}
+
+/** `POST /api/v1/auth/resend-verification` handler — session-scoped benign no-op. */
+export function resendVerificationHandler() {
+  return http.post(
+    `${API_BASE}/auth/resend-verification`,
+    () => new HttpResponse(null, { status: 204 }),
+  )
 }

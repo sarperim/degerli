@@ -1,10 +1,18 @@
+import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 
 import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
-import { APP_ROUTES } from '@/routes/routeConfig'
+import { RegisterScreen } from '@/screens/register/RegisterScreen'
+import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
+import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
+
+/** Routes with a real implementation; everything else keeps the placeholder. */
+const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
+  register: <RegisterScreen />,
+}
 
 const router = createBrowserRouter([
   {
@@ -15,9 +23,16 @@ const router = createBrowserRouter([
       ...APP_ROUTES.map((route) => ({
         index: route.path === '/',
         path: route.path === '/' ? undefined : route.path,
-        element: <RoutePlaceholder route={route} />,
+        element: SCREEN_ELEMENTS[route.id] ?? <RoutePlaceholder route={route} />,
         handle: { research: route.research === true },
       })),
+      {
+        // E-mail verification link landing, hosted by SCR-007 (UX `user-accounts.md`
+        // §2/§3.3): the external entry point from the verification e-mail.
+        path: 'register/verify',
+        element: <VerifyEmailScreen />,
+        handle: { research: false },
+      },
       {
         path: 'design-system',
         element: <ComponentIndex />,
