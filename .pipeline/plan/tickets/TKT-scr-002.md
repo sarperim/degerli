@@ -1,6 +1,6 @@
 # TKT-scr-002: Metric catalog & screener run endpoint — core
 
-- Status: in-review (PR https://github.com/sarperim/degerli/pull/32)
+- Status: done
 - Size: L
 - Scope: `/src/Api` screener module: `GET /api/v1/screener/metrics` (visible catalog only — families, units, TR/EN labels, `isCagr`, sort order) and `POST /api/v1/screener/run` core (AND logic over `derived_metrics`, inclusive min/max/range bounds, per-criterion CAGR window, missing-data → exclude-and-count, zero-match as normal 200, `criteria: []` → 400 per I-SCR-1, on-demand compute with honest envelope). Must NOT touch saved-screen endpoints (TKT-scr-004) or admin visibility (TKT-scr-005).
 - Traces to: FR-SCR-001..006, FR-SCR-014, FR-SCR-015; UC-SCR-001 (main); BR-SCR-001..003, BR-SCR-009
