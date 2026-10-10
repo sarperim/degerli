@@ -8,20 +8,21 @@ using Microsoft.Extensions.Options;
 namespace Degerli.Ingestion.Scheduling;
 
 /// <summary>
-/// C3c scheduler engine (FR-MDF-009, NFR-MDF-001): decides when the EOD run is due
-/// (Cronos cron in a configured time zone, filtered by the trading calendar), executes
-/// it through the TKT-mdf-002 job runner, and retries a failed attempt on the 5/15/60
-/// ladder. It holds only in-memory scheduling state; the durable record is the
-/// <c>ingest_runs</c> ledger the runner writes per attempt.
+/// C3c scheduler engine (FR-MDF-009, NFR-MDF-001): decides when a run is due (Cronos cron in
+/// a configured time zone, the shared EOD trigger filtered by the trading calendar and any
+/// independent per-job triggers), executes it through the TKT-mdf-002 job runner, and
+/// retries a failed attempt on the 5/15/60 ladder. It holds only in-memory scheduling state;
+/// the durable record is the <c>ingest_runs</c> ledger the runner writes per attempt.
 /// </summary>
 /// <remarks>
 /// The engine is transport-agnostic and clock-driven: <see cref="NextWake"/> and
 /// <see cref="TickAsync"/> are pure scheduling decisions over a supplied instant, which
 /// is what makes scheduled/retry behaviour deterministic under a fake clock. The
 /// <see cref="IngestionSchedulerHostedService"/> is the thin production loop over them.
-/// Running the concrete EOD chain order is not this ticket's concern — an empty
-/// <see cref="IngestionSchedulerOptions.JobCodes"/> runs every registered job in
-/// registration order; TKT-int-001 pins the cross-domain order.
+/// The shared EOD trigger runs <see cref="IngestionSchedulerOptions.JobCodes"/> (or every
+/// registered job when empty) on trading days; each <see cref="JobScheduleOptions"/> entry
+/// additionally runs its own job on its own cadence — the macro jobs (03 §9). Running the
+/// concrete EOD chain order is not this ticket's concern — TKT-int-001 pins it.
 /// </remarks>
 public sealed class IngestionScheduler
 {
@@ -30,12 +31,9 @@ public sealed class IngestionScheduler
     private readonly IIngestionAlerter _alerter;
     private readonly IngestionSchedulerOptions _options;
     private readonly ILogger<IngestionScheduler> _logger;
-    private readonly CronExpression _cron;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IReadOnlyList<ScheduleStream> _streams;
     private readonly object _gate = new();
-
-    private DateTimeOffset? _nextScheduled;
-    private ActiveRun? _active;
     private IReadOnlyList<string>? _resolvedJobCodes;
 
     public IngestionScheduler(
@@ -56,8 +54,8 @@ public sealed class IngestionScheduler
         _alerter = alerter;
         _options = options.Value;
         _logger = logger;
-        _cron = CronExpression.Parse(_options.Cron, CronFormat.IncludeSeconds);
         _timeZone = ResolveTimeZone(_options.TimeZone);
+        _streams = BuildStreams(_options);
     }
 
     /// <summary>Whether the scheduler is enabled in configuration.</summary>
@@ -68,21 +66,28 @@ public sealed class IngestionScheduler
     {
         lock (_gate)
         {
-            if (_active is { } active)
+            DateTimeOffset? next = null;
+            foreach (var stream in _streams)
             {
-                return active.NextAttemptAt;
+                if (stream.Active is { } active)
+                {
+                    next = Earliest(next, active.NextAttemptAt);
+                    continue;
+                }
+
+                EnsureScheduled(stream, now);
+                next = Earliest(next, stream.NextScheduled);
             }
 
-            EnsureScheduled(now);
-            return _nextScheduled;
+            return next;
         }
     }
 
     /// <summary>Processes everything due at <paramref name="now"/>: a scheduled trigger
-    /// (if the local date is a trading day) and/or a due retry.</summary>
+    /// (if the local date is a trading day for the EOD stream) and/or a due retry.</summary>
     public async Task TickAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ActiveRun due;
+        var due = new List<(ScheduleStream Stream, ActiveRun Run)>();
         lock (_gate)
         {
             if (!_options.Enabled)
@@ -90,37 +95,82 @@ public sealed class IngestionScheduler
                 return;
             }
 
-            if (_active is null)
+            foreach (var stream in _streams)
             {
-                EnsureScheduled(now);
-
-                // Consume every cron occurrence up to `now`. A non-trading occurrence is
-                // skipped silently (no ledger row); the first trading one starts a run.
-                while (_nextScheduled is { } occurrence && occurrence <= now)
+                if (stream.Active is null)
                 {
-                    _nextScheduled = _cron.GetNextOccurrence(occurrence, _timeZone, inclusive: false);
-                    var tradingDate = TradingDateOf(occurrence);
-                    if (_calendar.IsTradingDay(tradingDate))
+                    EnsureScheduled(stream, now);
+
+                    // Consume every cron occurrence up to `now`. A non-trading occurrence
+                    // on the EOD stream is skipped silently (no ledger row); a per-job
+                    // stream is not trading-calendar gated. The first eligible occurrence
+                    // starts a run.
+                    while (stream.NextScheduled is { } occurrence && occurrence <= now)
                     {
-                        _active = new ActiveRun(tradingDate, nextAttemptAt: now);
-                        break;
+                        stream.NextScheduled = stream.Cron.GetNextOccurrence(occurrence, _timeZone, inclusive: false);
+                        var runDate = TradingDateOf(occurrence);
+                        if (!stream.TradingDaysOnly || _calendar.IsTradingDay(runDate))
+                        {
+                            stream.Active = new ActiveRun(runDate, nextAttemptAt: now);
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (_active is null || now < _active.NextAttemptAt)
-            {
-                return;
+                if (stream.Active is { } active && now >= active.NextAttemptAt)
+                {
+                    due.Add((stream, active));
+                }
             }
-
-            due = _active;
         }
 
-        await RunAttemptAsync(due, now, cancellationToken).ConfigureAwait(false);
+        foreach (var (stream, run) in due)
+        {
+            await RunAttemptAsync(stream, run, now, cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    private void EnsureScheduled(DateTimeOffset now) =>
-        _nextScheduled ??= _cron.GetNextOccurrence(now, _timeZone, inclusive: true);
+    private static IReadOnlyList<ScheduleStream> BuildStreams(IngestionSchedulerOptions options)
+    {
+        var eod = new ScheduleStream
+        {
+            Cron = CronExpression.Parse(options.Cron, CronFormat.IncludeSeconds),
+            TradingDaysOnly = true,
+            JobCodes = options.JobCodes is { Count: > 0 } ? options.JobCodes.ToList() : null,
+        };
+
+        var streams = new List<ScheduleStream> { eod };
+        foreach (var schedule in options.JobSchedules)
+        {
+            if (string.IsNullOrWhiteSpace(schedule.JobCode) || string.IsNullOrWhiteSpace(schedule.Cron))
+            {
+                throw new InvalidOperationException(
+                    "Each Ingestion:Scheduler:JobSchedules entry requires a JobCode and a Cron.");
+            }
+
+            streams.Add(new ScheduleStream
+            {
+                Cron = CronExpression.Parse(schedule.Cron, CronFormat.IncludeSeconds),
+                TradingDaysOnly = false,
+                JobCodes = new[] { schedule.JobCode },
+            });
+        }
+
+        return streams;
+    }
+
+    private void EnsureScheduled(ScheduleStream stream, DateTimeOffset now) =>
+        stream.NextScheduled ??= stream.Cron.GetNextOccurrence(now, _timeZone, inclusive: true);
+
+    private static DateTimeOffset? Earliest(DateTimeOffset? current, DateTimeOffset? candidate)
+    {
+        if (candidate is null)
+        {
+            return current;
+        }
+
+        return current is null || candidate < current ? candidate : current;
+    }
 
     private DateOnly TradingDateOf(DateTimeOffset occurrence)
     {
@@ -128,20 +178,26 @@ public sealed class IngestionScheduler
         return DateOnly.FromDateTime(local.DateTime);
     }
 
-    private async Task RunAttemptAsync(ActiveRun run, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task RunAttemptAsync(
+        ScheduleStream stream,
+        ActiveRun run,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         var attempt = run.Attempts + 1;
         run.Attempts = attempt;
 
+        IReadOnlyList<string> jobCodes = [];
         Exception? failure = null;
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+            jobCodes = ResolveJobCodes(stream, runner);
             var request = new IngestionRequest(run.TradingDate);
             var context = new IngestionRunContext(attempt, _options.MaxAttempts);
 
-            foreach (var jobCode in ResolveJobCodes(runner))
+            foreach (var jobCode in jobCodes)
             {
                 var result = await runner.RunAsync(jobCode, request, context, cancellationToken).ConfigureAwait(false);
                 if (result.Status == IngestResult.Failed)
@@ -164,7 +220,7 @@ public sealed class IngestionScheduler
                 attempt);
             lock (_gate)
             {
-                _active = null;
+                stream.Active = null;
             }
 
             return;
@@ -180,10 +236,10 @@ public sealed class IngestionScheduler
         {
             lock (_gate)
             {
-                _active = null;
+                stream.Active = null;
             }
 
-            await RaiseExhaustedAsync(run, attempt, cancellationToken).ConfigureAwait(false);
+            await RaiseExhaustedAsync(run, jobCodes, attempt, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -200,21 +256,23 @@ public sealed class IngestionScheduler
             nextAttemptAt);
     }
 
-    private IReadOnlyList<string> ResolveJobCodes(IIngestionJobRunner runner)
+    private IReadOnlyList<string> ResolveJobCodes(ScheduleStream stream, IIngestionJobRunner runner)
     {
-        if (_options.JobCodes is { Count: > 0 })
+        if (stream.JobCodes is { Count: > 0 })
         {
-            return _options.JobCodes.ToList();
+            return stream.JobCodes;
         }
 
         return _resolvedJobCodes ??= runner.JobCodes.ToList();
     }
 
-    private Task RaiseExhaustedAsync(ActiveRun run, int attempts, CancellationToken cancellationToken)
+    private Task RaiseExhaustedAsync(
+        ActiveRun run,
+        IReadOnlyList<string> jobCodes,
+        int attempts,
+        CancellationToken cancellationToken)
     {
-        var target = _options.JobCodes is { Count: > 0 }
-            ? string.Join(", ", _options.JobCodes)
-            : "registered jobs";
+        var target = jobCodes.Count > 0 ? string.Join(", ", jobCodes) : "registered jobs";
 
         return _alerter.RaiseAsync(
             new IngestionAlert(
@@ -250,7 +308,23 @@ public sealed class IngestionScheduler
         throw new InvalidOperationException($"Scheduler time zone '{id}' could not be resolved.");
     }
 
-    /// <summary>One in-flight run: the trading day it targets and its retry state.</summary>
+    /// <summary>One cron stream: the shared EOD trigger or a per-job cadence.</summary>
+    private sealed class ScheduleStream
+    {
+        public required CronExpression Cron { get; init; }
+
+        /// <summary>Whether the trading calendar gates this stream's occurrences.</summary>
+        public required bool TradingDaysOnly { get; init; }
+
+        /// <summary>The job codes to run; null means the registered jobs (EOD stream).</summary>
+        public required IReadOnlyList<string>? JobCodes { get; init; }
+
+        public DateTimeOffset? NextScheduled { get; set; }
+
+        public ActiveRun? Active { get; set; }
+    }
+
+    /// <summary>One in-flight run: the target day it runs for and its retry state.</summary>
     private sealed class ActiveRun
     {
         public ActiveRun(DateOnly tradingDate, DateTimeOffset nextAttemptAt)

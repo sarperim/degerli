@@ -6,6 +6,7 @@ using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.Macro;
 using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
@@ -152,6 +153,26 @@ public static class IngestionServiceCollectionExtensions
                 provider.GetRequiredService<IOptions<TefasSourceOptions>>()));
         services.AddScoped<TefasFundStore>();
 
+        // Macro ingestion (FR-MOV-014..016): its own source client, bound to the macro
+        // base address, so the macro adapter never shares the prices/TEFAS client.
+        services.Configure<MacroSourceOptions>(configuration.GetSection(MacroSourceOptions.SectionName));
+        services.AddKeyedSingleton<ISourceClient>(MacroSourceOptions.ClientKey, (provider, _) =>
+        {
+            var options = provider.GetRequiredService<IOptions<MacroSourceOptions>>().Value;
+            var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
+            return new HttpSourceClient(new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl, UriKind.Absolute),
+                Timeout = TimeSpan.FromSeconds(30),
+            });
+        });
+        services.AddScoped<ISourceAdapter<MacroPayload>>(provider =>
+            new MacroSourceAdapter(
+                provider.GetRequiredKeyedService<ISourceClient>(MacroSourceOptions.ClientKey),
+                provider.GetRequiredService<IOptions<MacroSourceOptions>>()));
+        services.AddScoped<MacroStore>();
+        services.AddScoped<MacroFreshnessService>();
+
         // Per-job registrations (the convention): add one line per job as it lands.
         services.AddScoped<IIngestJob, PricesJob>();
         services.AddScoped<IIngestJob, UniverseSyncJob>();
@@ -163,6 +184,8 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, FundNavJob>();
         services.AddScoped<IIngestJob, FundPerformanceJob>();
         services.AddScoped<IIngestJob, FundHoldingsJob>();
+        services.AddScoped<IIngestJob, MacroDailyJob>();
+        services.AddScoped<IIngestJob, MacroCpiJob>();
 
         services.AddScoped<IIngestionJobRunner, IngestionJobRunner>();
 
