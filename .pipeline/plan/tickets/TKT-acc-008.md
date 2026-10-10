@@ -7,7 +7,7 @@
 - Acceptance: TC-ACC-031 — TDD: spec first, then green; spec in `.pipeline/testing/user-accounts.md`.
 - Architecture refs: `01-system-architecture.md` §8.1 (M-4), §8.3 (UXR-ACC-008..011 row), §8.4 (session invalidation); `03-api-design.md` §6
 - UX refs: SCR-008; UXR-ACC-008, UXR-ACC-009, UXR-ACC-010, UXR-ACC-011; UXR-G-003, UXR-G-004, UXR-G-013
-- Dependencies: TKT-acc-001, TKT-acc-003, TKT-foundation-009, TKT-foundation-010
+- Dependencies: TKT-foundation-011, TKT-acc-003, TKT-foundation-009, TKT-foundation-010
 - Parallel group: P-15
 
 ## Notes

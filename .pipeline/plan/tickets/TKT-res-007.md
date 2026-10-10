@@ -7,5 +7,5 @@
 - Acceptance: TC-RES-022, TC-RES-035, TC-RES-036 — TDD: specs first, then green; specs in `.pipeline/testing/stock-research.md`.
 - Architecture refs: `01-system-architecture.md` §8.1 (M-3), §8.3 (UXR-RES-001..007 row); `03-api-design.md` §3 (stocks + search)
 - UX refs: SCR-002; UXR-RES-001..007; UXR-G-001, UXR-G-003, UXR-G-005, UXR-G-021
-- Dependencies: TKT-res-001, TKT-res-002, TKT-foundation-009, TKT-foundation-010
+- Dependencies: TKT-foundation-011, TKT-res-002, TKT-foundation-009, TKT-foundation-010
 - Parallel group: P-14

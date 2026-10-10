@@ -7,7 +7,7 @@
 - Acceptance: TC-SCR-022, TC-SCR-023, TC-SCR-024, TC-SCR-025, TC-SCR-026, TC-SCR-027, TC-SCR-029 — TDD: specs first, then green; specs in `.pipeline/testing/stock-screening.md`.
 - Architecture refs: `01-system-architecture.md` §8.1 (M-2, M-3, M-6 n/a, M-7, M-10), §8.3 (UXR-SCR-001..011/019 row); `03-api-design.md` §4
 - UX refs: SCR-003; UXR-SCR-001..011, UXR-SCR-019; UXR-G-001..006, UXR-G-018..024, UXR-G-029, UXR-G-030
-- Dependencies: TKT-scr-001, TKT-scr-002, TKT-scr-003, TKT-foundation-009, TKT-foundation-010
+- Dependencies: TKT-foundation-011, TKT-scr-002, TKT-scr-003, TKT-foundation-009, TKT-foundation-010
 - Parallel group: P-14
 
 ## Notes

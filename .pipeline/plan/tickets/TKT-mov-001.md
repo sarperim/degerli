@@ -1,6 +1,7 @@
 # TKT-mov-001: Design — SCR-001 Market Overview (visual design in design tool)
 
-- Status: todo
+- Status: blocked
+- Deferred (user, 2026-10-10): design implemented directly in the web app (no design tool). This per-domain design-artifact ticket is off the critical path; the domain's UI ticket(s) now build the screens directly against `TKT-foundation-011`. Revisit if a later design-fidelity pass is wanted.
 - Size: M
 - Scope: visual design for SCR-001 in the chosen design tool (D-UX-TOOL): the eight content blocks per UX spec §3 (index levels, sector performance, breadth, top movers w/ volume, market volume, market valuation w/ exclusion disclosure, macro strip with the always-paired inflation display, disclaimer) and all §5 states (loading, populated, per-block/per-indicator stale, macro unavailable, per-block error). Export to `/design/mov/`. Must NOT touch `/src/**`.
 - Traces to: UC-MOV-001, UC-MOV-003, UC-MOV-004 (screens hosting these)

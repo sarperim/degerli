@@ -2,6 +2,7 @@
 .pipeline/plan/board.md
 .pipeline/plan/reviews/
 .pipeline/plan/run-report.md
+.pipeline/plan/plan-audit.md
 
 # secrets
 .env

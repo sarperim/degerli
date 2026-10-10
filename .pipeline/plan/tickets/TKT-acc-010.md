@@ -7,5 +7,5 @@
 - Acceptance: TC-ACC-025, TC-ACC-026, TC-ACC-029, TC-ACC-032 — TDD: specs first, then green; specs in `.pipeline/testing/user-accounts.md`.
 - Architecture refs: `01-system-architecture.md` §8.1 (M-4), §8.3 (UXR-ACC-016..021 row), §8.4; `03-api-design.md` §6 (me rows)
 - UX refs: SCR-010; UXR-ACC-016, UXR-ACC-017, UXR-ACC-018, UXR-ACC-019, UXR-ACC-020, UXR-ACC-021; UXR-G-013, UXR-G-014, UXR-G-022
-- Dependencies: TKT-acc-001, TKT-acc-006, TKT-foundation-009, TKT-foundation-010
+- Dependencies: TKT-foundation-011, TKT-acc-006, TKT-foundation-009, TKT-foundation-010
 - Parallel group: P-16

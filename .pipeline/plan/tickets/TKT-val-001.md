@@ -1,6 +1,7 @@
 # TKT-val-001: Design — SCR-006 DCF Calculator & SCR-011 My DCF Scenarios (visual design)
 
-- Status: todo
+- Status: blocked
+- Deferred (user, 2026-10-10): design implemented directly in the web app (no design tool). This per-domain design-artifact ticket is off the critical path; the domain's UI ticket(s) now build the screens directly against `TKT-foundation-011`. Revisit if a later design-fidelity pass is wanted.
 - Size: M
 - Scope: visual design for SCR-006 and SCR-011 in the chosen design tool (D-UX-TOOL): the calculator (stock context with price + as-of, the 8-parameter panel with canonical-fact default labels and restatement markings, results with the plain-language verdict framed "based on your assumptions", sensitivity grid, scenario save/load picker, disclaimer) and the scenarios list (grouped by stock, per-row open/rename/delete with confirmation, empty + anonymous states). All §5 states incl. missing-inputs, validation-error with last-valid-result retained, unsaved-changes indication. Export to `/design/val/`. Must NOT touch `/src/**`.
 - Traces to: UC-VAL-001, UC-VAL-002 (screens hosting these)

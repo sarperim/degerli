@@ -7,5 +7,5 @@
 - Acceptance: TC-ACC-030 — TDD: spec first, then green; spec in `.pipeline/testing/user-accounts.md` (MailPit link flow + seeded expired-link variant).
 - Architecture refs: `01-system-architecture.md` §8.3 (UXR-ACC-012..015 row); `03-api-design.md` §6 (forgot/reset rows)
 - UX refs: SCR-009; UXR-ACC-012, UXR-ACC-013, UXR-ACC-014, UXR-ACC-015; UXR-G-004, UXR-G-018, UXR-G-025
-- Dependencies: TKT-acc-001, TKT-acc-005, TKT-foundation-009, TKT-foundation-010
+- Dependencies: TKT-foundation-011, TKT-acc-005, TKT-foundation-009, TKT-foundation-010
 - Parallel group: P-15

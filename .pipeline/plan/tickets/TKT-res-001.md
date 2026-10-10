@@ -1,6 +1,7 @@
 # TKT-res-001: Design — SCR-002 Stock List & SCR-005 Stock Page (visual design)
 
-- Status: todo
+- Status: blocked
+- Deferred (user, 2026-10-10): design implemented directly in the web app (no design tool). This per-domain design-artifact ticket is off the critical path; the domain's UI ticket(s) now build the screens directly against `TKT-foundation-011`. Revisit if a later design-fidelity pass is wanted.
 - Size: L
 - Scope: visual design for SCR-002 and SCR-005 in the chosen design tool (D-UX-TOOL): the Stock List (search input, sector filter, list rows, no-match state, pre-filtered arrival); the Stock Page as **one screen with seven content sections** (Gate 1 decision A — the tab/accordion/scroll widget is a design decision made here): Overview & Business Description, Valuation (incl. vs.-sector strip + historical chart), Financials, Profitability, Growth, Balance Sheet, Dividends; all honest-data markers (as-of, stale badge, restatement asterisk + footnote + warning, adjusted-data disclaimer, no-data with coverage boundary, preparing state); DCF hand-off. All §5 states for both screens. Export to `/design/res/`. Must NOT touch `/src/**`.
 - Traces to: UC-RES-001, UC-RES-002, UC-RES-003, UC-RES-005 (screens hosting these)

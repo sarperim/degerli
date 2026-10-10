@@ -1,6 +1,7 @@
 # TKT-mdf-001: Design — SCR-012 Admin Dashboard (visual design in design tool)
 
-- Status: todo
+- Status: blocked
+- Deferred (user, 2026-10-10): design implemented directly in the web app (no design tool). This per-domain design-artifact ticket is off the critical path; the domain's UI ticket(s) now build the screens directly against `TKT-foundation-011`. Revisit if a later design-fidelity pass is wanted.
 - Size: M
 - Scope: visual design for SCR-012 in the chosen design tool (D-UX-TOOL): one screen with eight content sections per the UX spec §3 — ops summary, quarantine review queue, coverage report, run ledger + job triggers, description review & publication, screener metric visibility, DCF baseline regeneration, aggregate stats. All §5 states (loading, access-denied, populated, in-progress monitoring w/ periodic-update indication, empty, error, mutation pending, stale-data). Export to `/design/mdf/`. Must NOT touch `/src/**`.
 - Traces to: UC-MDF-001 (alt b + ops), UC-MDF-002, UC-MDF-004, UC-MOV-005, UC-SCR-004, UC-RES-004, UC-VAL-003, UC-FDF-002/003 (screens hosting these)
