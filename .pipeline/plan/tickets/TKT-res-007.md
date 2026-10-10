@@ -1,6 +1,6 @@
 # TKT-res-007: SCR-002 Stock List UI
 
-- Status: todo
+- Status: in-review (PR https://github.com/sarperim/degerli/pull/36)
 - Size: M
 - Scope: `/src/Web` SCR-002 route per the TKT-res-001 design: full universe list (name, code, sector), sector filter + search applying together and shown as active, no-match empty state, dashboard sector-link prefill via URL params, header-search query application, row activation → stock page, filter/search/active-state preservation across navigation (draft store, M-3), disclaimer, loading/error states. Must NOT implement the global header search itself (that ships with this ticket's route contracts in the shared shell from TKT-foundation-002 — wire it here).
 - Traces to: FR-RES-001..004 (UI side); UC-RES-001 (main + alt a); NFR-RES-005
