@@ -5,9 +5,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Degerli.Ingestion.Jobs;
 
-/// <summary>What to ingest: the target trading day (UC-MDF-001 step 1). Backfill
-/// ranges extend this in TKT-mdf-007.</summary>
-public sealed record IngestionRequest(DateOnly Date);
+/// <summary>
+/// What to ingest: the target trading day (UC-MDF-001 step 1). When
+/// <see cref="BackfillFrom"/> is set the job runs in <b>backfill mode</b> (UC-MDF-002,
+/// FR-MDF-010): it asks the adapter for the historical range starting at that date and
+/// records the actual achieved depth. The admin trigger (TKT-mdf-010) carries the same
+/// <c>{backfillFrom}</c> body at the job level.
+/// </summary>
+public sealed record IngestionRequest(DateOnly Date, DateOnly? BackfillFrom = null)
+{
+    /// <summary>True when this run is a historical backfill rather than the incremental EOD ingest.</summary>
+    public bool IsBackfill => BackfillFrom is not null;
+}
 
 /// <summary>
 /// Outcome of one job run, recorded in the run ledger (<c>ingest_runs</c>).
@@ -133,13 +142,13 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         try
         {
             var result = await job.RunAsync(request, cancellationToken).ConfigureAwait(false);
-            await RecordAsync(jobCode, startedAt, result.Status, result, context, cancellationToken).ConfigureAwait(false);
+            await RecordAsync(jobCode, startedAt, result.Status, result, request, context, cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.LogError(exception, "Ingestion job {JobCode} failed", jobCode);
-            await RecordAsync(jobCode, startedAt, IngestResult.Failed, result: null, context, cancellationToken)
+            await RecordAsync(jobCode, startedAt, IngestResult.Failed, result: null, request, context, cancellationToken)
                 .ConfigureAwait(false);
             throw;
         }
@@ -150,6 +159,7 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         DateTimeOffset startedAt,
         string status,
         IngestResult? result,
+        IngestionRequest request,
         IngestionRunContext? context,
         CancellationToken cancellationToken)
     {
@@ -159,6 +169,9 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
             unchanged = result?.Unchanged ?? 0,
             quarantined = result?.Quarantined ?? 0,
             skipped = result?.Skipped ?? 0,
+            // Backfill mode is part of the run's identity (UC-MDF-002, TC-MDF-043).
+            mode = request.IsBackfill ? "backfill" : "incremental",
+            backfillFrom = request.BackfillFrom?.ToString("yyyy-MM-dd"),
             attempt = context?.Attempt,
             retries = context?.Retries,
             maxAttempts = context?.MaxAttempts,
