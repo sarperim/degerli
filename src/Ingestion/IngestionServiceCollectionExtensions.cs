@@ -134,6 +134,10 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<MetricsEngine>();
         services.AddScoped<DerivedMetricStore>();
 
+        // C3b sector medians (FR-RES-007/SD-002): the vs.-sector strip's data source.
+        services.AddScoped<SectorMedianEngine>();
+        services.AddScoped<SectorMedianStore>();
+
         // TEFAS fund ingestion (FR-FDF-001..003): its own source client, bound to the
         // funds base address, so the fund adapter never shares the prices client.
         services.Configure<TefasSourceOptions>(configuration.GetSection(TefasSourceOptions.SectionName));
@@ -181,6 +185,8 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, CorporateActionsJob>();
         services.AddScoped<IIngestJob, DisclosuresJob>();
         services.AddScoped<IIngestJob, MetricsRecomputeJob>();
+        // C3b sector medians (FR-RES-007/SD-002): the vs.-sector strip's data source.
+        services.AddScoped<IIngestJob, SectorMediansJob>();
         services.AddScoped<IIngestJob, FundNavJob>();
         services.AddScoped<IIngestJob, FundPerformanceJob>();
         services.AddScoped<IIngestJob, FundHoldingsJob>();

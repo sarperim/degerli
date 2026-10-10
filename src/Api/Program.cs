@@ -71,6 +71,10 @@ api.MapDegerliDcfScenarioEndpoints();
 // lightweight header typeahead (FR-RES-001..004).
 api.MapDegerliStockEndpoints();
 
+// Stocks module (TKT-res-003): the Overview (published description / preparing) and
+// Valuation (current multiples + adjusted history + vs.-sector strip) sections.
+api.MapDegerliStockOverviewAndValuationEndpoints();
+
 // Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();
