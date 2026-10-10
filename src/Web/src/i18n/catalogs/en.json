@@ -6,7 +6,8 @@
   "common": {
     "loading": "Loading…",
     "error": "Something went wrong",
-    "retry": "Try again"
+    "retry": "Try again",
+    "close": "Close"
   },
   "header": {
     "ariaLabel": "Site header",
@@ -81,5 +82,24 @@
       "title": "Admin Dashboard",
       "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger."
     }
+  },
+  "honestData": {
+    "asOf": "Data as of {{date}}",
+    "stale": "Stale",
+    "restated": "Restated",
+    "restatedNotice": "Figures marked with * were restated by the company; the previously reported figures are superseded.",
+    "adjusted": "Adjusted",
+    "adjustedNotice": "Historical series are adjusted for corporate actions (splits, bonus issues and rights issues).",
+    "notMeaningful": "Not meaningful",
+    "notMeaningfulTitle": "This metric is not meaningful for this stock — for example, a price/earnings ratio with negative earnings.",
+    "noDataTitle": "No data yet",
+    "noDataBody": "There is no data to display for this item.",
+    "preparingTitle": "In preparation",
+    "unavailableTitle": "Unavailable",
+    "coverageBoundary": "Available from {{date}}"
+  },
+  "disclaimer": {
+    "label": "Disclaimer",
+    "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
   }
 }

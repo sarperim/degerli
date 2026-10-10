@@ -1,6 +1,6 @@
 # TKT-foundation-011: Design system foundations (in-repo, web-first — no design tool)
 
-- Status: todo
+- Status: in-progress
 - Decision (user, 2026-10-10): **D-UX-TOOL resolved — no design tool.** Author the design-system foundations directly as in-repo code in `/src/Web` (Tailwind + shadcn/Radix primitives per architecture §5) and verify rendered behavior with chrome-devtools/Playwright. No `/design/**` export required. Resolves the prior blocker via its option (c). Design fidelity is functional-first; visual polish deferred to a later version.
 - Size: M
 - Scope: in `/src/Web` (NOT a design tool): design tokens (color, spacing, type scale covering TR + EN), core components (buttons, inputs with validation states, semantic tables, badges — stale / not-meaningful / restated / adjusted, focus-trapping dialogs/confirmations, section navigation, loading skeletons, empty/no-data states), the global shell (header with language toggle, auth-state area, stock search, primary navigation), and the informational-only disclaimer component. Delivered as working code + a component index; verified in the running app with chrome-devtools/Playwright. Must NOT touch `/src/Api`, `/src/Ingestion`, or `.github/**`.

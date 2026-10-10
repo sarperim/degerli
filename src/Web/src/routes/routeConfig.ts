@@ -40,11 +40,18 @@ export interface ScreenRoute {
   requiresAuth?: boolean
   /** Route requires the `builder` role (SCR-012). */
   builderOnly?: boolean
+  /**
+   * Whether the route is a research surface that must show the informational-only
+   * disclaimer (UXR-G-016): SCR-001..006 and SCR-011. Account screens (SCR-007..010)
+   * and the builder admin surface (SCR-012) are not research surfaces.
+   */
+  research?: boolean
 }
 
 export const APP_ROUTES: ScreenRoute[] = [
   {
     id: 'marketOverview',
+    research: true,
     screen: 'SCR-001',
     path: '/',
     titleKey: 'screens.marketOverview.title',
@@ -53,6 +60,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'stockList',
+    research: true,
     screen: 'SCR-002',
     path: '/stocks',
     titleKey: 'screens.stockList.title',
@@ -61,6 +69,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'stockPage',
+    research: true,
     screen: 'SCR-005',
     path: '/stocks/:symbol',
     titleKey: 'screens.stockPage.title',
@@ -68,6 +77,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'dcfCalculator',
+    research: true,
     screen: 'SCR-006',
     path: '/stocks/:symbol/dcf',
     titleKey: 'screens.dcfCalculator.title',
@@ -75,6 +85,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'screener',
+    research: true,
     screen: 'SCR-003',
     path: '/screener',
     titleKey: 'screens.screener.title',
@@ -83,6 +94,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'savedScreens',
+    research: true,
     screen: 'SCR-004',
     path: '/screens',
     titleKey: 'screens.savedScreens.title',
@@ -92,6 +104,7 @@ export const APP_ROUTES: ScreenRoute[] = [
   },
   {
     id: 'dcfScenarios',
+    research: true,
     screen: 'SCR-011',
     path: '/scenarios',
     titleKey: 'screens.dcfScenarios.title',
@@ -139,6 +152,9 @@ export const APP_ROUTES: ScreenRoute[] = [
     builderOnly: true,
   },
 ]
+
+/** Research surfaces that must render the informational-only disclaimer (UXR-G-016). */
+export const RESEARCH_ROUTES = APP_ROUTES.filter((route) => route.research === true)
 
 /** Routes shown in the global primary navigation, in declaration order. */
 export const NAVIGATION_ROUTES = APP_ROUTES.filter(

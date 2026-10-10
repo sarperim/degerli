@@ -6,7 +6,8 @@
   "common": {
     "loading": "Yükleniyor…",
     "error": "Bir şeyler ters gitti",
-    "retry": "Yeniden dene"
+    "retry": "Yeniden dene",
+    "close": "Kapat"
   },
   "header": {
     "ariaLabel": "Site başlığı",
@@ -81,5 +82,24 @@
       "title": "Yönetim Paneli",
       "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
     }
+  },
+  "honestData": {
+    "asOf": "Veri {{date}} itibarıyla",
+    "stale": "Bayat",
+    "restated": "Yeniden düzenlendi",
+    "restatedNotice": "* ile işaretlenen tutarlar şirket tarafından yeniden düzenlenmiştir; daha önce bildirilen tutarlar geçersizdir.",
+    "adjusted": "Düzeltilmiş",
+    "adjustedNotice": "Geçmiş seriler kurumsal işlemler (bölünme, bedelsiz ve bedelli sermaye artırımı) için düzeltilmiştir.",
+    "notMeaningful": "Anlamsız",
+    "notMeaningfulTitle": "Bu metrik bu hisse için anlamsızdır — örneğin negatif kâr ile fiyat/kazanç oranı.",
+    "noDataTitle": "Henüz veri yok",
+    "noDataBody": "Bu öğe için gösterilecek veri yok.",
+    "preparingTitle": "Hazırlanıyor",
+    "unavailableTitle": "Kullanılamıyor",
+    "coverageBoundary": "{{date}} tarihinden itibaren mevcut"
+  },
+  "disclaimer": {
+    "label": "Yasal uyarı",
+    "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
   }
 }
