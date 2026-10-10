@@ -15,6 +15,7 @@ using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Ingestion.Universe;
 using Degerli.Ingestion.Validation;
+using Degerli.Ingestion.Valuation;
 using Degerli.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -138,6 +139,16 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<SectorMedianEngine>();
         services.AddScoped<SectorMedianStore>();
 
+        // C3b DCF baseline generation (02 §5.8, UC-VAL-003): builder default rules +
+        // the job that derives dcf_baselines rows from canonical facts.
+        services.Configure<DcfBaselineOptions>(configuration.GetSection(DcfBaselineOptions.SectionName));
+        services.AddScoped<DcfBaselineGenerationJob>();
+
+        // C3b market snapshot (FR-MOV-001..006/021): nightly market aggregates + storage.
+        services.Configure<MarketSnapshotOptions>(configuration.GetSection(MarketSnapshotOptions.SectionName));
+        services.AddScoped<MarketSnapshotEngine>();
+        services.AddScoped<MarketSnapshotStore>();
+
         // TEFAS fund ingestion (FR-FDF-001..003): its own source client, bound to the
         // funds base address, so the fund adapter never shares the prices client.
         services.Configure<TefasSourceOptions>(configuration.GetSection(TefasSourceOptions.SectionName));
@@ -187,6 +198,8 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, MetricsRecomputeJob>();
         // C3b sector medians (FR-RES-007/SD-002): the vs.-sector strip's data source.
         services.AddScoped<IIngestJob, SectorMediansJob>();
+        services.AddScoped<IIngestJob, DcfBaselineGenerationJob>();
+        services.AddScoped<IIngestJob, MarketSnapshotJob>();
         services.AddScoped<IIngestJob, FundNavJob>();
         services.AddScoped<IIngestJob, FundPerformanceJob>();
         services.AddScoped<IIngestJob, FundHoldingsJob>();

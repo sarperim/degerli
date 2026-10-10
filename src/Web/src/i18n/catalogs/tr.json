@@ -101,5 +101,44 @@
   "disclaimer": {
     "label": "Yasal uyarı",
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
+  },
+  "register": {
+    "formAriaLabel": "Kayıt formu",
+    "emailLabel": "E-posta adresi",
+    "passwordLabel": "Şifre",
+    "passwordRules": "En az 10 karakter kullanın.",
+    "emailInvalid": "Geçerli bir e-posta adresi girin.",
+    "passwordInvalid": "Şifre en az {{min}} karakter olmalıdır.",
+    "consentLabel": "Gizlilik bildirimini kabul ediyorum.",
+    "consentInvalid": "Kayıt olmak için gizlilik bildirimini kabul etmelisiniz.",
+    "privacyNoticeTitle": "Gizlilik bildirimi",
+    "privacyNoticeTr": "Kişisel verileriniz, KVKK kapsamında hesap oluşturma ve araştırma çalışmanızı saklama amacıyla işlenir.",
+    "privacyNoticeEn": "Your personal data is processed under the KVKK to create your account and store your research work.",
+    "submit": "Hesap oluştur",
+    "submitting": "Hesap oluşturuluyor…",
+    "emailTaken": "Bu e-posta ile bir hesap zaten var.",
+    "signInInstead": "Bunun yerine giriş yapın",
+    "genericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "successTitle": "Giriş yaptınız",
+    "verificationSentTitle": "Doğrulama e-postası gönderildi",
+    "verificationSentBody": "{{email}} adresine bir doğrulama e-postası gönderdik. Taramaları ve DCF senaryolarını kaydetmek doğrulanmış bir e-posta gerektirir.",
+    "returnToWork": "Çalışmanıza dönün",
+    "noReturnUrl": "Piyasa genel görünümüne git"
+  },
+  "verifyEmail": {
+    "title": "E-posta doğrulama",
+    "checking": "E-postanız doğrulanıyor…",
+    "verifiedTitle": "E-postanız doğrulandı",
+    "verifiedBody": "E-posta adresiniz doğrulandı. Artık taramaları ve DCF senaryolarını kaydedebilirsiniz.",
+    "failedTitle": "Bu doğrulama bağlantısı süresi dolmuş veya geçersiz",
+    "failedBody": "Bu doğrulama bağlantısı süresi dolmuş veya geçersiz. Devam etmek için yeni bir doğrulama e-postası isteyin.",
+    "unauthenticatedTitle": "E-postanızı doğrulamak için giriş yapın",
+    "unauthenticatedBody": "Bu doğrulama bağlantısını giriş yaptığınız tarayıcıda açın veya e-posta adresinizi doğrulamaya devam etmek için giriş yapın.",
+    "signIn": "Giriş yap",
+    "resend": "Doğrulama e-postasını yeniden gönder",
+    "resending": "Gönderiliyor…",
+    "resent": "Yeni bir doğrulama e-postası gönderildi.",
+    "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
+    "backToRegister": "Kayıt sayfasına dön"
   }
 }

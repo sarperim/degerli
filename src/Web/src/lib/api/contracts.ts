@@ -99,3 +99,59 @@ export interface MacroSeries {
 export interface MacroResponse extends HonestDataEnvelope {
   series: MacroSeries[]
 }
+
+/* ------------------------------------------------------------------ *
+ * Identity (`03` §6) — TKT-acc-007 (SCR-007 register + verification).
+ * ------------------------------------------------------------------ */
+
+/** Language preference values the API accepts (`03` §6, `01` §10.6). */
+export type LanguagePref = 'tr' | 'en'
+
+/** `GET /api/v1/auth/session` — authenticated branch (`03` §6). */
+export interface AuthenticatedSession {
+  authenticated: true
+  email: string
+  /** E-mail verification gates persistence (UXR-G-030 / UXR-ACC-007). */
+  verified: boolean
+  languagePref: LanguagePref
+  role: string
+}
+
+/** `GET /api/v1/auth/session` — anonymous branch (`03` §6). */
+export interface AnonymousSession {
+  authenticated: false
+}
+
+export type SessionResponse = AuthenticatedSession | AnonymousSession
+
+/** `POST /api/v1/auth/register` request body (`03` §6). */
+export interface RegisterRequest {
+  email: string
+  password: string
+  consent: { noticeVersion: string }
+}
+
+/**
+ * `POST /api/v1/auth/register` response (`03` §6) — 201 with the created account
+ * e-mail. Registration signs the caller in, so the session is refreshed via
+ * `GET /auth/session` rather than returned in this body.
+ */
+export interface RegisterResponse {
+  email: string
+}
+
+/** `POST /api/v1/auth/verify-email` request body (`03` §6). */
+export interface VerifyEmailRequest {
+  token: string
+}
+
+/** `POST /api/v1/auth/resend-verification` response (`03` §6) — 200 `{verified}`. */
+export interface ResendVerificationResponse {
+  verified: boolean
+}
+
+/** `GET /api/v1/auth/csrf-token` response (`03` §2) — antiforgery token + header. */
+export interface CsrfTokenResponse {
+  token: string
+  headerName: string
+}

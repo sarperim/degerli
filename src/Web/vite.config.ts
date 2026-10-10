@@ -4,6 +4,19 @@ import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
+//
+// The API is a separate origin (dev stack: http://localhost:8080, `compose.dev.yml`);
+// the SPA calls it same-origin at `/api/v1` (`lib/api/client.ts` API_BASE), so dev
+// and preview proxy that prefix to the API. Without it every real-API call 404s (SF4).
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8080'
+
+const apiProxy = {
+  '/api': {
+    target: apiProxyTarget,
+    changeOrigin: true,
+  },
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -13,5 +26,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: apiProxy,
+  },
+  preview: {
+    proxy: apiProxy,
   },
 })
