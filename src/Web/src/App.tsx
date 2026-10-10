@@ -3,8 +3,19 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
-import { APP_ROUTES } from '@/routes/routeConfig'
+import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
+import { StockListPage } from '@/routes/StockListPage'
+
+/**
+ * Screen tickets replace the shared placeholder with their routed implementation.
+ * The route contracts in `routeConfig.ts` stay the source of truth; only the
+ * element for an implemented screen changes here.
+ */
+function routeElement(route: ScreenRoute) {
+  if (route.id === 'stockList') return <StockListPage />
+  return <RoutePlaceholder route={route} />
+}
 
 const router = createBrowserRouter([
   {
@@ -15,7 +26,7 @@ const router = createBrowserRouter([
       ...APP_ROUTES.map((route) => ({
         index: route.path === '/',
         path: route.path === '/' ? undefined : route.path,
-        element: <RoutePlaceholder route={route} />,
+        element: routeElement(route),
         handle: { research: route.research === true },
       })),
       {
