@@ -135,6 +135,10 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<MetricsEngine>();
         services.AddScoped<DerivedMetricStore>();
 
+        // C3b sector medians (FR-RES-007/SD-002): the vs.-sector strip's data source.
+        services.AddScoped<SectorMedianEngine>();
+        services.AddScoped<SectorMedianStore>();
+
         // C3b DCF baseline generation (02 §5.8, UC-VAL-003): builder default rules +
         // the job that derives dcf_baselines rows from canonical facts.
         services.Configure<DcfBaselineOptions>(configuration.GetSection(DcfBaselineOptions.SectionName));
@@ -192,6 +196,8 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, CorporateActionsJob>();
         services.AddScoped<IIngestJob, DisclosuresJob>();
         services.AddScoped<IIngestJob, MetricsRecomputeJob>();
+        // C3b sector medians (FR-RES-007/SD-002): the vs.-sector strip's data source.
+        services.AddScoped<IIngestJob, SectorMediansJob>();
         services.AddScoped<IIngestJob, DcfBaselineGenerationJob>();
         services.AddScoped<IIngestJob, MarketSnapshotJob>();
         services.AddScoped<IIngestJob, FundNavJob>();
