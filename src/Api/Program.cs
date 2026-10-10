@@ -64,6 +64,9 @@ api.MapDegerliMeEndpoints();
 // Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
 api.MapDegerliDcfEndpoints();
 
+// Valuation module (TKT-val-003): the anonymous DCF baseline read (`GET …/dcf`).
+api.MapDegerliDcfBaselineEndpoints();
+
 // Valuation module (TKT-val-005): per-account DCF scenario CRUD (`/me/scenarios`).
 api.MapDegerliDcfScenarioEndpoints();
 
