@@ -134,6 +134,11 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<MetricsEngine>();
         services.AddScoped<DerivedMetricStore>();
 
+        // C3b market snapshot (FR-MOV-001..006/021): nightly market aggregates + storage.
+        services.Configure<MarketSnapshotOptions>(configuration.GetSection(MarketSnapshotOptions.SectionName));
+        services.AddScoped<MarketSnapshotEngine>();
+        services.AddScoped<MarketSnapshotStore>();
+
         // TEFAS fund ingestion (FR-FDF-001..003): its own source client, bound to the
         // funds base address, so the fund adapter never shares the prices client.
         services.Configure<TefasSourceOptions>(configuration.GetSection(TefasSourceOptions.SectionName));
@@ -181,6 +186,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, CorporateActionsJob>();
         services.AddScoped<IIngestJob, DisclosuresJob>();
         services.AddScoped<IIngestJob, MetricsRecomputeJob>();
+        services.AddScoped<IIngestJob, MarketSnapshotJob>();
         services.AddScoped<IIngestJob, FundNavJob>();
         services.AddScoped<IIngestJob, FundPerformanceJob>();
         services.AddScoped<IIngestJob, FundHoldingsJob>();
