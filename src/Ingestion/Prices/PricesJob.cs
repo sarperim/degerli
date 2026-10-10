@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
@@ -10,7 +11,10 @@ namespace Degerli.Ingestion.Prices;
 /// <summary>
 /// The <c>prices</c> EOD job (FR-MDF-001, UC-MDF-001 step 1): fetch the İşbank price
 /// payload, enforce provenance and the append-only/idempotent fact-storage invariants,
-/// quarantine anything refused, and report the outcome for the run ledger.
+/// quarantine anything refused, and report the outcome for the run ledger. When the
+/// request carries a <c>backfillFrom</c> the job runs in <b>backfill mode</b>
+/// (FR-MDF-010, UC-MDF-002): it ingests the source's historical range and records the
+/// achieved depth per instrument — never fabricating rows before the source limit.
 /// </summary>
 public sealed class PricesJob : IIngestJob
 {
@@ -20,20 +24,26 @@ public sealed class PricesJob : IIngestJob
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ISourceAdapter<PricesPayload> _adapter;
+    private readonly IBackfillSourceAdapter<PricesHistoryPayload> _backfillAdapter;
     private readonly DailyPriceStore _store;
+    private readonly CoverageRecorder _coverage;
     private readonly IQuarantineService _quarantine;
     private readonly TimeProvider _clock;
     private readonly ILogger<PricesJob> _logger;
 
     public PricesJob(
         ISourceAdapter<PricesPayload> adapter,
+        IBackfillSourceAdapter<PricesHistoryPayload> backfillAdapter,
         DailyPriceStore store,
+        CoverageRecorder coverage,
         IQuarantineService quarantine,
         TimeProvider clock,
         ILogger<PricesJob> logger)
     {
         _adapter = adapter;
+        _backfillAdapter = backfillAdapter;
         _store = store;
+        _coverage = coverage;
         _quarantine = quarantine;
         _clock = clock;
         _logger = logger;
@@ -43,9 +53,16 @@ public sealed class PricesJob : IIngestJob
     public string JobCode => Code;
 
     /// <inheritdoc />
-    public async Task<IngestResult> RunAsync(
+    public Task<IngestResult> RunAsync(
         IngestionRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        request.IsBackfill
+            ? RunBackfillAsync(request, cancellationToken)
+            : RunIncrementalAsync(request, cancellationToken);
+
+    private async Task<IngestResult> RunIncrementalAsync(
+        IngestionRequest request,
+        CancellationToken cancellationToken)
     {
         SourcePayload<PricesPayload> fetched;
         try
@@ -74,6 +91,78 @@ public sealed class PricesJob : IIngestJob
             .UpsertAsync(request.Date, fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload.Items, cancellationToken)
             .ConfigureAwait(false);
 
+        var quarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
+            .ConfigureAwait(false);
+
+        var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
+        return new IngestResult(Code, outcome.Inserted, outcome.Unchanged, quarantined, status);
+    }
+
+    /// <summary>
+    /// Backfill mode (FR-MDF-010, UC-MDF-002): ingest the source's historical range and
+    /// record the actual achieved depth per instrument. The earliest row the source
+    /// returns is the real limit; rows before it are never fabricated (BR-MDF-006).
+    /// </summary>
+    private async Task<IngestResult> RunBackfillAsync(
+        IngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var requestedFrom = request.BackfillFrom!.Value;
+
+        SourcePayload<PricesHistoryPayload> fetched;
+        try
+        {
+            fetched = await _backfillAdapter.FetchBackfillAsync(requestedFrom, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SourcePayloadException exception)
+        {
+            await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
+                .ConfigureAwait(false);
+            return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
+        }
+
+        if (string.IsNullOrWhiteSpace(fetched.SourceRef))
+        {
+            _logger.LogWarning(
+                "prices: backfill payload from {From} carries no provenance (MISSING_PROVENANCE)",
+                requestedFrom);
+            await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
+                .ConfigureAwait(false);
+            return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
+        }
+
+        var rows = fetched.Payload.Rows;
+        if (rows.Count == 0)
+        {
+            _logger.LogWarning("prices: backfill from {From} returned no history", requestedFrom);
+            return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+        }
+
+        var outcome = await _store
+            .UpsertHistoryAsync(fetched.SourceRef, _clock.GetUtcNow(), rows, cancellationToken)
+            .ConfigureAwait(false);
+
+        var quarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Record the achieved depth per instrument, with a source-limit note when the
+        // requested target was not reached (UC-MDF-002 alternate a).
+        var symbols = rows.Select(r => r.Symbol).Distinct(StringComparer.Ordinal).ToList();
+        var achievedFrom = rows.Min(r => r.Date);
+        await _coverage
+            .RecordPricesCoverageAsync(symbols, requestedFrom, achievedFrom, cancellationToken)
+            .ConfigureAwait(false);
+
+        var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
+        return new IngestResult(Code, outcome.Inserted, outcome.Unchanged, quarantined, status);
+    }
+
+    private async Task<int> QuarantineOutcomeAsync(
+        IngestionRequest request,
+        string sourceRef,
+        PriceWriteResult outcome,
+        CancellationToken cancellationToken)
+    {
         var quarantined = 0;
 
         foreach (var conflict in outcome.Conflicts)
@@ -82,7 +171,7 @@ public sealed class PricesJob : IIngestJob
                 "prices: conflicting value for {Symbol} on {Date}; stored fact kept (CONFLICTING_VALUE)",
                 conflict.Symbol,
                 request.Date);
-            await QuarantineAsync(request, fetched.SourceRef, Serialize(conflict), QuarantineReason.ConflictingValue, cancellationToken)
+            await QuarantineAsync(request, sourceRef, Serialize(conflict), QuarantineReason.ConflictingValue, cancellationToken)
                 .ConfigureAwait(false);
             quarantined++;
         }
@@ -94,13 +183,12 @@ public sealed class PricesJob : IIngestJob
                 reject.Fact.Symbol,
                 request.Date,
                 reject.ReasonCode);
-            await QuarantineAsync(request, fetched.SourceRef, Serialize(reject.Fact), reject.ReasonCode, cancellationToken)
+            await QuarantineAsync(request, sourceRef, Serialize(reject.Fact), reject.ReasonCode, cancellationToken)
                 .ConfigureAwait(false);
             quarantined++;
         }
 
-        var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
-        return new IngestResult(Code, outcome.Inserted, outcome.Unchanged, quarantined, status);
+        return quarantined;
     }
 
     private Task QuarantineAsync(
