@@ -15,7 +15,7 @@ export function StockSearch() {
   const setHeaderSearch = useDraftStore((state) => state.setHeaderSearch)
 
   return (
-    <div className="relative w-full max-w-xs">
+    <div className="relative w-full sm:max-w-xs">
       <label htmlFor="header-stock-search" className="sr-only">
         {t('header.searchLabel')}
       </label>

@@ -45,6 +45,7 @@ void i18n.use(initReactI18next).init({
 
 // Per-device persistence of an anonymous language choice (UXR-G-014).
 i18n.on('languageChanged', (lng) => {
+  applyDocumentLanguage(lng)
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, lng)
@@ -52,5 +53,17 @@ i18n.on('languageChanged', (lng) => {
     // Ignore storage failures — the in-memory switch has already happened.
   }
 })
+
+/**
+ * Keep the document language in sync with the active UI language so assistive
+ * tech, spell-check and Turkish casing rules apply the right locale even after
+ * an in-place language switch (UXR-G-013/028).
+ */
+function applyDocumentLanguage(lng: string) {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = lng
+}
+
+applyDocumentLanguage(i18n.resolvedLanguage ?? DEFAULT_LANGUAGE)
 
 export default i18n

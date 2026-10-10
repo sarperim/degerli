@@ -1,0 +1,230 @@
+/*
+ * Değerli design tokens (TKT-foundation-011).
+ *
+ * The design-system foundation, authored directly as in-repo code (decision
+ * D-UX-TOOL: no design tool). Styling stays compatible with the frozen stack —
+ * Tailwind CSS v4 + shadcn/ui (Radix) — per architecture §5 / M-8.
+ *
+ * Layers:
+ *   1. Primitive palette + semantic shadcn tokens (:root, .dark).
+ *   2. Honest-data status tokens (stale / restated / adjusted / not-meaningful)
+ *      — the display vocabulary of the honest-data envelope (architecture §10.7;
+ *      UX UXR-G-007..010).
+ *   3. Spacing scale, layout widths and the TR + EN type scale.
+ *   4. The `@theme inline` bridge that exposes every token as a Tailwind utility.
+ *
+ * Typography note (TR + EN): Turkish and English share the Latin script, so one
+ * font stack serves both; the stack below falls back through fonts with full
+ * Turkish glyph coverage (İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü). Do not apply CSS
+ * `text-transform: uppercase` to Turkish copy — case mapping is locale-sensitive;
+ * when it is unavoidable, the element must carry `lang="tr"` so the browser
+ * applies Turkish casing rules (dotted/dotless i).
+ */
+
+/* 1. Primitive + semantic tokens (shadcn/ui-compatible, light) */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  /* 2. Honest-data / status tokens. Surfaces pair a soft background with a dark
+   * foreground so text and asterisks keep contrast without relying on colour
+   * alone (UXR-G-009 requires the restatement marker to be textual, not
+   * colour-only). */
+  --success: oklch(0.93 0.06 150);
+  --success-foreground: oklch(0.32 0.08 150);
+  --warning: oklch(0.94 0.09 80);
+  --warning-foreground: oklch(0.38 0.09 65);
+  --info: oklch(0.93 0.05 245);
+  --info-foreground: oklch(0.36 0.09 250);
+
+  /* stale — last-known-good data past its freshness window (UXR-G-008). */
+  --stale: oklch(0.94 0.09 80);
+  --stale-foreground: oklch(0.38 0.09 65);
+  /* restated — figures a company has restated (UXR-G-009). */
+  --restated: oklch(0.93 0.08 45);
+  --restated-foreground: oklch(0.40 0.12 40);
+  /* adjusted — corporate-action-adjusted historical series (UXR-G-010). */
+  --adjusted: oklch(0.93 0.05 245);
+  --adjusted-foreground: oklch(0.36 0.09 250);
+  /* not-meaningful — a metric with no meaningful value (UXR-RES-025). */
+  --not-meaningful: oklch(0.96 0 0);
+  --not-meaningful-foreground: oklch(0.5 0 0);
+
+  --radius: 0.625rem;
+
+  /* 3. Layout */
+  --width-content: 72rem; /* max-w-6xl; the shell content width */
+  --width-prose: 42rem;
+
+  /* Spacing scale (rem). Semantic names sit alongside Tailwind's numeric scale. */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+  /* Semantic spacing */
+  --space-gutter: 1rem; /* page horizontal gutter */
+  --space-section-y: 1.5rem; /* vertical rhythm between page sections */
+  --space-stack: 0.75rem; /* default gap between stacked controls */
+
+  /* Type scale (TR + EN). Each size carries its own line-height. */
+  --font-family-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Turkish', sans-serif;
+  --font-family-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  --font-size-caption: 0.75rem;
+  --line-height-caption: 1.35;
+  --font-size-body: 0.875rem;
+  --line-height-body: 1.5;
+  --font-size-body-lg: 1rem;
+  --line-height-body-lg: 1.55;
+  --font-size-lead: 1.125rem;
+  --line-height-lead: 1.55;
+  --font-size-h3: 1.25rem;
+  --line-height-h3: 1.35;
+  --font-size-h2: 1.5rem;
+  --line-height-h2: 1.3;
+  --font-size-h1: 1.875rem;
+  --line-height-h1: 1.2;
+  --font-size-display: 2.25rem;
+  --line-height-display: 1.15;
+}
+
+/* Dark theme token set (shadcn `.dark` convention). Not yet toggled by the app;
+ * present so a future theme switch is a class flip, not a redesign. */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.556 0 0);
+
+  --success: oklch(0.35 0.07 150);
+  --success-foreground: oklch(0.9 0.06 150);
+  --warning: oklch(0.38 0.08 75);
+  --warning-foreground: oklch(0.92 0.07 80);
+  --info: oklch(0.36 0.07 245);
+  --info-foreground: oklch(0.9 0.05 245);
+  --stale: oklch(0.38 0.08 75);
+  --stale-foreground: oklch(0.92 0.07 80);
+  --restated: oklch(0.38 0.09 45);
+  --restated-foreground: oklch(0.92 0.07 55);
+  --adjusted: oklch(0.36 0.07 245);
+  --adjusted-foreground: oklch(0.9 0.05 245);
+  --not-meaningful: oklch(0.269 0 0);
+  --not-meaningful-foreground: oklch(0.708 0 0);
+}
+
+/* 4. Expose tokens as Tailwind utilities (bg-*, text-*, border-*, font-*, text-*
+ * sizes, spacing, radii). `inline` keeps the var() indirection so the `.dark`
+ * overrides above take effect without a rebuild. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-stale: var(--stale);
+  --color-stale-foreground: var(--stale-foreground);
+  --color-restated: var(--restated);
+  --color-restated-foreground: var(--restated-foreground);
+  --color-adjusted: var(--adjusted);
+  --color-adjusted-foreground: var(--adjusted-foreground);
+  --color-not-meaningful: var(--not-meaningful);
+  --color-not-meaningful-foreground: var(--not-meaningful-foreground);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+
+  --container-content: var(--width-content);
+  --container-prose: var(--width-prose);
+
+  /* Semantic spacing only. Numeric-named spacing tokens are deliberately NOT
+   * mapped here: names like `lg`/`sm` collide with Tailwind's container scale
+   * (`max-w-lg`, `w-sm`), silently overriding them. Use the numeric spacing
+   * utilities (`p-4`, `gap-3`) or the semantic tokens below. */
+  --spacing-gutter: var(--space-gutter);
+  --spacing-section: var(--space-section-y);
+  --spacing-stack: var(--space-stack);
+
+  --text-caption: var(--font-size-caption);
+  --text-caption--line-height: var(--line-height-caption);
+  --text-body: var(--font-size-body);
+  --text-body--line-height: var(--line-height-body);
+  --text-body-lg: var(--font-size-body-lg);
+  --text-body-lg--line-height: var(--line-height-body-lg);
+  --text-lead: var(--font-size-lead);
+  --text-lead--line-height: var(--line-height-lead);
+  --text-h3: var(--font-size-h3);
+  --text-h3--line-height: var(--line-height-h3);
+  --text-h2: var(--font-size-h2);
+  --text-h2--line-height: var(--line-height-h2);
+  --text-h1: var(--font-size-h1);
+  --text-h1--line-height: var(--line-height-h1);
+  --text-display: var(--font-size-display);
+  --text-display--line-height: var(--line-height-display);
+}
