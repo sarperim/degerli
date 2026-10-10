@@ -6,8 +6,11 @@ import {
   type ApiErrorCode,
   type AuthenticatedSession,
   type AnonymousSession,
+  type CsrfTokenResponse,
   type MacroResponse,
   type ProblemDetails,
+  type RegisterResponse,
+  type ResendVerificationResponse,
   type SessionResponse,
 } from '@/lib/api/contracts'
 
@@ -163,15 +166,22 @@ export function sessionHandler(body: SessionResponse = ANONYMOUS_SESSION_FIXTURE
   return http.get(`${API_BASE}/auth/session`, () => HttpResponse.json(body))
 }
 
-/** `POST /api/v1/auth/register` handler — 201 + session (default verified user). */
+/** Deterministic antiforgery token fixture (`GET /api/v1/auth/csrf-token`, `03` §2). */
+export const CSRF_TOKEN_FIXTURE: CsrfTokenResponse = {
+  token: 'test-csrf-token',
+  headerName: 'X-CSRF-Token',
+}
+
+/** `GET /api/v1/auth/csrf-token` handler — mirrors `Program.cs` `CsrfToken`. */
+export function csrfTokenHandler() {
+  return http.get(`${API_BASE}/auth/csrf-token`, () =>
+    HttpResponse.json(CSRF_TOKEN_FIXTURE),
+  )
+}
+
+/** `POST /api/v1/auth/register` handler — 201 `{email}` (`03` §6). */
 export function registerHandler(
-  body: SessionResponse = {
-    authenticated: true,
-    email: 'new-user@example.test',
-    verified: false,
-    languagePref: 'tr',
-    role: 'user',
-  },
+  body: RegisterResponse = { email: 'new-user@example.test' },
 ) {
   return http.post(`${API_BASE}/auth/register`, () =>
     HttpResponse.json(body, { status: 201 }),
@@ -185,10 +195,11 @@ export function verifyEmailHandler() {
   )
 }
 
-/** `POST /api/v1/auth/resend-verification` handler — session-scoped benign no-op. */
-export function resendVerificationHandler() {
-  return http.post(
-    `${API_BASE}/auth/resend-verification`,
-    () => new HttpResponse(null, { status: 204 }),
+/** `POST /api/v1/auth/resend-verification` handler — 200 `{verified}`. */
+export function resendVerificationHandler(
+  body: ResendVerificationResponse = { verified: false },
+) {
+  return http.post(`${API_BASE}/auth/resend-verification`, () =>
+    HttpResponse.json(body),
   )
 }

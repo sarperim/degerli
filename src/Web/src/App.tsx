@@ -28,8 +28,10 @@ const router = createBrowserRouter([
       })),
       {
         // E-mail verification link landing, hosted by SCR-007 (UX `user-accounts.md`
-        // §2/§3.3): the external entry point from the verification e-mail.
-        path: 'register/verify',
+        // §2/§3.3): the external entry point from the verification e-mail. The path
+        // matches the API-built link `{AppUrl}/verify-email?token=…`
+        // (`src/Api/Identity/IdentityEndpoints.cs` BuildVerificationLink).
+        path: 'verify-email',
         element: <VerifyEmailScreen />,
         handle: { research: false },
       },

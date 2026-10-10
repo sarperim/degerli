@@ -59,7 +59,7 @@ describe('TC-ACC-024 — Verification landing states', () => {
   it('shows a success notice when the e-mail is verified', async () => {
     server.use(sessionHandler(), verifyEmailHandler())
 
-    renderVerify('/register/verify?token=valid-token')
+    renderVerify('/verify-email?token=valid-token')
 
     expect(await screen.findByText(tr.verifiedTitle)).toBeInTheDocument()
     expect(screen.getByText(tr.verifiedBody)).toBeInTheDocument()
@@ -74,7 +74,7 @@ describe('TC-ACC-024 — Verification landing states', () => {
     )
 
     const user = userEvent.setup()
-    renderVerify('/register/verify?token=expired-token')
+    renderVerify('/verify-email?token=expired-token')
 
     expect(await screen.findByText(tr.failedTitle)).toBeInTheDocument()
     expect(screen.getByText(tr.failedBody)).toBeInTheDocument()
@@ -83,6 +83,43 @@ describe('TC-ACC-024 — Verification landing states', () => {
     await user.click(screen.getByRole('button', { name: tr.resend }))
 
     expect(await screen.findByText(tr.resent)).toBeInTheDocument()
+  })
+
+  it('routes to sign-in (not a dead-end resend) when the link is opened without a session', async () => {
+    server.use(
+      sessionHandler(),
+      problemHandler(`${API_BASE}/auth/verify-email`, 'UNAUTHENTICATED', {
+        method: 'post',
+      }),
+    )
+
+    renderVerify('/verify-email?token=valid-token')
+
+    expect(
+      await screen.findByText(catalogValue('tr', 'verifyEmail.unauthenticatedTitle')),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: catalogValue('tr', 'verifyEmail.signIn') }),
+    ).toHaveAttribute('href', '/sign-in')
+    // Resend is session-scoped too; offering it here would dead-end (SF2).
+    expect(screen.queryByRole('button', { name: tr.resend })).not.toBeInTheDocument()
+  })
+
+  it('explains a missing token without calling the verify endpoint', async () => {
+    let verifyCalls = 0
+    server.use(
+      sessionHandler(),
+      http.post(`${API_BASE}/auth/verify-email`, () => {
+        verifyCalls += 1
+        return HttpResponse.json({ verified: true })
+      }),
+    )
+
+    renderVerify('/verify-email')
+
+    expect(await screen.findByText(tr.failedTitle)).toBeInTheDocument()
+    expect(screen.getByText(tr.failedBody)).toBeInTheDocument()
+    expect(verifyCalls).toBe(0)
   })
 
   it("clears the open session's blocked state via session-query invalidation (M-9)", async () => {
@@ -97,7 +134,7 @@ describe('TC-ACC-024 — Verification landing states', () => {
       verifyEmailHandler(),
     )
 
-    renderVerify('/register/verify?token=valid-token')
+    renderVerify('/verify-email?token=valid-token')
 
     // The session starts unverified, then the landing's verify mutation
     // invalidates ['session'] and the probe refetches the verified state.

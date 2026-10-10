@@ -131,7 +131,27 @@ export interface RegisterRequest {
   consent: { noticeVersion: string }
 }
 
+/**
+ * `POST /api/v1/auth/register` response (`03` §6) — 201 with the created account
+ * e-mail. Registration signs the caller in, so the session is refreshed via
+ * `GET /auth/session` rather than returned in this body.
+ */
+export interface RegisterResponse {
+  email: string
+}
+
 /** `POST /api/v1/auth/verify-email` request body (`03` §6). */
 export interface VerifyEmailRequest {
   token: string
+}
+
+/** `POST /api/v1/auth/resend-verification` response (`03` §6) — 200 `{verified}`. */
+export interface ResendVerificationResponse {
+  verified: boolean
+}
+
+/** `GET /api/v1/auth/csrf-token` response (`03` §2) — antiforgery token + header. */
+export interface CsrfTokenResponse {
+  token: string
+  headerName: string
 }

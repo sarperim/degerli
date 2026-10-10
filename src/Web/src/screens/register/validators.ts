@@ -9,8 +9,14 @@
 /** Password policy floor (`03` §6). */
 export const PASSWORD_MIN_LENGTH = 10
 
-/** Version of the privacy notice a consent is recorded against (BR-ACC-002). */
-export const PRIVACY_NOTICE_VERSION = '2026-10-06'
+/**
+ * Version of the privacy notice a consent is recorded against (BR-ACC-002).
+ *
+ * Must be one the API accepts (`Auth` section `NoticeVersions`, `src/Api/Identity/AuthOptions.cs`:
+ * server default and `appsettings.json` both serve `"2026-10"`); any other value is
+ * rejected 400 `VALIDATION_FAILED` `consent.noticeVersion:"unknown"`.
+ */
+export const PRIVACY_NOTICE_VERSION = '2026-10'
 
 // Pragmatic e-mail shape check; the server owns the authoritative validation.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -21,6 +27,16 @@ export function isValidEmail(value: string): boolean {
 
 export function isValidPassword(value: string): boolean {
   return value.length >= PASSWORD_MIN_LENGTH
+}
+
+/**
+ * True when `value` is a site-relative path safe to use as an in-app link target
+ * (SF3): it must start with a single `/`. `//host` and `/\host` are rejected —
+ * the URL parser treats both as the start of a new authority, so following them
+ * would navigate cross-origin (`?returnUrl` is attacker-controllable).
+ */
+export function isSiteRelativePath(value: string): boolean {
+  return /^\/(?![/\\])/.test(value)
 }
 
 export interface RegistrationInput {

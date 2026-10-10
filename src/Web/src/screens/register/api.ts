@@ -3,7 +3,8 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { apiFetch } from '@/lib/api/client'
 import type {
   RegisterRequest,
-  SessionResponse,
+  RegisterResponse,
+  ResendVerificationResponse,
   VerifyEmailRequest,
 } from '@/lib/api/contracts'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
@@ -22,20 +23,20 @@ export interface RegisterVariables {
   noticeVersion: string
 }
 
-export function registerUser(variables: RegisterVariables): Promise<SessionResponse> {
+export function registerUser(variables: RegisterVariables): Promise<RegisterResponse> {
   const body: RegisterRequest = {
     email: variables.email,
     password: variables.password,
     consent: { noticeVersion: variables.noticeVersion },
   }
-  return apiFetch<SessionResponse>('/auth/register', {
+  return apiFetch<RegisterResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(body),
   })
 }
 
 export function useRegister(): UseMutationResult<
-  SessionResponse,
+  RegisterResponse,
   Error,
   RegisterVariables
 > {
@@ -66,10 +67,16 @@ export function useVerifyEmail(): UseMutationResult<void, Error, string> {
   })
 }
 
-export function resendVerification(): Promise<void> {
-  return apiFetch<void>('/auth/resend-verification', { method: 'POST' })
+export function resendVerification(): Promise<ResendVerificationResponse> {
+  return apiFetch<ResendVerificationResponse>('/auth/resend-verification', {
+    method: 'POST',
+  })
 }
 
-export function useResendVerification(): UseMutationResult<void, Error, void> {
+export function useResendVerification(): UseMutationResult<
+  ResendVerificationResponse,
+  Error,
+  void
+> {
   return useMutation({ mutationFn: resendVerification })
 }
