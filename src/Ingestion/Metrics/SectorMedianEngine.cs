@@ -76,6 +76,10 @@ public sealed class SectorMedianEngine
                 .OrderBy(value => value)
                 .ToList();
 
+            // `values` is the meaningful peer set; `group` also carries same-day rows whose
+            // value is NULL (not-meaningful, excluded). A peer with no derived_metrics row at
+            // all never joins here, so it contributes to neither count — deliberate: the
+            // strip discloses the peers that were *assessed* (UXR-RES-024/025).
             results.Add(new SectorMedianResult(
                 group.Key.InstrumentSectorId,
                 group.Key.MetricCode,

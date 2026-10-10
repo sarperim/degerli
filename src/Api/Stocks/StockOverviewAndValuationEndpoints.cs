@@ -17,8 +17,9 @@ namespace Degerli.Api.Stocks;
 /// <c>404</c>, never a leaked draft (FR-RES-026, BR-RES-002/003).</item>
 /// <item><c>GET /api/v1/stocks/{symbol}/valuation</c> — the current canonical multiples
 /// (read from <c>derived_metrics</c>, never computed here — BR-RES-004), the
-/// corporate-action-adjusted historical price series (<c>adjusted: true</c>,
-/// FR-RES-006/018), and the vs.-sector strip over <c>sector_metric_medians</c>
+/// corporate-action-adjusted historical price series with an honest <c>adjusted</c> flag
+/// (true only when the served rows carry <c>close_adjusted</c>; FR-RES-006/018), and the
+/// vs.-sector strip over <c>sector_metric_medians</c>
 /// (<c>{value, notMeaningful, sectorMedian, peerCount, excludedCount}</c>;
 /// FR-RES-007/SD-002, UXR-RES-024/025).</item>
 /// </list>
@@ -93,8 +94,8 @@ public static class StockOverviewAndValuationEndpoints
     // ── Valuation ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The Valuation section (TC-RES-007/008, TC-MDF-030): current multiples, the adjusted
-    /// historical price series, and the vs.-sector strip.
+    /// The Valuation section (TC-RES-007/008, TC-MDF-030): current multiples, the historical
+    /// price series with its honest <c>adjusted</c> basis flag, and the vs.-sector strip.
     /// </summary>
     private static async Task<IResult> ValuationAsync(
         string symbol,
@@ -126,8 +127,9 @@ public static class StockOverviewAndValuationEndpoints
             .ToListAsync(cancellationToken);
         var current = metricRows.ToDictionary(row => row.MetricCode, row => row.Value, StringComparer.Ordinal);
 
-        // Historical price series on the corporate-action-adjusted basis (BR-MDF-010);
-        // raw and adjusted coexist so a later action never fabricates a cliff.
+        // Historical price series (BR-MDF-010); raw and adjusted coexist so a later
+        // action never fabricates a cliff. `closeAdjusted` is served as stored — never
+        // coalesced to raw — so the payload does not present a raw close as an adjusted one.
         var series = await db.DailyPrices
             .Where(price => price.InstrumentId == instrument.Id)
             .OrderBy(price => price.PriceDate)
@@ -135,9 +137,16 @@ public static class StockOverviewAndValuationEndpoints
             {
                 date = price.PriceDate,
                 closeRaw = price.CloseRaw,
-                closeAdjusted = price.CloseAdjusted ?? price.CloseRaw,
+                closeAdjusted = price.CloseAdjusted,
             })
             .ToListAsync(cancellationToken);
+
+        // The served payload states which basis it carries (`02` §1.4, M-1/`03` §1.2): the
+        // series is on the adjusted basis only when every served row actually carries
+        // close_adjusted. When the adjusted column is absent (as today's ingestion writes
+        // raw only), serve the rows as-is and flag `adjusted: false` — never assert an
+        // adjusted basis over raw data (BR-MDF-010).
+        var adjusted = series.Count > 0 && series.All(row => row.closeAdjusted is not null);
 
         // The vs.-sector strip: the stock's own current value next to its sector median,
         // with peer/exclusion counts (UXR-RES-024/025, FU §11.4).
@@ -177,7 +186,7 @@ public static class StockOverviewAndValuationEndpoints
                 code => code,
                 code => current.TryGetValue(code, out var metricValue) ? metricValue : (decimal?)null,
                 StringComparer.Ordinal),
-            historical = new { adjusted = true, series },
+            historical = new { adjusted, series },
             strip,
         });
     }
