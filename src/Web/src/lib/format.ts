@@ -15,3 +15,43 @@ export function formatAsOfDate(locale: string, isoDate: string): string {
     return isoDate
   }
 }
+
+/** Locale-grouped number (e.g. `174.500.000`), falling back to the raw value. */
+export function formatNumber(
+  locale: string,
+  value: number,
+  options: Intl.NumberFormatOptions = {},
+): string {
+  try {
+    return new Intl.NumberFormat(locale, options).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * A signed percentage for a daily change (the payload's `changePct` is already a
+ * percentage, e.g. `2.00` → `+2,00%` in TR). The explicit sign is what conveys
+ * direction non-colour-only (UXR-MOV-001/003/004, SCR-001 §9).
+ */
+export function formatSignedPercent(locale: string, value: number): string {
+  const digits = formatNumber(locale, value, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    signDisplay: 'always',
+  })
+  return `${digits}%`
+}
+
+/** A stored ratio (e.g. `0.011225`) rendered as a percentage (`1,12%`). */
+export function formatRatioPercent(locale: string, value: number): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'percent',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return `${value}`
+  }
+}

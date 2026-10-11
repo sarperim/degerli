@@ -130,6 +130,44 @@
     "label": "Yasal uyarı",
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
   },
+  "marketOverview": {
+    "moverLinkLabel": "{{symbol}} — {{change}} değişim, hacim {{volume}}",
+    "errorTitle": "Bu bölüm yüklenemedi",
+    "errorBody": "Bu bölüm yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    "blocks": {
+      "indices": {
+        "title": "Endeksler",
+        "xu100": "BIST 100",
+        "xu30": "BIST 30"
+      },
+      "sectors": {
+        "title": "Sektör performansı",
+        "linkLabel": "{{sector}} sektörü — hisse listesini aç"
+      },
+      "breadth": {
+        "title": "Piyasa genişliği",
+        "advancing": "Yükselen",
+        "declining": "Düşen",
+        "unchanged": "Değişmeyen"
+      },
+      "movers": {
+        "title": "En çok hareket edenler",
+        "gainers": "Yükselenler",
+        "losers": "Düşenler",
+        "empty": "Gösterilecek hareket eden hisse yok."
+      },
+      "volume": {
+        "title": "Piyasa hacmi",
+        "label": "Toplam işlem hacmi"
+      },
+      "valuation": {
+        "title": "Piyasa değerlemesi",
+        "marketPe": "Piyasa F/K",
+        "marketDivYield": "Piyasa temettü verimi",
+        "exclusion": "Kayıp açıklayan {{count}} şirket piyasa F/K toplamının dışında tutulmuştur."
+      }
+    }
+  },
   "register": {
     "formAriaLabel": "Kayıt formu",
     "emailLabel": "E-posta adresi",

@@ -7,6 +7,7 @@ import { RouteError } from '@/components/RouteError'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
+import { MarketOverviewPage } from '@/routes/MarketOverviewPage'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
 import { StockListPage } from '@/routes/StockListPage'
 
@@ -16,6 +17,7 @@ import { StockListPage } from '@/routes/StockListPage'
  * only the element for an implemented screen changes here.
  */
 const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
+  marketOverview: <MarketOverviewPage />,
   stockList: <StockListPage />,
   register: <RegisterScreen />,
 }

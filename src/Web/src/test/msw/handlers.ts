@@ -8,6 +8,7 @@ import {
   type AnonymousSession,
   type CsrfTokenResponse,
   type MacroResponse,
+  type MarketOverviewResponse,
   type ProblemDetails,
   type RegisterResponse,
   type ResendVerificationResponse,
@@ -135,6 +136,55 @@ export function problemHandler(
 /** `GET /api/v1/market/macro` handler, typed against `MacroResponse`. */
 export function marketMacroHandler(body: MacroResponse = FRESH_MACRO_FIXTURE) {
   return http.get(`${API_BASE}/market/macro`, () => HttpResponse.json(body))
+}
+
+/**
+ * Deterministic market-overview fixture derived from the FU §11.3 snapshot
+ * goldens (indices, breadth, volume, market P/E + excluded count, dividend
+ * yield, gainers/losers with volumes, cap-weighted sector performance).
+ */
+export const MARKET_OVERVIEW_FIXTURE: MarketOverviewResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  state: 'available',
+  indices: {
+    xu100: { level: 10200, changePct: 2 },
+    xu30: { level: 30600, changePct: 2 },
+  },
+  breadth: { advancing: 10, declining: 5, unchanged: 1 },
+  volumeTotal: 174_500_000,
+  marketPe: 28.1218,
+  marketPeExcludedCount: 2,
+  marketDivYield: 0.011225,
+  gainers: [
+    { symbol: 'ETA', changePct: 10, volume: 2_000_000 },
+    { symbol: 'NEWP', changePct: 4, volume: 1_500_000 },
+    { symbol: 'ZETA', changePct: 3, volume: 1_200_000 },
+    { symbol: 'KAPPA', changePct: 2.5, volume: 1_100_000 },
+    { symbol: 'EPSL', changePct: 1.9888, volume: 1_050_000 },
+    { symbol: 'PART', changePct: 1.5022, volume: 1_300_000 },
+    { symbol: 'REST', changePct: 1.2151, volume: 1_400_000 },
+    { symbol: 'ALFA', changePct: 1.0101, volume: 3_000_000 },
+    { symbol: 'DELTA', changePct: 0.5025, volume: 1_600_000 },
+  ],
+  losers: [
+    { symbol: 'THETA', changePct: -10, volume: 2_100_000 },
+    { symbol: 'IOTA', changePct: -2.9126, volume: 1_700_000 },
+    { symbol: 'BETA', changePct: -1.9608, volume: 1_800_000 },
+    { symbol: 'GAMA', changePct: -1.2346, volume: 1_900_000 },
+    { symbol: 'UNSEC', changePct: -0.4425, volume: 1_000_000 },
+  ],
+  sectorPerformance: { A: 0.253, B: 2.2409, C: 4.1726 },
+}
+
+/**
+ * `GET /api/v1/market/overview` handler. The block discriminator query param is
+ * ignored (the endpoint always serves the whole snapshot), mirroring the server.
+ */
+export function marketOverviewHandler(
+  body: MarketOverviewResponse = MARKET_OVERVIEW_FIXTURE,
+) {
+  return http.get(`${API_BASE}/market/overview`, () => HttpResponse.json(body))
 }
 
 /**

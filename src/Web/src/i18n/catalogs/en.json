@@ -130,6 +130,44 @@
     "label": "Disclaimer",
     "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
   },
+  "marketOverview": {
+    "moverLinkLabel": "{{symbol}} — {{change}} change, volume {{volume}}",
+    "errorTitle": "This section could not be loaded",
+    "errorBody": "Something went wrong while loading this section. Please try again.",
+    "blocks": {
+      "indices": {
+        "title": "Indices",
+        "xu100": "BIST 100",
+        "xu30": "BIST 30"
+      },
+      "sectors": {
+        "title": "Sector performance",
+        "linkLabel": "{{sector}} sector — open the stock list"
+      },
+      "breadth": {
+        "title": "Market breadth",
+        "advancing": "Advancing",
+        "declining": "Declining",
+        "unchanged": "Unchanged"
+      },
+      "movers": {
+        "title": "Top movers",
+        "gainers": "Gainers",
+        "losers": "Losers",
+        "empty": "There are no movers to show."
+      },
+      "volume": {
+        "title": "Market volume",
+        "label": "Total traded volume"
+      },
+      "valuation": {
+        "title": "Market valuation",
+        "marketPe": "Market P/E",
+        "marketDivYield": "Market dividend yield",
+        "exclusion": "{{count}} loss-making companies are excluded from the market P/E aggregate."
+      }
+    }
+  },
   "register": {
     "formAriaLabel": "Registration form",
     "emailLabel": "E-mail address",
