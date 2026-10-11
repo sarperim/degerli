@@ -1,6 +1,6 @@
 # TKT-foundation-012: Stabilize the Serilog test-sink harness (fix flaky HarnessSampleTests)
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/40
 - Size: S
 - Scope: `tests/Api.IntegrationTests/Harness/HarnessSampleTests.cs` (and, only if needed, `tests/Api.IntegrationTests/Harness/InMemorySerilogSink.cs` or `DegerliAppFactory.cs`): make `Serilog_test_sink_captures_application_logs` deterministic by **waiting for the request-logging event with a bounded timeout** instead of a single immediate check. Optionally reduce host-boot parallelism for factory-booting classes so the runner is not booting many in-process hosts at once. Must NOT change product code (`/src/**`) and must NOT weaken any existing assertion.
