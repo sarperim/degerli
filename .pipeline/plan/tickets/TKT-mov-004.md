@@ -1,6 +1,7 @@
 # TKT-mov-004: Public market endpoints
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/42
 - Size: M
 - Scope: `/src/Api` market module: `GET /api/v1/market/overview` (one snapshot row, honest envelope, anonymous) and `GET /api/v1/market/macro` (six series with per-series as-of/stale/state; inflation pair always both entries) — separate endpoints because equity and macro have separate failure domains; caching headers per `03` §13. Must NOT touch snapshot computation or the dashboard UI.
 - Traces to: FR-MOV-007..010; UC-MOV-001, UC-MOV-003; BR-MOV-002, BR-MOV-007

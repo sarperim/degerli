@@ -1,6 +1,7 @@
 using Degerli.Api.Admin;
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
+using Degerli.Api.Market;
 using Degerli.Api.Screener;
 using Degerli.Api.Stocks;
 using Degerli.Api.Valuation;
@@ -86,6 +87,10 @@ api.MapDegerliStockFundamentalsEndpoints();
 // Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();
+
+// Market module (TKT-mov-004): the public dashboard reads (FR-MOV-001..010/021;
+// UC-MOV-001/003) — equity blocks and the macro strip as separate endpoints.
+api.MapDegerliMarketEndpoints();
 
 var admin = api.MapDegerliAdminEndpoints();
 
