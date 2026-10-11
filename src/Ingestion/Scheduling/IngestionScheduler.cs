@@ -278,9 +278,9 @@ public sealed class IngestionScheduler
             new IngestionAlert(
                 JobCode: target,
                 ReasonCode: "RETRIES_EXHAUSTED",
-                Subject: $"Degerli alert: scheduled run for {run.TradingDate:yyyy-MM-dd} failed after {attempts} attempts",
-                BodyTr: $"Planlı veri işi {run.TradingDate:yyyy-MM-dd} için {attempts} denemede tamamlanamadı; son bilinen iyi veri sunulmaya devam ediyor.",
-                BodyEn: $"The scheduled data run for {run.TradingDate:yyyy-MM-dd} failed after {attempts} attempts; last-known-good data continues to be served.",
+                Subject: $"Degerli alert: {target} scheduled run for {run.TradingDate:yyyy-MM-dd} failed after {attempts} attempts",
+                BodyTr: $"{target} planlı veri işi {run.TradingDate:yyyy-MM-dd} için {attempts} denemede tamamlanamadı; son bilinen iyi veri sunulmaya devam ediyor.",
+                BodyEn: $"The scheduled data run for {target} on {run.TradingDate:yyyy-MM-dd} failed after {attempts} attempts; last-known-good data continues to be served.",
                 SourceRef: null),
             cancellationToken);
     }
