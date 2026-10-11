@@ -1,6 +1,6 @@
 # TKT-mov-005: SCR-001 UI — equity blocks, navigation & disclaimer
 
-- Status: todo
+- Status: blocked — L4 acceptance preconditions unmet outside `/src/Web` scope. PR https://github.com/sarperim/degerli/pull/47 is open with the SCR-001 route implemented (74 web tests, typecheck/lint/i18n/build green), but the 5 value-bearing e2e TCs (TC-MOV-016/019/020/021) cannot pass: the seeded `compose.ci` stack has no `market_snapshots` row (fixture universe TKT-foundation-007 seeds prices/index/macro only; nothing runs the snapshot job TKT-mov-003), so `GET /api/v1/market/overview` returns `state:"unavailable"` and the admin trigger targets wall-clock day, not the fixture anchor. Needs a human routing decision: seed the snapshot in `fixtures/` `FixtureSeedEntry.RunAsync` (upstream defect against foundation-007/mov-003) — maintainer call.
 - Size: M
 - Scope: `/src/Web` SCR-001 route per the TKT-mov-001 design: index levels, sector performance (entries → Stock List pre-filtered), breadth, top movers with volume (entries → stock pages), market volume, market valuation with loss-maker exclusion disclosure, screener/stock-list navigation, informational-only disclaimer, per-block independent load/fail/retry (M-5), as-of dates, loading skeletons, data-as-of + TR default. Must NOT implement the macro strip (TKT-mov-006).
 - Traces to: FR-MOV-001..006, FR-MOV-011..013, FR-MOV-020, FR-MOV-021 (UI side); UC-MOV-001, UC-MOV-004
