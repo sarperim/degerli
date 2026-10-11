@@ -88,6 +88,10 @@ api.MapDegerliStockFundamentalsEndpoints();
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();
 
+// Screener module (TKT-scr-004): per-account saved-screen CRUD (FR-SCR-007..011;
+// UC-SCR-002/003). Mutations require a verified e-mail; reads require auth only.
+api.MapDegerliSavedScreenEndpoints();
+
 // Market module (TKT-mov-004): the public dashboard reads (FR-MOV-001..010/021;
 // UC-MOV-001/003) — equity blocks and the macro strip as separate endpoints.
 api.MapDegerliMarketEndpoints();
