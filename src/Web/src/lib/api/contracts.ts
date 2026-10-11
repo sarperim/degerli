@@ -170,6 +170,20 @@ export interface RegisterResponse {
   email: string
 }
 
+/** `POST /api/v1/auth/login` request body (`03` §6). */
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+/**
+ * `POST /api/v1/auth/login` response (`03` §6) — 200 with the session cookie and
+ * the account's stored language preference, applied client-side (UXR-ACC-009).
+ */
+export interface LoginResponse {
+  languagePref: LanguagePref
+}
+
 /** `POST /api/v1/auth/verify-email` request body (`03` §6). */
 export interface VerifyEmailRequest {
   token: string
