@@ -78,6 +78,10 @@ api.MapDegerliStockEndpoints();
 // Valuation (current multiples + adjusted history + vs.-sector strip) sections.
 api.MapDegerliStockOverviewAndValuationEndpoints();
 
+// Stocks module (TKT-res-004): the Financials, Profitability, Growth, Balance-sheet
+// and Dividends sections (FR-RES-008..012/014..016/027).
+api.MapDegerliStockFundamentalsEndpoints();
+
 // Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();
