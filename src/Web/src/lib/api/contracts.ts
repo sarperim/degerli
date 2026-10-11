@@ -185,3 +185,98 @@ export interface CsrfTokenResponse {
   token: string
   headerName: string
 }
+
+/* ------------------------------------------------------------------ *
+ * Screener (`03` §4) — TKT-scr-006 (SCR-003 criteria builder + run + save).
+ * ------------------------------------------------------------------ */
+
+/** The five metric families the criteria builder groups by (UXR-SCR-001). */
+export type MetricFamily =
+  | 'valuation'
+  | 'quality'
+  | 'growth'
+  | 'financial_health'
+  | 'dividends'
+
+/** One screenable metric in the builder catalog (`GET /screener/metrics`). */
+export interface CatalogMetric {
+  metricCode: string
+  /** Display unit: `%` metrics carry values as fractions (0.15 = 15%). */
+  unit: string
+  labelTr: string
+  labelEn: string
+  /** Growth metrics require a CAGR window (FR-SCR-015). */
+  isCagr: boolean
+  sortOrder: number
+}
+
+export interface MetricFamilyGroup {
+  family: MetricFamily
+  metrics: CatalogMetric[]
+}
+
+/** `GET /api/v1/screener/metrics` — visible catalog only (UXR-SCR-011). */
+export interface MetricCatalogResponse {
+  families: MetricFamilyGroup[]
+}
+
+/** Bound type for one criterion (FR-SCR-003). */
+export type CriterionBound = 'min' | 'max' | 'range'
+
+/** The selectable CAGR windows (BR-SCR-005). */
+export type CagrWindow = 3 | 5 | 10
+
+/**
+ * One criterion on the wire (`03` §4). Values are canonical: `%`-unit metrics are
+ * fractions (0.15), ratio metrics are raw (15). The UI converts percentage-point
+ * input to fractions at this boundary.
+ */
+export interface ScreenerCriterion {
+  metricCode: string
+  bound: CriterionBound
+  minValue?: number
+  maxValue?: number
+  window?: CagrWindow
+}
+
+/** `POST /api/v1/screener/run` request body (`03` §4). */
+export interface ScreenerRunRequest {
+  criteria: ScreenerCriterion[]
+}
+
+/** One matching stock row; `values` is keyed by the concept metric code. */
+export interface ScreenerRunRow {
+  symbol: string
+  name: string
+  sector: string | null
+  values: Record<string, number | null>
+}
+
+/** `POST /api/v1/screener/run` response (`03` §4). Emptiness is data, not an error. */
+export interface ScreenerRunResponse extends HonestDataEnvelope {
+  matchCount: number
+  excludedCount: number
+  /** Metrics dropped from a re-run because they are no longer offered. */
+  droppedCriteria: string[]
+  rows: ScreenerRunRow[]
+}
+
+/** A saved screen as served by the `/me/screens` endpoints (`03` §4). */
+export interface SavedScreen {
+  id: number
+  name: string
+  criteria: ScreenerCriterion[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** `GET /api/v1/me/screens` response (`03` §4). */
+export interface SavedScreenListResponse {
+  screens: SavedScreen[]
+}
+
+/** `POST /api/v1/me/screens` request body (`03` §4). */
+export interface SaveScreenRequest {
+  name: string
+  criteria: ScreenerCriterion[]
+}

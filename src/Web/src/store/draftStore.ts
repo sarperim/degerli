@@ -25,6 +25,8 @@ export type StockPageSection =
 export interface DraftState {
   /** SCR-003 criteria builder draft (owned by the stock-screening tickets). */
   screenerDraft: unknown | null
+  /** SCR-003 last run result, kept so results survive navigation (UXR-G-021). */
+  screenerResult: unknown | null
   /** SCR-003 unsaved screen name. */
   screenerDraftName: string
   /** SCR-006 DCF assumptions draft (owned by the valuation tickets). */
@@ -44,6 +46,7 @@ export interface DraftState {
   returnUrl: string | null
 
   setScreenerDraft: (draft: unknown | null) => void
+  setScreenerResult: (result: unknown | null) => void
   setScreenerDraftName: (name: string) => void
   setDcfDraft: (draft: unknown | null) => void
   setDcfDraftName: (name: string) => void
@@ -56,6 +59,7 @@ export interface DraftState {
 
 const initialDraftState = {
   screenerDraft: null,
+  screenerResult: null,
   screenerDraftName: '',
   dcfDraft: null,
   dcfDraftName: '',
@@ -70,6 +74,7 @@ export const useDraftStore = create<DraftState>()(
     (set) => ({
       ...initialDraftState,
       setScreenerDraft: (draft) => set({ screenerDraft: draft }),
+      setScreenerResult: (screenerResult) => set({ screenerResult }),
       setScreenerDraftName: (screenerDraftName) => set({ screenerDraftName }),
       setDcfDraft: (draft) => set({ dcfDraft: draft }),
       setDcfDraftName: (dcfDraftName) => set({ dcfDraftName }),

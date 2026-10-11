@@ -6,6 +6,7 @@ import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
+import { ScreenerScreen } from '@/screens/screener/ScreenerScreen'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
 import { StockListPage } from '@/routes/StockListPage'
@@ -18,6 +19,7 @@ import { StockListPage } from '@/routes/StockListPage'
 const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   stockList: <StockListPage />,
   register: <RegisterScreen />,
+  screener: <ScreenerScreen />,
 }
 
 const router = createBrowserRouter([
