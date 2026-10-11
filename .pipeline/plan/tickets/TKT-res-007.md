@@ -1,7 +1,7 @@
 # TKT-res-007: SCR-002 Stock List UI
 
-- Status: blocked
-- Blocker (2026-10-10): review-lead returned ESCALATED on PR #36. The PR content is clean (full review passed), but CI is red on the pre-existing flaky `HarnessSampleTests.Serilog_test_sink_captures_application_logs` (TKT-foundation-006 harness) — unattributable to this web-only PR — and that failure skips the E2E job where this ticket's pinned TC-RES-035/036 run. The red-CI fixer dispatch disputed the fix as out-of-scope (backend vs web-only). **Unblocked by TKT-foundation-012** (stabilize the Serilog test-sink harness); once that merges, re-run PR #36 CI and merge. Artifact: `.pipeline/plan/reviews/TKT-res-007-round-1.md`.
+- Status: in-review (PR #36 — mergeable, held per builder "no merge")
+- Resolution (2026-10-11): the blocking flake was fixed by TKT-foundation-012 (PR #40, merged); PR #36's branch was updated to include it (head `fc992f2`) and review-lead re-gated **MERGEABLE** — CI green (Backend/E2E/Web), pinned TC-RES-022/035/036 executing in CI. Held unmerged at the builder's explicit instruction; merge PR #36 to finalize. Artifacts: `reviews/TKT-res-007-round-1.md` (escalation), `-round-2.md` (MERGEABLE).
 - Size: M
 - Scope: `/src/Web` SCR-002 route per the TKT-res-001 design: full universe list (name, code, sector), sector filter + search applying together and shown as active, no-match empty state, dashboard sector-link prefill via URL params, header-search query application, row activation → stock page, filter/search/active-state preservation across navigation (draft store, M-3), disclaimer, loading/error states. Must NOT implement the global header search itself (that ships with this ticket's route contracts in the shared shell from TKT-foundation-002 — wire it here).
 - Traces to: FR-RES-001..004 (UI side); UC-RES-001 (main + alt a); NFR-RES-005
