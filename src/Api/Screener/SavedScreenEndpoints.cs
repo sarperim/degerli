@@ -29,6 +29,9 @@ namespace Degerli.Api.Screener;
 /// </summary>
 public static class SavedScreenEndpoints
 {
+    /// <summary>Sane upper bound on a screen name; the column is unbounded <c>text</c>.</summary>
+    private const int MaxNameLength = 100;
+
     public static IEndpointRouteBuilder MapDegerliSavedScreenEndpoints(this IEndpointRouteBuilder api)
     {
         var screens = api.MapGroup("/me/screens");
@@ -110,6 +113,10 @@ public static class SavedScreenEndpoints
             if (string.IsNullOrEmpty(name))
             {
                 fields.Add(new ScreenerCriteria.ValidationField("name", "required"));
+            }
+            else if (name.Length > MaxNameLength)
+            {
+                fields.Add(new ScreenerCriteria.ValidationField("name", "too_long"));
             }
 
             var catalog = await LoadCatalogAsync(db, cancellationToken);
@@ -221,6 +228,10 @@ public static class SavedScreenEndpoints
                 {
                     fields.Add(new ScreenerCriteria.ValidationField("name", "required"));
                 }
+                else if (newName.Length > MaxNameLength)
+                {
+                    fields.Add(new ScreenerCriteria.ValidationField("name", "too_long"));
+                }
             }
 
             var hasCriteria = root.TryGetProperty("criteria", out var criteriaElement);
@@ -246,6 +257,7 @@ public static class SavedScreenEndpoints
                 return Validation(fields);
             }
 
+            var changed = false;
             if (hasName && newName != screen.Name)
             {
                 var collision = await db.SavedScreens.AnyAsync(
@@ -257,14 +269,24 @@ public static class SavedScreenEndpoints
                 }
 
                 screen.Name = newName!;
+                changed = true;
             }
 
             if (hasCriteria)
             {
-                screen.CriteriaJson = criteriaElement.GetRawText();
+                var criteriaJson = criteriaElement.GetRawText();
+                if (criteriaJson != screen.CriteriaJson)
+                {
+                    screen.CriteriaJson = criteriaJson;
+                    changed = true;
+                }
             }
 
-            screen.UpdatedAt = clock.GetUtcNow();
+            // Only a real change bumps updated_at (TC-SCR-015); a no-op PATCH is a no-op.
+            if (changed)
+            {
+                screen.UpdatedAt = clock.GetUtcNow();
+            }
             try
             {
                 await db.SaveChangesAsync(cancellationToken);

@@ -211,7 +211,9 @@ public sealed class SavedScreenEndpointTests : IClassFixture<PostgresFixture>
             var screen = await ReadScreenAsync(renamed);
             Assert.Equal(idA, screen.Id);
             Assert.Equal("A2", screen.Name);
-            Assert.True(screen.UpdatedAt >= screen.CreatedAt);
+            Assert.True(
+                screen.UpdatedAt > screen.CreatedAt,
+                $"expected rename to bump updated_at above {screen.CreatedAt:o} but was {screen.UpdatedAt:o}");
         }
 
         // Rename to an existing name → 409 DUPLICATE_NAME, previous name retained.
@@ -225,8 +227,10 @@ public sealed class SavedScreenEndpointTests : IClassFixture<PostgresFixture>
         using (var list = await GetScreensAsync(client))
         {
             var names = await NamesAsync(list);
+            // Screen B kept its name after the rejected collision; screen A holds the
+            // single "A2" (the collision did not overwrite or duplicate it).
             Assert.Contains("B", names);
-            Assert.DoesNotContain("B2", names);
+            Assert.Equal(1, names.Count(n => n == "A2"));
         }
 
         // Empty name → 400.

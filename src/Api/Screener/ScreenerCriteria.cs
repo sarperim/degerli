@@ -5,12 +5,14 @@ using Degerli.Core.Metrics;
 namespace Degerli.Api.Screener;
 
 /// <summary>
-/// Shared criterion parsing/validation for the screener (`03-api-design.md` §4). A
-/// criterion references a metric the builder currently offers (unknown/hidden →
-/// <c>metric_not_available</c>), carries a well-formed bound, and — for growth metrics
-/// only — one of the selectable CAGR windows (BR-SCR-005, I-SCR-4). This lives in one
-/// place so a saved screen is validated exactly like an ad-hoc run: both reject the
-/// same malformed payloads with the same <c>params.fields[]</c> detail (TC-SCR-016).
+/// Criterion parsing/validation used by the saved-screen endpoints
+/// (`03-api-design.md` §4). A criterion references a metric the builder currently
+/// offers (unknown/hidden → <c>metric_not_available</c>), carries a well-formed bound,
+/// and — for growth metrics only — one of the selectable CAGR windows (BR-SCR-005,
+/// I-SCR-4). This is a deliberate mirror of the run endpoint's parser so a saved
+/// screen is validated exactly like an ad-hoc run: both reject the same malformed
+/// payloads with the same <c>params.fields[]</c> detail (TC-SCR-016). It is kept
+/// separate so TKT-scr-004 leaves the run endpoint core untouched.
 /// </summary>
 internal static class ScreenerCriteria
 {

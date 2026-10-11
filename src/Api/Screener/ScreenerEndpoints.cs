@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
+using Degerli.Core.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +28,9 @@ public static class ScreenerEndpoints
 {
     /// <summary>The index code whose current constituents form the covered universe.</summary>
     private const string UniverseIndexCode = "XU100";
+
+    /// <summary>The nominal CAGR windows selectable per growth criterion (FR-SCR-015).</summary>
+    private static readonly IReadOnlySet<int> CagrWindows = new HashSet<int>(MetricCodes.CagrWindows);
 
     public static IEndpointRouteBuilder MapDegerliScreenerEndpoints(this IEndpointRouteBuilder api)
     {
@@ -91,7 +96,7 @@ public static class ScreenerEndpoints
         }
         catch (JsonException)
         {
-            return Validation(new[] { new ScreenerCriteria.ValidationField("body", "invalid_json") });
+            return Validation(new[] { new ValidationField("body", "invalid_json") });
         }
 
         using (document)
@@ -99,7 +104,7 @@ public static class ScreenerEndpoints
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return Validation(new[] { new ScreenerCriteria.ValidationField("body", "invalid_json") });
+                return Validation(new[] { new ValidationField("body", "invalid_json") });
             }
 
             if (!root.TryGetProperty("criteria", out var criteriaElement)
@@ -107,7 +112,7 @@ public static class ScreenerEndpoints
                 || criteriaElement.GetArrayLength() == 0)
             {
                 // At least one criterion is required (I-SCR-1, plan-specified).
-                return Validation([new ScreenerCriteria.ValidationField("criteria", "required")]);
+                return Validation(new[] { new ValidationField("criteria", "required") });
             }
 
             var catalogEntries = await db.MetricCatalog
@@ -119,13 +124,20 @@ public static class ScreenerEndpoints
                 entry => entry.IsGrowthCagr,
                 StringComparer.Ordinal);
 
-            var fields = new List<ScreenerCriteria.ValidationField>();
-            var criteria = new List<ScreenerCriteria.Criterion>();
-            ScreenerCriteria.ParseRoot(root, catalog, criteria, fields);
+            var fields = new List<ValidationField>();
+            var criteria = new List<Criterion>();
+            foreach (var element in criteriaElement.EnumerateArray())
+            {
+                var criterion = ParseCriterion(element, catalog, fields);
+                if (criterion is not null)
+                {
+                    criteria.Add(criterion);
+                }
+            }
 
             // A hidden/unknown metric is the dedicated availability error (03 §4);
             // other shape problems are ordinary validation failures.
-            if (ScreenerCriteria.HasMetricNotAvailable(fields))
+            if (fields.Any(field => field.Code == "metric_not_available"))
             {
                 return MetricNotAvailable();
             }
@@ -139,10 +151,96 @@ public static class ScreenerEndpoints
         }
     }
 
+    /// <summary>
+    /// Parses one criterion against the visible catalog: the metric must be offered
+    /// (unknown/hidden → <c>METRIC_NOT_AVAILABLE</c>), the bound must be well-formed,
+    /// and the CAGR window must be one of 3/5/10 on a growth metric (and absent otherwise).
+    /// </summary>
+    private static Criterion? ParseCriterion(
+        JsonElement element,
+        IReadOnlyDictionary<string, bool> catalog,
+        List<ValidationField> fields)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            fields.Add(new ValidationField("criteria", "invalid_json"));
+            return null;
+        }
+
+        var code = element.TryGetProperty("metricCode", out var codeElement) && codeElement.ValueKind == JsonValueKind.String
+            ? codeElement.GetString()!
+            : null;
+        if (code is null || !catalog.TryGetValue(code, out var isGrowth))
+        {
+            // The builder never offers a hidden/unknown metric (UXR-SCR-011); surfaced
+            // to the caller through the dedicated code (03 §4).
+            fields.Add(new ValidationField(code ?? "metricCode", "metric_not_available"));
+            return null;
+        }
+
+        var bound = element.TryGetProperty("bound", out var boundElement) && boundElement.ValueKind == JsonValueKind.String
+            ? boundElement.GetString()
+            : null;
+        if (bound is not ("min" or "max" or "range"))
+        {
+            fields.Add(new ValidationField("bound", "invalid"));
+            return null;
+        }
+
+        var hasMin = TryReadNumber(element, "minValue", out var minValue);
+        var hasMax = TryReadNumber(element, "maxValue", out var maxValue);
+
+        if (bound is "min" && !hasMin)
+        {
+            fields.Add(new ValidationField("minValue", "required"));
+            return null;
+        }
+
+        if (bound is "max" && !hasMax)
+        {
+            fields.Add(new ValidationField("maxValue", "required"));
+            return null;
+        }
+
+        if (bound is "range" && (!hasMin || !hasMax))
+        {
+            fields.Add(new ValidationField(hasMin ? "maxValue" : "minValue", "required"));
+            return null;
+        }
+
+        if (bound is "range" && minValue > maxValue)
+        {
+            fields.Add(new ValidationField("minValue", "out_of_range"));
+            return null;
+        }
+
+        int? window = null;
+        if (isGrowth)
+        {
+            if (!TryReadInt(element, "window", out var parsedWindow) || !CagrWindows.Contains(parsedWindow))
+            {
+                fields.Add(new ValidationField("window", "invalid"));
+                return null;
+            }
+
+            window = parsedWindow;
+        }
+        else if (element.TryGetProperty("window", out _))
+        {
+            // Windows tie to growth metrics only (BR-SCR-005 / I-SCR-4).
+            fields.Add(new ValidationField("window", "invalid"));
+            return null;
+        }
+
+        // The stored code is window-suffixed for CAGRs (Q5: rev_cagr_3y/5y/10y).
+        var storedCode = isGrowth ? $"{code}_{window}y" : code;
+        return new Criterion(code, storedCode, bound, hasMin ? minValue : null, hasMax ? maxValue : null);
+    }
+
     private static async Task<IResult> EvaluateAsync(
         DegerliDbContext db,
         TimeProvider clock,
-        IReadOnlyList<ScreenerCriteria.Criterion> criteria,
+        IReadOnlyList<Criterion> criteria,
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
@@ -233,7 +331,7 @@ public static class ScreenerEndpoints
     }
 
     /// <summary>Inclusive bounds: <c>min ≤ v ≤ max</c> at the edges (I-SCR-2, TC-SCR-003).</summary>
-    private static bool WithinBound(decimal value, ScreenerCriteria.Criterion criterion) => criterion.Bound switch
+    private static bool WithinBound(decimal value, Criterion criterion) => criterion.Bound switch
     {
         "min" => value >= criterion.MinValue!.Value,
         "max" => value <= criterion.MaxValue!.Value,
@@ -241,13 +339,29 @@ public static class ScreenerEndpoints
         _ => false,
     };
 
+    private static bool TryReadNumber(JsonElement element, string name, out decimal value)
+    {
+        value = default;
+        return element.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.Number
+            && decimal.TryParse(property.GetRawText(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool TryReadInt(JsonElement element, string name, out int value)
+    {
+        value = default;
+        return element.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt32(out value);
+    }
+
     /// <summary>Ad-hoc submission of a hidden/unknown metric (UXR-SCR-011, `03` §4).</summary>
     private static IResult MetricNotAvailable()
         => Results.Problem(ApiProblem.Create(
             StatusCodes.Status400BadRequest,
             ApiErrorCodes.MetricNotAvailable));
 
-    private static IResult Validation(IReadOnlyList<ScreenerCriteria.ValidationField> fields)
+    private static IResult Validation(IReadOnlyList<ValidationField> fields)
     {
         var payload = fields
             .Select(field => new { field = field.Field, code = field.Code })
@@ -270,9 +384,18 @@ public static class ScreenerEndpoints
         return date;
     }
 
+    private sealed record Criterion(
+        string ConceptCode,
+        string StoredCode,
+        string Bound,
+        decimal? MinValue,
+        decimal? MaxValue);
+
     private sealed record RunRow(
         string Symbol,
         string Name,
         string? Sector,
         IReadOnlyDictionary<string, decimal?> Values);
+
+    private readonly record struct ValidationField(string Field, string Code);
 }
