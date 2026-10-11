@@ -8,9 +8,12 @@ import {
   type AnonymousSession,
   type CsrfTokenResponse,
   type MacroResponse,
+  type MetricCatalogResponse,
   type ProblemDetails,
   type RegisterResponse,
   type ResendVerificationResponse,
+  type SavedScreen,
+  type ScreenerRunResponse,
   type SessionResponse,
   type StockListItem,
 } from '@/lib/api/contracts'
@@ -269,4 +272,105 @@ export function resendVerificationHandler(
   return http.post(`${API_BASE}/auth/resend-verification`, () =>
     HttpResponse.json(body),
   )
+}
+
+/* ------------------------------------------------------------------ *
+ * Screener handlers (`03` §4) — TKT-scr-006 (SCR-003).
+ * ------------------------------------------------------------------ */
+
+/**
+ * The 18-metric visible catalog as `GET /api/v1/screener/metrics` serves it,
+ * mirroring the seed (`DegerliSeed.MetricCatalogSql`): five families in catalog
+ * sort order; `%` metrics carry fractional values, ratio metrics `x`.
+ */
+export const METRIC_CATALOG_FIXTURE: MetricCatalogResponse = {
+  families: [
+    {
+      family: 'valuation',
+      metrics: [
+        { metricCode: 'pe', unit: 'x', labelTr: 'F/K', labelEn: 'P/E', isCagr: false, sortOrder: 1 },
+        { metricCode: 'pb', unit: 'x', labelTr: 'PD/DD', labelEn: 'P/B', isCagr: false, sortOrder: 2 },
+        { metricCode: 'ev_ebitda', unit: 'x', labelTr: 'FD/FAVÖK', labelEn: 'EV/EBITDA', isCagr: false, sortOrder: 3 },
+        { metricCode: 'ev_fcf', unit: 'x', labelTr: 'FD/Serbest Nakit Akışı', labelEn: 'EV/FCF', isCagr: false, sortOrder: 4 },
+        { metricCode: 'fcf_yield', unit: '%', labelTr: 'Serbest Nakit Akışı Getirisi', labelEn: 'FCF Yield', isCagr: false, sortOrder: 5 },
+      ],
+    },
+    {
+      family: 'quality',
+      metrics: [
+        { metricCode: 'roic', unit: '%', labelTr: 'Yatırılan Sermaye Getirisi', labelEn: 'ROIC', isCagr: false, sortOrder: 6 },
+        { metricCode: 'roe', unit: '%', labelTr: 'Özkaynak Kârlılığı', labelEn: 'ROE', isCagr: false, sortOrder: 7 },
+        { metricCode: 'gross_margin', unit: '%', labelTr: 'Brüt Kâr Marjı', labelEn: 'Gross Margin', isCagr: false, sortOrder: 8 },
+        { metricCode: 'operating_margin', unit: '%', labelTr: 'Faaliyet Kâr Marjı', labelEn: 'Operating Margin', isCagr: false, sortOrder: 9 },
+      ],
+    },
+    {
+      family: 'growth',
+      metrics: [
+        { metricCode: 'rev_cagr', unit: '%', labelTr: 'Hasılat Bileşik Büyüme', labelEn: 'Revenue CAGR', isCagr: true, sortOrder: 10 },
+        { metricCode: 'eps_cagr', unit: '%', labelTr: 'HBK Bileşik Büyüme', labelEn: 'EPS CAGR', isCagr: true, sortOrder: 11 },
+        { metricCode: 'fcf_cagr', unit: '%', labelTr: 'Serbest Nakit Akışı Bileşik Büyüme', labelEn: 'FCF CAGR', isCagr: true, sortOrder: 12 },
+      ],
+    },
+    {
+      family: 'financial_health',
+      metrics: [
+        { metricCode: 'net_debt_ebitda', unit: 'x', labelTr: 'Net Borç/FAVÖK', labelEn: 'Net Debt/EBITDA', isCagr: false, sortOrder: 13 },
+        { metricCode: 'interest_coverage', unit: 'x', labelTr: 'Faiz Karşılama Oranı', labelEn: 'Interest Coverage', isCagr: false, sortOrder: 14 },
+        { metricCode: 'current_ratio', unit: 'x', labelTr: 'Cari Oran', labelEn: 'Current Ratio', isCagr: false, sortOrder: 15 },
+      ],
+    },
+    {
+      family: 'dividends',
+      metrics: [
+        { metricCode: 'div_yield', unit: '%', labelTr: 'Temettü Verimi', labelEn: 'Dividend Yield', isCagr: false, sortOrder: 16 },
+        { metricCode: 'div_cagr', unit: '%', labelTr: 'Temettü Bileşik Büyüme', labelEn: 'Dividend CAGR', isCagr: true, sortOrder: 17 },
+        { metricCode: 'payout_ratio', unit: '%', labelTr: 'Dağıtım Oranı', labelEn: 'Payout Ratio', isCagr: false, sortOrder: 18 },
+      ],
+    },
+  ],
+}
+
+/** `GET /api/v1/screener/metrics` handler. */
+export function screenerMetricsHandler(body: MetricCatalogResponse = METRIC_CATALOG_FIXTURE) {
+  return http.get(`${API_BASE}/screener/metrics`, () => HttpResponse.json(body))
+}
+
+/**
+ * The run response for `pe ≤ 15 AND roe ≥ 15%` (TC-SCR-002/026 golden):
+ * ALFA/REST/UNSEC match; BETA/GAMA are excluded for missing P/E.
+ */
+export const SCREENER_RUN_FIXTURE: ScreenerRunResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  matchCount: 3,
+  excludedCount: 2,
+  droppedCriteria: [],
+  rows: [
+    { symbol: 'ALFA', name: 'Alfa Teknoloji A.Ş.', sector: 'A', values: { pe: 10.0, roe: 0.2 } },
+    { symbol: 'REST', name: 'Rest Telekom A.Ş.', sector: 'A', values: { pe: 10.0, roe: 0.15 } },
+    { symbol: 'UNSEC', name: 'Unsur Ticaret A.Ş.', sector: null, values: { pe: 14.0, roe: 0.2143 } },
+  ],
+}
+
+/** `POST /api/v1/screener/run` handler returning a fixed response. */
+export function screenerRunHandler(body: ScreenerRunResponse = SCREENER_RUN_FIXTURE) {
+  return http.post(`${API_BASE}/screener/run`, () => HttpResponse.json(body))
+}
+
+/** A saved-screen row as `POST /me/screens` serves it (TC-SCR-012). */
+export const SAVED_SCREEN_FIXTURE: SavedScreen = {
+  id: 1,
+  name: 'Ucuz kaliteli',
+  criteria: [
+    { metricCode: 'pe', bound: 'max', maxValue: 15 },
+    { metricCode: 'roe', bound: 'min', minValue: 0.15 },
+  ],
+  createdAt: '2026-10-06T20:00:00Z',
+  updatedAt: '2026-10-06T20:00:00Z',
+}
+
+/** `POST /api/v1/me/screens` handler — 201 with the created screen. */
+export function saveScreenHandler(body: SavedScreen = SAVED_SCREEN_FIXTURE) {
+  return http.post(`${API_BASE}/me/screens`, () => HttpResponse.json(body, { status: 201 }))
 }
