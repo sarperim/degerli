@@ -1,6 +1,7 @@
 # TKT-scr-006: SCR-003 Screener UI
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/46
 - Size: L
 - Scope: `/src/Web` SCR-003 route per the TKT-scr-001 design: criteria builder (families, bounds, window selector, remove/clear), run flow with pending lock, results table (per-criterion columns, counts, as-of, row links), zero-match empty state, exclusion count, save flow with anonymous prompt / unverified gate / duplicate inline error / failure preservation (MSW-driven states), draft preservation across navigation via the zustand draft store (M-3), disclaimer. Must NOT implement the My Saved Screens list screen (TKT-scr-007).
 - Traces to: FR-SCR-002..007, FR-SCR-012..014 (UI side); UC-SCR-001 (main + alternates a/b), UC-SCR-002 (main); NFR-SCR-002
