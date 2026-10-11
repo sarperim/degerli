@@ -83,6 +83,34 @@
       "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger."
     }
   },
+  "stockList": {
+    "searchLabel": "Search by stock name or code",
+    "searchPlaceholder": "Code or company name",
+    "sectorLabel": "Sector",
+    "sectorAll": "All sectors",
+    "unclassified": "Unclassified",
+    "activeFiltersLabel": "Active filters",
+    "activeSector": "Sector: {{sector}}",
+    "activeSearch": "Search: {{query}}",
+    "clearFilters": "Clear filters",
+    "columns": {
+      "name": "Company",
+      "symbol": "Code",
+      "sector": "Sector"
+    },
+    "resultsCount": "{{count}} stocks",
+    "emptyTitle": "No matching stocks",
+    "emptyBody": "No stock matched the current search and sector filter. Try changing the search term or sector.",
+    "emptyUniverseTitle": "No stocks found",
+    "emptyUniverseBody": "There are no stocks to show in the covered universe.",
+    "errorTitle": "The stock list could not be loaded",
+    "errorBody": "Something went wrong while loading the list. Please try again."
+  },
+  "headerSearch": {
+    "viewAll": "View all matches",
+    "noMatches": "No matching stocks",
+    "resultsLabel": "Search results"
+  },
   "honestData": {
     "asOf": "Data as of {{date}}",
     "stale": "Stale",

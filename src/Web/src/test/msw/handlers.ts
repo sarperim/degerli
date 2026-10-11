@@ -12,6 +12,7 @@ import {
   type RegisterResponse,
   type ResendVerificationResponse,
   type SessionResponse,
+  type StockListItem,
 } from '@/lib/api/contracts'
 
 /** API prefix from `03-api-design.md` §1. */
@@ -134,6 +135,72 @@ export function problemHandler(
 /** `GET /api/v1/market/macro` handler, typed against `MacroResponse`. */
 export function marketMacroHandler(body: MacroResponse = FRESH_MACRO_FIXTURE) {
   return http.get(`${API_BASE}/market/macro`, () => HttpResponse.json(body))
+}
+
+/**
+ * The fixture universe (FU §3) as the stock-list/typeahead endpoints serve it:
+ * sector is the stable code (or `null` for the unclassified UNSEC).
+ */
+export const STOCK_LIST_FIXTURE: StockListItem[] = [
+  { symbol: 'ALFA', name: 'Alfa Teknoloji A.Ş.', sector: 'A', listingDate: '2010-01-04' },
+  { symbol: 'BETA', name: 'Beta Yazılım A.Ş.', sector: 'A', listingDate: '2012-05-10' },
+  { symbol: 'GAMA', name: 'Gama Bilişim A.Ş.', sector: 'A', listingDate: '2015-09-01' },
+  { symbol: 'DELTA', name: 'Delta Elektronik A.Ş.', sector: 'A', listingDate: '2011-03-15' },
+  { symbol: 'REST', name: 'Rest Telekom A.Ş.', sector: 'A', listingDate: '2008-11-20' },
+  { symbol: 'EPSL', name: 'Epsl Sanayi A.Ş.', sector: 'B', listingDate: '2009-04-01' },
+  { symbol: 'ZETA', name: 'Zeta İmalat A.Ş.', sector: 'B', listingDate: '2024-03-15' },
+  { symbol: 'ETA', name: 'Eta Enerji A.Ş.', sector: 'B', listingDate: '2013-06-03' },
+  { symbol: 'THETA', name: 'Theta İnşaat A.Ş.', sector: 'B', listingDate: '2010-02-08' },
+  { symbol: 'PART', name: 'Part Holding A.Ş.', sector: 'B', listingDate: '2005-08-15' },
+  { symbol: 'NEWP', name: 'Yeni Gelişim A.Ş.', sector: 'B', listingDate: '2025-08-01' },
+  { symbol: 'IOTA', name: 'Iota Gıda A.Ş.', sector: 'C', listingDate: '2014-10-09' },
+  { symbol: 'KAPPA', name: 'Kappa İçecek A.Ş.', sector: 'C', listingDate: '2007-12-03' },
+  { symbol: 'LAMDA', name: 'Lamda Tarım A.Ş.', sector: 'C', listingDate: '2016-04-12' },
+  { symbol: 'NU', name: 'Nu Perakende A.Ş.', sector: 'C', listingDate: '2003-01-06' },
+  { symbol: 'UNSEC', name: 'Unsur Ticaret A.Ş.', sector: null, listingDate: '2011-07-19' },
+]
+
+/** The stock-list envelope used by the fixture handlers. */
+export const STOCK_LIST_ENVELOPE = { asOf: '2026-10-06', stale: false } as const
+
+function matchesFilters(stock: StockListItem, sector: string | null, q: string | null) {
+  const sectorMatch =
+    !sector || (stock.sector ?? '').toLowerCase() === sector.toLowerCase()
+  const queryMatch =
+    !q ||
+    stock.name.toLowerCase().includes(q.toLowerCase()) ||
+    stock.symbol.toLowerCase().includes(q.toLowerCase())
+  return sectorMatch && queryMatch
+}
+
+/**
+ * `GET /api/v1/stocks?sector=&q=` handler mirroring the server semantics
+ * (`03` §3; TC-RES-002/003): sector and query combine conjunctively, unknown
+ * sector / non-match → empty list `200`.
+ */
+export function stockListHandler(stocks: StockListItem[] = STOCK_LIST_FIXTURE) {
+  return http.get(`${API_BASE}/stocks`, ({ request }) => {
+    const url = new URL(request.url)
+    const sector = url.searchParams.get('sector')
+    const q = url.searchParams.get('q')
+    const filtered = stocks.filter((stock) => matchesFilters(stock, sector, q))
+    return HttpResponse.json({ ...STOCK_LIST_ENVELOPE, stocks: filtered })
+  })
+}
+
+/**
+ * `GET /api/v1/stocks/search?q=` handler (FR-RES-004): symbol + name only; an
+ * empty query yields no matches rather than dumping the universe.
+ */
+export function stockSearchHandler(stocks: StockListItem[] = STOCK_LIST_FIXTURE) {
+  return http.get(`${API_BASE}/stocks/search`, ({ request }) => {
+    const q = new URL(request.url).searchParams.get('q')
+    const filtered = q && q.trim() ? stocks.filter((stock) => matchesFilters(stock, null, q)) : []
+    return HttpResponse.json({
+      ...STOCK_LIST_ENVELOPE,
+      stocks: filtered.map(({ symbol, name }) => ({ symbol, name })),
+    })
+  })
 }
 
 /* ------------------------------------------------------------------ *

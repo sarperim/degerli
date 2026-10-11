@@ -100,6 +100,36 @@ export interface MacroResponse extends HonestDataEnvelope {
   series: MacroSeries[]
 }
 
+/**
+ * A covered-universe row (`GET /api/v1/stocks`, `03` §3; FR-RES-001).
+ *
+ * `sector` is the sector's stable code (identity, not shape — see the test plan's
+ * I-RES-4), or `null` when the instrument is unclassified (UNSEC); the
+ * unclassified state is served explicitly and must never be guessed.
+ */
+export interface StockListItem {
+  symbol: string
+  name: string
+  sector: string | null
+  listingDate: string
+}
+
+/** `GET /api/v1/stocks?sector=&q=` (`03` §3). */
+export interface StockListResponse extends HonestDataEnvelope {
+  stocks: StockListItem[]
+}
+
+/** A lightweight header-search match (`GET /api/v1/stocks/search`, FR-RES-004). */
+export interface StockSearchItem {
+  symbol: string
+  name: string
+}
+
+/** `GET /api/v1/stocks/search?q=` (`03` §3). */
+export interface StockSearchResponse extends HonestDataEnvelope {
+  stocks: StockSearchItem[]
+}
+
 /* ------------------------------------------------------------------ *
  * Identity (`03` §6) — TKT-acc-007 (SCR-007 register + verification).
  * ------------------------------------------------------------------ */

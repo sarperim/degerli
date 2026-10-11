@@ -83,6 +83,34 @@
       "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
     }
   },
+  "stockList": {
+    "searchLabel": "Hisse adı veya koduna göre ara",
+    "searchPlaceholder": "Kod veya şirket adı",
+    "sectorLabel": "Sektör",
+    "sectorAll": "Tüm sektörler",
+    "unclassified": "Sınıflandırılmamış",
+    "activeFiltersLabel": "Etkin filtreler",
+    "activeSector": "Sektör: {{sector}}",
+    "activeSearch": "Arama: {{query}}",
+    "clearFilters": "Filtreleri temizle",
+    "columns": {
+      "name": "Şirket",
+      "symbol": "Kod",
+      "sector": "Sektör"
+    },
+    "resultsCount": "{{count}} hisse",
+    "emptyTitle": "Eşleşen hisse yok",
+    "emptyBody": "Geçerli arama ve sektör filtresiyle eşleşen hisse bulunamadı. Arama terimini veya sektörü değiştirmeyi deneyin.",
+    "emptyUniverseTitle": "Hisse bulunamadı",
+    "emptyUniverseBody": "Kapsanan evrende gösterilecek hisse yok.",
+    "errorTitle": "Hisse listesi yüklenemedi",
+    "errorBody": "Liste yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+  },
+  "headerSearch": {
+    "viewAll": "Tüm eşleşmeleri gör",
+    "noMatches": "Eşleşen hisse yok",
+    "resultsLabel": "Arama sonuçları"
+  },
   "honestData": {
     "asOf": "Veri {{date}} itibarıyla",
     "stale": "Bayat",

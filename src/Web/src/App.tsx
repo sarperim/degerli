@@ -8,9 +8,15 @@ import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
+import { StockListPage } from '@/routes/StockListPage'
 
-/** Routes with a real implementation; everything else keeps the placeholder. */
+/**
+ * Routes with a real implementation; everything else keeps the shared
+ * placeholder. The route contracts in `routeConfig.ts` stay the source of truth;
+ * only the element for an implemented screen changes here.
+ */
 const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
+  stockList: <StockListPage />,
   register: <RegisterScreen />,
 }
 
