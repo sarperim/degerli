@@ -1,4 +1,5 @@
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
@@ -11,17 +12,21 @@ namespace Degerli.Ingestion.Funds;
 /// universe payload, enforces the fund-universe bound (BR-FDF-006: out-of-scope types are
 /// skipped-and-counted, never quarantined — I-FDF-1), ingests the job's own fact type
 /// append-only/idempotently, and quarantines conflicting values under the shared Q1
-/// policy. The fact type is the only per-job difference.
+/// policy. The fact type is the only per-job difference. After the facts land, the
+/// fund-scope coverage metadata is reconciled (FR-FDF-004, NFR-FDF-001) — in backfill mode
+/// the achieved depth and any source limitation are recorded (UC-FDF-001 alternate a).
 /// </summary>
 public abstract class FundJobBase : IIngestJob
 {
     private readonly ISourceAdapter<TefasUniversePayload> _adapter;
+    private readonly FundCoverageRecorder _coverage;
     private readonly IIngestionAlerter _alerter;
     private readonly ILogger<FundJobBase> _logger;
 
     protected FundJobBase(
         ISourceAdapter<TefasUniversePayload> adapter,
         TefasFundStore store,
+        FundCoverageRecorder coverage,
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         TimeProvider clock,
@@ -29,6 +34,7 @@ public abstract class FundJobBase : IIngestJob
     {
         _adapter = adapter;
         Store = store;
+        _coverage = coverage;
         Quarantine = quarantine;
         _alerter = alerter;
         Clock = clock;
@@ -103,6 +109,10 @@ public abstract class FundJobBase : IIngestJob
             await RaiseAlertAsync(conflict, fetched.SourceRef, cancellationToken).ConfigureAwait(false);
         }
 
+        // Record the achieved per-fund coverage (FR-FDF-004, NFR-FDF-001). In backfill
+        // mode this records the depth and any source limitation (UC-FDF-001 alternate a).
+        await _coverage.ReconcileAsync(request.BackfillFrom, cancellationToken).ConfigureAwait(false);
+
         var status = conflicts.Count > 0 ? IngestResult.Partial : IngestResult.Succeeded;
         return new IngestResult(JobCode, inserted, unchanged, conflicts.Count, status, outcome.Skipped);
     }
@@ -145,11 +155,12 @@ public sealed class FundNavJob : FundJobBase
     public FundNavJob(
         ISourceAdapter<TefasUniversePayload> adapter,
         TefasFundStore store,
+        FundCoverageRecorder coverage,
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         TimeProvider clock,
         ILogger<FundNavJob> logger)
-        : base(adapter, store, quarantine, alerter, clock, logger)
+        : base(adapter, store, coverage, quarantine, alerter, clock, logger)
     {
     }
 
@@ -174,11 +185,12 @@ public sealed class FundPerformanceJob : FundJobBase
     public FundPerformanceJob(
         ISourceAdapter<TefasUniversePayload> adapter,
         TefasFundStore store,
+        FundCoverageRecorder coverage,
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         TimeProvider clock,
         ILogger<FundPerformanceJob> logger)
-        : base(adapter, store, quarantine, alerter, clock, logger)
+        : base(adapter, store, coverage, quarantine, alerter, clock, logger)
     {
     }
 
@@ -206,11 +218,12 @@ public sealed class FundHoldingsJob : FundJobBase
     public FundHoldingsJob(
         ISourceAdapter<TefasUniversePayload> adapter,
         TefasFundStore store,
+        FundCoverageRecorder coverage,
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         TimeProvider clock,
         ILogger<FundHoldingsJob> logger)
-        : base(adapter, store, quarantine, alerter, clock, logger)
+        : base(adapter, store, coverage, quarantine, alerter, clock, logger)
     {
     }
 

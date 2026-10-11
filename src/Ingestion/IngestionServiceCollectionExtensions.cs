@@ -113,6 +113,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IBackfillSourceAdapter<PricesHistoryPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
         services.AddScoped<DailyPriceStore>();
         services.AddScoped<CoverageRecorder>();
+        services.AddScoped<FundCoverageRecorder>();
 
         // Universe, sector and index-levels sync (FR-MDF-006/007).
         services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
