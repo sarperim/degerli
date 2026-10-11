@@ -64,12 +64,19 @@ api.MapDegerliMeEndpoints();
 // Valuation module (TKT-val-004): the pure, anonymous, stateless DCF compute endpoint.
 api.MapDegerliDcfEndpoints();
 
+// Valuation module (TKT-val-003): the anonymous DCF baseline read (`GET …/dcf`).
+api.MapDegerliDcfBaselineEndpoints();
+
 // Valuation module (TKT-val-005): per-account DCF scenario CRUD (`/me/scenarios`).
 api.MapDegerliDcfScenarioEndpoints();
 
 // Stocks module (TKT-res-002): the current-universe list/filter/search and the
 // lightweight header typeahead (FR-RES-001..004).
 api.MapDegerliStockEndpoints();
+
+// Stocks module (TKT-res-003): the Overview (published description / preparing) and
+// Valuation (current multiples + adjusted history + vs.-sector strip) sections.
+api.MapDegerliStockOverviewAndValuationEndpoints();
 
 // Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.

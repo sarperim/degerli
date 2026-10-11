@@ -129,5 +129,44 @@
   "disclaimer": {
     "label": "Disclaimer",
     "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
+  },
+  "register": {
+    "formAriaLabel": "Registration form",
+    "emailLabel": "E-mail address",
+    "passwordLabel": "Password",
+    "passwordRules": "Use at least 10 characters.",
+    "emailInvalid": "Enter a valid e-mail address.",
+    "passwordInvalid": "Password must be at least {{min}} characters.",
+    "consentLabel": "I accept the privacy notice.",
+    "consentInvalid": "You must accept the privacy notice to register.",
+    "privacyNoticeTitle": "Privacy notice",
+    "privacyNoticeTr": "Kişisel verileriniz, KVKK kapsamında hesap oluşturma ve araştırma çalışmanızı saklama amacıyla işlenir.",
+    "privacyNoticeEn": "Your personal data is processed under the KVKK to create your account and store your research work.",
+    "submit": "Create account",
+    "submitting": "Creating account…",
+    "emailTaken": "An account with this e-mail already exists.",
+    "signInInstead": "Sign in instead",
+    "genericError": "Something went wrong. Please try again.",
+    "successTitle": "You are signed in",
+    "verificationSentTitle": "Verification e-mail sent",
+    "verificationSentBody": "We sent a verification e-mail to {{email}}. Saving screens and DCF scenarios requires a verified e-mail.",
+    "returnToWork": "Return to your work",
+    "noReturnUrl": "Go to the market overview"
+  },
+  "verifyEmail": {
+    "title": "E-mail verification",
+    "checking": "Verifying your e-mail…",
+    "verifiedTitle": "Your e-mail is verified",
+    "verifiedBody": "Your e-mail address has been verified. You can now save screens and DCF scenarios.",
+    "failedTitle": "This verification link is expired or invalid",
+    "failedBody": "This verification link is expired or invalid. Request a new verification e-mail to continue.",
+    "unauthenticatedTitle": "Sign in to verify your e-mail",
+    "unauthenticatedBody": "Open this verification link in the browser where you are signed in, or sign in to continue verifying your e-mail address.",
+    "signIn": "Sign in",
+    "resend": "Resend verification e-mail",
+    "resending": "Sending…",
+    "resent": "A new verification e-mail has been sent.",
+    "resendFailed": "We could not send the e-mail. Please try again.",
+    "backToRegister": "Back to registration"
   }
 }

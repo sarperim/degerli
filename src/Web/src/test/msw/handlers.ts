@@ -4,8 +4,14 @@ import {
   API_ERROR_STATUS,
   API_ERROR_TITLE,
   type ApiErrorCode,
+  type AuthenticatedSession,
+  type AnonymousSession,
+  type CsrfTokenResponse,
   type MacroResponse,
   type ProblemDetails,
+  type RegisterResponse,
+  type ResendVerificationResponse,
+  type SessionResponse,
   type StockListItem,
 } from '@/lib/api/contracts'
 
@@ -195,4 +201,72 @@ export function stockSearchHandler(stocks: StockListItem[] = STOCK_LIST_FIXTURE)
       stocks: filtered.map(({ symbol, name }) => ({ symbol, name })),
     })
   })
+}
+
+/* ------------------------------------------------------------------ *
+ * Identity handlers (`03` §6) — TKT-acc-007 (SCR-007 register + verify).
+ * ------------------------------------------------------------------ */
+
+/** Deterministic fixture: an anonymous session. */
+export const ANONYMOUS_SESSION_FIXTURE: AnonymousSession = { authenticated: false }
+
+/** Deterministic fixture: a signed-in but unverified account. */
+export const UNVERIFIED_SESSION_FIXTURE: AuthenticatedSession = {
+  authenticated: true,
+  email: 'unverified@example.test',
+  verified: false,
+  languagePref: 'tr',
+  role: 'user',
+}
+
+/** Deterministic fixture: a signed-in, verified account. */
+export const VERIFIED_SESSION_FIXTURE: AuthenticatedSession = {
+  authenticated: true,
+  email: 'verified@example.test',
+  verified: true,
+  languagePref: 'tr',
+  role: 'user',
+}
+
+/** `GET /api/v1/auth/session` handler, typed against `SessionResponse`. */
+export function sessionHandler(body: SessionResponse = ANONYMOUS_SESSION_FIXTURE) {
+  return http.get(`${API_BASE}/auth/session`, () => HttpResponse.json(body))
+}
+
+/** Deterministic antiforgery token fixture (`GET /api/v1/auth/csrf-token`, `03` §2). */
+export const CSRF_TOKEN_FIXTURE: CsrfTokenResponse = {
+  token: 'test-csrf-token',
+  headerName: 'X-CSRF-Token',
+}
+
+/** `GET /api/v1/auth/csrf-token` handler — mirrors `Program.cs` `CsrfToken`. */
+export function csrfTokenHandler() {
+  return http.get(`${API_BASE}/auth/csrf-token`, () =>
+    HttpResponse.json(CSRF_TOKEN_FIXTURE),
+  )
+}
+
+/** `POST /api/v1/auth/register` handler — 201 `{email}` (`03` §6). */
+export function registerHandler(
+  body: RegisterResponse = { email: 'new-user@example.test' },
+) {
+  return http.post(`${API_BASE}/auth/register`, () =>
+    HttpResponse.json(body, { status: 201 }),
+  )
+}
+
+/** `POST /api/v1/auth/verify-email` handler — 200 verified. */
+export function verifyEmailHandler() {
+  return http.post(`${API_BASE}/auth/verify-email`, () =>
+    HttpResponse.json({ verified: true }),
+  )
+}
+
+/** `POST /api/v1/auth/resend-verification` handler — 200 `{verified}`. */
+export function resendVerificationHandler(
+  body: ResendVerificationResponse = { verified: false },
+) {
+  return http.post(`${API_BASE}/auth/resend-verification`, () =>
+    HttpResponse.json(body),
+  )
 }

@@ -1,20 +1,23 @@
+import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 
 import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
+import { RegisterScreen } from '@/screens/register/RegisterScreen'
+import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
 import { StockListPage } from '@/routes/StockListPage'
 
 /**
- * Screen tickets replace the shared placeholder with their routed implementation.
- * The route contracts in `routeConfig.ts` stay the source of truth; only the
- * element for an implemented screen changes here.
+ * Routes with a real implementation; everything else keeps the shared
+ * placeholder. The route contracts in `routeConfig.ts` stay the source of truth;
+ * only the element for an implemented screen changes here.
  */
-function routeElement(route: ScreenRoute) {
-  if (route.id === 'stockList') return <StockListPage />
-  return <RoutePlaceholder route={route} />
+const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
+  stockList: <StockListPage />,
+  register: <RegisterScreen />,
 }
 
 const router = createBrowserRouter([
@@ -26,9 +29,18 @@ const router = createBrowserRouter([
       ...APP_ROUTES.map((route) => ({
         index: route.path === '/',
         path: route.path === '/' ? undefined : route.path,
-        element: routeElement(route),
+        element: SCREEN_ELEMENTS[route.id] ?? <RoutePlaceholder route={route} />,
         handle: { research: route.research === true },
       })),
+      {
+        // E-mail verification link landing, hosted by SCR-007 (UX `user-accounts.md`
+        // §2/§3.3): the external entry point from the verification e-mail. The path
+        // matches the API-built link `{AppUrl}/verify-email?token=…`
+        // (`src/Api/Identity/IdentityEndpoints.cs` BuildVerificationLink).
+        path: 'verify-email',
+        element: <VerifyEmailScreen />,
+        handle: { research: false },
+      },
       {
         path: 'design-system',
         element: <ComponentIndex />,
