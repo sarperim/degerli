@@ -7,11 +7,13 @@ import {
   type AuthenticatedSession,
   type AnonymousSession,
   type CsrfTokenResponse,
+  type ForgotPasswordResponse,
   type MacroResponse,
   type MetricCatalogResponse,
   type ProblemDetails,
   type RegisterResponse,
   type ResendVerificationResponse,
+  type ResetPasswordResponse,
   type SavedScreen,
   type ScreenerRunResponse,
   type SessionResponse,
@@ -270,6 +272,33 @@ export function resendVerificationHandler(
   body: ResendVerificationResponse = { verified: false },
 ) {
   return http.post(`${API_BASE}/auth/resend-verification`, () =>
+    HttpResponse.json(body),
+  )
+}
+
+/** Deterministic fixture: the always-200 neutral reset-request confirmation. */
+export const FORGOT_PASSWORD_FIXTURE: ForgotPasswordResponse = { status: 'accepted' }
+
+/**
+ * `POST /api/v1/auth/forgot-password` handler — always a neutral 200 (`03` §6).
+ * The response carries no registration signal; the UI renders fixed copy.
+ */
+export function forgotPasswordHandler(
+  body: ForgotPasswordResponse = FORGOT_PASSWORD_FIXTURE,
+) {
+  return http.post(`${API_BASE}/auth/forgot-password`, () =>
+    HttpResponse.json(body),
+  )
+}
+
+/** Deterministic fixture: reset-password 200 `{status:"reset"}`. */
+export const RESET_PASSWORD_FIXTURE: ResetPasswordResponse = { status: 'reset' }
+
+/** `POST /api/v1/auth/reset-password` handler — 200 (may establish a session). */
+export function resetPasswordHandler(
+  body: ResetPasswordResponse = RESET_PASSWORD_FIXTURE,
+) {
+  return http.post(`${API_BASE}/auth/reset-password`, () =>
     HttpResponse.json(body),
   )
 }

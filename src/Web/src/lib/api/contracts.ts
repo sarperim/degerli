@@ -187,6 +187,38 @@ export interface CsrfTokenResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Identity — password reset (`03` §6) — TKT-acc-009 (SCR-009).
+ * ------------------------------------------------------------------ */
+
+/** `POST /api/v1/auth/forgot-password` request body (`03` §6). */
+export interface ForgotPasswordRequest {
+  email: string
+}
+
+/**
+ * `POST /api/v1/auth/forgot-password` response (`03` §6) — always a byte-identical
+ * 200 neutral confirmation; the client renders fixed copy and never branches on it
+ * (UXR-ACC-012, enumeration-neutral).
+ */
+export interface ForgotPasswordResponse {
+  status: string
+}
+
+/** `POST /api/v1/auth/reset-password` request body (`03` §6). */
+export interface ResetPasswordRequest {
+  token: string
+  newPassword: string
+}
+
+/**
+ * `POST /api/v1/auth/reset-password` response (`03` §6) — 200 on success; the
+ * endpoint may establish a session, so `['session']` is invalidated (UXR-ACC-015).
+ */
+export interface ResetPasswordResponse {
+  status: string
+}
+
+/* ------------------------------------------------------------------ *
  * Screener (`03` §4) — TKT-scr-006 (SCR-003 criteria builder + run + save).
  * ------------------------------------------------------------------ */
 

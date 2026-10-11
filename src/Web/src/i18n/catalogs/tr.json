@@ -222,5 +222,31 @@
     "resent": "Yeni bir doğrulama e-postası gönderildi.",
     "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
     "backToRegister": "Kayıt sayfasına dön"
+  },
+  "passwordReset": {
+    "requestDescription": "E-posta adresinizi girin; kayıtlıysa parolanızı yenilemeniz için bir bağlantı göndeririz.",
+    "requestFormAriaLabel": "Parola sıfırlama isteği formu",
+    "emailLabel": "E-posta adresi",
+    "emailInvalid": "Geçerli bir e-posta adresi girin.",
+    "requestSubmit": "Sıfırlama bağlantısı gönder",
+    "requestSubmitting": "Gönderiliyor…",
+    "requestGenericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "neutralTitle": "İsteğiniz alındı",
+    "neutralBody": "Bu adres kayıtlıysa, parolanızı yenilemeniz için bir bağlantı gönderdik. Gelen kutunuzu kontrol edin.",
+    "backToSignIn": "Girişe dön",
+    "setDescription": "Hesabınız için yeni bir parola girin.",
+    "setFormAriaLabel": "Parola güncelleme formu",
+    "passwordLabel": "Yeni parola",
+    "passwordRules": "En az 10 karakter kullanın.",
+    "passwordInvalid": "Parola en az {{min}} karakter olmalıdır.",
+    "setSubmit": "Parolayı güncelle",
+    "setSubmitting": "Güncelleniyor…",
+    "setGenericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "expiredTitle": "Bu sıfırlama bağlantısı süresi dolmuş veya geçersiz",
+    "expiredBody": "Bağlantının süresi dolmuş veya geçersiz. Devam etmek için yeni bir sıfırlama bağlantısı isteyin.",
+    "requestNewLink": "Yeni sıfırlama bağlantısı iste",
+    "successTitle": "Parolanız güncellendi",
+    "successBody": "Yeni parolanızla giriş yaptınız. Çalışmanıza devam edebilirsiniz.",
+    "continueToApp": "Uygulamaya devam et"
   }
 }

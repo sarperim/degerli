@@ -222,5 +222,31 @@
     "resent": "A new verification e-mail has been sent.",
     "resendFailed": "We could not send the e-mail. Please try again.",
     "backToRegister": "Back to registration"
+  },
+  "passwordReset": {
+    "requestDescription": "Enter your e-mail address; if it is registered, we will send a link to reset your password.",
+    "requestFormAriaLabel": "Password reset request form",
+    "emailLabel": "E-mail address",
+    "emailInvalid": "Enter a valid e-mail address.",
+    "requestSubmit": "Send reset link",
+    "requestSubmitting": "Sending…",
+    "requestGenericError": "Something went wrong. Please try again.",
+    "neutralTitle": "Your request has been received",
+    "neutralBody": "If this address is registered, we have sent a link to reset your password. Check your inbox.",
+    "backToSignIn": "Back to sign in",
+    "setDescription": "Enter a new password for your account.",
+    "setFormAriaLabel": "Password update form",
+    "passwordLabel": "New password",
+    "passwordRules": "Use at least 10 characters.",
+    "passwordInvalid": "Password must be at least {{min}} characters.",
+    "setSubmit": "Update password",
+    "setSubmitting": "Updating…",
+    "setGenericError": "Something went wrong. Please try again.",
+    "expiredTitle": "This reset link is expired or invalid",
+    "expiredBody": "This link has expired or is invalid. Request a new reset link to continue.",
+    "requestNewLink": "Request a new reset link",
+    "successTitle": "Your password has been updated",
+    "successBody": "You are signed in with your new password. You can continue your work.",
+    "continueToApp": "Continue to the app"
   }
 }
