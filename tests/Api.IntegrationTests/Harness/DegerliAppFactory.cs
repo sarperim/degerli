@@ -59,6 +59,15 @@ public sealed class DegerliAppFactory : WebApplicationFactory<Program>
             // The API's Serilog pipeline calls ReadFrom.Services; registered sinks are
             // discovered and receive every emitted event.
             services.AddSingleton<ILogEventSink>(Logs);
+            // app.UseSerilogRequestLogging() writes its completion event through
+            // RequestLoggingOptions.Logger, which defaults to the process-static
+            // Serilog.Log.Logger. Parallel in-process hosts (xUnit boots many
+            // DegerliAppFactory instances) each overwrite that static logger at boot,
+            // so a request could be logged to another — possibly already-disposed —
+            // host's sink and never appear here (TKT-foundation-012). Pin the middleware
+            // to *this* host's DI logger so the event always reaches this factory's sink.
+            services.AddOptions<Serilog.AspNetCore.RequestLoggingOptions>()
+                .Configure<Serilog.ILogger>((options, logger) => options.Logger = logger);
         });
     }
 }

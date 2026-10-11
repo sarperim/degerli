@@ -4,6 +4,7 @@ using Degerli.Api.IntegrationTests.Harness.Mail;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Serilog.Events;
 
 namespace Degerli.Api.IntegrationTests;
 
@@ -97,8 +98,45 @@ public sealed class HarnessSampleTests : IClassFixture<PostgresFixture>
         using var response = await client.GetAsync("/health");
         response.EnsureSuccessStatusCode();
 
+        // The real flake (TKT-foundation-012) was not pure timing: Serilog's
+        // request-logging middleware defaults to the process-static Log.Logger, which
+        // every parallel in-process host overwrites at boot, so the /health completion
+        // event could be routed to another (possibly disposed) host's sink and never
+        // reach this factory. DegerliAppFactory now pins RequestLoggingOptions.Logger
+        // to this host's own logger, making the event deterministic. The bounded wait
+        // below remains as defence for the event's genuine post-response timing.
+        var captured = await WaitForLogAsync(
+            factory.Logs,
+            evt => evt.MessageTemplate.Text.Contains("HTTP", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(2));
+
         Assert.True(
-            factory.Logs.Contains(evt => evt.MessageTemplate.Text.Contains("HTTP", StringComparison.Ordinal)),
+            captured,
             "Expected the request-logging middleware event in the Serilog test sink.");
+    }
+
+    /// <summary>
+    /// Polls the Serilog test sink until <paramref name="predicate"/> matches or
+    /// <paramref name="timeout"/> elapses. Used for events emitted after the HTTP
+    /// response is returned (e.g. request-logging completion), whose timing is not
+    /// synchronized with the client call.
+    /// </summary>
+    private static async Task<bool> WaitForLogAsync(
+        InMemorySerilogSink sink,
+        Func<LogEvent, bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!sink.Contains(predicate))
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                return false;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+
+        return true;
     }
 }
