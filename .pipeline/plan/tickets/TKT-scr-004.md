@@ -1,6 +1,7 @@
 # TKT-scr-004: Saved screens CRUD & persistence gates
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/41
 - Size: M
 - Scope: `/src/Api` screener module `/me` endpoints: `GET/POST /api/v1/me/screens`, `PATCH/DELETE /api/v1/me/screens/{id}` — criteria round-trip with CAGR windows, duplicate-name rejection via DB unique constraint → 409 `DUPLICATE_NAME`, auth (401) + verified-e-mail (403 `EMAIL_NOT_VERIFIED`) gates, ownership isolation via 404-not-403, re-run with stored criteria computing on latest data. Must NOT touch the run endpoint core or the screener UI.
 - Traces to: FR-SCR-007..011; UC-SCR-002 (main), UC-SCR-003 (main); SC-003; UXR-G-029, UXR-G-030 (API side)
