@@ -1,7 +1,7 @@
 # TKT-res-004: Financials, profitability, growth, balance-sheet & dividends section endpoints
 
-- Status: in-review
-- Resolution (2026-10-11): implemented the five section endpoints; 13/13 acceptance tests green (TC-RES-009..015, TC-MDF-036), full API integration suite 194/194. PR: https://github.com/sarperim/degerli/pull/43
+- Status: done
+- Resolution (2026-10-11): implemented the five section endpoints; 13/13 acceptance tests green (TC-RES-009..015, TC-MDF-036), full API integration suite 194/194. PR: https://github.com/sarperim/degerli/pull/43 (merged to dev)
 - Size: L
 - Scope: `/src/Api` stocks module: `GET /stocks/{symbol}/financials` (revenue → EBITDA → EBIT → NI → FCF per period, per-figure `restated`), `/profitability` (ROIC, ROE, margins), `/growth` (3/5/10Y CAGRs + `windowYears`, no-data with coverage boundary), `/balance-sheet` (BS lines + book value + BVPS), `/dividends` (dated history, never-paid state); unknown symbol → 404 across section endpoints; honest envelope on every section (200-with-state for missing data, never blank-as-zero). Must NOT touch overview/valuation endpoints or any UI.
 - Traces to: FR-RES-008..012, FR-RES-014..016, FR-RES-027; UC-RES-003 (main + alternates a/b); BR-RES-007/008
