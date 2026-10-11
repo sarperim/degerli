@@ -7,6 +7,7 @@
     "loading": "Loading…",
     "error": "Something went wrong",
     "retry": "Try again",
+    "cancel": "Cancel",
     "close": "Close"
   },
   "header": {
@@ -159,7 +160,42 @@
     "unverifiedLink": "Go to account settings",
     "duplicateName": "You already have a screen named “{{name}}”. Choose a different name.",
     "saveErrorTitle": "The screen could not be saved",
-    "saveErrorBody": "Something went wrong. Your input was preserved; please try again."
+    "saveErrorBody": "Something went wrong. Your input was preserved; please try again.",
+    "activeScreenLabel": "Active screen: {{name}}",
+    "droppedCriteria": "The following criteria were dropped on re-run because they are no longer offered: {{criteria}}."
+  },
+  "savedScreens": {
+    "listLabel": "Saved screens",
+    "columns": {
+      "name": "Screen name",
+      "actions": "Actions"
+    },
+    "reRun": "Re-run",
+    "reRunning": "Running…",
+    "rename": "Rename",
+    "renameInputLabel": "New name for {{name}}",
+    "renameSave": "Save",
+    "renaming": "Saving…",
+    "renameCancel": "Cancel",
+    "delete": "Delete",
+    "deleteTitle": "Delete saved screen?",
+    "deleteDescription": "“{{name}}” will be permanently deleted. It will no longer appear in My Saved Screens or the Screener.",
+    "deleteConfirm": "Delete",
+    "emptyTitle": "You have no saved screens yet",
+    "emptyBody": "Build your criteria in the Screener and save a screen; it will be listed here.",
+    "emptyAction": "Go to the Screener",
+    "anonymousTitle": "Sign in to see your saved screens",
+    "anonymousBody": "Sign in or create an account to see your saved screens. The rest of the research content is available without an account.",
+    "signIn": "Sign in",
+    "register": "Register",
+    "listErrorTitle": "The saved screens could not be loaded",
+    "listErrorBody": "Something went wrong while loading the list. Please try again.",
+    "reRunErrorTitle": "The screen could not be run",
+    "reRunErrorBody": "Something went wrong while running the screen. The list is unchanged; please try again.",
+    "renameDuplicate": "You already have a screen named “{{name}}”. The previous name was kept.",
+    "renameErrorBody": "The name could not be changed. The previous name was kept; please try again.",
+    "deleteErrorTitle": "The screen could not be deleted",
+    "deleteErrorBody": "Something went wrong while deleting the screen. Please try again."
   },
   "headerSearch": {
     "viewAll": "View all matches",
