@@ -1,3 +1,4 @@
+using Degerli.Api.Admin;
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
 using Degerli.Api.Screener;
@@ -82,7 +83,7 @@ api.MapDegerliStockOverviewAndValuationEndpoints();
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();
 
-var admin = api.MapGroup("/admin").RequireRateLimiting(RateLimitingSetup.AdminPolicy);
+var admin = api.MapDegerliAdminEndpoints();
 
 // Non-production probes let the infrastructure tests exercise the mechanisms without
 // waiting for domain endpoints. They are never mapped in production.
