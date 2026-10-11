@@ -7,6 +7,10 @@ import {
   type AuthenticatedSession,
   type AnonymousSession,
   type CsrfTokenResponse,
+  type DcfBaselineResponse,
+  type DcfComputeRequest,
+  type DcfComputeResponse,
+  type DcfSensitivity,
   type LoginResponse,
   type MacroResponse,
   type MetricCatalogResponse,
@@ -384,4 +388,84 @@ export const SAVED_SCREEN_FIXTURE: SavedScreen = {
 /** `POST /api/v1/me/screens` handler — 201 with the created screen. */
 export function saveScreenHandler(body: SavedScreen = SAVED_SCREEN_FIXTURE) {
   return http.post(`${API_BASE}/me/screens`, () => HttpResponse.json(body, { status: 201 }))
+}
+
+/* ------------------------------------------------------------------ *
+ * Valuation & DCF handlers (`03` §5) — TKT-val-006 (SCR-006 calculator).
+ * ------------------------------------------------------------------ */
+
+/** Canonical price fixture — the same `daily_prices` row every surface serves. */
+export const DCF_PRICE_FIXTURE = {
+  value: 20.0,
+  asOf: '2026-10-06',
+  stale: false,
+} as const
+
+/**
+ * The ALFA baseline (FU §11.5): the eight defaults, canonical-fact provenance for
+ * the four statement-derived inputs, and the canonical price.
+ */
+export const DCF_BASELINE_FIXTURE: DcfBaselineResponse = {
+  symbol: 'ALFA',
+  baseline: {
+    version: 1,
+    buildDate: '2026-10-05',
+    params: {
+      base_fcf: 100,
+      growth_rate: 0.1,
+      horizon_years: 5,
+      terminal_growth: 0.03,
+      discount_rate: 0.12,
+      debt: 400,
+      cash: 200,
+      share_count: 100,
+    },
+    canonicalFactRefs: {
+      base_fcf: { asOf: '2026-09-30', restated: false },
+      debt: { asOf: '2026-09-30', restated: false },
+      cash: { asOf: '2026-09-30', restated: false },
+      share_count: { asOf: '2026-09-30', restated: false },
+    },
+  },
+  price: { ...DCF_PRICE_FIXTURE },
+}
+
+/** The 5×5 golden sensitivity grid (TC-VAL-002), centered on the ALFA baseline. */
+export const DCF_SENSITIVITY_FIXTURE: DcfSensitivity = {
+  discountRates: [0.1, 0.11, 0.12, 0.13, 0.14],
+  terminalGrowths: [0.01, 0.02, 0.03, 0.04, 0.05],
+  fairValues: [
+    [18.5, 20.4, 22.1, 23.9, 24.0],
+    [15.9, 17.2, 18.6, 19.9, 21.2],
+    [13.6, 14.4, 13.1969, 15.1, 16.5],
+    [11.8, 12.4, 13.0, 13.9, 14.8],
+    [8.99623, 10.2, 10.9, 11.6, 12.3],
+  ],
+}
+
+/** The ALFA compute golden (TC-VAL-001/009): FVPS 13.1969, MoS −0.5155. */
+export const DCF_COMPUTE_FIXTURE: DcfComputeResponse = {
+  fairValuePerShare: 13.1969,
+  marginOfSafety: -0.5155,
+  price: { ...DCF_PRICE_FIXTURE },
+  sensitivity: DCF_SENSITIVITY_FIXTURE,
+}
+
+/** `GET /api/v1/stocks/{symbol}/dcf` handler. */
+export function dcfBaselineHandler(body: DcfBaselineResponse = DCF_BASELINE_FIXTURE) {
+  return http.get(`${API_BASE}/stocks/:symbol/dcf`, () => HttpResponse.json(body))
+}
+
+/**
+ * `POST /api/v1/stocks/{symbol}/dcf/compute` handler. The optional `respond`
+ * callback lets a test derive the response from the posted parameters (mirroring
+ * the stateless server); it defaults to the ALFA golden.
+ */
+export function dcfComputeHandler(
+  respond: (body: DcfComputeRequest) => DcfComputeResponse = () => DCF_COMPUTE_FIXTURE,
+) {
+  return http.post(`${API_BASE}/stocks/:symbol/dcf/compute`, async ({ request }) => {
+    const body = (await request.json()) as DcfComputeRequest
+    return HttpResponse.json(respond(body))
+  })
 }

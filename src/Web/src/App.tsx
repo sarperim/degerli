@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
+import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { SignInScreen } from '@/screens/signIn/SignInScreen'
@@ -22,6 +23,7 @@ const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   register: <RegisterScreen />,
   signIn: <SignInScreen />,
   screener: <ScreenerScreen />,
+  dcfCalculator: <DcfCalculatorScreen />,
 }
 
 const router = createBrowserRouter([

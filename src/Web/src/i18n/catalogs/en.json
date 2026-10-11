@@ -185,6 +185,49 @@
     "label": "Disclaimer",
     "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
   },
+  "dcf": {
+    "param": {
+      "base_fcf": "Starting free cash flow",
+      "growth_rate": "Growth rate",
+      "horizon_years": "Projection horizon",
+      "terminal_growth": "Terminal growth rate",
+      "discount_rate": "Discount rate",
+      "debt": "Debt",
+      "cash": "Cash & equivalents",
+      "share_count": "Share count (diluted)"
+    },
+    "unit": {
+      "currency": "TRY",
+      "percent": "%",
+      "years": "years",
+      "shares": "shares"
+    },
+    "canonicalSource": "Canonical fact · as of {{date}}",
+    "baselineDefault": "Baseline default",
+    "baselineVersion": "Baseline version {{version}}",
+    "error": {
+      "notNumber": "Enter a valid number.",
+      "notInteger": "Enter a whole number.",
+      "outOfRange": "This value is outside the valid range.",
+      "notComputable": "The model is not computable with these values (the discount rate must exceed the terminal growth)."
+    },
+    "fairValue": "Fair value (per share)",
+    "price": "Current price",
+    "framing": "Based on your assumptions",
+    "verdict": {
+      "above": "Based on your assumptions, the price sits {{percent}} above your fair value.",
+      "below": "Based on your assumptions, the price sits {{percent}} below your fair value.",
+      "equal": "Based on your assumptions, the price is very close to your fair value."
+    },
+    "unsaved": "Unsaved changes",
+    "resetToBaseline": "Reset to baseline",
+    "sensitivity": {
+      "title": "Sensitivity table",
+      "axisLabel": "Discount rate \\ terminal growth",
+      "notComputable": "Not computable",
+      "currentCell": "Current result"
+    }
+  },
   "register": {
     "formAriaLabel": "Registration form",
     "emailLabel": "E-mail address",
