@@ -332,11 +332,9 @@ public static class AdminDescriptionEndpoints
             return null;
         }
 
-        if (element.ValueKind == JsonValueKind.Null)
-        {
-            return null;
-        }
-
+        // An explicit JSON null is not a string: reject it as invalid rather than writing
+        // NULL, which on a published row violates ck_business_descriptions_published_texts
+        // and surfaced as an unhandled 500 from a well-formed `{textTr?}` request (I-RES-2).
         if (element.ValueKind != JsonValueKind.String)
         {
             fields.Add((field, "invalid"));

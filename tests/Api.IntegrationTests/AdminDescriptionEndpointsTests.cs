@@ -177,6 +177,38 @@ public sealed class AdminDescriptionEndpointsTests : IClassFixture<PostgresFixtu
     }
 
     // ---------------------------------------------------------------------------------
+    // Negative path — explicit JSON null text is rejected, never written (I-RES-2)
+    // ---------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Patch_rejects_json_null_text_as_invalid()
+    {
+        await ResetAsync();
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var builder = await SignedInClientAsync(factory, BuilderEmail);
+
+        var restId = await DescriptionIdAsync("REST");
+        var originalTr = await TextTrAsync(restId);
+
+        var csrf = await CsrfTokenAsync(builder);
+        using (var rejected = await PatchAsync(
+                   builder,
+                   $"{QueuePath}/{restId}",
+                   new { textTr = (string?)null },
+                   csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            using var document = JsonDocument.Parse(await rejected.Content.ReadAsStringAsync());
+            Assert.Equal("VALIDATION_FAILED", document.RootElement.GetProperty("code").GetString());
+            var fields = document.RootElement.GetProperty("params").GetProperty("fields").EnumerateArray().ToList();
+            Assert.Contains(fields, field => field.GetProperty("field").GetString() == "textTr");
+        }
+
+        // The rejected request leaves the stored text untouched.
+        Assert.Equal(originalTr, await TextTrAsync(restId));
+    }
+
+    // ---------------------------------------------------------------------------------
     // TC-RES-020 — Publication gate
     // ---------------------------------------------------------------------------------
 
@@ -297,6 +329,15 @@ public sealed class AdminDescriptionEndpointsTests : IClassFixture<PostgresFixtu
         return await db.BusinessDescriptions
             .Where(description => description.InstrumentId == instrumentId)
             .Select(description => description.Id)
+            .SingleAsync();
+    }
+
+    private async Task<string?> TextTrAsync(long descriptionId)
+    {
+        await using var db = _postgres.CreateContext();
+        return await db.BusinessDescriptions
+            .Where(description => description.Id == descriptionId)
+            .Select(description => description.TextTr)
             .SingleAsync();
     }
 
