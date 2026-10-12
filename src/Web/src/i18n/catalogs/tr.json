@@ -185,6 +185,49 @@
     "label": "Yasal uyarı",
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
   },
+  "dcf": {
+    "param": {
+      "base_fcf": "Başlangıç serbest nakit akışı",
+      "growth_rate": "Büyüme oranı",
+      "horizon_years": "Projeksiyon ufku",
+      "terminal_growth": "Nihai büyüme oranı",
+      "discount_rate": "İskonto oranı",
+      "debt": "Borç",
+      "cash": "Nakit ve nakit benzerleri",
+      "share_count": "Hisse sayısı (sulandırılmış)"
+    },
+    "unit": {
+      "currency": "₺",
+      "percent": "%",
+      "years": "yıl",
+      "shares": "hisse"
+    },
+    "canonicalSource": "Kanonik tablo · {{date}} itibarıyla",
+    "baselineDefault": "Temel varsayılan",
+    "baselineVersion": "Temel sürüm {{version}}",
+    "error": {
+      "notNumber": "Geçerli bir sayı girin.",
+      "notInteger": "Tam sayı girin.",
+      "outOfRange": "Bu değer geçerli aralığın dışında.",
+      "notComputable": "Bu değerlerle model hesaplanamaz (iskonto oranı nihai büyümeden büyük olmalıdır)."
+    },
+    "fairValue": "Adil değer (hisse başına)",
+    "price": "Güncel fiyat",
+    "framing": "Kendi varsayımlarınıza göre",
+    "verdict": {
+      "above": "Kendi varsayımlarınıza göre fiyat, adil değerinizin {{percent}} üzerinde.",
+      "below": "Kendi varsayımlarınıza göre fiyat, adil değerinizin {{percent}} altında.",
+      "equal": "Kendi varsayımlarınıza göre fiyat, adil değerinize çok yakın."
+    },
+    "unsaved": "Kaydedilmemiş değişiklikler",
+    "resetToBaseline": "Temel değerlere dön",
+    "sensitivity": {
+      "title": "Duyarlılık tablosu",
+      "axisLabel": "İskonto oranı \\ nihai büyüme",
+      "notComputable": "Hesaplanamaz",
+      "currentCell": "Geçerli sonuç"
+    }
+  },
   "register": {
     "formAriaLabel": "Kayıt formu",
     "emailLabel": "E-posta adresi",

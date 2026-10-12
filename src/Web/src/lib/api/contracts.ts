@@ -294,3 +294,80 @@ export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
 }
+
+/* ------------------------------------------------------------------ *
+ * Valuation & DCF (`03` §5) — TKT-val-006 (SCR-006 calculator UI).
+ * ------------------------------------------------------------------ */
+
+/** The eight confirmed, fully user-editable DCF parameters (OQ-UX-001, UX §4.1). */
+export type DcfParamKey =
+  | 'base_fcf'
+  | 'growth_rate'
+  | 'horizon_years'
+  | 'terminal_growth'
+  | 'discount_rate'
+  | 'debt'
+  | 'cash'
+  | 'share_count'
+
+/** The parameter set on the wire: canonical values (rates as fractions, 0.12). */
+export type DcfParams = Record<DcfParamKey, number>
+
+/** Per canonical-fact provenance — as-of + restatement flag (UXR-VAL-010). */
+export interface CanonicalFactRef {
+  asOf: string
+  restated: boolean
+}
+
+/** The active per-stock baseline carried by `GET /stocks/{symbol}/dcf`. */
+export interface DcfBaseline {
+  version: number
+  buildDate: string
+  params: DcfParams
+  /** Provenance for the statement-derived defaults (canonical facts only). */
+  canonicalFactRefs: Partial<Record<DcfParamKey, CanonicalFactRef>>
+}
+
+/** Canonical EOD price carried by both DCF payloads (NFR-VAL-003). */
+export interface DcfPrice {
+  value: number
+  asOf: string
+  stale: boolean
+}
+
+/**
+ * `GET /api/v1/stocks/{symbol}/dcf` (`03` §5; UC-VAL-001 steps 1–2).
+ *
+ * When a statement-derived input is missing the payload is `200` with
+ * `state: "missing_inputs"` naming what is missing instead of computing on
+ * partial data (UXR-VAL-009); the missing-inputs UI is owned by TKT-val-007.
+ */
+export interface DcfBaselineResponse {
+  symbol: string
+  baseline?: DcfBaseline
+  price?: DcfPrice
+  state?: 'missing_inputs'
+  missingInputs?: DcfParamKey[]
+}
+
+/** `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters. */
+export type DcfComputeRequest = DcfParams
+
+/**
+ * The 5×5 sensitivity grid (FR-VAL-007, SD-001): fair value across
+ * discount-rate (rows) × terminal-growth (columns); a `null` cell is honestly
+ * not computable (r ≤ g_t, I-VAL-1).
+ */
+export interface DcfSensitivity {
+  discountRates: number[]
+  terminalGrowths: number[]
+  fairValues: (number | null)[][]
+}
+
+/** `POST /api/v1/stocks/{symbol}/dcf/compute` response (`03` §5). */
+export interface DcfComputeResponse {
+  fairValuePerShare: number
+  marginOfSafety: number
+  price: DcfPrice
+  sensitivity: DcfSensitivity
+}
