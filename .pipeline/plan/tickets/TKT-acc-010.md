@@ -1,6 +1,7 @@
 # TKT-acc-010: SCR-010 Account Settings UI
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/57
 - Size: M
 - Scope: `/src/Web` SCR-010 route per the TKT-acc-001 design: exactly the required sections (language preference with immediate application + persistence, password change with inline validation and session preserved, entry points to My Saved Screens and My DCF Scenarios, account deletion behind a focus-trapping double-confirmation stating consequences, e-mail verification status + resend while unverified) and nothing else; anonymous access → sign-in path; signed-in-only navigation. Must NOT touch other account screens.
 - Traces to: FR-ACC-005, FR-ACC-006, FR-ACC-007 (UI side); UC-ACC-003 (main + alternate a); UXR-ACC-016..021; BR-ACC-001 (minimal posture)
