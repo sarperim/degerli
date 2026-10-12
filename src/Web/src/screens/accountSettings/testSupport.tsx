@@ -1,9 +1,8 @@
 /* eslint-disable react-refresh/only-export-components -- test harness: stub
    route components + render helpers intentionally share one test-only module. */
-import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 
 import { AccountSettingsScreen } from '@/screens/accountSettings/AccountSettingsScreen'
-import { SavedScreensScreen } from '@/screens/savedScreens/SavedScreensScreen'
 import { server } from '@/test/msw/server'
 import {
   ANONYMOUS_SESSION_FIXTURE,
@@ -14,8 +13,6 @@ import {
   meHandler,
   passwordChangeHandler,
   resendVerificationHandler,
-  savedScreensListHandler,
-  screenerMetricsHandler,
   sessionHandler,
   updateLanguageHandler,
 } from '@/test/msw/handlers'
@@ -23,9 +20,9 @@ import { renderWithProviders } from '@/test/render'
 import type { MeResponse, SessionResponse } from '@/lib/api/contracts'
 
 /**
- * Shared harness for the SCR-010 component tests (TKT-acc-010). A stub home and
- * the real SCR-004 list screen let the delete end-to-end flow reach the
- * saved-screens surface after sign-out (TC-ACC-032).
+ * Shared harness for the SCR-010 component tests (TKT-acc-010). A stub home keeps
+ * the delete-confirm navigation observable; the cross-context delete flow itself
+ * is an L4 case (`tests/e2e/src/account-settings.spec.ts`).
  */
 
 export { ME_UNVERIFIED_FIXTURE, ME_VERIFIED_FIXTURE }
@@ -41,11 +38,7 @@ function LocationProbe() {
 }
 
 function HomeStub() {
-  return (
-    <div data-testid="home">
-      <Link to="/screens">go-screens</Link>
-    </div>
-  )
+  return <div data-testid="home" />
 }
 
 export function renderAccountSettings(initialEntries: string[] = ['/settings']) {
@@ -54,7 +47,6 @@ export function renderAccountSettings(initialEntries: string[] = ['/settings']) 
       <LocationProbe />
       <Routes>
         <Route path="/settings" element={<AccountSettingsScreen />} />
-        <Route path="/screens" element={<SavedScreensScreen />} />
         <Route path="/" element={<HomeStub />} />
         <Route path="/sign-in" element={<div data-testid="sign-in-page" />} />
         <Route path="/register" element={<div data-testid="register-page" />} />
@@ -79,8 +71,6 @@ export function resetAccountSettingsTest(
     passwordChangeHandler(),
     deleteAccountHandler(),
     resendVerificationHandler(),
-    screenerMetricsHandler(),
-    savedScreensListHandler(),
   )
 }
 

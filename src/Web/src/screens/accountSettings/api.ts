@@ -6,7 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query'
 
-import { apiFetch } from '@/lib/api/client'
+import { apiFetch, clearCsrfToken } from '@/lib/api/client'
 import type {
   AnonymousSession,
   MeResponse,
@@ -84,9 +84,12 @@ export function useDeleteAccount(): UseMutationResult<void, Error, void> {
   return useMutation({
     mutationFn: () => apiFetch<void>('/me', { method: 'DELETE' }),
     onSuccess: () => {
-      // Account removed → drop every cached resource and pin the signed-out
-      // state so the header and gated surfaces reflect anonymity immediately
-      // (mutation matrix §8.4, UXR-ACC-019).
+      // Account removed → the antiforgery token was bound to the deleted
+      // identity, so drop it before the next mutation refetches a fresh one
+      // (I1). Then drop every cached resource and pin the signed-out state so
+      // the header and gated surfaces reflect anonymity immediately (mutation
+      // matrix §8.4, UXR-ACC-019).
+      clearCsrfToken()
       queryClient.clear()
       queryClient.setQueryData<AnonymousSession>(SESSION_QUERY_KEY, {
         authenticated: false,

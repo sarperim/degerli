@@ -2,30 +2,25 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter, Route, Routes } from 'react-router'
 
-import { SignInScreen } from '@/screens/signIn/SignInScreen'
 import { catalogValue } from '@/test/i18n'
 import {
   ANONYMOUS_SESSION_FIXTURE,
   API_BASE,
   UNVERIFIED_SESSION_FIXTURE,
-  VERIFIED_SESSION_FIXTURE,
-  loginHandler,
-  meHandler,
-  screenerMetricsHandler,
+  problemHandler,
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
-import { renderWithProviders } from '@/test/render'
 import {
   ME_UNVERIFIED_FIXTURE,
   ME_VERIFIED_FIXTURE,
+  fill,
   renderAccountSettings,
   resetAccountSettingsTest,
 } from '@/screens/accountSettings/testSupport'
 
 /**
- * SCR-010 — Account Settings (L3/L4, test strategy §5.3).
+ * SCR-010 — Account Settings component contract (test strategy §5.3, L3).
  *
  * TC-ACC-025 — the screen contains exactly the required sections (language
  * preference, password change, entry points, deletion, verification status +
@@ -34,11 +29,12 @@ import {
  * TC-ACC-026 — account deletion sits behind a focus-trapping confirmation that
  * states saved screens and DCF scenarios will be lost; cancel does nothing
  * (UXR-ACC-019, UXR-G-022).
- * TC-ACC-029 — setting English applies immediately and persists to the account;
- * an independent context applies the stored preference at sign-in
- * (BR-ACC-004, UXR-ACC-017).
- * TC-ACC-032 — deleting the account removes it, signs the user out, and leaves
- * previously saved screens inaccessible (UC-ACC-003 alternate a).
+ *
+ * The two pinned L4 cases delivered by this ticket — TC-ACC-029 (language
+ * preference across devices) and TC-ACC-032 (delete account end-to-end) — live
+ * in `tests/e2e/src/account-settings.spec.ts` against the full compose stack,
+ * where they exercise real cross-context behaviour (test strategy §5.4).
+ * Password change (UXR-ACC-018) is covered behaviourally below.
  */
 
 const TR = (key: string) => catalogValue('tr', key)
@@ -166,91 +162,121 @@ describe('TC-ACC-026 — deletion double-confirmation', () => {
   })
 })
 
-describe('TC-ACC-029 — language preference across devices', () => {
-  it('applies English immediately in settings and persists it to the account', async () => {
-    const user = userEvent.setup()
-    let captured: unknown = null
-    server.use(
-      http.patch(`${API_BASE}/me`, async ({ request }) => {
-        captured = await request.json()
-        return HttpResponse.json({ ...ME_VERIFIED_FIXTURE, languagePref: 'en' })
+describe('Password change — inline validation and session preserved (UXR-ACC-018)', () => {
+  function fields() {
+    return {
+      current: screen.getByLabelText(TR('accountSettings.currentLabel'), {
+        exact: false,
       }),
+      newPassword: screen.getByLabelText(TR('accountSettings.newPasswordLabel'), {
+        exact: false,
+      }),
+      submit: screen.getByRole('button', {
+        name: TR('accountSettings.passwordSubmit'),
+      }),
+    }
+  }
+
+  it('keeps submit disabled while invalid and marks the offending field inline', async () => {
+    const user = userEvent.setup()
+    renderAccountSettings()
+    await screen.findByTestId('settings-password')
+
+    const { current, newPassword, submit } = fields()
+    // Nothing entered yet → submit disabled (UXR-G-018).
+    expect(submit).toBeDisabled()
+
+    // A short new password fails the policy; the field is marked invalid inline.
+    await user.type(current, 'current-password')
+    await user.type(newPassword, 'short')
+    await user.tab()
+    await waitFor(() =>
+      expect(newPassword).toHaveAttribute('aria-invalid', 'true'),
     )
+    expect(submit).toBeDisabled()
 
-    const { i18n } = renderAccountSettings()
-    await screen.findByTestId('settings-language')
-
-    await user.click(screen.getByRole('button', { name: TR('header.english') }))
-
-    // Immediate UI switch (no reload) …
-    expect(i18n.resolvedLanguage).toBe('en')
-    // … and persisted to the account.
-    await waitFor(() => expect(captured).toEqual({ languagePref: 'en' }))
+    // A valid pair enables the control.
+    await user.clear(newPassword)
+    await user.type(newPassword, 'longenough1')
+    expect(newPassword).not.toHaveAttribute('aria-invalid', 'true')
+    expect(submit).toBeEnabled()
   })
 
-  it('applies the stored account preference on sign-in from an independent context', async () => {
+  it('maps a server wrong-current error to the current-password copy and preserves inputs', async () => {
     const user = userEvent.setup()
-    server.use(loginHandler({ languagePref: 'en' }))
-
-    // An independent context: a fresh render with its own i18n instance.
-    const { i18n } = renderWithProviders(
-      <MemoryRouter initialEntries={['/sign-in']}>
-        <Routes>
-          <Route path="/sign-in" element={<SignInScreen />} />
-          <Route path="/" element={<div data-testid="home" />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await user.type(
-      screen.getByLabelText(TR('signIn.emailLabel'), { exact: false }),
-      'ayse@example.test',
-    )
-    await user.type(
-      screen.getByLabelText(TR('signIn.passwordLabel'), { exact: false }),
-      'correct-horse-battery',
-    )
-    await user.click(screen.getByRole('button', { name: TR('signIn.submit') }))
-
-    await waitFor(() => expect(i18n.resolvedLanguage).toBe('en'))
-  })
-})
-
-describe('TC-ACC-032 — delete account end-to-end', () => {
-  it('removes the account, signs the user out, and leaves saved screens inaccessible', async () => {
-    const user = userEvent.setup()
-    let deleted = false
     server.use(
-      http.get(`${API_BASE}/auth/session`, () =>
-        HttpResponse.json(
-          deleted ? ANONYMOUS_SESSION_FIXTURE : VERIFIED_SESSION_FIXTURE,
-        ),
-      ),
-      http.delete(`${API_BASE}/me`, () => {
-        deleted = true
-        return new HttpResponse(null, { status: 204 })
+      problemHandler(`${API_BASE}/me/password`, 'VALIDATION_FAILED', {
+        method: 'patch',
+        params: { fields: [{ field: 'current', code: 'mismatch' }] },
       }),
-      meHandler(ME_VERIFIED_FIXTURE),
-      screenerMetricsHandler(),
     )
 
     renderAccountSettings()
-    await screen.findByTestId('settings-deletion')
+    await screen.findByTestId('settings-password')
 
-    await user.click(screen.getByTestId('delete-account'))
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(TR('accountSettings.deleteDialogDescription'))
-    await user.click(
-      within(dialog).getByRole('button', { name: TR('accountSettings.deleteConfirm') }),
+    const { current, newPassword, submit } = fields()
+    await user.type(current, 'wrong-current')
+    await user.type(newPassword, 'longenough1')
+    await user.click(submit)
+
+    expect(await screen.findByText(TR('accountSettings.currentMismatch'))).toBeInTheDocument()
+    // Inputs are preserved on failure (UXR-G-004).
+    expect(current).toHaveValue('wrong-current')
+    expect(newPassword).toHaveValue('longenough1')
+  })
+
+  it('maps a server weak-new-password error to the minimum-length copy', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/me/password`, 'VALIDATION_FAILED', {
+        method: 'patch',
+        params: { fields: [{ field: 'newPassword', code: 'PasswordTooShort' }] },
+      }),
     )
 
-    // Account removed; the user is signed out and returned to an anonymous home.
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/))
-    expect(deleted).toBe(true)
+    renderAccountSettings()
+    await screen.findByTestId('settings-password')
 
-    // Previously saved screens are no longer accessible — the list presents the
-    // sign-in path for the now-anonymous session.
-    await user.click(screen.getByRole('link', { name: 'go-screens' }))
-    expect(await screen.findByTestId('saved-screens-anonymous')).toBeInTheDocument()
+    const { current, newPassword, submit } = fields()
+    await user.type(current, 'current-password')
+    await user.type(newPassword, 'longenough1')
+    await user.click(submit)
+
+    expect(
+      await screen.findByText(
+        fill(TR('accountSettings.newTooShort'), { min: 10 }),
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('confirms success, clears the fields, and states the session stays open', async () => {
+    const user = userEvent.setup()
+    let changeCalls = 0
+    server.use(
+      http.patch(`${API_BASE}/me/password`, async ({ request }) => {
+        changeCalls += 1
+        const body = (await request.json()) as {
+          current: string
+          newPassword: string
+        }
+        return HttpResponse.json({ email: ME_VERIFIED_FIXTURE.email, ...body })
+      }),
+    )
+
+    renderAccountSettings()
+    await screen.findByTestId('settings-password')
+
+    const { current, newPassword, submit } = fields()
+    await user.type(current, 'current-password')
+    await user.type(newPassword, 'longenough1')
+    await user.click(submit)
+
+    expect(await screen.findByTestId('password-success')).toHaveTextContent(
+      TR('accountSettings.passwordSuccess'),
+    )
+    expect(changeCalls).toBe(1)
+    // The fields are cleared after success.
+    expect(current).toHaveValue('')
+    expect(newPassword).toHaveValue('')
   })
 })
