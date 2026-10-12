@@ -2,9 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { expect, test, type Page } from '@playwright/test'
 
-import { MAILPIT_BASE_URL } from './config'
 import { catalogValue, loadCatalog } from './helpers/catalog'
-import { extractLinks, MailpitClient } from './helpers/mailpit'
 
 /**
  * SCR-010 account-settings L4 flows (`.pipeline/testing/user-accounts.md` §2
@@ -19,16 +17,32 @@ import { extractLinks, MailpitClient } from './helpers/mailpit'
  * user is signed out, previously saved screens are no longer accessible, and
  * other users' data is unaffected.
  *
- * Every account is created in-test (register → verify via MailPit) so the specs
- * never read or mutate another test's state (FU §8.3). Copy is read from the
- * checked-in catalogs, never hardcoded (§5.4/§8.3).
+ * Copy is read from the checked-in catalogs, never hardcoded (§5.4/§8.3). Form
+ * fields are addressed by their stable DOM ids so a helper works in either UI
+ * language.
+ *
+ * NOTE (escalated): TC-ACC-032 drives a seeded **verified** account (`user-c`,
+ * FU §9). The test ideal is to register → verify a throwaway account in-test, but
+ * the API ships only `LoggingMailDispatcher` (no SMTP adapter), so the compose
+ * stack never delivers a verification link to MailPit. `user-c` is verified and
+ * unused by any other e2e spec, so the deletion tests the same contract without
+ * colliding with a sibling test's account. See the fixer report for the upstream
+ * gap (test strategy §7 "MailPit, links read via its API").
  */
 
 const tr = loadCatalog('tr')
+const en = loadCatalog('en')
 const TR = (key: string) => catalogValue(tr, key)
+const EN = (key: string) => catalogValue(en, key)
 
+/** The fixture password for every seeded account (FU §9). */
 const PASSWORD = 'FixturePass1!'
 
+/**
+ * A seeded verified account (preference `en`, FU §9) that this spec deletes; no
+ * other e2e spec references it.
+ */
+const DELETE_USER_EMAIL = 'user-c@degerli.test'
 /** A seeded verified account with saved content (FU §9) used as "another user". */
 const OTHER_USER_EMAIL = 'user-a@degerli.test'
 const OTHER_USER_SCREEN = 'Ekranım'
@@ -54,47 +68,41 @@ function uniqueEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.test`
 }
 
+/**
+ * Fill and submit a form by its stable DOM ids, so the helper is independent of
+ * the active UI language (the accessible label text is localized).
+ */
+async function submitForm(
+  page: Page,
+  ids: { email: string; password: string; consent?: string },
+  email: string,
+  password: string,
+): Promise<void> {
+  await page.locator(`#${ids.email}`).fill(email)
+  await page.locator(`#${ids.password}`).fill(password)
+  if (ids.consent) await page.locator(`#${ids.consent}`).check()
+  await page.locator('form button[type="submit"]').click()
+}
+
 async function registerAccount(page: Page, email: string): Promise<void> {
   await page.goto('/register')
-  await page.getByLabel(TR('register.emailLabel'), { exact: false }).fill(email)
-  await page
-    .getByLabel(TR('register.passwordLabel'), { exact: false })
-    .fill(PASSWORD)
-  await page
-    .getByLabel(TR('register.consentLabel'), { exact: false })
-    .check()
-  await page
-    .getByRole('form', { name: TR('register.formAriaLabel') })
-    .getByRole('button', { name: TR('register.submit') })
-    .click()
+  await submitForm(
+    page,
+    { email: 'register-email', password: 'register-password', consent: 'register-consent' },
+    email,
+    PASSWORD,
+  )
   await expect(page.getByTestId('registration-verification-notice')).toBeVisible()
 }
 
 async function signIn(page: Page, email: string, password = PASSWORD): Promise<void> {
   await page.goto('/sign-in')
-  await page.getByLabel(TR('signIn.emailLabel'), { exact: false }).fill(email)
-  await page.getByLabel(TR('signIn.passwordLabel'), { exact: false }).fill(password)
-  await page
-    .getByRole('form', { name: TR('signIn.formAriaLabel') })
-    .getByRole('button', { name: TR('signIn.submit') })
-    .click()
-}
-
-/** Poll MailPit (bounded) for the verification link addressed to `email`. */
-async function awaitVerificationLink(
-  mailpit: MailpitClient,
-  email: string,
-): Promise<string> {
-  const summary = await mailpit.waitForMessage(
-    (candidate) => candidate.To.some((to) => to.Address === email),
-    { description: `a verification e-mail for ${email}` },
+  await submitForm(
+    page,
+    { email: 'sign-in-email', password: 'sign-in-password' },
+    email,
+    password,
   )
-  const message = await mailpit.get(summary.ID)
-  const link = extractLinks(message).find((url) =>
-    /\/verify-email\?token=/.test(url),
-  )
-  expect(link, `a verification link in the e-mail to ${email}`).toBeTruthy()
-  return link as string
 }
 
 /** Build and persist a saved screen through the real screener UI. */
@@ -158,25 +166,21 @@ test.describe('TC-ACC-029 — language preference across devices (L4)', () => {
 test.describe('TC-ACC-032 — delete account end-to-end (L4)', () => {
   test('confirm removes the account, signs the user out, and leaves others unaffected', async ({
     browser,
-    request,
   }) => {
-    const email = uniqueEmail('acc032')
     const screenName = `Silinecek ${randomUUID().slice(0, 8)}`
 
+    // A seeded verified account (preference `en`, FU §9) — see the file header
+    // note on why the throwaway register→verify flow cannot run against MailPit.
     const contextA = await browser.newContext()
     const pageA = await contextA.newPage()
     tagWithClientIp(pageA)
 
-    // Register → verify (link read from MailPit) → save a screen.
-    const mailpit = new MailpitClient(request, MAILPIT_BASE_URL)
-    await mailpit.clear()
-    await registerAccount(pageA, email)
-    const verificationLink = await awaitVerificationLink(mailpit, email)
-    await pageA.goto(verificationLink)
-    await expect(pageA.getByText(TR('verifyEmail.verifiedTitle'))).toBeVisible()
+    await signIn(pageA, DELETE_USER_EMAIL)
+    // Sign-in applies the account preference (`en`); hold it for stable copy.
+    await expect(pageA.locator('html')).toHaveAttribute('lang', 'en')
 
+    // Create the account's own saved screen, then confirm it is reachable.
     await saveScreen(pageA, screenName)
-    // The screen is reachable while signed in (so its later loss is meaningful).
     await pageA.goto('/screens')
     await expect(pageA.getByTestId('saved-screens-list')).toContainText(screenName)
 
@@ -184,16 +188,14 @@ test.describe('TC-ACC-032 — delete account end-to-end (L4)', () => {
     await pageA.goto('/settings')
     await pageA.getByTestId('delete-account').click()
     const dialog = pageA.getByRole('dialog')
-    await expect(dialog).toContainText(
-      TR('accountSettings.deleteDialogDescription'),
-    )
+    await expect(dialog).toContainText(EN('accountSettings.deleteDialogDescription'))
     await dialog
-      .getByRole('button', { name: TR('accountSettings.deleteConfirm') })
+      .getByRole('button', { name: EN('accountSettings.deleteConfirm') })
       .click()
 
     // Removed and signed out: back on the anonymous home, header shows guest.
     await expect(pageA).toHaveURL(/\/$/)
-    await expect(pageA.getByText(TR('header.anonymous'))).toBeVisible()
+    await expect(pageA.getByText(EN('header.anonymous'))).toBeVisible()
 
     // Previously saved screens are no longer accessible — the signed-out visit
     // to My Saved Screens presents the sign-in path, no rows.
@@ -202,9 +204,9 @@ test.describe('TC-ACC-032 — delete account end-to-end (L4)', () => {
     await expect(pageA.getByTestId('saved-screens-list')).toHaveCount(0)
 
     // The account is gone: the old credentials no longer sign in.
-    await signIn(pageA, email)
+    await signIn(pageA, DELETE_USER_EMAIL)
     await expect(pageA.getByRole('alert')).toContainText(
-      TR('signIn.invalidCredentials'),
+      EN('signIn.invalidCredentials'),
     )
 
     await contextA.close()
