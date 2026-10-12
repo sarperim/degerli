@@ -469,3 +469,50 @@ export function dcfComputeHandler(
     return HttpResponse.json(respond(body))
   })
 }
+
+/* ------------------------------------------------------------------ *
+ * Saved screens (`03` §4) — TKT-scr-007 (SCR-004 list/rename/delete).
+ * ------------------------------------------------------------------ */
+
+/** Two saved screens as `GET /api/v1/me/screens` serves them (by name). */
+export const SAVED_SCREENS_FIXTURE: SavedScreen[] = [
+  {
+    id: 1,
+    name: 'Ucuz kaliteli',
+    criteria: [
+      { metricCode: 'pe', bound: 'max', maxValue: 15 },
+      { metricCode: 'roe', bound: 'min', minValue: 0.15 },
+    ],
+    createdAt: '2026-10-05T20:00:00Z',
+    updatedAt: '2026-10-05T20:00:00Z',
+  },
+  {
+    id: 2,
+    name: 'Büyüme',
+    criteria: [{ metricCode: 'rev_cagr', bound: 'min', minValue: 0.15, window: 5 }],
+    createdAt: '2026-10-06T20:00:00Z',
+    updatedAt: '2026-10-06T20:00:00Z',
+  },
+]
+
+/**
+ * `GET /api/v1/me/screens` handler. Accepts a static list or a thunk (so a test
+ * can mutate the "server" list between renders — TC-SCR-031).
+ */
+export function savedScreensListHandler(
+  screens: SavedScreen[] | (() => SavedScreen[]) = SAVED_SCREENS_FIXTURE,
+) {
+  return http.get(`${API_BASE}/me/screens`, () =>
+    HttpResponse.json({ screens: typeof screens === 'function' ? screens() : screens }),
+  )
+}
+
+/** `PATCH /api/v1/me/screens/{id}` handler — 200 with the updated screen. */
+export function renameScreenHandler(body: SavedScreen) {
+  return http.patch(`${API_BASE}/me/screens/:id`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me/screens/{id}` handler — 204 (TC-SCR-017). */
+export function deleteScreenHandler() {
+  return http.delete(`${API_BASE}/me/screens/:id`, () => new HttpResponse(null, { status: 204 }))
+}
