@@ -201,6 +201,37 @@ export interface CsrfTokenResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
+ * ------------------------------------------------------------------ */
+
+/**
+ * `GET /api/v1/me` and the response of the account mutations (`03` §6) — the
+ * minimal account read (BR-ACC-001/008, NFR-ACC-001): e-mail, stored language
+ * preference and e-mail verification status only.
+ */
+export interface MeResponse {
+  email: string
+  languagePref: LanguagePref
+  verified: boolean
+}
+
+/** `PATCH /api/v1/me` request body (`03` §6) — the language preference. */
+export interface UpdateLanguagePreferenceRequest {
+  languagePref: LanguagePref
+}
+
+/** `PATCH /api/v1/me/password` request body (`03` §6). */
+export interface PasswordChangeRequest {
+  current: string
+  newPassword: string
+}
+
+/** `PATCH /api/v1/me/password` response (`03` §6) — the account e-mail. */
+export interface PasswordChangeResponse {
+  email: string
+}
+
+/* ------------------------------------------------------------------ *
  * Screener (`03` §4) — TKT-scr-006 (SCR-003 criteria builder + run + save).
  * ------------------------------------------------------------------ */
 
