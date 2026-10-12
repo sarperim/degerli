@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 
 import { Disclaimer } from '@/components/Disclaimer'
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/honest-data'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { FormField } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { SkeletonTable } from '@/components/ui/skeleton'
@@ -29,19 +30,23 @@ import type {
   DcfComputeResponse,
   DcfParams,
   DcfSensitivity,
+  SavedScenario,
 } from '@/lib/api/contracts'
 import { formatAsOfDate, formatDecimal, formatPercent } from '@/lib/format'
 import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue'
 import { useComputeDcf, useDcfBaseline } from '@/screens/dcf/api'
 import {
+  DCF_PARAM_BY_KEY,
   DCF_PARAMS,
   findCurrentCellIndex,
   isModifiedVsBaseline,
   paramsToFields,
+  paramsToFieldsAllowingMissing,
   validateFields,
   verdictKey,
   type DcfFieldMap,
 } from '@/screens/dcf/params'
+import { useSaveScenario, useScenarios } from '@/screens/dcf/scenariosApi'
 import { useDraftStore } from '@/store/draftStore'
 
 /**
@@ -87,7 +92,8 @@ export function DcfCalculatorScreen() {
   useEffect(() => {
     if (!baseline || seeded.current) return
     seeded.current = true
-    setFields(paramsToFields(baseline.params))
+    // A missing canonical fact is seeded empty, never zero-filled (UXR-VAL-009).
+    setFields(paramsToFieldsAllowingMissing(baseline.params))
   }, [baseline])
 
   // Persist the draft so navigation and the auth hop cannot lose it (UXR-G-021).
@@ -95,6 +101,20 @@ export function DcfCalculatorScreen() {
   useEffect(() => {
     if (fields) setDcfDraft({ symbol: upperSymbol, values: fields } satisfies DcfDraft)
   }, [fields, upperSymbol, setDcfDraft])
+
+  // Scenario save/load state (FR-VAL-009/010; UXR-VAL-012..015/021).
+  const [name, setName] = useState(() => useDraftStore.getState().dcfDraftName)
+  const [loadedScenario, setLoadedScenario] = useState<SavedScenario | null>(null)
+  const [pendingLoad, setPendingLoad] = useState<SavedScenario | null>(null)
+
+  const setDcfDraftName = useDraftStore((state) => state.setDcfDraftName)
+  useEffect(() => {
+    setDcfDraftName(name)
+  }, [name, setDcfDraftName])
+
+  const scenariosQuery = useScenarios(upperSymbol)
+  const scenarios = scenariosQuery.data?.scenarios ?? []
+  const save = useSaveScenario(upperSymbol)
 
   const validation = useMemo(
     () => (fields ? validateFields(fields) : { params: null, errors: {} }),
@@ -128,10 +148,23 @@ export function DcfCalculatorScreen() {
 
   const fieldErrors = { ...validation.errors, ...serverError }
 
+  // The missing-inputs state: the calculator explains what is missing and never
+  // computes on partial data (UXR-VAL-009). The remaining inputs are still shown
+  // so the user can supply the missing value and compute their own model.
+  const missingInputs = baselineQuery.data?.missingInputs ?? []
+  const isMissing = baselineQuery.data?.state === 'missing_inputs'
+  const missingLabels = missingInputs
+    .map((key) => t(DCF_PARAM_BY_KEY[key].labelKey))
+    .join(', ')
+
+  // A draft is unsaved when it deviates from the loaded scenario, else the
+  // baseline; a missing-inputs baseline has no complete reference to compare to.
+  const referenceParams =
+    loadedScenario?.params ?? (isMissing ? undefined : baseline?.params)
   const modified =
     fields !== null &&
-    baseline !== undefined &&
-    isModifiedVsBaseline(fields, baseline.params)
+    referenceParams !== undefined &&
+    isModifiedVsBaseline(fields, referenceParams)
 
   const currentDiscountRate = validation.params?.discount_rate
   const currentTerminalGrowth = validation.params?.terminal_growth
@@ -140,13 +173,62 @@ export function DcfCalculatorScreen() {
     (def) => baseline?.canonicalFactRefs?.[def.key]?.restated === true,
   )
 
+  // Save-flow view (TC-VAL-021 decision table), mirroring the SCR-003 save flow.
+  type ScenarioSaveView =
+    | 'idle'
+    | 'pending'
+    | 'saved'
+    | 'anonymous'
+    | 'unverified'
+    | 'duplicate'
+    | 'error'
+  const saveView: ScenarioSaveView = save.isPending
+    ? 'pending'
+    : save.isSuccess
+      ? 'saved'
+      : save.isError
+        ? isApiErrorCode(save.error, 'UNAUTHENTICATED')
+          ? 'anonymous'
+          : isApiErrorCode(save.error, 'EMAIL_NOT_VERIFIED')
+            ? 'unverified'
+            : isApiErrorCode(save.error, 'DUPLICATE_NAME')
+              ? 'duplicate'
+              : 'error'
+        : 'idle'
+
   function updateField(key: keyof DcfFieldMap, value: string) {
     setFields((current) => (current ? { ...current, [key]: value } : current))
   }
 
   function resetToBaseline() {
-    if (baseline) setFields(paramsToFields(baseline.params))
+    if (!baseline) return
+    setFields(paramsToFieldsAllowingMissing(baseline.params))
+    setLoadedScenario(null)
   }
+
+  function handleSave() {
+    if (!validation.params || name.trim() === '') return
+    save.mutate({ symbol: upperSymbol, name: name.trim(), params: validation.params })
+  }
+
+  /** Load a scenario: seed its params exactly, then recompute (FR-VAL-010). */
+  function applyLoad(scenario: SavedScenario) {
+    setFields(paramsToFields(scenario.params))
+    setLoadedScenario(scenario)
+    setPendingLoad(null)
+  }
+
+  function requestLoad(scenario: SavedScenario) {
+    // Loading over unsaved changes requires an explicit discard confirmation
+    // (UXR-VAL-014, mutation matrix).
+    if (modified) {
+      setPendingLoad(scenario)
+      return
+    }
+    applyLoad(scenario)
+  }
+
+  const encodedReturn = encodeURIComponent(`/stocks/${upperSymbol}/dcf`)
 
   return (
     <section data-screen="SCR-006" data-route-id="dcfCalculator" className="flex flex-col gap-6">
@@ -240,6 +322,20 @@ export function DcfCalculatorScreen() {
 
           {anyRestated ? <RestatedNotice /> : null}
 
+          {/* Missing statement inputs: explain, never compute on partial data. */}
+          {isMissing ? (
+            <div
+              data-testid="dcf-missing-inputs"
+              role="status"
+              className="flex flex-col gap-1 rounded-lg border border-dashed p-4"
+            >
+              <p className="font-medium">{t('dcf.missingInputs.title')}</p>
+              <p className="text-sm text-muted-foreground">
+                {t('dcf.missingInputs.body', { fields: missingLabels })}
+              </p>
+            </div>
+          ) : null}
+
           {/* Controls: unsaved-changes indication + reset (UXR-G-021, UX §5). */}
           <div className="flex flex-wrap items-center gap-3">
             {modified ? (
@@ -258,6 +354,158 @@ export function DcfCalculatorScreen() {
                 {t('dcf.resetToBaseline')}
               </Button>
             ) : null}
+          </div>
+
+          {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
+          <div
+            data-testid="dcf-scenario-panel"
+            className="flex flex-col gap-3 rounded-lg border bg-background p-4"
+          >
+            <h2 className="text-h3 font-medium text-foreground">
+              {t('dcf.scenario.heading')}
+            </h2>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                <label
+                  htmlFor="dcf-scenario-name"
+                  className="text-sm font-medium text-foreground"
+                >
+                  {t('dcf.scenario.nameLabel')}
+                </label>
+                <Input
+                  id="dcf-scenario-name"
+                  data-testid="dcf-scenario-name"
+                  value={name}
+                  disabled={save.isPending}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                data-testid="dcf-scenario-save"
+                disabled={
+                  validation.params === null || name.trim() === '' || save.isPending
+                }
+                aria-busy={save.isPending || undefined}
+                onClick={handleSave}
+              >
+                {save.isPending ? t('dcf.scenario.saving') : t('dcf.scenario.saveButton')}
+              </Button>
+            </div>
+
+            {saveView === 'saved' && save.data ? (
+              <p
+                data-testid="dcf-scenario-saved"
+                role="status"
+                className="rounded-md border bg-accent/40 p-3 text-sm"
+              >
+                {t('dcf.scenario.savedConfirmation', { name: save.data.name })}
+              </p>
+            ) : null}
+
+            {saveView === 'anonymous' ? (
+              <div
+                data-testid="dcf-scenario-anonymous"
+                className="flex flex-col gap-2 rounded-md border p-3"
+              >
+                <p className="font-medium">{t('dcf.scenario.anonymousTitle')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('dcf.scenario.anonymousBody')}
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    className="text-sm underline"
+                    to={`/sign-in?returnUrl=${encodedReturn}`}
+                  >
+                    {t('dcf.scenario.signIn')}
+                  </Link>
+                  <Link
+                    className="text-sm underline"
+                    to={`/register?returnUrl=${encodedReturn}`}
+                  >
+                    {t('dcf.scenario.register')}
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {saveView === 'unverified' ? (
+              <div
+                data-testid="dcf-scenario-unverified"
+                className="flex flex-col gap-2 rounded-md border p-3"
+              >
+                <p className="font-medium">{t('dcf.scenario.unverifiedTitle')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('dcf.scenario.unverifiedBody')}
+                </p>
+                <Link className="text-sm underline" to="/settings">
+                  {t('dcf.scenario.unverifiedLink')}
+                </Link>
+              </div>
+            ) : null}
+
+            {saveView === 'duplicate' ? (
+              <p
+                data-testid="dcf-scenario-duplicate"
+                role="alert"
+                className="text-sm font-medium text-destructive"
+              >
+                {t('dcf.scenario.duplicateName', { name: name.trim() })}
+              </p>
+            ) : null}
+
+            {saveView === 'error' ? (
+              <div
+                role="alert"
+                data-testid="dcf-scenario-error"
+                className="flex flex-col gap-2"
+              >
+                <p className="font-medium text-destructive">
+                  {t('dcf.scenario.saveErrorTitle')}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('dcf.scenario.saveErrorBody')}
+                </p>
+                <Button variant="outline" onClick={handleSave}>
+                  {t('common.retry')}
+                </Button>
+              </div>
+            ) : null}
+
+            <div data-testid="dcf-scenario-picker" className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-foreground">
+                {t('dcf.scenario.pickerLabel')}
+              </span>
+              {scenarios.length === 0 ? (
+                <p
+                  data-testid="dcf-scenario-picker-empty"
+                  className="text-sm text-muted-foreground"
+                >
+                  {t('dcf.scenario.pickerEmpty')}
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {scenarios.map((scenario) => (
+                    <li
+                      key={scenario.id}
+                      data-testid={`dcf-scenario-item-${scenario.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
+                    >
+                      <span className="text-sm">{scenario.name}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        data-testid={`dcf-scenario-load-${scenario.id}`}
+                        onClick={() => requestLoad(scenario)}
+                      >
+                        {t('dcf.scenario.load')}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
           {/* Results — fair value, price with as-of, plain-language verdict. */}
@@ -317,6 +565,26 @@ export function DcfCalculatorScreen() {
           <Disclaimer />
         </>
       ) : null}
+
+      {/* Load-over-unsaved-changes discard confirmation (UXR-VAL-014). */}
+      <ConfirmDialog
+        open={pendingLoad !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingLoad(null)
+        }}
+        title={t('dcf.scenario.loadConfirmTitle')}
+        description={
+          pendingLoad
+            ? t('dcf.scenario.loadConfirmDescription', { name: pendingLoad.name })
+            : ''
+        }
+        confirmLabel={t('dcf.scenario.loadConfirm')}
+        cancelLabel={t('common.cancel')}
+        closeLabel={t('common.close')}
+        onConfirm={() => {
+          if (pendingLoad) applyLoad(pendingLoad)
+        }}
+      />
     </section>
   )
 }

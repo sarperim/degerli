@@ -4,7 +4,11 @@ import { Link, MemoryRouter, Route, Routes, useParams } from 'react-router'
 
 import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
 import { renderWithProviders } from '@/test/render'
-import { dcfBaselineHandler, dcfComputeHandler } from '@/test/msw/handlers'
+import {
+  dcfBaselineHandler,
+  dcfComputeHandler,
+  scenariosListHandler,
+} from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import type { SupportedLanguage } from '@/i18n'
 import { useDraftStore } from '@/store/draftStore'
@@ -36,6 +40,10 @@ export function renderDcf(
       <Routes>
         <Route path="/stocks/:symbol" element={<StockPageStub />} />
         <Route path="/stocks/:symbol/dcf" element={<DcfCalculatorScreen />} />
+        <Route path="/sign-in" element={<div data-testid="sign-in-page" />} />
+        <Route path="/register" element={<div data-testid="register-page" />} />
+        <Route path="/settings" element={<div data-testid="settings-page" />} />
+        <Route path="/scenarios" element={<div data-testid="scenarios-page" />} />
       </Routes>
     </MemoryRouter>,
     { language },
@@ -46,5 +54,5 @@ export function renderDcf(
 export function resetDcfTest() {
   sessionStorage.clear()
   useDraftStore.getState().resetDrafts()
-  server.use(dcfBaselineHandler(), dcfComputeHandler())
+  server.use(dcfBaselineHandler(), dcfComputeHandler(), scenariosListHandler([]))
 }

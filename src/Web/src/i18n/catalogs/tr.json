@@ -256,8 +256,35 @@
       "equal": "Kendi varsayımlarınıza göre fiyat, adil değerinize çok yakın."
     },
     "unsaved": "Kaydedilmemiş değişiklikler",
-    "resetToBaseline": "Temel değerlere dön",
-    "sensitivity": {
+  "resetToBaseline": "Temel değerlere dön",
+  "scenario": {
+    "heading": "Senaryolar",
+    "nameLabel": "Senaryo adı",
+    "saveButton": "Senaryoyu kaydet",
+    "saving": "Kaydediliyor…",
+    "savedConfirmation": "“{{name}}” kaydedildi.",
+    "anonymousTitle": "Kaydetmek için giriş yapın",
+    "anonymousBody": "Bir senaryoyu kaydetmek için giriş yapmanız veya hesap oluşturmanız gerekir; varsayımlarınız ve adınız korunacaktır.",
+    "signIn": "Giriş yap",
+    "register": "Kayıt ol",
+    "unverifiedTitle": "Kaydetmek için e-postanızı doğrulayın",
+    "unverifiedBody": "Senaryoları kaydetmek doğrulanmış bir e-posta gerektirir; varsayımlarınız ve adınız korunacaktır.",
+    "unverifiedLink": "Hesap ayarlarına git",
+    "duplicateName": "“{{name}}” adıyla bu hisse için kayıtlı bir senaryonuz zaten var. Farklı bir ad seçin.",
+    "saveErrorTitle": "Senaryo kaydedilemedi",
+    "saveErrorBody": "Bir şeyler ters gitti. Girdikleriniz korundu; lütfen tekrar deneyin.",
+    "pickerLabel": "Bu hissenin senaryoları",
+    "pickerEmpty": "Bu hisse için kayıtlı bir senaryonuz yok.",
+    "load": "Yükle",
+    "loadConfirmTitle": "Taslak değişiklikler silinsin mi?",
+    "loadConfirmDescription": "“{{name}}” senaryosunu yüklemek, kaydedilmemiş değişikliklerinizi silecek.",
+    "loadConfirm": "Yükle ve değişiklikleri sil"
+  },
+  "missingInputs": {
+    "title": "Eksik girdiler",
+    "body": "Bu hissenin hesaplanması için gereken bazı girdiler veri kaynaklarında eksik: {{fields}}. Eksik değerleri siz sağlayana kadar hesaplama yapılmaz; girdiğiniz değerlerle model çalışır."
+  },
+  "sensitivity": {
       "title": "Duyarlılık tablosu",
       "axisLabel": "İskonto oranı \\ nihai büyüme",
       "notComputable": "Hesaplanamaz",

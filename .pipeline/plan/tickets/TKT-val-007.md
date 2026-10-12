@@ -1,6 +1,6 @@
 # TKT-val-007: SCR-006 UI — scenario save/load flows & missing inputs
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - Scope: `/src/Web` SCR-006 scenario flows on the TKT-val-006 screen: save (anonymous prompt, unverified gate, duplicate per-stock inline error, pending locks, failure preserves assumptions + name), per-stock scenario picker, load restoring params exactly + recompute, load-over-unsaved-changes discard confirmation, missing-inputs state (explains what is missing; user-supplied values compute). Builds on the TKT-val-006 calculator files. **Should-level flows — deferral is the builder's call, recorded on the ticket.**
 - Traces to: FR-VAL-009, FR-VAL-010 (UI side); UC-VAL-001 (alternate a), UC-VAL-002; UXR-VAL-009, 012..015, 021
@@ -13,3 +13,13 @@
 ## Notes
 
 - Note: TC-VAL-024 — the full anonymous save→register→verify lifecycle — lands in TKT-int-005.
+- Implemented the Should-level scenario flows (no deferral). Recorded interpretations:
+  - **Load source:** a load seeds the calculator from the scenario's stored `params` returned by
+    `GET /me/scenarios?symbol=` (the per-stock picker), then recomputes through
+    `POST /stocks/{symbol}/dcf/compute` — matching `03` §5's "restore exactly; outputs recompute".
+    The API defines no per-id `GET`, so no extra fetch is introduced.
+  - **Missing inputs (UXR-VAL-009):** the missing canonical fact is seeded as an empty field and
+    never zero-filled; no compute runs while any field is empty/invalid, and the notice names the
+    missing parameter(s). Filling the field(s) computes the user's own model (TC-VAL-026).
+- Save/load hooks (`scenariosApi.ts`) invalidate `['me','scenarios']` + `['scenarios', symbol]` on
+  save success (M-2, §8.4). Rename/delete remain TKT-val-008 (SCR-011).

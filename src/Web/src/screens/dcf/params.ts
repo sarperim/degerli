@@ -136,6 +136,23 @@ export function paramsToFields(params: DcfParams): DcfFieldMap {
 }
 
 /**
+ * Canonical params → editable field map where an absent parameter is seeded as
+ * an empty field rather than a fabricated value (UXR-VAL-009, TC-VAL-026). Used
+ * for a stock whose statement inputs are missing so the calculator never
+ * silently zero-fills a missing canonical fact.
+ */
+export function paramsToFieldsAllowingMissing(
+  params: Partial<DcfParams> | undefined,
+): DcfFieldMap {
+  const fields = {} as DcfFieldMap
+  for (const def of DCF_PARAMS) {
+    const value = params?.[def.key]
+    fields[def.key] = value === undefined ? '' : valueToField(def, value)
+  }
+  return fields
+}
+
+/**
  * Parse one editable field into its canonical value, or `null` when it is not a
  * usable number. Rates are divided by 100 (percentage points → fraction); a
  * comma decimal separator is accepted (TR keyboards).
