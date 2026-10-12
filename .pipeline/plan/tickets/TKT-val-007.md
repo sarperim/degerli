@@ -1,6 +1,6 @@
 # TKT-val-007: SCR-006 UI — scenario save/load flows & missing inputs
 
-- Status: in-review — https://github.com/sarperim/degerli/pull/56
+- Status: done — https://github.com/sarperim/degerli/pull/56 (merged to dev, b11ea99; review MERGEABLE: reviews/TKT-val-007-round-2.md)
 - Size: M
 - Scope: `/src/Web` SCR-006 scenario flows on the TKT-val-006 screen: save (anonymous prompt, unverified gate, duplicate per-stock inline error, pending locks, failure preserves assumptions + name), per-stock scenario picker, load restoring params exactly + recompute, load-over-unsaved-changes discard confirmation, missing-inputs state (explains what is missing; user-supplied values compute). Builds on the TKT-val-006 calculator files. **Should-level flows — deferral is the builder's call, recorded on the ticket.**
 - Traces to: FR-VAL-009, FR-VAL-010 (UI side); UC-VAL-001 (alternate a), UC-VAL-002; UXR-VAL-009, 012..015, 021
