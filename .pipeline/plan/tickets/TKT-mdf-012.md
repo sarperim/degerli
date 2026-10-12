@@ -1,6 +1,7 @@
 # TKT-mdf-012: Admin UI — SCR-012 shell & MDF sections
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/55
 - Size: L
 - Scope: `/src/Web` `/admin` area per the TKT-mdf-001 design: role-gated nav entry + access-denied state, ops summary, quarantine queue (inspect payload, dismiss with note), coverage report with instrument/fund scope switch, run ledger with job/status filters + job & backfill triggers + in-progress auto-refresh (UXR-MDF-015) + manual refresh (UXR-MDF-028), aggregate stats panel, admin empty states. **Per-section route/component files** so TKT-scr-005, TKT-res-010, TKT-val-009 add their sections without touching shared files. Must NOT implement the description/metric-visibility/baseline sections (owned by RES/SCR/VAL tickets).
 - Traces to: FR-MDF-011/012/016 (UI side); UC-MDF-001/002/004, UC-MOV-005, UC-FDF-002/003; UXR-MDF-001..017, 026..028 (screen side)
