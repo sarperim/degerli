@@ -238,5 +238,142 @@
     "resent": "A new verification e-mail has been sent.",
     "resendFailed": "We could not send the e-mail. Please try again.",
     "backToRegister": "Back to registration"
+  },
+  "admin": {
+    "sectionsNavLabel": "Admin sections",
+    "accessDenied": {
+      "title": "You do not have access to this area",
+      "body": "The admin dashboard is only available to the builder role. Use the link below to return to platform content.",
+      "back": "Back to the market overview"
+    },
+    "sections": {
+      "summary": "Ops summary",
+      "quarantine": "Quarantine queue",
+      "coverage": "Coverage report",
+      "ledger": "Run ledger",
+      "stats": "Usage statistics"
+    },
+    "runStatus": {
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "partial": "Partial",
+      "running": "Running",
+      "queued": "Queued"
+    },
+    "summary": {
+      "jobsHeading": "Latest run per job",
+      "job": "Job",
+      "status": "Status",
+      "finishedAt": "Finished at",
+      "neverRun": "Never run",
+      "freshnessHeading": "Data freshness",
+      "dataType": "Data type",
+      "lastSuccess": "Last success",
+      "noLastSuccess": "No record",
+      "contentHeading": "Content coverage",
+      "descriptionsPublished": "Published descriptions",
+      "descriptionsDraft": "Draft descriptions",
+      "universe": "Universe",
+      "quarantineHeading": "Quarantine",
+      "openQuarantineLink": "Open the quarantine queue",
+      "refresh": "Refresh",
+      "errorTitle": "The ops summary could not be loaded",
+      "errorBody": "Something went wrong while loading the summary. Please try again."
+    },
+    "quarantine": {
+      "filterLabel": "Status",
+      "statusOpen": "Open",
+      "statusDismissed": "Dismissed",
+      "columns": {
+        "job": "Job",
+        "reason": "Reason",
+        "source": "Source",
+        "quarantinedAt": "Quarantined at"
+      },
+      "inspect": "Inspect payload",
+      "hide": "Hide payload",
+      "viewLedger": "Run ledger for this job",
+      "dismiss": "Dismiss",
+      "noteLabel": "Resolution note",
+      "noteRequired": "Enter a resolution note to dismiss.",
+      "resolutionNote": "Resolution note",
+      "emptyOpenTitle": "No open quarantined facts",
+      "emptyOpenBody": "There are no open quarantined facts right now — the pipeline looks healthy.",
+      "emptyDismissedTitle": "No dismissed records",
+      "emptyDismissedBody": "There are no dismissed quarantined facts for this status.",
+      "errorTitle": "The quarantine queue could not be loaded",
+      "errorBody": "Something went wrong while loading the queue. Please try again."
+    },
+    "reason": {
+      "MISSING_PROVENANCE": "Missing provenance",
+      "NEGATIVE_PRICE": "Invalid price (negative)",
+      "UNPARSEABLE_PAYLOAD": "Unparseable payload",
+      "SCHEMA_MISMATCH": "Schema mismatch",
+      "CONFLICTING_VALUE": "Conflicting value",
+      "MISSING_CLASSIFICATION": "Missing classification"
+    },
+    "coverage": {
+      "scopeLabel": "Scope",
+      "scopeInstrument": "Instrument",
+      "scopeFund": "Fund",
+      "instrument": "Instrument",
+      "fund": "Fund",
+      "listingDate": "Listing date",
+      "dataTypes": "Data types",
+      "present": "Present",
+      "gap": "Missing",
+      "emptyTitle": "No coverage records",
+      "emptyBody": "There are no records to show for the selected scope.",
+      "errorTitle": "The coverage report could not be loaded",
+      "errorBody": "Something went wrong while loading the report. Please try again."
+    },
+    "dataTypes": {
+      "prices": "Prices",
+      "statements": "Statements",
+      "dividends": "Dividends",
+      "corporate_actions": "Corporate actions",
+      "disclosures": "KAP disclosures",
+      "nav": "NAV",
+      "performance": "Performance",
+      "holdings": "Holdings"
+    },
+    "ledger": {
+      "filterJob": "Job",
+      "filterStatus": "Status",
+      "allJobs": "All jobs",
+      "allStatuses": "All statuses",
+      "columns": {
+        "job": "Job",
+        "status": "Status",
+        "startedAt": "Started at",
+        "finishedAt": "Finished at"
+      },
+      "autoRefreshNotice": "This view refreshes periodically while a run is in progress.",
+      "refresh": "Refresh",
+      "triggerHeading": "Run a job",
+      "triggerJobLabel": "Job to run",
+      "backfillLabel": "Run a historical backfill",
+      "backfillFromLabel": "Start date",
+      "backfillFromRequired": "Enter a start date for the backfill.",
+      "trigger": "Run",
+      "triggerTitle": "Run job",
+      "triggerConfirm": "Confirm and run",
+      "triggerDescription": "The {{job}} job will run now.",
+      "triggerBackfillDescription": "The {{job}} job will run as a backfill from {{date}}.",
+      "cancel": "Cancel",
+      "emptyTitle": "No runs for this filter",
+      "emptyBody": "No runs match the selected job and status filter.",
+      "errorTitle": "The run ledger could not be loaded",
+      "errorBody": "Something went wrong while loading the ledger. Please try again."
+    },
+    "stats": {
+      "registered": "Registered accounts",
+      "verified": "Verified accounts",
+      "savedScreens": "Saved screens",
+      "dcfScenarios": "DCF scenarios",
+      "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
+      "errorTitle": "The statistics could not be loaded",
+      "errorBody": "Something went wrong while loading the statistics. Please try again."
+    }
   }
 }

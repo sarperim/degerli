@@ -29,3 +29,16 @@ export function useSession(): UseQueryResult<SessionResponse> {
     refetchOnWindowFocus: true,
   })
 }
+
+/**
+ * True when the signed-in account holds the builder role (architecture AD-13).
+ *
+ * Gates the admin entry in the global navigation (UXR-MDF-001) and the admin
+ * screen's access-denied state (UXR-MDF-002). The server independently enforces
+ * the role on every `/admin` endpoint (`03` §8); this only decides what the SPA
+ * presents.
+ */
+export function useIsBuilder(): boolean {
+  const { data } = useSession()
+  return data?.authenticated === true && data.role === 'builder'
+}

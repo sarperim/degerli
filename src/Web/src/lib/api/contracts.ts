@@ -294,3 +294,130 @@ export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
 }
+
+/* ------------------------------------------------------------------ *
+ * Admin / SCR-012 (`03` §8, AD-13) — TKT-mdf-012 (MDF sections of the
+ * admin shell). Descriptions / metric-visibility / baselines sections are
+ * owned by TKT-res-010, TKT-scr-005, TKT-val-009 and extend these types
+ * in their own modules.
+ * ------------------------------------------------------------------ */
+
+/** Terminal vs non-terminal ingest-run statuses (`03` §8; IngestResult). */
+export const INGEST_TERMINAL_STATUSES = ['succeeded', 'failed', 'partial'] as const
+
+/** One job's most recent run in the ops summary (UXR-MDF-003). */
+export interface AdminJobSummary {
+  job: string
+  lastRun: { status: string; finishedAt: string | null } | null
+}
+
+/** One data type's freshness/staleness in the ops summary (UXR-MDF-004). */
+export interface AdminFreshness {
+  dataType: string
+  lastSuccess: string | null
+  stale: boolean
+}
+
+/** `GET /api/v1/admin/summary` (`03` §8). */
+export interface AdminSummaryResponse {
+  asOf: string
+  jobs: AdminJobSummary[]
+  freshness: AdminFreshness[]
+  contentCoverage: {
+    descriptionsPublished: number
+    descriptionsDraft: number
+    universe: number
+  }
+  openQuarantineCount: number
+}
+
+/** One quarantined fact in the review queue (UXR-MDF-007/009). */
+export interface QuarantineItem {
+  id: number
+  jobCode: string
+  sourceRef: string | null
+  reasonCode: string
+  quarantinedAt: string
+  payloadJson: unknown
+  status: string
+  resolutionNote: string | null
+}
+
+/** `GET /api/v1/admin/quarantine?status=open|dismissed` (`03` §8). */
+export interface QuarantineListResponse {
+  items: QuarantineItem[]
+}
+
+/** One data type's coverage entry in the coverage report (FR-MDF-011). */
+export interface CoverageDataType {
+  dataType: string
+  present: boolean
+  availableFrom: string | null
+  availableTo: string | null
+  notes: string | null
+}
+
+/** Instrument-scope coverage row (UXR-MDF-011). */
+export interface InstrumentCoverageRow {
+  symbol: string
+  name: string
+  listingDate: string | null
+  dataTypes: CoverageDataType[]
+}
+
+/** Fund-scope coverage row (UXR-MDF-012). */
+export interface FundCoverageRow {
+  code: string
+  name: string
+  dataTypes: CoverageDataType[]
+}
+
+export type CoverageScope = 'instrument' | 'fund'
+
+export interface InstrumentCoverageResponse {
+  scope: 'instrument'
+  instruments: InstrumentCoverageRow[]
+}
+
+export interface FundCoverageResponse {
+  scope: 'fund'
+  funds: FundCoverageRow[]
+}
+
+export type CoverageResponse = InstrumentCoverageResponse | FundCoverageResponse
+
+/** One ingest run in the ledger (UXR-MDF-014). */
+export interface IngestRun {
+  id: number
+  job: string
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+/** `GET /api/v1/admin/ingest-runs?job=&status=` (`03` §8). */
+export interface IngestRunsResponse {
+  runs: IngestRun[]
+}
+
+/** `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8). */
+export interface IngestTriggerRequest {
+  backfillFrom?: string
+}
+
+/** `POST /api/v1/admin/ingest/{job}/run` response (`03` §8). */
+export interface IngestTriggerResponse {
+  runId: number | null
+  job: string
+  status: string
+  written: number
+  unchanged: number
+  quarantined: number
+}
+
+/** `GET /api/v1/admin/stats` — aggregate-only counts (UXR-MDF-026). */
+export interface AdminStatsResponse {
+  accounts: { registered: number; verified: number }
+  savedScreens: number
+  dcfScenarios: number
+}
