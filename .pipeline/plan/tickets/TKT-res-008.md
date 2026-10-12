@@ -14,4 +14,4 @@
 
 - Note: TC-RES-028 — the screener→stock-page→DCF research hand-off e2e — lands in TKT-int-002 once the DCF route exists.
 - **BLOCKER (TC-RES-031, upstream, outside `/src/Web`):** the L4 `compose.ci` fixture seed never runs the metrics job, so `derived_metrics` is empty and `GET /stocks/ZETA/growth` returns `state:"no-data"` instead of the 1-year actual-window CAGRs the FU §5.2 fixture specifies. The ZETA half of TC-RES-031 cannot pass against a clean stack; the NEWP half (no-data + listing boundary) passes. This is the same L4 seed gap that blocks TKT-mov-005 (`fixtures/` seeds prices/index/macro/statements only; nothing runs `metrics-recompute`/snapshot). All other acceptance TCs pass (L3 12/12; L4 4/5).
-- PR: <pending> — all `/src/Web` work complete; typecheck/lint/i18n/106 web tests green; full e2e 17/18 green.
+- PR: https://github.com/sarperim/degerli/pull/54 — all `/src/Web` work complete; typecheck/lint/i18n/106 web tests green; full e2e 17/18 green (17 passed, 1 failed = the ZETA half of TC-RES-031, blocked upstream).
