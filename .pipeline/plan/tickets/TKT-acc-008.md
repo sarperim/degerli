@@ -1,6 +1,6 @@
 # TKT-acc-008: SCR-008 Sign In UI & sign-out control
 
-- Status: in-review — https://github.com/sarperim/degerli/pull/51
+- Status: done — https://github.com/sarperim/degerli/pull/51 (merged to dev, 45c5003; review MERGEABLE: reviews/TKT-acc-008-round-2.md)
 - Size: S
 - Scope: `/src/Web` SCR-008 route per the TKT-acc-001 design: e-mail + password form with generic error rendering (code → i18n copy, never which-field), e-mail preserved on failure, links to reset and registration, pending lock, return-to-work via `?returnUrl` with account language applied; the header sign-out control on every screen (session invalidation, device-local language retained). Must NOT touch other account screens.
 - Traces to: FR-ACC-002, FR-ACC-003, FR-ACC-010 (UI side); UC-ACC-002 (main); UXR-ACC-008..011
