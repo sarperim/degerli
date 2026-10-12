@@ -1,6 +1,6 @@
 # TKT-res-008: SCR-005 Stock Page UI — core sections & honest-data markers
 
-- Status: todo
+- Status: in-review
 - Size: L
 - Scope: `/src/Web` SCR-005 route per the TKT-res-001 design: one screen, seven navigable sections with the current section indicated and preserved across navigation; Overview (bilingual description, last-reviewed date, preparing state), Financials, Profitability, Growth (window indications, no-data with boundary), Balance Sheet, Dividends (never-paid state); honest-data marker components (stale badge, restatement asterisk + bottom footnote + warning, adjusted disclaimer placeholder, no-data w/ coverage); per-section independent load/fail/retry (M-5); DCF hand-off link; disclaimer. Must NOT implement the Valuation section UI (TKT-res-009).
 - Traces to: FR-RES-005, FR-RES-008..012, FR-RES-014..016, FR-RES-026 (UI side); UC-RES-002, UC-RES-003 (main + alternates); UXR-RES-008..011, 014..022
@@ -13,3 +13,5 @@
 ## Notes
 
 - Note: TC-RES-028 — the screener→stock-page→DCF research hand-off e2e — lands in TKT-int-002 once the DCF route exists.
+- **BLOCKER (TC-RES-031, upstream, outside `/src/Web`):** the L4 `compose.ci` fixture seed never runs the metrics job, so `derived_metrics` is empty and `GET /stocks/ZETA/growth` returns `state:"no-data"` instead of the 1-year actual-window CAGRs the FU §5.2 fixture specifies. The ZETA half of TC-RES-031 cannot pass against a clean stack; the NEWP half (no-data + listing boundary) passes. This is the same L4 seed gap that blocks TKT-mov-005 (`fixtures/` seeds prices/index/macro/statements only; nothing runs `metrics-recompute`/snapshot). All other acceptance TCs pass (L3 12/12; L4 4/5).
+- PR: <pending> — all `/src/Web` work complete; typecheck/lint/i18n/106 web tests green; full e2e 17/18 green.

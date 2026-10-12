@@ -84,6 +84,77 @@
       "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
     }
   },
+  "stockPage": {
+    "sectionsLabel": "Bölümler",
+    "sections": {
+      "overview": "Genel Bakış",
+      "valuation": "Değerleme",
+      "financials": "Finansallar",
+      "profitability": "Kârlılık",
+      "growth": "Büyüme",
+      "balanceSheet": "Bilanço",
+      "dividends": "Temettüler"
+    },
+    "descriptionLastReviewed": "Son inceleme: {{date}}",
+    "sectionErrorTitle": "Bu bölüm yüklenemedi",
+    "sectionErrorBody": "Bu bölüm yüklenirken bir sorun oluştu. Diğer bölümler etkilenmedi.",
+    "dcfHandoff": "DCF hesaplayıcıyı aç",
+    "valuationPlaceholder": "Değerleme bölümü değerleme modülü tarafından sağlanır.",
+    "financials": {
+      "period": "FY{{year}}",
+      "columns": {
+        "period": "Dönem",
+        "revenue": "Hasılat",
+        "ebitda": "FAVÖK",
+        "ebit": "FVÖK",
+        "netIncome": "Net kâr",
+        "fcf": "Serbest nakit akışı"
+      }
+    },
+    "profitability": {
+      "metrics": {
+        "roic": "ROIC",
+        "roe": "ROE",
+        "gross_margin": "Brüt kâr marjı",
+        "operating_margin": "Faaliyet kâr marjı"
+      }
+    },
+    "growth": {
+      "families": {
+        "rev": "Hasılat",
+        "eps": "HBK",
+        "fcf": "Serbest nakit akışı",
+        "div": "Temettüler"
+      },
+      "window": "{{years}} yıl",
+      "actualWindow": "fiili {{years}} yıl"
+    },
+    "balanceSheet": {
+      "period": "FY{{year}}",
+      "lines": {
+        "cash": "Nakit",
+        "shortTermDebt": "Kısa vadeli borç",
+        "longTermDebt": "Uzun vadeli borç",
+        "totalEquity": "Toplam özkaynak",
+        "currentAssets": "Dönen varlıklar",
+        "currentLiabilities": "Kısa vadeli yükümlülükler",
+        "sharesDiluted": "Seyreltilmiş pay sayısı",
+        "sharesOutstanding": "Ödenmiş pay sayısı"
+      },
+      "bookValue": "Defter değeri",
+      "bookValuePerShare": "Hisse başına defter değeri"
+    },
+    "dividends": {
+      "columns": {
+        "exDate": "Hak kullanım tarihi",
+        "payDate": "Ödeme tarihi",
+        "amount": "Hisse başına tutar"
+      },
+      "ttm": "Son 12 ay hisse başına temettü",
+      "neverPaidTitle": "Temettü ödenmedi",
+      "neverPaidBody": "Bu şirket hiç temettü ödemedi."
+    }
+  },
   "stockList": {
     "searchLabel": "Hisse adı veya koduna göre ara",
     "searchPlaceholder": "Kod veya şirket adı",

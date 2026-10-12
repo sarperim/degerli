@@ -8,6 +8,7 @@ import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { SignInScreen } from '@/screens/signIn/SignInScreen'
 import { ScreenerScreen } from '@/screens/screener/ScreenerScreen'
+import { StockPage } from '@/screens/stock-page/StockPage'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
 import { StockListPage } from '@/routes/StockListPage'
@@ -19,6 +20,7 @@ import { StockListPage } from '@/routes/StockListPage'
  */
 const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   stockList: <StockListPage />,
+  stockPage: <StockPage />,
   register: <RegisterScreen />,
   signIn: <SignInScreen />,
   screener: <ScreenerScreen />,

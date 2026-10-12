@@ -15,3 +15,44 @@ export function formatAsOfDate(locale: string, isoDate: string): string {
     return isoDate
   }
 }
+
+/** Format a canonical ratio metric value (e.g. P/E 12.4) in the active language. */
+export function formatNumber(locale: string, value: number): string {
+  try {
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * Format a canonical `%` metric stored as a fraction (`0.15` → `15%`). The API
+ * serves `%`-unit metrics as fractions (`03` §4); the UI adds the percent sign.
+ */
+export function formatPercent(locale: string, fraction: number): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'percent',
+      maximumFractionDigits: 2,
+    }).format(fraction)
+  } catch {
+    return `${fraction}%`
+  }
+}
+
+/** Format a monetary amount in its own currency code (e.g. TRY) for dividends. */
+export function formatCurrency(
+  locale: string,
+  value: number,
+  currency: string,
+): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 4,
+    }).format(value)
+  } catch {
+    return `${value} ${currency}`
+  }
+}
