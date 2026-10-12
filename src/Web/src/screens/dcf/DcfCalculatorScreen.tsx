@@ -26,6 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ApiError, isApiErrorCode } from '@/lib/api/client'
+import { useSession } from '@/lib/auth/session'
 import type {
   DcfComputeResponse,
   DcfParams,
@@ -39,7 +40,7 @@ import {
   DCF_PARAM_BY_KEY,
   DCF_PARAMS,
   findCurrentCellIndex,
-  isModifiedVsBaseline,
+  isModifiedVsFields,
   paramsToFields,
   paramsToFieldsAllowingMissing,
   validateFields,
@@ -112,7 +113,13 @@ export function DcfCalculatorScreen() {
     setDcfDraftName(name)
   }, [name, setDcfDraftName])
 
-  const scenariosQuery = useScenarios(upperSymbol)
+  // The picker is a signed-in surface: gate the list query on the session so an
+  // anonymous visit never fires `GET /me/scenarios` (a guaranteed 401) and is
+  // shown a sign-in hint instead of the signed-in "no scenarios" copy. The
+  // gate mirrors SCR-004 (`SavedScreensScreen.tsx`).
+  const session = useSession()
+  const authenticated = session.data?.authenticated === true
+  const scenariosQuery = useScenarios(upperSymbol, authenticated)
   const scenarios = scenariosQuery.data?.scenarios ?? []
   const save = useSaveScenario(upperSymbol)
 
@@ -158,13 +165,18 @@ export function DcfCalculatorScreen() {
     .join(', ')
 
   // A draft is unsaved when it deviates from the loaded scenario, else the
-  // baseline; a missing-inputs baseline has no complete reference to compare to.
-  const referenceParams =
-    loadedScenario?.params ?? (isMissing ? undefined : baseline?.params)
+  // served baseline. The reference is a field map seeded exactly as the editable
+  // fields are, so a missing-inputs baseline (absent facts seeded empty) still
+  // detects the values the user hand-types as modifications (UXR-VAL-014).
+  const referenceFields = useMemo<DcfFieldMap | null>(() => {
+    if (loadedScenario) return paramsToFields(loadedScenario.params)
+    if (!baseline) return null
+    return paramsToFieldsAllowingMissing(baseline.params)
+  }, [loadedScenario, baseline])
   const modified =
     fields !== null &&
-    referenceParams !== undefined &&
-    isModifiedVsBaseline(fields, referenceParams)
+    referenceFields !== null &&
+    isModifiedVsFields(fields, referenceFields)
 
   const currentDiscountRate = validation.params?.discount_rate
   const currentTerminalGrowth = validation.params?.terminal_growth
@@ -476,7 +488,32 @@ export function DcfCalculatorScreen() {
               <span className="text-sm font-medium text-foreground">
                 {t('dcf.scenario.pickerLabel')}
               </span>
-              {scenarios.length === 0 ? (
+              {session.isPending ? null : !authenticated ? (
+                <p
+                  data-testid="dcf-scenario-picker-anonymous"
+                  className="text-sm text-muted-foreground"
+                >
+                  {t('dcf.scenario.pickerAnonymous')}
+                </p>
+              ) : scenariosQuery.isError ? (
+                <div
+                  role="alert"
+                  data-testid="dcf-scenario-picker-error"
+                  className="flex flex-col items-start gap-2"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    {t('dcf.scenario.pickerError')}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void scenariosQuery.refetch()}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                </div>
+              ) : scenarios.length === 0 ? (
                 <p
                   data-testid="dcf-scenario-picker-empty"
                   className="text-sm text-muted-foreground"
@@ -581,6 +618,7 @@ export function DcfCalculatorScreen() {
         confirmLabel={t('dcf.scenario.loadConfirm')}
         cancelLabel={t('common.cancel')}
         closeLabel={t('common.close')}
+        destructive
         onConfirm={() => {
           if (pendingLoad) applyLoad(pendingLoad)
         }}

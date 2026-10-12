@@ -41,11 +41,16 @@ export function fetchScenarios(
   return apiFetch<SavedScenarioListResponse>(`/me/scenarios${query}`, { signal })
 }
 
-export function useScenarios(symbol: string): UseQueryResult<SavedScenarioListResponse> {
+export function useScenarios(
+  symbol: string,
+  enabled: boolean,
+): UseQueryResult<SavedScenarioListResponse> {
   return useQuery({
     queryKey: scenarioQueryKeys.byStock(symbol),
     queryFn: ({ signal }) => fetchScenarios(symbol, signal),
-    enabled: symbol !== '',
+    // Auth-gated like `useSavedScreens`: an anonymous visit must not fire
+    // `GET /me/scenarios` (a guaranteed 401) — the picker shows a sign-in hint.
+    enabled: enabled && symbol !== '',
   })
 }
 

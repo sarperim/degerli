@@ -8,6 +8,8 @@ import {
   dcfBaselineHandler,
   dcfComputeHandler,
   scenariosListHandler,
+  sessionHandler,
+  VERIFIED_SESSION_FIXTURE,
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import type { SupportedLanguage } from '@/i18n'
@@ -43,16 +45,25 @@ export function renderDcf(
         <Route path="/sign-in" element={<div data-testid="sign-in-page" />} />
         <Route path="/register" element={<div data-testid="register-page" />} />
         <Route path="/settings" element={<div data-testid="settings-page" />} />
-        <Route path="/scenarios" element={<div data-testid="scenarios-page" />} />
       </Routes>
     </MemoryRouter>,
     { language },
   )
 }
 
-/** Reset the persisted draft store and register the default DCF handlers. */
+/**
+ * Reset the persisted draft store and register the default DCF handlers. The
+ * session defaults to a signed-in account so the scenario picker (now
+ * auth-gated, mirroring SCR-004) exercises its populated/empty states; tests
+ * override it with `sessionHandler(ANONYMOUS_SESSION_FIXTURE)` when needed.
+ */
 export function resetDcfTest() {
   sessionStorage.clear()
   useDraftStore.getState().resetDrafts()
-  server.use(dcfBaselineHandler(), dcfComputeHandler(), scenariosListHandler([]))
+  server.use(
+    sessionHandler(VERIFIED_SESSION_FIXTURE),
+    dcfBaselineHandler(),
+    dcfComputeHandler(),
+    scenariosListHandler([]),
+  )
 }

@@ -13,6 +13,7 @@ import type {
 import { formatDecimal } from '@/lib/format'
 import { catalogValue } from '@/test/i18n'
 import {
+  ANONYMOUS_SESSION_FIXTURE,
   API_BASE,
   DCF_COMPUTE_FIXTURE,
   DCF_SCENARIO_ALFA,
@@ -20,6 +21,7 @@ import {
   dcfComputeHandler,
   problemHandler,
   scenariosListHandler,
+  sessionHandler,
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import { renderDcf, resetDcfTest } from '@/screens/dcf/testSupport'
@@ -83,6 +85,16 @@ const PART_BASELINE: DcfBaselineResponse = {
   price: { value: 5, asOf: '2026-10-06', stale: false },
   state: 'missing_inputs',
   missingInputs: ['base_fcf'],
+}
+
+/** A saved PART scenario with a base-FCF value the missing baseline lacks. */
+const PART_SCENARIO: SavedScenario = {
+  id: 7,
+  symbol: 'PART',
+  name: 'PART senaryosu',
+  params: { ...PART_BASELINE.baseline!.params, base_fcf: 100 } as unknown as DcfParams,
+  createdAt: '2026-10-06T20:00:00Z',
+  updatedAt: '2026-10-06T20:00:00Z',
 }
 
 beforeEach(resetDcfTest)
@@ -400,5 +412,43 @@ describe('TC-VAL-026 — missing inputs (critical flow 5)', () => {
         formatDecimal('tr', 13.1969, 4, 2),
       ),
     )
+  })
+
+  it('flags user-typed values on a missing-inputs baseline as unsaved and guards the load', async () => {
+    const user = userEvent.setup()
+    server.use(
+      dcfBaselineHandler(PART_BASELINE),
+      scenariosListHandler([PART_SCENARIO]),
+      dcfComputeHandler(),
+    )
+
+    renderDcf(['/stocks/PART/dcf'])
+    await screen.findByTestId('dcf-missing-inputs')
+
+    // Seeded exactly from the missing-inputs baseline → not yet modified.
+    expect(screen.queryByTestId('dcf-unsaved')).not.toBeInTheDocument()
+
+    // Supplying the missing value is a modification even though the baseline
+    // has no value to compare against (regression: reference was undefined).
+    await user.type(screen.getByTestId('dcf-param-base_fcf'), '100')
+    expect(await screen.findByTestId('dcf-unsaved')).toBeInTheDocument()
+
+    // Loading over those typed values now requires the discard confirmation.
+    await user.click(await screen.findByTestId('dcf-scenario-load-7'))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(TR('dcf.scenario.loadConfirmTitle'))
+  })
+
+  it('shows a sign-in hint for an anonymous visitor instead of the empty copy', async () => {
+    server.use(sessionHandler(ANONYMOUS_SESSION_FIXTURE))
+
+    renderDcf()
+    await screen.findByTestId('dcf-params')
+
+    expect(await screen.findByTestId('dcf-scenario-picker-anonymous')).toHaveTextContent(
+      TR('dcf.scenario.pickerAnonymous'),
+    )
+    expect(screen.queryByTestId('dcf-scenario-picker-empty')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('dcf-scenario-picker-error')).not.toBeInTheDocument()
   })
 })

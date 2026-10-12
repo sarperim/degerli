@@ -215,14 +215,20 @@ export function validateFields(fields: DcfFieldMap): DcfValidation {
   return Object.keys(errors).length > 0 ? { params: null, errors } : { params: values, errors }
 }
 
-/** True when the editable fields differ from the served baseline params. */
-export function isModifiedVsBaseline(
+/**
+ * True when the editable fields differ from a reference field map.
+ *
+ * The reference is the loaded scenario's fields, or the served baseline seeded
+ * the same way the editable fields were (`paramsToFieldsAllowingMissing`). On a
+ * missing-inputs baseline an absent fact is seeded empty, so any value the user
+ * supplies counts as a modification — keeping the unsaved-changes guard working
+ * where users hand-type the missing value (UXR-VAL-014, TC-VAL-025).
+ */
+export function isModifiedVsFields(
   fields: DcfFieldMap,
-  baselineParams: DcfParams,
+  reference: DcfFieldMap,
 ): boolean {
-  return DCF_PARAMS.some(
-    (def) => fields[def.key] !== valueToField(def, baselineParams[def.key]),
-  )
+  return DCF_PARAMS.some((def) => fields[def.key] !== reference[def.key])
 }
 
 /** The i18n key for the plain-language verdict direction from the margin of safety. */
