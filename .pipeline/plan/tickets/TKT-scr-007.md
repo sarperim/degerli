@@ -1,6 +1,6 @@
 # TKT-scr-007: SCR-004 My Saved Screens UI
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/53 (runnable, CI green; review not yet completed — resumed this run)
 - Size: M
 - Scope: `/src/Web` SCR-004 route per the TKT-scr-001 design: signed-in list by name, re-run (fresh results in the screener context, never stored results), rename in place with duplicate inline error, delete behind focus-trapping confirmation, dropped-criterion notice on re-run, empty + anonymous states, query invalidation per the mutation matrix (M-2). Must NOT touch the SCR-003 screen files beyond the agreed active-screen display contract.
 - Traces to: FR-SCR-008..011 (UI side); UC-SCR-003 (main + alternate a); NFR-SCR-005

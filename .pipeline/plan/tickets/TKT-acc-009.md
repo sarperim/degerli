@@ -1,6 +1,6 @@
 # TKT-acc-009: SCR-009 Password Reset UI
 
-- Status: todo
+- Status: blocked — https://github.com/sarperim/degerli/pull/50 is open (backend + web CI green) but the E2E (compose · Playwright · MailPit) job fails: the password-reset flow's MailPit e-mail delivery is not working in CI. Coder-declared blocker; needs a human routing decision (test-infra / MailPit delivery), not an orchestrator call.
 - Size: M
 - Scope: `/src/Web` SCR-009 route per the TKT-acc-001 design: request stage (e-mail input, neutral confirmation that never signals registration), set-password stage directly reachable from an e-mailed link (external entry point), inline rule validation, expired/invalid link explanation with re-request path, success → sign-in possible (or signed-in state). Must NOT touch other account screens.
 - Traces to: FR-ACC-009 (UI side); UC-ACC-004 (main + alternate a); UXR-ACC-012..015

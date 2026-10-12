@@ -1,6 +1,6 @@
 # TKT-res-006: Admin descriptions API
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/49 (runnable, CI green; review not yet completed — resumed this run)
 - Size: M
 - Scope: `/src/Api` admin endpoints on the TKT-mdf-010 route group (own endpoint files): `GET /api/v1/admin/descriptions?status=` (queue payload **is** the editor payload — both texts, `sourceRefs` resolved against `kap_disclosures` with `{disclosureId}`-only stubs for unresolvable ids, wrapped root), `PATCH /admin/descriptions/{id} {textTr?, textEn?}` (strict contract — a `sourceRefs` write → 400 per I-RES-2), `POST /admin/descriptions/{id}/publish` (gate: both languages required; DB CHECK backstop). Must NOT touch the C4 CLI or the admin UI.
 - Traces to: FR-RES-020, FR-RES-021; UC-RES-004 (steps 2–4); UXR-MDF-018..022 (API side); BR-RES-003
