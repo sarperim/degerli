@@ -19,7 +19,8 @@
     "searchPlaceholder": "Search by code or company name",
     "signIn": "Sign in",
     "register": "Register",
-    "anonymous": "Guest"
+    "anonymous": "Guest",
+    "signOut": "Sign out"
   },
   "nav": {
     "marketOverview": "Market Overview",
@@ -206,6 +207,21 @@
     "verificationSentBody": "We sent a verification e-mail to {{email}}. Saving screens and DCF scenarios requires a verified e-mail.",
     "returnToWork": "Return to your work",
     "noReturnUrl": "Go to the market overview"
+  },
+  "signIn": {
+    "formAriaLabel": "Sign-in form",
+    "emailLabel": "E-mail address",
+    "emailInvalid": "Enter a valid e-mail address.",
+    "passwordLabel": "Password",
+    "passwordRequired": "Enter your password.",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalidCredentials": "The e-mail or password is incorrect.",
+    "lockedOut": "Too many failed attempts. Please try again later.",
+    "genericError": "Something went wrong. Please try again.",
+    "forgotPassword": "Forgot your password?",
+    "registerPrompt": "Don't have an account?",
+    "registerLink": "Register"
   },
   "verifyEmail": {
     "title": "E-mail verification",

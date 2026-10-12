@@ -7,6 +7,7 @@ import {
   type AuthenticatedSession,
   type AnonymousSession,
   type CsrfTokenResponse,
+  type LoginResponse,
   type MacroResponse,
   type MetricCatalogResponse,
   type ProblemDetails,
@@ -256,6 +257,16 @@ export function registerHandler(
   return http.post(`${API_BASE}/auth/register`, () =>
     HttpResponse.json(body, { status: 201 }),
   )
+}
+
+/** `POST /api/v1/auth/login` handler — 200 `{languagePref}` (`03` §6). */
+export function loginHandler(body: LoginResponse = { languagePref: 'tr' }) {
+  return http.post(`${API_BASE}/auth/login`, () => HttpResponse.json(body))
+}
+
+/** `POST /api/v1/auth/logout` handler — 204 no content (`03` §6). */
+export function logoutHandler() {
+  return http.post(`${API_BASE}/auth/logout`, () => new HttpResponse(null, { status: 204 }))
 }
 
 /** `POST /api/v1/auth/verify-email` handler — 200 verified. */

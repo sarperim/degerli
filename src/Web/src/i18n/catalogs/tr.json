@@ -19,7 +19,8 @@
     "searchPlaceholder": "Kod veya şirket adı ara",
     "signIn": "Giriş yap",
     "register": "Kayıt ol",
-    "anonymous": "Ziyaretçi"
+    "anonymous": "Ziyaretçi",
+    "signOut": "Çıkış yap"
   },
   "nav": {
     "marketOverview": "Piyasa Genel Görünümü",
@@ -206,6 +207,21 @@
     "verificationSentBody": "{{email}} adresine bir doğrulama e-postası gönderdik. Taramaları ve DCF senaryolarını kaydetmek doğrulanmış bir e-posta gerektirir.",
     "returnToWork": "Çalışmanıza dönün",
     "noReturnUrl": "Piyasa genel görünümüne git"
+  },
+  "signIn": {
+    "formAriaLabel": "Giriş formu",
+    "emailLabel": "E-posta adresi",
+    "emailInvalid": "Geçerli bir e-posta adresi girin.",
+    "passwordLabel": "Şifre",
+    "passwordRequired": "Şifrenizi girin.",
+    "submit": "Giriş yap",
+    "submitting": "Giriş yapılıyor…",
+    "invalidCredentials": "E-posta veya şifre hatalı.",
+    "lockedOut": "Çok fazla başarısız deneme yapıldı. Lütfen bir süre sonra tekrar deneyin.",
+    "genericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "forgotPassword": "Şifrenizi mi unuttunuz?",
+    "registerPrompt": "Hesabınız yok mu?",
+    "registerLink": "Kayıt olun"
   },
   "verifyEmail": {
     "title": "E-posta doğrulama",
