@@ -4,7 +4,13 @@ import { Link, MemoryRouter, Route, Routes, useParams } from 'react-router'
 
 import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
 import { renderWithProviders } from '@/test/render'
-import { dcfBaselineHandler, dcfComputeHandler } from '@/test/msw/handlers'
+import {
+  dcfBaselineHandler,
+  dcfComputeHandler,
+  scenariosListHandler,
+  sessionHandler,
+  VERIFIED_SESSION_FIXTURE,
+} from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import type { SupportedLanguage } from '@/i18n'
 import { useDraftStore } from '@/store/draftStore'
@@ -36,15 +42,28 @@ export function renderDcf(
       <Routes>
         <Route path="/stocks/:symbol" element={<StockPageStub />} />
         <Route path="/stocks/:symbol/dcf" element={<DcfCalculatorScreen />} />
+        <Route path="/sign-in" element={<div data-testid="sign-in-page" />} />
+        <Route path="/register" element={<div data-testid="register-page" />} />
+        <Route path="/settings" element={<div data-testid="settings-page" />} />
       </Routes>
     </MemoryRouter>,
     { language },
   )
 }
 
-/** Reset the persisted draft store and register the default DCF handlers. */
+/**
+ * Reset the persisted draft store and register the default DCF handlers. The
+ * session defaults to a signed-in account so the scenario picker (now
+ * auth-gated, mirroring SCR-004) exercises its populated/empty states; tests
+ * override it with `sessionHandler(ANONYMOUS_SESSION_FIXTURE)` when needed.
+ */
 export function resetDcfTest() {
   sessionStorage.clear()
   useDraftStore.getState().resetDrafts()
-  server.use(dcfBaselineHandler(), dcfComputeHandler())
+  server.use(
+    sessionHandler(VERIFIED_SESSION_FIXTURE),
+    dcfBaselineHandler(),
+    dcfComputeHandler(),
+    scenariosListHandler([]),
+  )
 }

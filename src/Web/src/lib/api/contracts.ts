@@ -402,3 +402,26 @@ export interface DcfComputeResponse {
   price: DcfPrice
   sensitivity: DcfSensitivity
 }
+
+/** A saved DCF scenario as served by the `/me/scenarios` endpoints (`03` §5). */
+export interface SavedScenario {
+  id: number
+  symbol: string
+  name: string
+  /** The eight parameters, stored verbatim so a load restores them exactly. */
+  params: DcfParams
+  createdAt: string
+  updatedAt: string
+}
+
+/** `GET /api/v1/me/scenarios?symbol=` response (`03` §5). */
+export interface SavedScenarioListResponse {
+  scenarios: SavedScenario[]
+}
+
+/** `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006. */
+export interface SaveScenarioRequest {
+  symbol: string
+  name: string
+  params: DcfParams
+}

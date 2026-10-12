@@ -19,6 +19,7 @@ import {
   type ProblemDetails,
   type RegisterResponse,
   type ResendVerificationResponse,
+  type SavedScenario,
   type SavedScreen,
   type ScreenerRunResponse,
   type SessionResponse,
@@ -557,4 +558,40 @@ export function renameScreenHandler(body: SavedScreen) {
 /** `DELETE /api/v1/me/screens/{id}` handler — 204 (TC-SCR-017). */
 export function deleteScreenHandler() {
   return http.delete(`${API_BASE}/me/screens/:id`, () => new HttpResponse(null, { status: 204 }))
+}
+
+/* ------------------------------------------------------------------ *
+ * DCF scenarios (`03` §5) — TKT-val-007 (SCR-006 save/load + picker).
+ * ------------------------------------------------------------------ */
+
+/**
+ * A saved ALFA scenario with a single parameter override (FR-VAL-010): every
+ * other value mirrors the baseline, so a load that restores it exactly is
+ * distinguishable from the baseline by the visible 15% discount rate.
+ */
+export const DCF_SCENARIO_ALFA: SavedScenario = {
+  id: 1,
+  symbol: 'ALFA',
+  name: 'Muhafazakâr',
+  params: { ...DCF_BASELINE_FIXTURE.baseline!.params, discount_rate: 0.15 },
+  createdAt: '2026-10-06T20:00:00Z',
+  updatedAt: '2026-10-06T20:00:00Z',
+}
+
+/**
+ * `GET /api/v1/me/scenarios?symbol=` handler. Accepts a static list or a thunk
+ * (so a test can mutate the "server" list between renders — mutation matrix §8.4
+ * picker invalidation). Filters by the `symbol` query parameter when present.
+ */
+export function scenariosListHandler(
+  scenarios: SavedScenario[] | (() => SavedScenario[]) = [DCF_SCENARIO_ALFA],
+) {
+  return http.get(`${API_BASE}/me/scenarios`, ({ request }) => {
+    const symbol = new URL(request.url).searchParams.get('symbol')
+    const all = typeof scenarios === 'function' ? scenarios() : scenarios
+    const filtered = symbol
+      ? all.filter((scenario) => scenario.symbol === symbol.toUpperCase())
+      : all
+    return HttpResponse.json({ scenarios: filtered })
+  })
 }

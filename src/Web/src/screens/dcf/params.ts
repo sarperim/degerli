@@ -136,6 +136,23 @@ export function paramsToFields(params: DcfParams): DcfFieldMap {
 }
 
 /**
+ * Canonical params → editable field map where an absent parameter is seeded as
+ * an empty field rather than a fabricated value (UXR-VAL-009, TC-VAL-026). Used
+ * for a stock whose statement inputs are missing so the calculator never
+ * silently zero-fills a missing canonical fact.
+ */
+export function paramsToFieldsAllowingMissing(
+  params: Partial<DcfParams> | undefined,
+): DcfFieldMap {
+  const fields = {} as DcfFieldMap
+  for (const def of DCF_PARAMS) {
+    const value = params?.[def.key]
+    fields[def.key] = value === undefined ? '' : valueToField(def, value)
+  }
+  return fields
+}
+
+/**
  * Parse one editable field into its canonical value, or `null` when it is not a
  * usable number. Rates are divided by 100 (percentage points → fraction); a
  * comma decimal separator is accepted (TR keyboards).
@@ -198,14 +215,20 @@ export function validateFields(fields: DcfFieldMap): DcfValidation {
   return Object.keys(errors).length > 0 ? { params: null, errors } : { params: values, errors }
 }
 
-/** True when the editable fields differ from the served baseline params. */
-export function isModifiedVsBaseline(
+/**
+ * True when the editable fields differ from a reference field map.
+ *
+ * The reference is the loaded scenario's fields, or the served baseline seeded
+ * the same way the editable fields were (`paramsToFieldsAllowingMissing`). On a
+ * missing-inputs baseline an absent fact is seeded empty, so any value the user
+ * supplies counts as a modification — keeping the unsaved-changes guard working
+ * where users hand-type the missing value (UXR-VAL-014, TC-VAL-025).
+ */
+export function isModifiedVsFields(
   fields: DcfFieldMap,
-  baselineParams: DcfParams,
+  reference: DcfFieldMap,
 ): boolean {
-  return DCF_PARAMS.some(
-    (def) => fields[def.key] !== valueToField(def, baselineParams[def.key]),
-  )
+  return DCF_PARAMS.some((def) => fields[def.key] !== reference[def.key])
 }
 
 /** The i18n key for the plain-language verdict direction from the margin of safety. */
