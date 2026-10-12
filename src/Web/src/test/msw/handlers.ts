@@ -13,7 +13,9 @@ import {
   type DcfSensitivity,
   type LoginResponse,
   type MacroResponse,
+  type MeResponse,
   type MetricCatalogResponse,
+  type PasswordChangeResponse,
   type ProblemDetails,
   type RegisterResponse,
   type ResendVerificationResponse,
@@ -287,6 +289,46 @@ export function resendVerificationHandler(
   return http.post(`${API_BASE}/auth/resend-verification`, () =>
     HttpResponse.json(body),
   )
+}
+
+/* ------------------------------------------------------------------ *
+ * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
+ * ------------------------------------------------------------------ */
+
+/** Deterministic fixture: the minimal account read for a verified account. */
+export const ME_VERIFIED_FIXTURE: MeResponse = {
+  email: 'verified@example.test',
+  languagePref: 'tr',
+  verified: true,
+}
+
+/** Deterministic fixture: the minimal account read for an unverified account. */
+export const ME_UNVERIFIED_FIXTURE: MeResponse = {
+  email: 'unverified@example.test',
+  languagePref: 'tr',
+  verified: false,
+}
+
+/** `GET /api/v1/me` handler — the SCR-010 settings data (`03` §6). */
+export function meHandler(body: MeResponse = ME_VERIFIED_FIXTURE) {
+  return http.get(`${API_BASE}/me`, () => HttpResponse.json(body))
+}
+
+/** `PATCH /api/v1/me` handler — 200 with the updated account read. */
+export function updateLanguageHandler(body: MeResponse = ME_VERIFIED_FIXTURE) {
+  return http.patch(`${API_BASE}/me`, () => HttpResponse.json(body))
+}
+
+/** `PATCH /api/v1/me/password` handler — 200 `{email}` (session preserved). */
+export function passwordChangeHandler(
+  body: PasswordChangeResponse = { email: ME_VERIFIED_FIXTURE.email },
+) {
+  return http.patch(`${API_BASE}/me/password`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me` handler — 204 (hard delete + cascade; session revoked). */
+export function deleteAccountHandler() {
+  return http.delete(`${API_BASE}/me`, () => new HttpResponse(null, { status: 204 }))
 }
 
 /* ------------------------------------------------------------------ *
