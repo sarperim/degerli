@@ -14,14 +14,27 @@ import { MailpitClient } from './helpers/mailpit'
  * path, and success → signed-in state with saved work intact.
  *
  * Copy is read from the checked-in catalogs (§8.3) so assertions never hardcode
- * prose. `X-Forwarded-For` is set per test to isolate the `/auth/*` 5/min
+ * prose. `X-Forwarded-For` is set per navigation to isolate the `/auth/*` 5/min
  * client-IP rate-limit bucket (I-XC-2: the limiter keys on a test-controllable
- * IP outside production); without it the flow's several auth calls would trip
- * `RATE_LIMITED` and make the suite flaky.
+ * IP outside production). Every full page load re-issues `GET /auth/session` and
+ * `GET /auth/csrf-token` — both of which share the `auth` bucket — so a test that
+ * navigates more than once would spend > 5 of the 5/min budget under one key and
+ * trip `RATE_LIMITED`. Each navigation therefore claims a fresh key; the
+ * product's `03` §12 limit is itself unchanged.
  */
 
 const tr = loadCatalog('tr')
 const TR = (key: string) => catalogValue(tr, key)
+
+/** Monotonic per-navigation client-IP allocator (keeps each `auth` bucket ≤ 5/min). */
+let clientIpOrdinal = 0
+async function gotoAsFreshClient(
+  page: import('@playwright/test').Page,
+  url: string,
+): Promise<void> {
+  await page.setExtraHTTPHeaders({ 'X-Forwarded-For': `10.10.1.${(clientIpOrdinal += 1)}` })
+  await page.goto(url)
+}
 
 /** Seeded verified user A (fixtures) — has a saved screen, so "saved work intact" is observable. */
 const USER_A = 'user-a@degerli.test'
@@ -29,13 +42,11 @@ const SAVED_SCREEN_NAME = 'Ekranım'
 const NEW_PASSWORD = 'new-correct-horse-battery'
 
 test.describe('TC-ACC-030 request stage — neutral confirmation', () => {
-  test.use({ extraHTTPHeaders: { 'X-Forwarded-For': '10.10.0.1' } })
-
   test('shows an identical neutral confirmation for a registered and an unknown address', async ({
     page,
   }) => {
     const confirmOnce = async (email: string) => {
-      await page.goto('/reset-password')
+      await gotoAsFreshClient(page, '/reset-password')
       await page.getByLabel(TR('passwordReset.emailLabel')).fill(email)
       await page.getByRole('button', { name: TR('passwordReset.requestSubmit') }).click()
       await expect(page.getByText(TR('passwordReset.neutralTitle'))).toBeVisible()
@@ -51,10 +62,8 @@ test.describe('TC-ACC-030 request stage — neutral confirmation', () => {
 })
 
 test.describe('TC-ACC-030 expired/invalid link', () => {
-  test.use({ extraHTTPHeaders: { 'X-Forwarded-For': '10.10.0.2' } })
-
   test('shows a plain-language explanation and a re-request path', async ({ page }) => {
-    await page.goto('/reset-password?token=expired-or-invalid')
+    await gotoAsFreshClient(page, '/reset-password?token=expired-or-invalid')
     await page
       .getByLabel(TR('passwordReset.passwordLabel'), { exact: false })
       .fill(NEW_PASSWORD)
@@ -75,8 +84,6 @@ test.describe('TC-ACC-030 expired/invalid link', () => {
 })
 
 test.describe('TC-ACC-030 full reset via the e-mailed link', () => {
-  test.use({ extraHTTPHeaders: { 'X-Forwarded-For': '10.10.0.3' } })
-
   test('the e-mailed link sets a new password and signs the user in with saved work intact', async ({
     page,
     request,
@@ -85,7 +92,7 @@ test.describe('TC-ACC-030 full reset via the e-mailed link', () => {
     await mailpit.clear()
 
     // 1. Request the reset; a neutral confirmation is shown regardless.
-    await page.goto('/reset-password')
+    await gotoAsFreshClient(page, '/reset-password')
     await page.getByLabel(TR('passwordReset.emailLabel')).fill(USER_A)
     await page.getByRole('button', { name: TR('passwordReset.requestSubmit') }).click()
     await expect(page.getByText(TR('passwordReset.neutralTitle'))).toBeVisible()
@@ -95,7 +102,7 @@ test.describe('TC-ACC-030 full reset via the e-mailed link', () => {
     const { link } = await mailpit.waitForLink(/\/reset-password\?token=/, {
       description: 'the password-reset link',
     })
-    await page.goto(link)
+    await gotoAsFreshClient(page, link)
     await expect(
       page.getByLabel(TR('passwordReset.passwordLabel'), { exact: false }),
     ).toBeVisible()
