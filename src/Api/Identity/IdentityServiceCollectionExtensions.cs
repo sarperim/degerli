@@ -34,7 +34,21 @@ public static class IdentityServiceCollectionExtensions
         // Deterministic-time seam: tests register the fake clock afterwards, which
         // wins on resolution (test strategy §7).
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton<IMailDispatcher, LoggingMailDispatcher>();
+
+        // Mail-dispatch seam, configuration-gated (FLG-04). A configured relay
+        // (Smtp:Host — MailPit in CI/local, Brevo in production) selects the real
+        // SMTP adapter; with no host the app keeps the honest local log sink, so the
+        // production posture and zero-secret boot are unchanged (test strategy §7).
+        if (!string.IsNullOrWhiteSpace(configuration[$"{SmtpOptions.SectionName}:Host"]))
+        {
+            services.AddOptions<SmtpOptions>()
+                .Bind(configuration.GetSection(SmtpOptions.SectionName));
+            services.AddSingleton<IMailDispatcher, SmtpMailDispatcher>();
+        }
+        else
+        {
+            services.AddSingleton<IMailDispatcher, LoggingMailDispatcher>();
+        }
 
         services.AddHttpContextAccessor();
         services.AddDataProtection();
