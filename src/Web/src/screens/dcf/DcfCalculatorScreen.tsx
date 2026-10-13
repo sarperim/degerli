@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 
 import { Disclaimer } from '@/components/Disclaimer'
 import {
@@ -120,8 +120,28 @@ export function DcfCalculatorScreen() {
   const session = useSession()
   const authenticated = session.data?.authenticated === true
   const scenariosQuery = useScenarios(upperSymbol, authenticated)
-  const scenarios = scenariosQuery.data?.scenarios ?? []
+  const scenarios = useMemo(
+    () => scenariosQuery.data?.scenarios ?? [],
+    [scenariosQuery.data],
+  )
   const save = useSaveScenario(upperSymbol)
+
+  // Opening a scenario from My DCF Scenarios (SCR-011, UXR-VAL-016) hands off
+  // through `?scenario=<id>`: once the per-stock picker serves that scenario,
+  // seed its params exactly and let the debounced compute recompute from them
+  // (FR-VAL-010). Applied once — an explicit open replaces any current draft.
+  const [searchParams] = useSearchParams()
+  const requestedScenarioId = Number(searchParams.get('scenario')) || null
+  const appliedRequestedScenario = useRef(false)
+  useEffect(() => {
+    if (appliedRequestedScenario.current || requestedScenarioId === null) return
+    const requested = scenarios.find((candidate) => candidate.id === requestedScenarioId)
+    if (!requested) return
+    appliedRequestedScenario.current = true
+    setFields(paramsToFields(requested.params))
+    setLoadedScenario(requested)
+    setPendingLoad(null)
+  }, [requestedScenarioId, scenarios])
 
   const validation = useMemo(
     () => (fields ? validateFields(fields) : { params: null, errors: {} }),

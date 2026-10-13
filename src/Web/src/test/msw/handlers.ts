@@ -578,6 +578,16 @@ export const DCF_SCENARIO_ALFA: SavedScenario = {
   updatedAt: '2026-10-06T20:00:00Z',
 }
 
+/** A second saved scenario for a different stock (SCR-011 grouping, TKT-val-008). */
+export const DCF_SCENARIO_BETA: SavedScenario = {
+  id: 2,
+  symbol: 'BETA',
+  name: 'Beta temel',
+  params: { ...DCF_BASELINE_FIXTURE.baseline!.params, discount_rate: 0.1 },
+  createdAt: '2026-10-06T20:30:00Z',
+  updatedAt: '2026-10-06T20:30:00Z',
+}
+
 /**
  * `GET /api/v1/me/scenarios?symbol=` handler. Accepts a static list or a thunk
  * (so a test can mutate the "server" list between renders — mutation matrix §8.4
@@ -594,4 +604,14 @@ export function scenariosListHandler(
       : all
     return HttpResponse.json({ scenarios: filtered })
   })
+}
+
+/** `PATCH /api/v1/me/scenarios/{id}` handler — 200 with the updated scenario. */
+export function renameScenarioHandler(body: SavedScenario = DCF_SCENARIO_ALFA) {
+  return http.patch(`${API_BASE}/me/scenarios/:id`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me/scenarios/{id}` handler — 204 (UXR-VAL-018). */
+export function deleteScenarioHandler() {
+  return http.delete(`${API_BASE}/me/scenarios/:id`, () => new HttpResponse(null, { status: 204 }))
 }
