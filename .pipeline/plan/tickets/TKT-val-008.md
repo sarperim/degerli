@@ -1,6 +1,6 @@
 # TKT-val-008: SCR-011 My DCF Scenarios UI (Should)
 
-- Status: in-review — https://github.com/sarperim/degerli/pull/58
+- Status: done — https://github.com/sarperim/degerli/pull/58 (merged to dev, 98b22fe; review MERGEABLE: reviews/TKT-val-008-round-1.md)
 - Size: M
 - Scope: `/src/Web` SCR-011 route per the TKT-val-001 design: signed-in scenarios grouped by stock, activating one opens that stock's calculator loaded with it, rename in place with duplicate inline error, delete behind focus-trapping confirmation, anonymous sign-in path, empty guidance state, invalidation of the calculator picker (M-2). **Should-level screen (SCR-011) — deferral is the builder's call, recorded on the ticket.**
 - Traces to: UC-VAL-002; FR-ACC-005 (entry point); Gate 1 decision C (rename/delete as Should)
