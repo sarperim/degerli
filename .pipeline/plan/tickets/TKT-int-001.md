@@ -1,6 +1,6 @@
 # TKT-int-001: EOD chain orchestration & stale-serving lifecycle
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/59
 - Size: M
 - Scope: cross-domain wiring of the full EOD chain on the TKT-mdf-005 scheduler: prices → statements/dividends/corporate-actions/disclosures → metrics-recompute → snapshot → medians (plus macro jobs at their cadences), run in order each trading day with run-ledger rows per job; the exhausted-retries → last-known-good → stale-served → recovery cycle observed through the public `/market/overview` endpoint. Touches only scheduler wiring/registration and the cross-domain test specs. Must NOT change individual job logic.
 - Traces to: FR-MDF-009 (chain), FR-MDF-016 (stale serving); UC-MDF-001 (main + alternate a end-to-end); NFR-MDF-001; `03` §9 chain
