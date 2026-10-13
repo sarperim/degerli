@@ -4,6 +4,7 @@ using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Degerli.Api.Identity;
 
@@ -35,20 +36,20 @@ public static class IdentityServiceCollectionExtensions
         // wins on resolution (test strategy §7).
         services.TryAddSingleton(TimeProvider.System);
 
-        // Mail-dispatch seam, configuration-gated (FLG-04). A configured relay
-        // (Smtp:Host — MailPit in CI/local, Brevo in production) selects the real
-        // SMTP adapter; with no host the app keeps the honest local log sink, so the
+        // Mail-dispatch seam, configuration-gated (FLG-04). The gate is evaluated
+        // when the dispatcher is resolved, not while services register: options bind
+        // lazily, so the final configuration (env vars, appsettings, or a test host's
+        // post-registration overrides) is always the one consulted. A configured relay
+        // (Smtp:Host — MailPit in CI/local, Brevo in production) selects the real SMTP
+        // adapter; with no host the app keeps the honest local log sink, so the
         // production posture and zero-secret boot are unchanged (test strategy §7).
-        if (!string.IsNullOrWhiteSpace(configuration[$"{SmtpOptions.SectionName}:Host"]))
-        {
-            services.AddOptions<SmtpOptions>()
-                .Bind(configuration.GetSection(SmtpOptions.SectionName));
-            services.AddSingleton<IMailDispatcher, SmtpMailDispatcher>();
-        }
-        else
-        {
-            services.AddSingleton<IMailDispatcher, LoggingMailDispatcher>();
-        }
+        services.AddOptions<SmtpOptions>()
+            .Configure<IConfiguration>((options, resolved) =>
+                resolved.GetSection(SmtpOptions.SectionName).Bind(options));
+        services.AddSingleton<IMailDispatcher>(provider =>
+            string.IsNullOrWhiteSpace(provider.GetRequiredService<IOptions<SmtpOptions>>().Value.Host)
+                ? ActivatorUtilities.CreateInstance<LoggingMailDispatcher>(provider)
+                : ActivatorUtilities.CreateInstance<SmtpMailDispatcher>(provider));
 
         services.AddHttpContextAccessor();
         services.AddDataProtection();
