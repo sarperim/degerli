@@ -5,6 +5,7 @@ import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
 import { AccountSettingsScreen } from '@/screens/accountSettings/AccountSettingsScreen'
+import { AdminScreen } from '@/screens/admin/AdminScreen'
 import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
 import { DcfScenariosScreen } from '@/screens/dcfScenarios/DcfScenariosScreen'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
@@ -26,6 +27,7 @@ const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   register: <RegisterScreen />,
   signIn: <SignInScreen />,
   screener: <ScreenerScreen />,
+  admin: <AdminScreen />,
   dcfCalculator: <DcfCalculatorScreen />,
   dcfScenarios: <DcfScenariosScreen />,
   savedScreens: <SavedScreensScreen />,

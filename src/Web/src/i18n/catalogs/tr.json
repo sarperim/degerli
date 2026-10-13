@@ -83,7 +83,9 @@
     },
     "admin": {
       "title": "Yönetim Paneli",
-      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
+      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi.",
+      "sessionErrorTitle": "Yönetim alanı doğrulanamadı",
+      "sessionErrorBody": "Erişiminiz doğrulanırken bir sorun oluştu. Lütfen tekrar deneyin."
     }
   },
   "stockList": {
@@ -425,5 +427,145 @@
     "resent": "Yeni bir doğrulama e-postası gönderildi.",
     "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
     "backToRegister": "Kayıt sayfasına dön"
+  },
+  "admin": {
+    "sectionsNavLabel": "Yönetim bölümleri",
+    "accessDenied": {
+      "title": "Bu alana erişiminiz yok",
+      "body": "Yönetim paneli yalnızca builder rolüne açıktır. Platform içeriğine dönmek için aşağıdaki bağlantıyı kullanabilirsiniz.",
+      "back": "Piyasa genel görünümüne dön"
+    },
+    "sections": {
+      "summary": "Operasyon özeti",
+      "quarantine": "Karantina kuyruğu",
+      "coverage": "Kapsam raporu",
+      "ledger": "Çalıştırma günlüğü",
+      "stats": "Kullanım istatistikleri"
+    },
+    "runStatus": {
+      "succeeded": "Başarılı",
+      "failed": "Başarısız",
+      "partial": "Kısmi",
+      "running": "Çalışıyor",
+      "queued": "Sırada"
+    },
+    "summary": {
+      "jobsHeading": "İşlerin son çalıştırmaları",
+      "job": "İş",
+      "status": "Durum",
+      "finishedAt": "Tamamlanma zamanı",
+      "neverRun": "Henüz çalışmadı",
+      "freshnessHeading": "Veri tazeliği",
+      "dataType": "Veri türü",
+      "lastSuccess": "Son başarı",
+      "noLastSuccess": "Kayıt yok",
+      "contentHeading": "İçerik kapsamı",
+      "descriptionsPublished": "Yayımlanmış açıklama",
+      "descriptionsDraft": "Taslak açıklama",
+      "universe": "Evren",
+      "quarantineHeading": "Karantina",
+      "openQuarantineLink": "Karantina kuyruğunu aç",
+      "refresh": "Yenile",
+      "errorTitle": "Operasyon özeti yüklenemedi",
+      "errorBody": "Özet yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "quarantine": {
+      "filterLabel": "Durum",
+      "statusOpen": "Açık",
+      "statusDismissed": "Kapatıldı",
+      "columns": {
+        "job": "İş",
+        "reason": "Neden",
+        "source": "Kaynak",
+        "quarantinedAt": "Karantina tarihi",
+        "actions": "İşlemler"
+      },
+      "inspect": "Yükü incele",
+      "hide": "Yükü gizle",
+      "viewLedger": "Bu işin çalıştırma günlüğü",
+      "dismiss": "Kapat",
+      "noteLabel": "Çözüm notu",
+      "noteRequired": "Kapatmak için bir çözüm notu girin.",
+      "dismissError": "Kayıt kapatılamadı. Lütfen tekrar deneyin.",
+      "resolutionNote": "Çözüm notu",
+      "emptyOpenTitle": "Açık karantina kaydı yok",
+      "emptyOpenBody": "Şu anda açık karantina kaydı bulunmuyor; sistem sağlıklı görünüyor.",
+      "emptyDismissedTitle": "Kapatılmış kayıt yok",
+      "emptyDismissedBody": "Seçili durumda kapatılmış karantina kaydı bulunmuyor.",
+      "errorTitle": "Karantina kuyruğu yüklenemedi",
+      "errorBody": "Kuyruk yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "reason": {
+      "MISSING_PROVENANCE": "Kaynak bilgisi eksik",
+      "NEGATIVE_PRICE": "Geçersiz fiyat (negatif)",
+      "UNPARSEABLE_PAYLOAD": "Yük ayrıştırılamadı",
+      "SCHEMA_MISMATCH": "Şema uyuşmazlığı",
+      "CONFLICTING_VALUE": "Çelişen değer",
+      "MISSING_CLASSIFICATION": "Sınıflandırma eksik"
+    },
+    "coverage": {
+      "scopeLabel": "Kapsam",
+      "scopeInstrument": "Hisse",
+      "scopeFund": "Fon",
+      "instrument": "Hisse",
+      "fund": "Fon",
+      "listingDate": "Kotasyon tarihi",
+      "dataTypes": "Veri türleri",
+      "present": "Mevcut",
+      "gap": "Eksik",
+      "emptyTitle": "Kapsam kaydı yok",
+      "emptyBody": "Seçili kapsam için gösterilecek kayıt bulunmuyor.",
+      "errorTitle": "Kapsam raporu yüklenemedi",
+      "errorBody": "Rapor yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "dataTypes": {
+      "prices": "Fiyatlar",
+      "statements": "Mali tablolar",
+      "dividends": "Temettüler",
+      "corporate_actions": "Kurumsal işlemler",
+      "disclosures": "KAP bildirimleri",
+      "nav": "NAV",
+      "performance": "Getiri",
+      "holdings": "Portföy"
+    },
+    "ledger": {
+      "filterJob": "İş",
+      "filterStatus": "Durum",
+      "allJobs": "Tüm işler",
+      "allStatuses": "Tüm durumlar",
+      "columns": {
+        "job": "İş",
+        "status": "Durum",
+        "startedAt": "Başlangıç",
+        "finishedAt": "Bitiş"
+      },
+      "autoRefreshNotice": "Çalışan bir işlem olduğu için bu görünüm düzenli olarak güncellenir.",
+      "refresh": "Yenile",
+      "triggerHeading": "İş çalıştır",
+      "triggerJobLabel": "Çalıştırılacak iş",
+      "backfillLabel": "Geçmişe dönük (backfill) çalıştır",
+      "backfillFromLabel": "Başlangıç tarihi",
+      "backfillFromRequired": "Backfill için bir başlangıç tarihi girin.",
+      "trigger": "Çalıştır",
+      "triggerTitle": "İşi çalıştır",
+      "triggerConfirm": "Onayla ve çalıştır",
+      "triggerDescription": "{{job}} işi şimdi çalıştırılacak.",
+      "triggerBackfillDescription": "{{job}} işi {{date}} tarihinden itibaren geçmişe dönük çalıştırılacak.",
+      "cancel": "İptal",
+      "emptyTitle": "Bu filtreyle çalıştırma yok",
+      "emptyBody": "Seçili iş ve durum filtresiyle eşleşen çalıştırma bulunamadı.",
+      "errorTitle": "Çalıştırma günlüğü yüklenemedi",
+      "errorBody": "Günlük yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "triggerError": "Çalıştırma başlatılamadı. Lütfen tekrar deneyin."
+    },
+    "stats": {
+      "registered": "Kayıtlı hesap",
+      "verified": "Doğrulanmış hesap",
+      "savedScreens": "Kayıtlı tarama",
+      "dcfScenarios": "DCF senaryosu",
+      "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
+      "errorTitle": "İstatistikler yüklenemedi",
+      "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    }
   }
 }

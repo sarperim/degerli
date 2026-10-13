@@ -4,8 +4,8 @@ import { NavLink } from 'react-router'
 import { AuthState } from '@/components/AuthState'
 import { LanguageToggle } from '@/components/LanguageToggle'
 import { StockSearch } from '@/components/StockSearch'
+import { useIsBuilder, useSession } from '@/lib/auth/session'
 import { NAVIGATION_ROUTES } from '@/routes/routeConfig'
-import { useSession } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
 
 /**
@@ -17,11 +17,22 @@ import { cn } from '@/lib/utils'
  * Settings) render only to an authenticated session, so anonymous visitors see
  * just the public research surfaces and SCR-010 gains its signed-in entry point
  * (UXR-ACC-020, `routes/routeConfig.ts`).
+ *
+ * The admin entry is additionally presented only to a builder-role account
+ * (UXR-MDF-001, architecture AD-13). Both gates apply: a route renders when it
+ * is not auth-gated or the session is authenticated, AND it is not builder-only
+ * or the session is a builder.
  */
 export function Header() {
   const { t } = useTranslation()
   const session = useSession()
   const authenticated = session.data?.authenticated === true
+  const isBuilder = useIsBuilder()
+  const routes = NAVIGATION_ROUTES.filter(
+    (route) =>
+      (!route.requiresAuth || authenticated) &&
+      (route.builderOnly !== true || isBuilder),
+  )
 
   return (
     <header
@@ -38,9 +49,7 @@ export function Header() {
           aria-label={t('header.primaryNav')}
           className="order-last flex w-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:w-auto"
         >
-          {NAVIGATION_ROUTES.filter(
-            (route) => !route.requiresAuth || authenticated,
-          ).map((route) => (
+          {routes.map((route) => (
             <NavLink
               key={route.id}
               to={route.path}
