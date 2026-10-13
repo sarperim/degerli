@@ -13,7 +13,11 @@ namespace Degerli.Fixtures;
 ///   seed — metric catalog, macro series, builder role/account: `02` §8);</item>
 ///   <item>re-run the idempotent application seed (safe no-op on a migrated DB);</item>
 ///   <item>apply <see cref="FixtureUniverse.Build"/> for <see cref="FixtureAnchor.NowAnchored"/>
-///   through the single <see cref="FixtureSeeder"/> code path shared with L2.</item>
+///   through the single <see cref="FixtureSeeder"/> code path shared with L2;</item>
+///   <item>run the derived-data jobs (<c>metrics-recompute</c> then <c>market-snapshot</c>)
+///   at the anchor through <see cref="FixtureDerivedData"/>, so the stack serves populated
+///   market/derived reads (TKT-foundation-013). This step belongs to the L4 entrypoint only:
+///   the L2 variant keeps seeding facts and running the jobs itself.</item>
 /// </list>
 /// <para>
 /// The anchor is <c>T = the seed (container-start) day</c>; fresh rows sit on
@@ -75,7 +79,8 @@ public static class FixtureSeedEntry
             return 2;
         }
 
-        var anchor = FixtureAnchor.NowAnchored(clock ?? TimeProvider.System);
+        var timeProvider = clock ?? TimeProvider.System;
+        var anchor = FixtureAnchor.NowAnchored(timeProvider);
         var set = FixtureUniverse.Build(anchor);
 
         await using var db = new DegerliDbContext(DegerliDbContextOptions.Build(connectionString));
@@ -87,6 +92,13 @@ public static class FixtureSeedEntry
             $"fixture-universe: seeded L4 now-anchored variant; T={anchor.T:yyyy-MM-dd}; " +
             $"instruments={set.Instruments.Count}; prices={set.Prices.Count}; statements={set.Statements.Count}.")
             .ConfigureAwait(false);
+
+        // Derived data only after every fact is seeded, at the same anchor/clock used to
+        // build the fixture set (FU §8.3). Idempotent on the jobs' keys, so a re-run
+        // upserts in place.
+        await FixtureDerivedData.ApplyAsync(connectionString, anchor, log, timeProvider, cancellationToken)
+            .ConfigureAwait(false);
+
         return 0;
     }
 }
