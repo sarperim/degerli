@@ -9,8 +9,10 @@ import { renderWithProviders } from '@/test/render'
 import { server } from '@/test/msw/server'
 import {
   ANONYMOUS_SESSION_FIXTURE,
+  API_BASE,
   BUILDER_SESSION_FIXTURE,
   VERIFIED_SESSION_FIXTURE,
+  problemHandler,
   sessionHandler,
 } from '@/test/msw/handlers'
 import { resetAdminTest, renderAdmin } from '@/screens/admin/testSupport'
@@ -33,6 +35,9 @@ const tr = {
   deniedBack: catalogValue('tr', 'admin.accessDenied.back'),
   sectionsNavLabel: catalogValue('tr', 'admin.sectionsNavLabel'),
   summary: catalogValue('tr', 'admin.sections.summary'),
+  sessionErrorTitle: catalogValue('tr', 'screens.admin.sessionErrorTitle'),
+  sessionErrorBody: catalogValue('tr', 'screens.admin.sessionErrorBody'),
+  retry: catalogValue('tr', 'common.retry'),
 }
 
 function renderHeader() {
@@ -109,6 +114,17 @@ describe('TC-MDF-045 — admin entry visibility and access-denied state', () => 
     expect(
       await screen.findByRole('heading', { name: tr.deniedTitle }),
     ).toBeInTheDocument()
+  })
+
+  it('shows a session error with retry, never access-denied, when the session fetch fails (UXR-G-003)', async () => {
+    server.use(problemHandler(`${API_BASE}/auth/session`, 'INTERNAL'))
+    renderAdmin()
+
+    expect(await screen.findByText(tr.sessionErrorTitle)).toBeInTheDocument()
+    expect(screen.getByText(tr.sessionErrorBody)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: tr.retry })).toBeInTheDocument()
+    // A failed session read must not masquerade as access-denied.
+    expect(screen.queryByRole('heading', { name: tr.deniedTitle })).toBeNull()
   })
 
   it('shows the aggregate-only stats panel with no per-user surface (UXR-MDF-026)', async () => {

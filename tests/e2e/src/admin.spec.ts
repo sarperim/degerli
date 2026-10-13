@@ -112,6 +112,45 @@ test.describe('TC-MDF-046 — ops summary renders', () => {
       page.getByRole('heading', { name: TR('admin.sections.quarantine') }),
     ).toBeVisible()
   })
+
+  test('shows the stale macro data type with its last-success date and stale marker', async ({
+    page,
+  }) => {
+    await signIn(page, BUILDER_EMAIL)
+
+    // The seeded universe carries exactly one stale series by construction
+    // (GOLD, a daily macro whose last successful ingest was T−10): the API
+    // serves `stale: true` for it via the real MacroFreshnessService.
+    const summaryResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/api/v1/admin/summary') && response.ok(),
+    )
+    await page.goto('/admin')
+    const summary = (await (await summaryResponse).json()) as {
+      freshness: Array<{ dataType: string; lastSuccess: string | null; stale: boolean }>
+    }
+    const staleRow = summary.freshness.find(
+      (row) => row.stale && /gold/i.test(row.dataType),
+    )
+    expect(staleRow).toBeTruthy()
+    expect(staleRow?.lastSuccess).toBeTruthy()
+
+    const freshnessTable = page.getByTestId('summary-freshness-table')
+    await expect(freshnessTable).toBeVisible()
+    const goldRow = freshnessTable.getByRole('row', { name: /gold/i })
+    await expect(goldRow).toBeVisible()
+
+    // The last-success date is read from the API (never hardcoded) and rendered
+    // locale-aware (formatAsOfDate, tr), so the assertion tracks the now-anchored
+    // universe.
+    const expectedDate = new Intl.DateTimeFormat('tr', { dateStyle: 'medium' }).format(
+      new Date(staleRow!.lastSuccess as string),
+    )
+    await expect(goldRow).toContainText(expectedDate)
+
+    // The visible stale indication (UXR-MDF-004): copy from the catalog, never
+    // hardcoded prose.
+    await expect(goldRow.getByText(TR('honestData.stale'))).toBeVisible()
+  })
 })
 
 test.describe('TC-MDF-050 — admin empty states', () => {

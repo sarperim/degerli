@@ -477,7 +477,8 @@
         "job": "Job",
         "reason": "Reason",
         "source": "Source",
-        "quarantinedAt": "Quarantined at"
+        "quarantinedAt": "Quarantined at",
+        "actions": "Actions"
       },
       "inspect": "Inspect payload",
       "hide": "Hide payload",

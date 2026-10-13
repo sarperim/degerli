@@ -3,6 +3,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { catalogValue } from '@/test/i18n'
+import { server } from '@/test/msw/server'
+import { API_BASE, problemHandler } from '@/test/msw/handlers'
 import { resetAdminTest, renderAdmin } from '@/screens/admin/testSupport'
 
 /**
@@ -30,6 +32,7 @@ const tr = {
   dismiss: catalogValue('tr', 'admin.quarantine.dismiss'),
   noteLabel: catalogValue('tr', 'admin.quarantine.noteLabel'),
   noteRequired: catalogValue('tr', 'admin.quarantine.noteRequired'),
+  dismissError: catalogValue('tr', 'admin.quarantine.dismissError'),
   resolutionNote: catalogValue('tr', 'admin.quarantine.resolutionNote'),
   viewLedger: catalogValue('tr', 'admin.quarantine.viewLedger'),
   negativePrice: catalogValue('tr', 'admin.reason.NEGATIVE_PRICE'),
@@ -127,6 +130,28 @@ describe('TC-MDF-047 — quarantine review flow', () => {
     await user.click(screen.getByRole('button', { name: tr.sectionSummary }))
     const count = await screen.findByTestId('open-quarantine-count')
     await waitFor(() => expect(count).toHaveTextContent('3'))
+  })
+
+  it('surfaces a dismiss failure inline and preserves the entered note (UXR-G-003)', async () => {
+    server.use(
+      problemHandler(`${API_BASE}/admin/quarantine/1/dismiss`, 'INTERNAL', {
+        method: 'post',
+      }),
+    )
+    renderAdmin()
+    const user = await openQuarantineSection()
+    const table = await screen.findByTestId('quarantine-table')
+    const row = within(table).getByRole('row', { name: /prices/ })
+
+    const note = within(row).getByLabelText(tr.noteLabel)
+    await user.type(note, 'accepted as source error')
+    await user.click(within(row).getByRole('button', { name: tr.dismiss }))
+
+    // The failure is surfaced inline (never a silent drop) and the note the
+    // operator entered is preserved for a retry.
+    expect(await within(row).findByRole('alert')).toHaveTextContent(tr.dismissError)
+    expect(note).toHaveValue('accepted as source error')
+    expect(within(table).getByRole('row', { name: /prices/ })).toBeInTheDocument()
   })
 
   it('navigates from an item to the run ledger filtered to its job (UXR-MDF-010)', async () => {

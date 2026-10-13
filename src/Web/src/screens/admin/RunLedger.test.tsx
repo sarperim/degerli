@@ -12,6 +12,7 @@ import {
   adminSummaryHandler,
   ingestRunsHandlers,
   ingestTriggerHandler,
+  problemHandler,
 } from '@/test/msw/handlers'
 import { ADMIN_LEDGER_POLL_MS } from '@/screens/admin/api'
 import { resetAdminTest, renderAdmin } from '@/screens/admin/testSupport'
@@ -46,6 +47,7 @@ const tr = {
     'admin.ledger.triggerBackfillDescription',
   ),
   triggerConfirm: catalogValue('tr', 'admin.ledger.triggerConfirm'),
+  triggerError: catalogValue('tr', 'admin.ledger.triggerError'),
   cancel: catalogValue('tr', 'admin.ledger.cancel'),
   running: catalogValue('tr', 'admin.runStatus.running'),
   succeeded: catalogValue('tr', 'admin.runStatus.succeeded'),
@@ -288,6 +290,26 @@ describe('TC-MDF-049 — job trigger and backfill confirmations', () => {
 
     expect(await screen.findByText(tr.backfillFromRequired)).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('surfaces a trigger failure inside the confirm dialog and keeps it open (UXR-G-003)', async () => {
+    server.use(
+      problemHandler(`${API_BASE}/admin/ingest/prices/run`, 'INTERNAL', {
+        method: 'post',
+      }),
+    )
+    const user = userEvent.setup()
+    renderAdmin()
+    await openLedger(user)
+
+    await user.click(screen.getByRole('button', { name: tr.trigger }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: tr.triggerConfirm }))
+
+    // The error surfaces in-dialog without closing it, so the operator can retry
+    // or cancel with the pending choice intact.
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(tr.triggerError)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('locks the trigger while the run request is pending (UXR-G-002/020)', async () => {

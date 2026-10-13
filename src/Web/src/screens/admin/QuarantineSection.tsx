@@ -93,6 +93,11 @@ export function QuarantineSection() {
                 {status === 'dismissed' ? (
                   <TableHead>{t('admin.quarantine.resolutionNote')}</TableHead>
                 ) : null}
+                {/* Actions column: visually-hidden header keeps the cell/column
+                    relationship for assistive tech (UXR-G-028). */}
+                <TableHead className="sr-only">
+                  {t('admin.quarantine.columns.actions')}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

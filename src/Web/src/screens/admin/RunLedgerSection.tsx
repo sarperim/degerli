@@ -240,7 +240,11 @@ function TriggerPanel() {
 
       <ConfirmDialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open)
+          // Clear a prior failed-trigger error so reopening the dialog starts clean.
+          if (!open) trigger.reset()
+        }}
         title={t('admin.ledger.triggerTitle')}
         description={description}
         confirmLabel={t('admin.ledger.triggerConfirm')}

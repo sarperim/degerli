@@ -477,7 +477,8 @@
         "job": "İş",
         "reason": "Neden",
         "source": "Kaynak",
-        "quarantinedAt": "Karantina tarihi"
+        "quarantinedAt": "Karantina tarihi",
+        "actions": "İşlemler"
       },
       "inspect": "Yükü incele",
       "hide": "Yükü gizle",
