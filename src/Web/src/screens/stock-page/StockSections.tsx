@@ -575,14 +575,23 @@ export function DividendsSection({ symbol }: { symbol: string }) {
         onRetry={() => void query.refetch()}
       >
         {missingData ? (
-          <EmptyState
-            data-testid="dividends-never-paid"
-            data-state={missingData.state}
-            title={t('stockPage.dividends.neverPaidTitle')}
-            description={[t('stockPage.dividends.neverPaidBody'), coverageBoundary]
-              .filter(Boolean)
-              .join(' ')}
-          />
+          missingData.state === 'no-data' ? (
+            <EmptyState
+              data-testid="dividends-never-paid"
+              data-state={missingData.state}
+              title={t('stockPage.dividends.neverPaidTitle')}
+              description={[t('stockPage.dividends.neverPaidBody'), coverageBoundary]
+                .filter(Boolean)
+                .join(' ')}
+            />
+          ) : (
+            <SectionMarkers
+              asOf={missingData.asOf}
+              stale={missingData.stale}
+              state={missingData.state}
+              coverage={missingData.coverage}
+            />
+          )
         ) : null}
 
         {sectionData ? (
