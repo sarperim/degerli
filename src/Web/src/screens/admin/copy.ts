@@ -10,16 +10,6 @@ import type { CoverageScope } from '@/lib/api/contracts'
  * code instead of a missing-key placeholder.
  */
 
-export type AdminSectionId = 'summary' | 'quarantine' | 'coverage' | 'ledger' | 'stats'
-
-export const ADMIN_SECTION_KEYS: Record<AdminSectionId, string> = {
-  summary: 'admin.sections.summary',
-  quarantine: 'admin.sections.quarantine',
-  coverage: 'admin.sections.coverage',
-  ledger: 'admin.sections.ledger',
-  stats: 'admin.sections.stats',
-}
-
 export const RUN_STATUS_KEYS: Record<string, string> = {
   succeeded: 'admin.runStatus.succeeded',
   failed: 'admin.runStatus.failed',
@@ -68,7 +58,16 @@ export const COVERAGE_SCOPE_KEYS: Record<CoverageScope, string> = {
   fund: 'admin.coverage.scopeFund',
 }
 
-/** The date part of an ISO timestamp, for locale-aware date-only display. */
+/**
+ * The canonical calendar date of an ISO timestamp, for locale-aware date-only
+ * display.
+ *
+ * Deliberate choice: admin ops timestamps (quarantine/ledger/summary) are shown
+ * on their canonical UTC calendar day — the same day the ingestion and ledger
+ * source of truth records — rather than re-projecting the instant into the
+ * viewer's local timezone, which could roll a late-UTC run onto the next day.
+ * The `YYYY-MM-DD` slice is then rendered locale-aware by `formatAsOfDate`.
+ */
 export function datePart(iso: string): string {
   return iso.slice(0, 10)
 }

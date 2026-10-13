@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import type { CoverageScope } from '@/lib/api/contracts'
-import type { AdminSectionId } from '@/screens/admin/copy'
+import type { AdminSectionId } from '@/screens/admin/adminSections'
 
 /**
  * SCR-012 in-session UI state (UXR-G-021): the active section, quarantine status

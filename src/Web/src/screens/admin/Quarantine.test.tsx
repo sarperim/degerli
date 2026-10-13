@@ -16,6 +16,7 @@ import { resetAdminTest, renderAdmin } from '@/screens/admin/testSupport'
  */
 
 const tr = {
+  sectionSummary: catalogValue('tr', 'admin.sections.summary'),
   sectionQuarantine: catalogValue('tr', 'admin.sections.quarantine'),
   sectionLedger: catalogValue('tr', 'admin.sections.ledger'),
   filterLabel: catalogValue('tr', 'admin.quarantine.filterLabel'),
@@ -106,6 +107,26 @@ describe('TC-MDF-047 — quarantine review flow', () => {
     const betaRow = within(dismissed).getByRole('row', { name: /statements/ })
     expect(within(betaRow).getByText(tr.schemaMismatch)).toBeInTheDocument()
     expect(within(betaRow).getByText('source error accepted')).toBeInTheDocument()
+  })
+
+  it('dismissal updates the summary’s open-quarantine count without a manual reload (UXR-MDF-006/009)', async () => {
+    renderAdmin()
+    const user = await openQuarantineSection()
+    const table = await screen.findByTestId('quarantine-table')
+    const row = within(table).getByRole('row', { name: /prices/ })
+
+    await user.type(within(row).getByLabelText(tr.noteLabel), 'accepted as source error')
+    await user.click(within(row).getByRole('button', { name: tr.dismiss }))
+    await waitFor(() =>
+      expect(screen.queryByRole('row', { name: /prices/ })).toBeNull(),
+    )
+
+    // The shell shows one section at a time: returning to the summary shows the
+    // decremented open count (4 → 3) — the dismissal invalidated the summary read,
+    // so no manual reload is needed.
+    await user.click(screen.getByRole('button', { name: tr.sectionSummary }))
+    const count = await screen.findByTestId('open-quarantine-count')
+    await waitFor(() => expect(count).toHaveTextContent('3'))
   })
 
   it('navigates from an item to the run ledger filtered to its job (UXR-MDF-010)', async () => {

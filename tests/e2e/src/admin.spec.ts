@@ -104,10 +104,17 @@ test.describe('TC-MDF-046 — ops summary renders', () => {
       page.getByRole('heading', { name: TR('admin.summary.contentHeading') }),
     ).toBeVisible()
     await expect(page.getByTestId('coverage-count-universe')).toBeVisible()
+
+    // The open-quarantine count links into the queue (UXR-MDF-006).
+    await expect(page.getByTestId('open-quarantine-count')).toBeVisible()
+    await page.getByRole('button', { name: TR('admin.summary.openQuarantineLink') }).click()
+    await expect(
+      page.getByRole('heading', { name: TR('admin.sections.quarantine') }),
+    ).toBeVisible()
   })
 })
 
-test.describe('TC-MDF-050 — healthy empty quarantine state', () => {
+test.describe('TC-MDF-050 — admin empty states', () => {
   test('the open quarantine queue names the healthy condition', async ({ page }) => {
     await signIn(page, BUILDER_EMAIL)
     await page.goto('/admin')
@@ -115,6 +122,20 @@ test.describe('TC-MDF-050 — healthy empty quarantine state', () => {
       .getByRole('button', { name: TR('admin.sections.quarantine') })
       .click()
     await expect(page.getByText(TR('admin.quarantine.emptyOpenTitle'))).toBeVisible()
+  })
+
+  test('the run ledger names the filter-matching-nothing condition', async ({ page }) => {
+    await signIn(page, BUILDER_EMAIL)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: TR('admin.sections.ledger') }).click()
+
+    // A job/status filter that matches no seeded run surfaces the named empty
+    // state, never a blank pane (UXR-MDF-027).
+    await page.getByLabel(TR('admin.ledger.filterJob')).selectOption('medians')
+    await page.getByLabel(TR('admin.ledger.filterStatus')).selectOption('failed')
+
+    await expect(page.getByText(TR('admin.ledger.emptyTitle'))).toBeVisible()
+    await expect(page.getByText(TR('admin.ledger.emptyBody'))).toBeVisible()
   })
 })
 

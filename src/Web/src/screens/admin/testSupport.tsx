@@ -6,6 +6,7 @@ import { AdminScreen } from '@/screens/admin/AdminScreen'
 import { resetAdminUiState } from '@/screens/admin/adminUiStore'
 import { server } from '@/test/msw/server'
 import {
+  ADMIN_SUMMARY_FIXTURE,
   adminCoverageHandler,
   adminStatsHandler,
   adminSummaryHandler,
@@ -44,12 +45,22 @@ export function renderAdmin(initialEntries: string[] = ['/admin']) {
 export function resetAdminTest() {
   sessionStorage.clear()
   resetAdminUiState()
+
+  // The summary's open-quarantine count is stateful and linked to a dismissal, so
+  // a dismissal is observable on the next summary read (TC-MDF-047).
+  let openQuarantineCount = ADMIN_SUMMARY_FIXTURE.openQuarantineCount
+  const quarantine = quarantineHandlers(undefined, {
+    onDismiss: () => {
+      openQuarantineCount = Math.max(0, openQuarantineCount - 1)
+    },
+  })
+
   server.use(
     sessionHandler(BUILDER_SESSION_FIXTURE),
-    adminSummaryHandler(),
+    adminSummaryHandler(() => ({ ...ADMIN_SUMMARY_FIXTURE, openQuarantineCount })),
     adminStatsHandler(),
     adminCoverageHandler(),
-    ...quarantineHandlers().handlers,
+    ...quarantine.handlers,
     ...ingestRunsHandlers().handlers,
     ingestTriggerHandler(),
   )

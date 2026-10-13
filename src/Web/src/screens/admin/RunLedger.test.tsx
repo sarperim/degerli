@@ -6,8 +6,11 @@ import { http, HttpResponse } from 'msw'
 import { catalogValue } from '@/test/i18n'
 import { server } from '@/test/msw/server'
 import {
+  ADMIN_SUMMARY_FIXTURE,
   API_BASE,
   INGEST_RUNS_FIXTURE,
+  adminSummaryHandler,
+  ingestRunsHandlers,
   ingestTriggerHandler,
 } from '@/test/msw/handlers'
 import { ADMIN_LEDGER_POLL_MS } from '@/screens/admin/api'
@@ -20,6 +23,7 @@ import { resetAdminTest, renderAdmin } from '@/screens/admin/testSupport'
  */
 
 const tr = {
+  sectionSummary: catalogValue('tr', 'admin.sections.summary'),
   sectionLedger: catalogValue('tr', 'admin.sections.ledger'),
   filterJob: catalogValue('tr', 'admin.ledger.filterJob'),
   filterStatus: catalogValue('tr', 'admin.ledger.filterStatus'),
@@ -44,6 +48,7 @@ const tr = {
   triggerConfirm: catalogValue('tr', 'admin.ledger.triggerConfirm'),
   cancel: catalogValue('tr', 'admin.ledger.cancel'),
   running: catalogValue('tr', 'admin.runStatus.running'),
+  succeeded: catalogValue('tr', 'admin.runStatus.succeeded'),
 }
 
 const fill = (template: string, vars: Record<string, string>) =>
@@ -129,6 +134,69 @@ describe('TC-MDF-048 — run-ledger auto-refresh & manual refresh', () => {
       timeout: ADMIN_LEDGER_POLL_MS + 3_000,
     })
   }, 15_000)
+
+  it('shows a triggered run without a manual refresh, and the summary reflects it on next load (UXR-MDF-015/028)', async () => {
+    const runs = ingestRunsHandlers()
+    let triggered = false
+    let summaryReads = 0
+    server.use(
+      ...runs.handlers,
+      adminSummaryHandler(() => {
+        summaryReads += 1
+        return {
+          ...ADMIN_SUMMARY_FIXTURE,
+          jobs: ADMIN_SUMMARY_FIXTURE.jobs.map((job) =>
+            job.job === 'prices'
+              ? {
+                  job: job.job,
+                  // Before the trigger: last-known-good being served; after: succeeded.
+                  lastRun: triggered
+                    ? { status: 'succeeded', finishedAt: '2026-10-06T22:00:00Z' }
+                    : { status: 'failed', finishedAt: '2026-10-06T21:00:00Z' },
+                }
+              : job,
+          ),
+        }
+      }),
+      ingestTriggerHandler((job) => {
+        triggered = true
+        runs.addRun({
+          id: 99,
+          job,
+          status: 'succeeded',
+          startedAt: '2026-10-06T21:59:00Z',
+          finishedAt: '2026-10-06T22:00:00Z',
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderAdmin()
+    await openLedger(user)
+    const readsWhileOnLedger = summaryReads
+
+    await user.selectOptions(screen.getByLabelText(tr.triggerJobLabel), 'dividends')
+    await user.click(screen.getByRole('button', { name: tr.trigger }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: tr.triggerConfirm }))
+
+    // The triggered run appears in the open ledger view without a manual refresh.
+    const table = await screen.findByTestId('ledger-table')
+    await waitFor(() =>
+      expect(within(table).getByRole('row', { name: /dividends/ })).toBeInTheDocument(),
+    )
+
+    // The ops summary is deliberately not auto-refreshed: the ledger stays open
+    // and the summary is not read until it is next loaded.
+    expect(summaryReads).toBe(readsWhileOnLedger)
+
+    // On its next load the summary reflects the completed run.
+    await user.click(screen.getByRole('button', { name: tr.sectionSummary }))
+    const jobsTable = await screen.findByTestId('summary-jobs-table')
+    const pricesRow = within(jobsTable).getByRole('row', { name: /prices/ })
+    await waitFor(() => expect(within(pricesRow).getByText(tr.succeeded)).toBeInTheDocument())
+    expect(summaryReads).toBeGreaterThan(readsWhileOnLedger)
+  })
 
   it('stops the periodic indication once every run is terminal (UXR-MDF-015)', async () => {
     server.use(

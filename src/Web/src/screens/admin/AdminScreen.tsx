@@ -2,9 +2,13 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionNav } from '@/components/ui/section-nav'
 import { useIsBuilder, useSession } from '@/lib/auth/session'
-import { ADMIN_SECTION_COMPONENTS } from '@/screens/admin/adminSections'
+import {
+  ADMIN_SECTION_COMPONENTS,
+  ADMIN_SECTION_KEYS,
+  type AdminSectionId,
+} from '@/screens/admin/adminSections'
 import { AdminAccessDenied } from '@/screens/admin/AdminAccessDenied'
-import { ADMIN_SECTION_KEYS, type AdminSectionId } from '@/screens/admin/copy'
+import { SectionError } from '@/screens/admin/SectionError'
 import { useAdminUiStore } from '@/screens/admin/adminUiStore'
 
 /**
@@ -25,6 +29,18 @@ export function AdminScreen() {
 
   if (session.isPending) {
     return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+  }
+
+  // A failed session fetch must not masquerade as access-denied (UXR-G-003);
+  // surface a plain-language error with retry instead.
+  if (session.isError) {
+    return (
+      <SectionError
+        title={t('screens.admin.sessionErrorTitle')}
+        body={t('screens.admin.sessionErrorBody')}
+        onRetry={() => void session.refetch()}
+      />
+    )
   }
 
   if (!isBuilder) {

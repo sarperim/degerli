@@ -83,7 +83,9 @@
     },
     "admin": {
       "title": "Yönetim Paneli",
-      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
+      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi.",
+      "sessionErrorTitle": "Yönetim alanı doğrulanamadı",
+      "sessionErrorBody": "Erişiminiz doğrulanırken bir sorun oluştu. Lütfen tekrar deneyin."
     }
   },
   "stockList": {
@@ -483,6 +485,7 @@
       "dismiss": "Kapat",
       "noteLabel": "Çözüm notu",
       "noteRequired": "Kapatmak için bir çözüm notu girin.",
+      "dismissError": "Kayıt kapatılamadı. Lütfen tekrar deneyin.",
       "resolutionNote": "Çözüm notu",
       "emptyOpenTitle": "Açık karantina kaydı yok",
       "emptyOpenBody": "Şu anda açık karantina kaydı bulunmuyor; sistem sağlıklı görünüyor.",
@@ -551,7 +554,8 @@
       "emptyTitle": "Bu filtreyle çalıştırma yok",
       "emptyBody": "Seçili iş ve durum filtresiyle eşleşen çalıştırma bulunamadı.",
       "errorTitle": "Çalıştırma günlüğü yüklenemedi",
-      "errorBody": "Günlük yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+      "errorBody": "Günlük yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "triggerError": "Çalıştırma başlatılamadı. Lütfen tekrar deneyin."
     },
     "stats": {
       "registered": "Kayıtlı hesap",

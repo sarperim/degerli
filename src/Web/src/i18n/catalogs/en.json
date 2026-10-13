@@ -83,7 +83,9 @@
     },
     "admin": {
       "title": "Admin Dashboard",
-      "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger."
+      "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger.",
+      "sessionErrorTitle": "The admin area could not be checked",
+      "sessionErrorBody": "Something went wrong while confirming your access. Please try again."
     }
   },
   "stockList": {
@@ -483,6 +485,7 @@
       "dismiss": "Dismiss",
       "noteLabel": "Resolution note",
       "noteRequired": "Enter a resolution note to dismiss.",
+      "dismissError": "The fact could not be dismissed. Please try again.",
       "resolutionNote": "Resolution note",
       "emptyOpenTitle": "No open quarantined facts",
       "emptyOpenBody": "There are no open quarantined facts right now — the pipeline looks healthy.",
@@ -551,7 +554,8 @@
       "emptyTitle": "No runs for this filter",
       "emptyBody": "No runs match the selected job and status filter.",
       "errorTitle": "The run ledger could not be loaded",
-      "errorBody": "Something went wrong while loading the ledger. Please try again."
+      "errorBody": "Something went wrong while loading the ledger. Please try again.",
+      "triggerError": "The run could not be started. Please try again."
     },
     "stats": {
       "registered": "Registered accounts",

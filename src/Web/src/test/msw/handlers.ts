@@ -473,9 +473,17 @@ export const ADMIN_SUMMARY_FIXTURE: AdminSummaryResponse = {
   openQuarantineCount: 4,
 }
 
-/** `GET /api/v1/admin/summary` handler. */
-export function adminSummaryHandler(body: AdminSummaryResponse = ADMIN_SUMMARY_FIXTURE) {
-  return http.get(`${API_BASE}/admin/summary`, () => HttpResponse.json(body))
+/**
+ * `GET /api/v1/admin/summary` handler. Accepts a static body or a thunk (so a
+ * test can make the summary reflect a mutation — e.g. a dismissal decrementing
+ * the open count, TC-MDF-047 — between reads).
+ */
+export function adminSummaryHandler(
+  body: AdminSummaryResponse | (() => AdminSummaryResponse) = ADMIN_SUMMARY_FIXTURE,
+) {
+  return http.get(`${API_BASE}/admin/summary`, () =>
+    HttpResponse.json(typeof body === 'function' ? body() : body),
+  )
 }
 
 /** Two quarantine rows: one open, one already dismissed with its note. */
@@ -612,7 +620,10 @@ export const SAVED_SCREENS_FIXTURE: SavedScreen[] = [
  * the item to `dismissed` and records the note, so the follow-up read reflects it
  * without a reload (TC-MDF-047).
  */
-export function quarantineHandlers(initial: QuarantineItem[] = QUARANTINE_FIXTURE) {
+export function quarantineHandlers(
+  initial: QuarantineItem[] = QUARANTINE_FIXTURE,
+  options: { onDismiss?: (item: QuarantineItem) => void } = {},
+) {
   let items = initial.map((item) => ({ ...item }))
 
   const list = http.get(`${API_BASE}/admin/quarantine`, ({ request }) => {
@@ -637,6 +648,7 @@ export function quarantineHandlers(initial: QuarantineItem[] = QUARANTINE_FIXTUR
           resolutionNote: body.note ?? null,
         }
         items = items.map((item) => (item.id === id ? updated : item))
+        options.onDismiss?.(updated)
         return HttpResponse.json(updated)
       }
       return HttpResponse.json(existing)

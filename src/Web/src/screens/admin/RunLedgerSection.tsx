@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table'
 import { formatAsOfDate } from '@/lib/format'
 import { hasActiveRun, useIngestRuns, useTriggerIngest } from '@/screens/admin/api'
-import { datePart, runStatusKey } from '@/screens/admin/copy'
+import { RUN_STATUS_KEYS, datePart, runStatusKey } from '@/screens/admin/copy'
 import { SectionError } from '@/screens/admin/SectionError'
 import { useAdminUiStore } from '@/screens/admin/adminUiStore'
 
@@ -40,7 +40,8 @@ const JOB_CODES = [
   'macro-cpi',
 ]
 
-const STATUS_CODES = ['succeeded', 'failed', 'partial', 'running', 'queued']
+/** The filterable run statuses, derived from the single status-key table. */
+const STATUS_CODES = Object.keys(RUN_STATUS_KEYS)
 
 /**
  * Ingest run ledger + job triggers (SCR-012 §3.4; UXR-MDF-014/015/016/017/028).
@@ -246,6 +247,7 @@ function TriggerPanel() {
         cancelLabel={t('admin.ledger.cancel')}
         closeLabel={t('common.close')}
         pending={trigger.isPending}
+        error={trigger.isError ? t('admin.ledger.triggerError') : undefined}
         onConfirm={() =>
           trigger.mutate(
             { job, backfillFrom: backfill && from ? from : undefined },

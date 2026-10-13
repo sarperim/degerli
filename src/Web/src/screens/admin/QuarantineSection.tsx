@@ -93,7 +93,6 @@ export function QuarantineSection() {
                 {status === 'dismissed' ? (
                   <TableHead>{t('admin.quarantine.resolutionNote')}</TableHead>
                 ) : null}
-                <TableHead>{''}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,6 +188,15 @@ function QuarantineRow({
               >
                 {t('admin.quarantine.dismiss')}
               </Button>
+              {dismiss.isError ? (
+                <p
+                  role="alert"
+                  data-testid={`quarantine-dismiss-error-${item.id}`}
+                  className="text-xs font-medium text-destructive"
+                >
+                  {t('admin.quarantine.dismissError')}
+                </p>
+              ) : null}
             </form>
           ) : null}
 

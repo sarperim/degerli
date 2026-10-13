@@ -31,7 +31,6 @@ const tr = {
   failed: catalogValue('tr', 'admin.runStatus.failed'),
   stale: catalogValue('tr', 'honestData.stale'),
   quarantine: catalogValue('tr', 'admin.sections.quarantine'),
-  quarantineHeading: catalogValue('tr', 'admin.quarantine.columns.quarantinedAt'),
   summaryErrorTitle: catalogValue('tr', 'admin.summary.errorTitle'),
   retry: catalogValue('tr', 'common.retry'),
   pricesType: catalogValue('tr', 'admin.dataTypes.prices'),
