@@ -327,6 +327,117 @@ export interface SaveScreenRequest {
 }
 
 /* ------------------------------------------------------------------ *
+ * Stock page sections (`03-api-design.md` §3) — TKT-res-008 (SCR-005).
+ *
+ * Each of SCR-005's sections is its own endpoint with its own honest-data
+ * envelope (M-1/M-5): a data payload or an explicit missing-data payload
+ * (`state` + optional `coverage`) — never a blank treated as zero
+ * (BR-RES-008, UXR-G-006). The sections load, fail and retry independently.
+ * ------------------------------------------------------------------ */
+
+/** The three explicit missing-data states (architecture §10.7). */
+export type DataState = 'no-data' | 'preparing' | 'unavailable'
+
+/** Coverage boundary accompanying a missing-data payload (UXR-RES-022). */
+export interface DataCoverage {
+  availableFrom: string | null
+  boundaryNote: string | null
+}
+
+/** A missing-data response: `state` (+ `coverage`) instead of the data shape. */
+export interface MissingDataResponse extends HonestDataEnvelope {
+  state: DataState
+  coverage: DataCoverage | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/overview` (`03` §3; FR-RES-005/022/026). */
+export interface StockOverviewResponse extends HonestDataEnvelope {
+  status: 'published' | 'preparing'
+  textTr?: string | null
+  textEn?: string | null
+  lastReviewedAt?: string | null
+}
+
+/** A figure with its per-figure restatement marker (FR-RES-008/014). */
+export interface FinancialFigure {
+  value: number | null
+  restated: boolean
+  /** Set to `no-data` when the figure is genuinely absent (never blank-as-zero). */
+  state?: DataState
+}
+
+/** One period of the Financials table (revenue → EBITDA → EBIT → NI → FCF). */
+export interface FinancialPeriod {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  revenue: FinancialFigure
+  ebitda: FinancialFigure
+  ebit: FinancialFigure
+  netIncome: FinancialFigure
+  fcf: FinancialFigure
+}
+
+/** `GET /api/v1/stocks/{symbol}/financials` (`03` §3; FR-RES-008). */
+export interface StockFinancialsResponse extends HonestDataEnvelope {
+  periods: FinancialPeriod[]
+}
+
+/** A canonical metric value; `null` is explicitly not-meaningful (BR-RES-008). */
+export interface MetricValue {
+  value: number | null
+  notMeaningful: boolean
+}
+
+/** `GET /api/v1/stocks/{symbol}/profitability` (`03` §3; FR-RES-009). */
+export interface StockProfitabilityResponse extends HonestDataEnvelope {
+  /** Keyed by concept code: `roic`, `roe`, `gross_margin`, `operating_margin`. */
+  metrics: Record<string, MetricValue>
+}
+
+/** One CAGR entry: the requested `window` and the `windowYears` actually used. */
+export interface GrowthWindow {
+  window: number
+  windowYears: number | null
+  value: number | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/growth` (`03` §3; FR-RES-010/016). */
+export interface StockGrowthResponse extends HonestDataEnvelope {
+  /** Keyed by growth family: `rev`, `eps`, `fcf`, `div`. */
+  metrics: Record<string, GrowthWindow[]>
+}
+
+/** A balance-sheet line / aggregate figure with its restatement marker. */
+export type BalanceSheetFigure = FinancialFigure
+
+/** `GET /api/v1/stocks/{symbol}/balance-sheet` (`03` §3; FR-RES-011/027). */
+export interface StockBalanceSheetResponse extends HonestDataEnvelope {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  restated: boolean
+  /** Keyed by line code: `cash`, `shortTermDebt`, `longTermDebt`, … */
+  lines: Record<string, BalanceSheetFigure>
+  bookValue: BalanceSheetFigure
+  bookValuePerShare: BalanceSheetFigure
+}
+
+/** One dated dividend payment (`03` §3; FR-RES-012). */
+export interface DividendRow {
+  exDate: string
+  payDate: string
+  amountPerShare: number
+  currency: string
+}
+
+/** `GET /api/v1/stocks/{symbol}/dividends` (`03` §3; FR-RES-012). */
+export interface StockDividendsResponse extends HonestDataEnvelope {
+  dividends: DividendRow[]
+  ttmPerShare?: number
+}
+
+/* ------------------------------------------------------------------ *
  * Admin / SCR-012 (`03` §8, AD-13) — TKT-mdf-012 (MDF sections of the
  * admin shell). Descriptions / metric-visibility / baselines sections are
  * owned by TKT-res-010, TKT-scr-005, TKT-val-009 and extend these types

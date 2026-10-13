@@ -88,6 +88,77 @@
       "sessionErrorBody": "Something went wrong while confirming your access. Please try again."
     }
   },
+  "stockPage": {
+    "sectionsLabel": "Sections",
+    "sections": {
+      "overview": "Overview",
+      "valuation": "Valuation",
+      "financials": "Financials",
+      "profitability": "Profitability",
+      "growth": "Growth",
+      "balanceSheet": "Balance Sheet",
+      "dividends": "Dividends"
+    },
+    "descriptionLastReviewed": "Last reviewed: {{date}}",
+    "sectionErrorTitle": "This section could not be loaded",
+    "sectionErrorBody": "Something went wrong while loading this section. The other sections are unaffected.",
+    "dcfHandoff": "Open DCF calculator",
+    "valuationPlaceholder": "The valuation section is provided by the valuation module.",
+    "financials": {
+      "period": "FY{{year}}",
+      "columns": {
+        "period": "Period",
+        "revenue": "Revenue",
+        "ebitda": "EBITDA",
+        "ebit": "EBIT",
+        "netIncome": "Net income",
+        "fcf": "Free cash flow"
+      }
+    },
+    "profitability": {
+      "metrics": {
+        "roic": "ROIC",
+        "roe": "ROE",
+        "gross_margin": "Gross margin",
+        "operating_margin": "Operating margin"
+      }
+    },
+    "growth": {
+      "families": {
+        "rev": "Revenue",
+        "eps": "EPS",
+        "fcf": "Free cash flow",
+        "div": "Dividends"
+      },
+      "window": "{{years}}Y",
+      "actualWindow": "actual {{years}}Y"
+    },
+    "balanceSheet": {
+      "period": "FY{{year}}",
+      "lines": {
+        "cash": "Cash",
+        "shortTermDebt": "Short-term debt",
+        "longTermDebt": "Long-term debt",
+        "totalEquity": "Total equity",
+        "currentAssets": "Current assets",
+        "currentLiabilities": "Current liabilities",
+        "sharesDiluted": "Diluted shares",
+        "sharesOutstanding": "Shares outstanding"
+      },
+      "bookValue": "Book value",
+      "bookValuePerShare": "Book value per share"
+    },
+    "dividends": {
+      "columns": {
+        "exDate": "Ex-date",
+        "payDate": "Pay date",
+        "amount": "Amount per share"
+      },
+      "ttm": "Trailing 12-month DPS",
+      "neverPaidTitle": "No dividends paid",
+      "neverPaidBody": "This company has not paid any dividends."
+    }
+  },
   "stockList": {
     "searchLabel": "Search by stock name or code",
     "searchPlaceholder": "Code or company name",
