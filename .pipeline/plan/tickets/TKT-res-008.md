@@ -1,6 +1,6 @@
 # TKT-res-008: SCR-005 Stock Page UI — core sections & honest-data markers
 
-- Status: in-review — forward-merged `dev` (unblock TKT-foundation-013 landed, merge 839e041) and re-gated the E2E suite; TC-RES-031 (both halves) now passes. PR #54.
+- Status: done — merged to `dev` 2026-10-13 (PR https://github.com/sarperim/degerli/pull/54, merge commit 322c8fe). Forward-merged `dev` after the TKT-foundation-013 unblock, re-gated E2E (TC-RES-031 both halves pass), then review loop round 2 MERGEABLE (blocker B1 "never-paid dividends rendered for all missing-data states" fixed; code/compliance/security approve; CI green). Artifacts: `.pipeline/plan/reviews/TKT-res-008-round-1.md`, `-round-2.md`.
 - Size: L
 - Scope: `/src/Web` SCR-005 route per the TKT-res-001 design: one screen, seven navigable sections with the current section indicated and preserved across navigation; Overview (bilingual description, last-reviewed date, preparing state), Financials, Profitability, Growth (window indications, no-data with boundary), Balance Sheet, Dividends (never-paid state); honest-data marker components (stale badge, restatement asterisk + bottom footnote + warning, adjusted disclaimer placeholder, no-data w/ coverage); per-section independent load/fail/retry (M-5); DCF hand-off link; disclaimer. Must NOT implement the Valuation section UI (TKT-res-009).
 - Traces to: FR-RES-005, FR-RES-008..012, FR-RES-014..016, FR-RES-026 (UI side); UC-RES-002, UC-RES-003 (main + alternates); UXR-RES-008..011, 014..022
