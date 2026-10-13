@@ -6,6 +6,7 @@ import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
 import { AccountSettingsScreen } from '@/screens/accountSettings/AccountSettingsScreen'
 import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
+import { DcfScenariosScreen } from '@/screens/dcfScenarios/DcfScenariosScreen'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { SavedScreensScreen } from '@/screens/savedScreens/SavedScreensScreen'
@@ -26,6 +27,7 @@ const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   signIn: <SignInScreen />,
   screener: <ScreenerScreen />,
   dcfCalculator: <DcfCalculatorScreen />,
+  dcfScenarios: <DcfScenariosScreen />,
   savedScreens: <SavedScreensScreen />,
   accountSettings: <AccountSettingsScreen />,
 }
