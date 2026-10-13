@@ -101,6 +101,17 @@ export function ScreenerScreen() {
   const setScreenerResult = useDraftStore((state) => state.setScreenerResult)
   const setScreenerDraftName = useDraftStore((state) => state.setScreenerDraftName)
 
+  // Active-screen display + dropped-criterion notice, seeded by a SCR-004 re-run
+  // (mutation matrix §2; UXR-SCR-014/015). Owned by TKT-scr-007.
+  const activeScreenName = useDraftStore((state) => state.activeScreenName)
+  const droppedCriteria = useDraftStore((state) => state.screenerDroppedCriteria)
+  const droppedCriteriaLabels = droppedCriteria
+    .map((code) => {
+      const metric = metricsByCode.get(code)
+      return metric ? metricLabel(metric, language) : code
+    })
+    .join(', ')
+
   // Persist the builder state so navigation/auth hops cannot lose it (UXR-G-021).
   useEffect(() => {
     setScreenerDraft(criteria)
@@ -189,6 +200,20 @@ export function ScreenerScreen() {
         <p className="max-w-2xl text-muted-foreground">
           {t('screens.screener.description')}
         </p>
+        {activeScreenName ? (
+          <p data-testid="active-screen" className="text-sm text-muted-foreground">
+            {t('screener.activeScreenLabel', { name: activeScreenName })}
+          </p>
+        ) : null}
+        {droppedCriteria.length > 0 ? (
+          <p
+            data-testid="dropped-criteria"
+            role="status"
+            className="max-w-2xl rounded-md border border-dashed p-3 text-sm text-muted-foreground"
+          >
+            {t('screener.droppedCriteria', { criteria: droppedCriteriaLabels })}
+          </p>
+        ) : null}
       </header>
 
       {/* Criteria builder ------------------------------------------------- */}

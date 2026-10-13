@@ -25,9 +25,10 @@ public sealed class IngestionSchedulerOptions
     public string TimeZone { get; set; } = "Europe/Istanbul";
 
     /// <summary>
-    /// Ordered job codes the daily trigger runs. Empty (the default) means every job
-    /// registered through the TKT-mdf-002 convention, in registration order. TKT-int-001
-    /// pins the concrete EOD-chain order here; this ticket deliberately does not.
+    /// Ordered job codes the daily trigger runs. Empty (the default) means the pinned EOD
+    /// chain (<see cref="EodIngestChain"/> — TKT-int-001), so a host that configures nothing
+    /// still runs the cross-domain chain in order. An explicitly configured list (bound from
+    /// configuration, appended to this empty default) overrides it.
     /// </summary>
     public IList<string> JobCodes { get; set; } = new List<string>();
 

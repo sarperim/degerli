@@ -21,6 +21,13 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Persistence/Degerli.Persistence.csproj" />
+    <!-- The L4 entrypoint runs the product's derived-data jobs at the anchor so the
+         compose.ci stack serves populated market/derived reads (TKT-foundation-013).
+         The jobs are the single source of truth for the formulas, so the fixture
+         module composes them rather than re-deriving their values. Transitive over
+         src/Core. The Dockerfile.ci already copies all of src/ and publishes this
+         project, so no Dockerfile change is needed. -->
+    <ProjectReference Include="../../src/Ingestion/Degerli.Ingestion.csproj" />
   </ItemGroup>
 
 </Project>

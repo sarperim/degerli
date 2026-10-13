@@ -170,6 +170,20 @@ export interface RegisterResponse {
   email: string
 }
 
+/** `POST /api/v1/auth/login` request body (`03` §6). */
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+/**
+ * `POST /api/v1/auth/login` response (`03` §6) — 200 with the session cookie and
+ * the account's stored language preference, applied client-side (UXR-ACC-009).
+ */
+export interface LoginResponse {
+  languagePref: LanguagePref
+}
+
 /** `POST /api/v1/auth/verify-email` request body (`03` §6). */
 export interface VerifyEmailRequest {
   token: string
@@ -216,6 +230,37 @@ export interface ResetPasswordRequest {
  */
 export interface ResetPasswordResponse {
   status: string
+}
+
+/* ------------------------------------------------------------------ *
+ * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
+ * ------------------------------------------------------------------ */
+
+/**
+ * `GET /api/v1/me` and the response of the account mutations (`03` §6) — the
+ * minimal account read (BR-ACC-001/008, NFR-ACC-001): e-mail, stored language
+ * preference and e-mail verification status only.
+ */
+export interface MeResponse {
+  email: string
+  languagePref: LanguagePref
+  verified: boolean
+}
+
+/** `PATCH /api/v1/me` request body (`03` §6) — the language preference. */
+export interface UpdateLanguagePreferenceRequest {
+  languagePref: LanguagePref
+}
+
+/** `PATCH /api/v1/me/password` request body (`03` §6). */
+export interface PasswordChangeRequest {
+  current: string
+  newPassword: string
+}
+
+/** `PATCH /api/v1/me/password` response (`03` §6) — the account e-mail. */
+export interface PasswordChangeResponse {
+  email: string
 }
 
 /* ------------------------------------------------------------------ *
@@ -311,4 +356,342 @@ export interface SavedScreenListResponse {
 export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
+}
+
+/* ------------------------------------------------------------------ *
+ * Stock page sections (`03-api-design.md` §3) — TKT-res-008 (SCR-005).
+ *
+ * Each of SCR-005's sections is its own endpoint with its own honest-data
+ * envelope (M-1/M-5): a data payload or an explicit missing-data payload
+ * (`state` + optional `coverage`) — never a blank treated as zero
+ * (BR-RES-008, UXR-G-006). The sections load, fail and retry independently.
+ * ------------------------------------------------------------------ */
+
+/** The three explicit missing-data states (architecture §10.7). */
+export type DataState = 'no-data' | 'preparing' | 'unavailable'
+
+/** Coverage boundary accompanying a missing-data payload (UXR-RES-022). */
+export interface DataCoverage {
+  availableFrom: string | null
+  boundaryNote: string | null
+}
+
+/** A missing-data response: `state` (+ `coverage`) instead of the data shape. */
+export interface MissingDataResponse extends HonestDataEnvelope {
+  state: DataState
+  coverage: DataCoverage | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/overview` (`03` §3; FR-RES-005/022/026). */
+export interface StockOverviewResponse extends HonestDataEnvelope {
+  status: 'published' | 'preparing'
+  textTr?: string | null
+  textEn?: string | null
+  lastReviewedAt?: string | null
+}
+
+/** A figure with its per-figure restatement marker (FR-RES-008/014). */
+export interface FinancialFigure {
+  value: number | null
+  restated: boolean
+  /** Set to `no-data` when the figure is genuinely absent (never blank-as-zero). */
+  state?: DataState
+}
+
+/** One period of the Financials table (revenue → EBITDA → EBIT → NI → FCF). */
+export interface FinancialPeriod {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  revenue: FinancialFigure
+  ebitda: FinancialFigure
+  ebit: FinancialFigure
+  netIncome: FinancialFigure
+  fcf: FinancialFigure
+}
+
+/** `GET /api/v1/stocks/{symbol}/financials` (`03` §3; FR-RES-008). */
+export interface StockFinancialsResponse extends HonestDataEnvelope {
+  periods: FinancialPeriod[]
+}
+
+/** A canonical metric value; `null` is explicitly not-meaningful (BR-RES-008). */
+export interface MetricValue {
+  value: number | null
+  notMeaningful: boolean
+}
+
+/** `GET /api/v1/stocks/{symbol}/profitability` (`03` §3; FR-RES-009). */
+export interface StockProfitabilityResponse extends HonestDataEnvelope {
+  /** Keyed by concept code: `roic`, `roe`, `gross_margin`, `operating_margin`. */
+  metrics: Record<string, MetricValue>
+}
+
+/** One CAGR entry: the requested `window` and the `windowYears` actually used. */
+export interface GrowthWindow {
+  window: number
+  windowYears: number | null
+  value: number | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/growth` (`03` §3; FR-RES-010/016). */
+export interface StockGrowthResponse extends HonestDataEnvelope {
+  /** Keyed by growth family: `rev`, `eps`, `fcf`, `div`. */
+  metrics: Record<string, GrowthWindow[]>
+}
+
+/** A balance-sheet line / aggregate figure with its restatement marker. */
+export type BalanceSheetFigure = FinancialFigure
+
+/** `GET /api/v1/stocks/{symbol}/balance-sheet` (`03` §3; FR-RES-011/027). */
+export interface StockBalanceSheetResponse extends HonestDataEnvelope {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  restated: boolean
+  /** Keyed by line code: `cash`, `shortTermDebt`, `longTermDebt`, … */
+  lines: Record<string, BalanceSheetFigure>
+  bookValue: BalanceSheetFigure
+  bookValuePerShare: BalanceSheetFigure
+}
+
+/** One dated dividend payment (`03` §3; FR-RES-012). */
+export interface DividendRow {
+  exDate: string
+  payDate: string
+  amountPerShare: number
+  currency: string
+}
+
+/** `GET /api/v1/stocks/{symbol}/dividends` (`03` §3; FR-RES-012). */
+export interface StockDividendsResponse extends HonestDataEnvelope {
+  dividends: DividendRow[]
+  ttmPerShare?: number
+}
+
+/* ------------------------------------------------------------------ *
+ * Admin / SCR-012 (`03` §8, AD-13) — TKT-mdf-012 (MDF sections of the
+ * admin shell). Descriptions / metric-visibility / baselines sections are
+ * owned by TKT-res-010, TKT-scr-005, TKT-val-009 and extend these types
+ * in their own modules.
+ * ------------------------------------------------------------------ */
+
+/** Terminal vs non-terminal ingest-run statuses (`03` §8; IngestResult). */
+export const INGEST_TERMINAL_STATUSES = ['succeeded', 'failed', 'partial'] as const
+
+/** One job's most recent run in the ops summary (UXR-MDF-003). */
+export interface AdminJobSummary {
+  job: string
+  lastRun: { status: string; finishedAt: string | null } | null
+}
+
+/** One data type's freshness/staleness in the ops summary (UXR-MDF-004). */
+export interface AdminFreshness {
+  dataType: string
+  lastSuccess: string | null
+  stale: boolean
+}
+
+/** `GET /api/v1/admin/summary` (`03` §8). */
+export interface AdminSummaryResponse {
+  asOf: string
+  jobs: AdminJobSummary[]
+  freshness: AdminFreshness[]
+  contentCoverage: {
+    descriptionsPublished: number
+    descriptionsDraft: number
+    universe: number
+  }
+  openQuarantineCount: number
+}
+
+/** One quarantined fact in the review queue (UXR-MDF-007/009). */
+export interface QuarantineItem {
+  id: number
+  jobCode: string
+  sourceRef: string | null
+  reasonCode: string
+  quarantinedAt: string
+  payloadJson: unknown
+  status: string
+  resolutionNote: string | null
+}
+
+/** `GET /api/v1/admin/quarantine?status=open|dismissed` (`03` §8). */
+export interface QuarantineListResponse {
+  items: QuarantineItem[]
+}
+
+/** One data type's coverage entry in the coverage report (FR-MDF-011). */
+export interface CoverageDataType {
+  dataType: string
+  present: boolean
+  availableFrom: string | null
+  availableTo: string | null
+  notes: string | null
+}
+
+/** Instrument-scope coverage row (UXR-MDF-011). */
+export interface InstrumentCoverageRow {
+  symbol: string
+  name: string
+  listingDate: string | null
+  dataTypes: CoverageDataType[]
+}
+
+/** Fund-scope coverage row (UXR-MDF-012). */
+export interface FundCoverageRow {
+  code: string
+  name: string
+  dataTypes: CoverageDataType[]
+}
+
+export type CoverageScope = 'instrument' | 'fund'
+
+export interface InstrumentCoverageResponse {
+  scope: 'instrument'
+  instruments: InstrumentCoverageRow[]
+}
+
+export interface FundCoverageResponse {
+  scope: 'fund'
+  funds: FundCoverageRow[]
+}
+
+export type CoverageResponse = InstrumentCoverageResponse | FundCoverageResponse
+
+/** One ingest run in the ledger (UXR-MDF-014). */
+export interface IngestRun {
+  id: number
+  job: string
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+/** `GET /api/v1/admin/ingest-runs?job=&status=` (`03` §8). */
+export interface IngestRunsResponse {
+  runs: IngestRun[]
+}
+
+/** `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8). */
+export interface IngestTriggerRequest {
+  backfillFrom?: string
+}
+
+/** `POST /api/v1/admin/ingest/{job}/run` response (`03` §8). */
+export interface IngestTriggerResponse {
+  runId: number | null
+  job: string
+  status: string
+  written: number
+  unchanged: number
+  quarantined: number
+}
+
+/** `GET /api/v1/admin/stats` — aggregate-only counts (UXR-MDF-026). */
+export interface AdminStatsResponse {
+  accounts: { registered: number; verified: number }
+  savedScreens: number
+  dcfScenarios: number
+}
+
+/* ------------------------------------------------------------------ *
+ * Valuation & DCF (`03` §5) — TKT-val-006 (SCR-006 calculator UI).
+ * ------------------------------------------------------------------ */
+
+/** The eight confirmed, fully user-editable DCF parameters (OQ-UX-001, UX §4.1). */
+export type DcfParamKey =
+  | 'base_fcf'
+  | 'growth_rate'
+  | 'horizon_years'
+  | 'terminal_growth'
+  | 'discount_rate'
+  | 'debt'
+  | 'cash'
+  | 'share_count'
+
+/** The parameter set on the wire: canonical values (rates as fractions, 0.12). */
+export type DcfParams = Record<DcfParamKey, number>
+
+/** Per canonical-fact provenance — as-of + restatement flag (UXR-VAL-010). */
+export interface CanonicalFactRef {
+  asOf: string
+  restated: boolean
+}
+
+/** The active per-stock baseline carried by `GET /stocks/{symbol}/dcf`. */
+export interface DcfBaseline {
+  version: number
+  buildDate: string
+  params: DcfParams
+  /** Provenance for the statement-derived defaults (canonical facts only). */
+  canonicalFactRefs: Partial<Record<DcfParamKey, CanonicalFactRef>>
+}
+
+/** Canonical EOD price carried by both DCF payloads (NFR-VAL-003). */
+export interface DcfPrice {
+  value: number
+  asOf: string
+  stale: boolean
+}
+
+/**
+ * `GET /api/v1/stocks/{symbol}/dcf` (`03` §5; UC-VAL-001 steps 1–2).
+ *
+ * When a statement-derived input is missing the payload is `200` with
+ * `state: "missing_inputs"` naming what is missing instead of computing on
+ * partial data (UXR-VAL-009); the missing-inputs UI is owned by TKT-val-007.
+ */
+export interface DcfBaselineResponse {
+  symbol: string
+  baseline?: DcfBaseline
+  price?: DcfPrice
+  state?: 'missing_inputs'
+  missingInputs?: DcfParamKey[]
+}
+
+/** `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters. */
+export type DcfComputeRequest = DcfParams
+
+/**
+ * The 5×5 sensitivity grid (FR-VAL-007, SD-001): fair value across
+ * discount-rate (rows) × terminal-growth (columns); a `null` cell is honestly
+ * not computable (r ≤ g_t, I-VAL-1).
+ */
+export interface DcfSensitivity {
+  discountRates: number[]
+  terminalGrowths: number[]
+  fairValues: (number | null)[][]
+}
+
+/** `POST /api/v1/stocks/{symbol}/dcf/compute` response (`03` §5). */
+export interface DcfComputeResponse {
+  fairValuePerShare: number
+  marginOfSafety: number
+  price: DcfPrice
+  sensitivity: DcfSensitivity
+}
+
+/** A saved DCF scenario as served by the `/me/scenarios` endpoints (`03` §5). */
+export interface SavedScenario {
+  id: number
+  symbol: string
+  name: string
+  /** The eight parameters, stored verbatim so a load restores them exactly. */
+  params: DcfParams
+  createdAt: string
+  updatedAt: string
+}
+
+/** `GET /api/v1/me/scenarios?symbol=` response (`03` §5). */
+export interface SavedScenarioListResponse {
+  scenarios: SavedScenario[]
+}
+
+/** `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006. */
+export interface SaveScenarioRequest {
+  symbol: string
+  name: string
+  params: DcfParams
 }
