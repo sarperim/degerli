@@ -10,18 +10,25 @@ import {
   type AnonymousSession,
   type CoverageResponse,
   type CsrfTokenResponse,
+  type DcfBaselineResponse,
+  type DcfComputeRequest,
+  type DcfComputeResponse,
+  type DcfSensitivity,
   type LoginResponse,
   type IngestRun,
   type IngestRunsResponse,
   type IngestTriggerRequest,
   type IngestTriggerResponse,
   type MacroResponse,
+  type MeResponse,
   type MetricCatalogResponse,
+  type PasswordChangeResponse,
   type ProblemDetails,
   type QuarantineItem,
   type QuarantineListResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
+  type SavedScenario,
   type SavedScreen,
   type ScreenerRunResponse,
   type SessionResponse,
@@ -295,6 +302,46 @@ export function resendVerificationHandler(
 }
 
 /* ------------------------------------------------------------------ *
+ * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
+ * ------------------------------------------------------------------ */
+
+/** Deterministic fixture: the minimal account read for a verified account. */
+export const ME_VERIFIED_FIXTURE: MeResponse = {
+  email: 'verified@example.test',
+  languagePref: 'tr',
+  verified: true,
+}
+
+/** Deterministic fixture: the minimal account read for an unverified account. */
+export const ME_UNVERIFIED_FIXTURE: MeResponse = {
+  email: 'unverified@example.test',
+  languagePref: 'tr',
+  verified: false,
+}
+
+/** `GET /api/v1/me` handler — the SCR-010 settings data (`03` §6). */
+export function meHandler(body: MeResponse = ME_VERIFIED_FIXTURE) {
+  return http.get(`${API_BASE}/me`, () => HttpResponse.json(body))
+}
+
+/** `PATCH /api/v1/me` handler — 200 with the updated account read. */
+export function updateLanguageHandler(body: MeResponse = ME_VERIFIED_FIXTURE) {
+  return http.patch(`${API_BASE}/me`, () => HttpResponse.json(body))
+}
+
+/** `PATCH /api/v1/me/password` handler — 200 `{email}` (session preserved). */
+export function passwordChangeHandler(
+  body: PasswordChangeResponse = { email: ME_VERIFIED_FIXTURE.email },
+) {
+  return http.patch(`${API_BASE}/me/password`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me` handler — 204 (hard delete + cascade; session revoked). */
+export function deleteAccountHandler() {
+  return http.delete(`${API_BASE}/me`, () => new HttpResponse(null, { status: 204 }))
+}
+
+/* ------------------------------------------------------------------ *
  * Screener handlers (`03` §4) — TKT-scr-006 (SCR-003).
  * ------------------------------------------------------------------ */
 
@@ -452,6 +499,111 @@ export const QUARANTINE_FIXTURE: QuarantineItem[] = [
     payloadJson: { symbol: 'BETA', value: 'n/a' },
     status: 'dismissed',
     resolutionNote: 'source error accepted',
+  },
+]
+
+/* ------------------------------------------------------------------ *
+ * Valuation & DCF handlers (`03` §5) — TKT-val-006 (SCR-006 calculator).
+ * ------------------------------------------------------------------ */
+
+/** Canonical price fixture — the same `daily_prices` row every surface serves. */
+export const DCF_PRICE_FIXTURE = {
+  value: 20.0,
+  asOf: '2026-10-06',
+  stale: false,
+} as const
+
+/**
+ * The ALFA baseline (FU §11.5): the eight defaults, canonical-fact provenance for
+ * the four statement-derived inputs, and the canonical price.
+ */
+export const DCF_BASELINE_FIXTURE: DcfBaselineResponse = {
+  symbol: 'ALFA',
+  baseline: {
+    version: 1,
+    buildDate: '2026-10-05',
+    params: {
+      base_fcf: 100,
+      growth_rate: 0.1,
+      horizon_years: 5,
+      terminal_growth: 0.03,
+      discount_rate: 0.12,
+      debt: 400,
+      cash: 200,
+      share_count: 100,
+    },
+    canonicalFactRefs: {
+      base_fcf: { asOf: '2026-09-30', restated: false },
+      debt: { asOf: '2026-09-30', restated: false },
+      cash: { asOf: '2026-09-30', restated: false },
+      share_count: { asOf: '2026-09-30', restated: false },
+    },
+  },
+  price: { ...DCF_PRICE_FIXTURE },
+}
+
+/** The 5×5 golden sensitivity grid (TC-VAL-002), centered on the ALFA baseline. */
+export const DCF_SENSITIVITY_FIXTURE: DcfSensitivity = {
+  discountRates: [0.1, 0.11, 0.12, 0.13, 0.14],
+  terminalGrowths: [0.01, 0.02, 0.03, 0.04, 0.05],
+  fairValues: [
+    [18.5, 20.4, 22.1, 23.9, 24.0],
+    [15.9, 17.2, 18.6, 19.9, 21.2],
+    [13.6, 14.4, 13.1969, 15.1, 16.5],
+    [11.8, 12.4, 13.0, 13.9, 14.8],
+    [8.99623, 10.2, 10.9, 11.6, 12.3],
+  ],
+}
+
+/** The ALFA compute golden (TC-VAL-001/009): FVPS 13.1969, MoS −0.5155. */
+export const DCF_COMPUTE_FIXTURE: DcfComputeResponse = {
+  fairValuePerShare: 13.1969,
+  marginOfSafety: -0.5155,
+  price: { ...DCF_PRICE_FIXTURE },
+  sensitivity: DCF_SENSITIVITY_FIXTURE,
+}
+
+/** `GET /api/v1/stocks/{symbol}/dcf` handler. */
+export function dcfBaselineHandler(body: DcfBaselineResponse = DCF_BASELINE_FIXTURE) {
+  return http.get(`${API_BASE}/stocks/:symbol/dcf`, () => HttpResponse.json(body))
+}
+
+/**
+ * `POST /api/v1/stocks/{symbol}/dcf/compute` handler. The optional `respond`
+ * callback lets a test derive the response from the posted parameters (mirroring
+ * the stateless server); it defaults to the ALFA golden.
+ */
+export function dcfComputeHandler(
+  respond: (body: DcfComputeRequest) => DcfComputeResponse = () => DCF_COMPUTE_FIXTURE,
+) {
+  return http.post(`${API_BASE}/stocks/:symbol/dcf/compute`, async ({ request }) => {
+    const body = (await request.json()) as DcfComputeRequest
+    return HttpResponse.json(respond(body))
+  })
+}
+
+/* ------------------------------------------------------------------ *
+ * Saved screens (`03` §4) — TKT-scr-007 (SCR-004 list/rename/delete).
+ * ------------------------------------------------------------------ */
+
+/** Two saved screens as `GET /api/v1/me/screens` serves them (by name). */
+export const SAVED_SCREENS_FIXTURE: SavedScreen[] = [
+  {
+    id: 1,
+    name: 'Ucuz kaliteli',
+    criteria: [
+      { metricCode: 'pe', bound: 'max', maxValue: 15 },
+      { metricCode: 'roe', bound: 'min', minValue: 0.15 },
+    ],
+    createdAt: '2026-10-05T20:00:00Z',
+    updatedAt: '2026-10-05T20:00:00Z',
+  },
+  {
+    id: 2,
+    name: 'Büyüme',
+    criteria: [{ metricCode: 'rev_cagr', bound: 'min', minValue: 0.15, window: 5 }],
+    createdAt: '2026-10-06T20:00:00Z',
+    updatedAt: '2026-10-06T20:00:00Z',
   },
 ]
 
@@ -639,4 +791,82 @@ export const ADMIN_STATS_FIXTURE: AdminStatsResponse = {
 /** `GET /api/v1/admin/stats` handler. */
 export function adminStatsHandler(body: AdminStatsResponse = ADMIN_STATS_FIXTURE) {
   return http.get(`${API_BASE}/admin/stats`, () => HttpResponse.json(body))
+}
+
+/**
+ * `GET /api/v1/me/screens` handler. Accepts a static list or a thunk (so a test
+ * can mutate the "server" list between renders — TC-SCR-031).
+ */
+export function savedScreensListHandler(
+  screens: SavedScreen[] | (() => SavedScreen[]) = SAVED_SCREENS_FIXTURE,
+) {
+  return http.get(`${API_BASE}/me/screens`, () =>
+    HttpResponse.json({ screens: typeof screens === 'function' ? screens() : screens }),
+  )
+}
+
+/** `PATCH /api/v1/me/screens/{id}` handler — 200 with the updated screen. */
+export function renameScreenHandler(body: SavedScreen) {
+  return http.patch(`${API_BASE}/me/screens/:id`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me/screens/{id}` handler — 204 (TC-SCR-017). */
+export function deleteScreenHandler() {
+  return http.delete(`${API_BASE}/me/screens/:id`, () => new HttpResponse(null, { status: 204 }))
+}
+
+/* ------------------------------------------------------------------ *
+ * DCF scenarios (`03` §5) — TKT-val-007 (SCR-006 save/load + picker).
+ * ------------------------------------------------------------------ */
+
+/**
+ * A saved ALFA scenario with a single parameter override (FR-VAL-010): every
+ * other value mirrors the baseline, so a load that restores it exactly is
+ * distinguishable from the baseline by the visible 15% discount rate.
+ */
+export const DCF_SCENARIO_ALFA: SavedScenario = {
+  id: 1,
+  symbol: 'ALFA',
+  name: 'Muhafazakâr',
+  params: { ...DCF_BASELINE_FIXTURE.baseline!.params, discount_rate: 0.15 },
+  createdAt: '2026-10-06T20:00:00Z',
+  updatedAt: '2026-10-06T20:00:00Z',
+}
+
+/** A second saved scenario for a different stock (SCR-011 grouping, TKT-val-008). */
+export const DCF_SCENARIO_BETA: SavedScenario = {
+  id: 2,
+  symbol: 'BETA',
+  name: 'Beta temel',
+  params: { ...DCF_BASELINE_FIXTURE.baseline!.params, discount_rate: 0.1 },
+  createdAt: '2026-10-06T20:30:00Z',
+  updatedAt: '2026-10-06T20:30:00Z',
+}
+
+/**
+ * `GET /api/v1/me/scenarios?symbol=` handler. Accepts a static list or a thunk
+ * (so a test can mutate the "server" list between renders — mutation matrix §8.4
+ * picker invalidation). Filters by the `symbol` query parameter when present.
+ */
+export function scenariosListHandler(
+  scenarios: SavedScenario[] | (() => SavedScenario[]) = [DCF_SCENARIO_ALFA],
+) {
+  return http.get(`${API_BASE}/me/scenarios`, ({ request }) => {
+    const symbol = new URL(request.url).searchParams.get('symbol')
+    const all = typeof scenarios === 'function' ? scenarios() : scenarios
+    const filtered = symbol
+      ? all.filter((scenario) => scenario.symbol === symbol.toUpperCase())
+      : all
+    return HttpResponse.json({ scenarios: filtered })
+  })
+}
+
+/** `PATCH /api/v1/me/scenarios/{id}` handler — 200 with the updated scenario. */
+export function renameScenarioHandler(body: SavedScenario = DCF_SCENARIO_ALFA) {
+  return http.patch(`${API_BASE}/me/scenarios/:id`, () => HttpResponse.json(body))
+}
+
+/** `DELETE /api/v1/me/scenarios/{id}` handler — 204 (UXR-VAL-018). */
+export function deleteScenarioHandler() {
+  return http.delete(`${API_BASE}/me/scenarios/:id`, () => new HttpResponse(null, { status: 204 }))
 }
