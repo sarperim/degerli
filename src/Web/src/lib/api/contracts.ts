@@ -438,6 +438,56 @@ export interface StockDividendsResponse extends HonestDataEnvelope {
 }
 
 /* ------------------------------------------------------------------ *
+ * Valuation section (`03` §3) — TKT-res-009 (SCR-005 §2).
+ *
+ * The server (`StockOverviewAndValuationEndpoints`) serves the current
+ * canonical multiples, the historical price series with its honest
+ * corporate-action-adjusted basis flag, and the vs.-sector strip. Raw and
+ * adjusted closes coexist so a later split never fabricates a cliff
+ * (BR-MDF-010); the strip carries the peer/exclusion counts that make the
+ * sector median honest (FR-RES-007, UXR-RES-024/025).
+ * ------------------------------------------------------------------ */
+
+/** One dated close in the valuation history; raw and adjusted coexist. */
+export interface ValuationPricePoint {
+  date: string
+  closeRaw: number
+  /** Null when no adjusted close was ingested — never a raw value presented as adjusted. */
+  closeAdjusted: number | null
+}
+
+/** The historical price series and its honest basis flag (FR-RES-006/013). */
+export interface ValuationHistoricalSeries {
+  /** True only when every served row carries an adjusted close (BR-MDF-010). */
+  adjusted: boolean
+  series: ValuationPricePoint[]
+}
+
+/**
+ * One vs.-sector strip entry (`03` §3; UXR-RES-013/024/025).
+ *
+ * `value` null is explicitly not-meaningful, never 0 (BR-RES-008); a null
+ * `sectorMedian` degrades that metric to an honest no-data state rather than a
+ * fabricated comparison.
+ */
+export interface SectorStripEntry {
+  value: number | null
+  notMeaningful: boolean
+  sectorMedian: number | null
+  peerCount: number | null
+  excludedCount: number | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/valuation` (`03` §3; FR-RES-006/007). */
+export interface StockValuationResponse extends HonestDataEnvelope {
+  /** Current canonical multiples keyed by concept code (`pe`, `pb`, …); null = not meaningful. */
+  current: Record<string, number | null>
+  historical: ValuationHistoricalSeries
+  /** The five valuation-family strip entries, keyed by concept code. */
+  strip: Record<string, SectorStripEntry>
+}
+
+/* ------------------------------------------------------------------ *
  * Admin / SCR-012 (`03` §8, AD-13) — TKT-mdf-012 (MDF sections of the
  * admin shell). Descriptions / metric-visibility / baselines sections are
  * owned by TKT-res-010, TKT-scr-005, TKT-val-009 and extend these types

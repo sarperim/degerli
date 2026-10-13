@@ -10,8 +10,8 @@ import {
   GrowthSection,
   OverviewSection,
   ProfitabilitySection,
-  ValuationSectionPlaceholder,
 } from '@/screens/stock-page/StockSections'
+import { ValuationSection } from '@/screens/stock-page/ValuationSection'
 
 /** The seven sections in presentation order; labels are resolved from the catalogs. */
 const SECTION_ORDER: StockPageSection[] = [
@@ -41,8 +41,8 @@ const SECTION_TITLE_KEYS: Record<StockPageSection, string> = {
  * the current section indicated and preserved across in-session navigation
  * (UXR-RES-008, UXR-G-021). Every section is its own endpoint and query (M-5), so
  * sections load, fail and retry independently (UXR-G-003); the active section lives
- * in the M-3 draft store. The Valuation section's UI is delivered by TKT-res-009;
- * this screen reserves its slot and the DCF hand-off (`/stocks/{symbol}/dcf`).
+ * in the M-3 draft store. The Valuation section's UI (TKT-res-009) and the DCF
+ * hand-off (`/stocks/{symbol}/dcf`) complete the screen.
  */
 export function StockPage() {
   const { t } = useTranslation()
@@ -97,7 +97,7 @@ export function StockPage() {
 
       <div className="flex flex-col gap-6">
         <OverviewSection symbol={symbol} />
-        <ValuationSectionPlaceholder />
+        <ValuationSection symbol={symbol} />
         <FinancialsSection symbol={symbol} />
         <ProfitabilitySection symbol={symbol} />
         <GrowthSection symbol={symbol} />

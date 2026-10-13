@@ -65,8 +65,8 @@ describe('TC-RES-023 — section independence and per-section retry', () => {
       ),
     ).toBeInTheDocument()
     expect(
-      within(region(TR('stockPage.sections.valuation'))).getByText(
-        TR('stockPage.valuationPlaceholder'),
+      await within(region(TR('stockPage.sections.valuation'))).findByText(
+        TR('stockPage.valuation.strip.title'),
       ),
     ).toBeInTheDocument()
     expect(
