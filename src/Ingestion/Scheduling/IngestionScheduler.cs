@@ -19,10 +19,10 @@ namespace Degerli.Ingestion.Scheduling;
 /// <see cref="TickAsync"/> are pure scheduling decisions over a supplied instant, which
 /// is what makes scheduled/retry behaviour deterministic under a fake clock. The
 /// <see cref="IngestionSchedulerHostedService"/> is the thin production loop over them.
-/// The shared EOD trigger runs <see cref="IngestionSchedulerOptions.JobCodes"/> (or every
-/// registered job when empty) on trading days; each <see cref="JobScheduleOptions"/> entry
-/// additionally runs its own job on its own cadence — the macro jobs (03 §9). Running the
-/// concrete EOD chain order is not this ticket's concern — TKT-int-001 pins it.
+/// The shared EOD trigger runs <see cref="IngestionSchedulerOptions.JobCodes"/> — the pinned
+/// <see cref="EodIngestChain"/> by default, or the explicitly configured order — on trading
+/// days; each <see cref="JobScheduleOptions"/> entry additionally runs its own job on its own
+/// cadence — the macro jobs (03 §9). The cross-domain EOD chain order is pinned by TKT-int-001.
 /// </remarks>
 public sealed class IngestionScheduler
 {
@@ -136,7 +136,11 @@ public sealed class IngestionScheduler
         {
             Cron = CronExpression.Parse(options.Cron, CronFormat.IncludeSeconds),
             TradingDaysOnly = true,
-            JobCodes = options.JobCodes is { Count: > 0 } ? options.JobCodes.ToList() : null,
+            // The pinned cross-domain EOD chain (TKT-int-001) is the default; an explicit
+            // configuration order overrides it.
+            JobCodes = options.JobCodes is { Count: > 0 }
+                ? options.JobCodes.ToList()
+                : EodIngestChain.JobCodes.ToList(),
         };
 
         var streams = new List<ScheduleStream> { eod };
