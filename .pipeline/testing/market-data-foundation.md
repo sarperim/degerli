@@ -1,8 +1,8 @@
 # Market Data Foundation Test Plan
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.2 — approved (Gate 2 + builder final review 2026-10-07)
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — §14 change-propagation 2026-10-13 (TC-MDF-047/048/049 re-leveled L4→L3, builder-approved; test-planner confirmation pending — see change record) · v1.2 approved (Gate 2 + builder final review 2026-10-07)
 **Derives from:** `analysis/market-data-foundation.md` (FR-MDF-001..019, UC-MDF-001..005, NFR-MDF-001..006) · `ux/market-data-foundation.md` (SCR-012, UXR-MDF-001..028 — shared admin surface only) · `architecture/` v1.2 (`01` C3/C5, `02` §3.1/§6, `03` §8–§9) · strategy `00-test-strategy.md` (approved) · fixture contract `01-fixture-universe.md` (submitted with this plan).
-**TC ID convention:** `TC-MDF-NNN`, permanent. Levels: L1 unit · L2 integration (Testcontainers Postgres + WireMock sources + fake TimeProvider + mail/Serilog doubles) · L4 e2e (compose stack + MailPit + Playwright). All fixtures referenced as `FU §n`.
+**TC ID convention:** `TC-MDF-NNN`, permanent. Levels: L1 unit · L2 integration (Testcontainers Postgres + WireMock sources + fake TimeProvider + mail/Serilog doubles) · L3 web component (Vitest + Testing Library + MSW) · L4 e2e (compose stack + MailPit + Playwright). All fixtures referenced as `FU §n`.
 
 ## 1. Scope
 
@@ -314,21 +314,24 @@
 - Dependencies: —
 
 **TC-MDF-047 — Quarantine review flow (browser)**
-- Traces: UXR-MDF-007/008/009/010 · Level: L4 · Design: state transition — open → (invalid dismiss) → open → (valid dismiss) → dismissed; nav to ledger
+- Traces: UXR-MDF-007/008/009/010 · Level: L3 (re-leveled from L4 — §14 change record v1.3) · Design: state transition — open → (invalid dismiss) → open → (valid dismiss) → dismissed; nav to ledger
 - Steps: open queue → inspect an item's payload → attempt dismiss with empty note (inline validation blocks) → dismiss with a note → view dismissed filter → navigate from an item to its job's run-ledger view.
 - Expected: empty note blocked inline with visible rule; dismissal moves the item and updates the summary's open count without manual reload; dismissed item reviewable with note; ledger view arrives filtered to that job.
+- Re-level justification (v1.3, builder-approved 2026-10-13): compose.ci seeds no open quarantined fact — `fixtures/` seeds none (only a catalog doc comment in `CannedSourceCatalog.cs`) — so the L4 queue cannot be exercised against the seeded stack. Covered at L3 (Vitest + MSW) per the TKT-mdf-012 review C1 escalation, option A.
 - Dependencies: —
 
 **TC-MDF-048 — Run-ledger auto-refresh during an in-progress run**
-- Traces: UXR-MDF-015/028 (flag ruling 4), mutation matrix row 12 · Level: L4 · Design: state transition — idle → running (slow source) → updates visible
+- Traces: UXR-MDF-015/028 (flag ruling 4), mutation matrix row 12 · Level: L3 (re-leveled from L4 — §14 change record v1.3) · Design: state transition — idle → running (slow source) → updates visible
 - Preconditions: WireMock serves `prices-source-slow.json` (5 s delay) to the compose stack.
 - Steps: trigger the `prices` job from the admin UI (confirmation names the job); observe the open ledger view.
 - Expected: the triggered run appears in the ledger without manual refresh; while non-terminal the view updates periodically with a visible periodic-update indication; the manual refresh control is present and works; on completion the summary reflects it on next load (not auto-refreshed — ops summary deliberately doesn't).
+- Re-level justification (v1.3, builder-approved 2026-10-13): the recorded harness limitation makes L4 infeasible — no slow source (`prices-source-slow`) is wired into `compose.ci.yml` (it exists only in plan/fixture docs), and the admin trigger endpoint is synchronous (`AdminOpsEndpoints.cs` `TriggerAsync` awaits `runner.RunAsync(...)` and returns 200), so a run is never observable as non-terminal in the browser. The L4 precondition above is therefore unsatisfiable in the current harness; the in-progress window is exercised at L3 (Vitest + MSW) instead, per the TKT-mdf-012 review C1 escalation, option A.
 - Dependencies: —
 
 **TC-MDF-049 — Job trigger and backfill confirmations**
-- Traces: UXR-MDF-016/017, UXR-G-022 pattern · Level: L4 · Design: decision table — confirm/cancel × backfill on/off
+- Traces: UXR-MDF-016/017, UXR-G-022 pattern · Level: L3 (re-leveled from L4 — §14 change record v1.3) · Design: decision table — confirm/cancel × backfill on/off
 - Expected: trigger requires an explicit confirmation naming the job; backfill mode confirmation names the job **and** the start date; cancel path aborts with no run created; pending lock on the trigger (UXR-G-002/020).
+- Re-level justification (v1.3, builder-approved 2026-10-13): re-leveled together with TC-MDF-047/048 as one §14 decision — the run a confirmed trigger creates is only observable at L3 in this harness (the trigger endpoint is synchronous; no non-terminal run, no slow source in compose.ci), so keeping 049 alone at L4 would split one flow across two levels for no incremental coverage. Covered at L3 (Vitest + MSW) per the TKT-mdf-012 review C1 escalation, option A (which also subsumes the C2 non-disclosure finding).
 - Dependencies: —
 
 **TC-MDF-050 — Admin empty states**
@@ -420,4 +423,4 @@
 - **Recorded interpretations (no decision needed):** unknown job code → 404 (TC-042); Mon–Fri trading days in fixtures, holiday calendar config-only; quarantine reason-code catalog defined by FU §2; median even-count = mean of middles; TTM = FY with ALFA's ΣQ consistency fixture; a rights action with q ≤ 0 or P_C ≤ 0 is invalid (rejected by validation, never a factor) — TC-053 column (e), plan-specified.
 
 ---
-*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated.*
+*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated. v1.3 2026-10-13 — **§14 change-propagation (builder-approved via the TKT-mdf-012 review round-1 escalation, routing item 1, option A): TC-MDF-047, TC-MDF-048, TC-MDF-049 re-leveled L4 → L3 (Vitest + MSW).** Reason — recorded harness limitation (review-lead-verified): compose.ci seeds no open quarantined fact; the admin trigger endpoint is synchronous, so no non-terminal ingest run is observable in the browser; no slow source is wired into the compose stack. Steps, expected results and traces unchanged; only the level and the per-case justification were added. Affected ticket recorded for re-validation: **TKT-mdf-012** (its C1/C2 findings resolve against this record; the L3 tests on PR #55 become the canonical level). Strategy §5.4 lists admin critical flows 1–8 under e2e coverage — flows 2/3/4 (these three TCs) are now covered at L3; flagged for the test-planner's next strategy pass. **This v1.3 record was applied by the delivery planner on the builder's explicit instruction and requires test-planner confirmation** (strategy §13/§14 — the test-planner owns this document and its change-propagation log).*

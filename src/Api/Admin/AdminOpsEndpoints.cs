@@ -211,7 +211,8 @@ public static class AdminOpsEndpoints
                 name = instrument.Name,
                 listingDate = instrument.ListingDate,
                 dataTypes = BuildDataTypes(
-                    byInstrument.TryGetValue(instrument.Id, out var rows) ? rows : []),
+                    byInstrument.TryGetValue(instrument.Id, out var rows) ? rows : [],
+                    CoverageDataTypes.InstrumentScoped),
             })
             .ToList();
 
@@ -244,7 +245,8 @@ public static class AdminOpsEndpoints
                 code = fund.Code,
                 name = fund.Name,
                 dataTypes = BuildDataTypes(
-                    byFund.TryGetValue(fund.Code, out var rows) ? rows : []),
+                    byFund.TryGetValue(fund.Code, out var rows) ? rows : [],
+                    CoverageDataTypes.FundScoped),
             })
             .ToList();
 
@@ -253,16 +255,18 @@ public static class AdminOpsEndpoints
 
     /// <summary>
     /// Projects coverage rows for one entity into the report's data-type entries and
-    /// guarantees every instrument-scoped data type appears — an absent type is rendered
-    /// as an explicit gap, never omitted (NFR-MDF-003, UXR-MDF-011). Extra recorded data
-    /// types (e.g. <c>cash_flow</c>) ride along too.
+    /// guarantees every scope-appropriate data type appears — an absent type is rendered
+    /// as an explicit gap, never omitted (NFR-MDF-003, NFR-FDF-001, UXR-MDF-011/012).
+    /// Extra recorded data types (e.g. <c>cash_flow</c>) ride along too.
     /// </summary>
-    private static List<object> BuildDataTypes(IReadOnlyList<CoverageMetadata> rows)
+    private static List<object> BuildDataTypes(
+        IReadOnlyList<CoverageMetadata> rows,
+        IReadOnlyList<string> guaranteedDataTypes)
     {
         var byType = rows.ToDictionary(row => row.DataType, StringComparer.Ordinal);
         var entries = new List<object>();
 
-        foreach (var dataType in CoverageDataTypes.InstrumentScoped)
+        foreach (var dataType in guaranteedDataTypes)
         {
             byType.TryGetValue(dataType, out var row);
             entries.Add(new
@@ -276,7 +280,7 @@ public static class AdminOpsEndpoints
         }
 
         foreach (var row in rows.Where(row =>
-                     !CoverageDataTypes.InstrumentScoped.Contains(row.DataType, StringComparer.Ordinal)))
+                     !guaranteedDataTypes.Contains(row.DataType, StringComparer.Ordinal)))
         {
             entries.Add(new
             {

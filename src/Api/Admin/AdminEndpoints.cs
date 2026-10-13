@@ -21,6 +21,8 @@ public static class AdminEndpoints
             .AddEndpointFilter<BuilderOnlyFilter>();
 
         admin.MapDegerliAdminOpsEndpoints();
+        admin.MapDegerliAdminQuarantineEndpoints();
+        admin.MapDegerliAdminDescriptionEndpoints();
 
         return admin;
     }

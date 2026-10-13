@@ -29,6 +29,12 @@ export interface ConfirmDialogProps {
   destructive?: boolean
   /** Shows pending feedback and locks both actions (UXR-G-002/020). */
   pending?: boolean
+  /**
+   * Optional plain-language error shown inside the dialog while it stays open
+   * (UXR-G-003). Lets a failed confirmed action surface its error without closing
+   * and losing the user's pending choice.
+   */
+  error?: string
   onConfirm: () => void
   /** Optional trigger rendered when the dialog owns its own button. */
   trigger?: React.ReactNode
@@ -53,6 +59,7 @@ export function ConfirmDialog({
   closeLabel,
   destructive = false,
   pending = false,
+  error,
   onConfirm,
   trigger,
 }: ConfirmDialogProps) {
@@ -64,6 +71,15 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {error ? (
+          <p
+            role="alert"
+            data-slot="confirm-dialog-error"
+            className="text-sm font-medium text-destructive"
+          >
+            {error}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button
             type="button"

@@ -11,7 +11,14 @@ import { assertNetworkQuiet, recordRequests } from './helpers/network'
 test.describe('network-quiet helper', () => {
   test('reports a quiet SPA root (no /api requests during the window)', async ({ page }) => {
     await page.goto('/')
-    await assertNetworkQuiet(page, { windowMs: 1_000 })
+    // The global header reads the session once on mount — the control-plane read
+    // that powers the sign-in/sign-out state (M-9, TKT-acc-008). The quiet window
+    // guards against *data* polling implying real-time updates (TC-XC-021), so the
+    // one-time session read is excluded; any other /api request still fails.
+    await assertNetworkQuiet(page, {
+      windowMs: 1_000,
+      match: /\/api\/v1\/(?!auth\/session)/,
+    })
   })
 
   test('positive control: detects a matching request during the window', async ({ page }) => {

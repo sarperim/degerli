@@ -25,8 +25,22 @@ export type StockPageSection =
 export interface DraftState {
   /** SCR-003 criteria builder draft (owned by the stock-screening tickets). */
   screenerDraft: unknown | null
+  /** SCR-003 last run result, kept so results survive navigation (UXR-G-021). */
+  screenerResult: unknown | null
   /** SCR-003 unsaved screen name. */
   screenerDraftName: string
+  /**
+   * The saved screen currently loaded into the screener context (SCR-003 active
+   * screen display). Set by a SCR-004 re-run; cleared when that screen is deleted
+   * or when the builder is cleared (mutation matrix §2, SCR-004 rows).
+   */
+  activeScreenId: number | null
+  activeScreenName: string
+  /**
+   * Criteria dropped on the last saved-screen re-run because the metric is no
+   * longer offered (UXR-SCR-015); rendered as a notice in the screener context.
+   */
+  screenerDroppedCriteria: string[]
   /** SCR-006 DCF assumptions draft (owned by the valuation tickets). */
   dcfDraft: unknown | null
   /** SCR-006 unsaved scenario name. */
@@ -44,7 +58,11 @@ export interface DraftState {
   returnUrl: string | null
 
   setScreenerDraft: (draft: unknown | null) => void
+  setScreenerResult: (result: unknown | null) => void
   setScreenerDraftName: (name: string) => void
+  setActiveScreen: (id: number, name: string) => void
+  clearActiveScreen: () => void
+  setScreenerDroppedCriteria: (codes: string[]) => void
   setDcfDraft: (draft: unknown | null) => void
   setDcfDraftName: (name: string) => void
   setStockListFilters: (filters: Partial<DraftState['stockListFilters']>) => void
@@ -56,7 +74,11 @@ export interface DraftState {
 
 const initialDraftState = {
   screenerDraft: null,
+  screenerResult: null,
   screenerDraftName: '',
+  activeScreenId: null,
+  activeScreenName: '',
+  screenerDroppedCriteria: [],
   dcfDraft: null,
   dcfDraftName: '',
   stockListFilters: { sector: null, query: '' },
@@ -70,7 +92,14 @@ export const useDraftStore = create<DraftState>()(
     (set) => ({
       ...initialDraftState,
       setScreenerDraft: (draft) => set({ screenerDraft: draft }),
+      setScreenerResult: (screenerResult) => set({ screenerResult }),
       setScreenerDraftName: (screenerDraftName) => set({ screenerDraftName }),
+      setActiveScreen: (activeScreenId, activeScreenName) =>
+        set({ activeScreenId, activeScreenName }),
+      clearActiveScreen: () =>
+        set({ activeScreenId: null, activeScreenName: '', screenerDroppedCriteria: [] }),
+      setScreenerDroppedCriteria: (screenerDroppedCriteria) =>
+        set({ screenerDroppedCriteria }),
       setDcfDraft: (draft) => set({ dcfDraft: draft }),
       setDcfDraftName: (dcfDraftName) => set({ dcfDraftName }),
       setStockListFilters: (filters) =>

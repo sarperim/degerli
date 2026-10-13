@@ -4,8 +4,15 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { ComponentIndex } from '@/components/design-system/ComponentIndex'
 import { RouteError } from '@/components/RouteError'
+import { AccountSettingsScreen } from '@/screens/accountSettings/AccountSettingsScreen'
+import { AdminScreen } from '@/screens/admin/AdminScreen'
+import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
+import { DcfScenariosScreen } from '@/screens/dcfScenarios/DcfScenariosScreen'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
+import { SavedScreensScreen } from '@/screens/savedScreens/SavedScreensScreen'
+import { SignInScreen } from '@/screens/signIn/SignInScreen'
+import { ScreenerScreen } from '@/screens/screener/ScreenerScreen'
 import { APP_ROUTES, type ScreenRoute } from '@/routes/routeConfig'
 import { MarketOverviewPage } from '@/routes/MarketOverviewPage'
 import { RoutePlaceholder } from '@/routes/RoutePlaceholder'
@@ -20,6 +27,13 @@ const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   marketOverview: <MarketOverviewPage />,
   stockList: <StockListPage />,
   register: <RegisterScreen />,
+  signIn: <SignInScreen />,
+  screener: <ScreenerScreen />,
+  admin: <AdminScreen />,
+  dcfCalculator: <DcfCalculatorScreen />,
+  dcfScenarios: <DcfScenariosScreen />,
+  savedScreens: <SavedScreensScreen />,
+  accountSettings: <AccountSettingsScreen />,
 }
 
 const router = createBrowserRouter([

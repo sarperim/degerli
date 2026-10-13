@@ -7,6 +7,7 @@
     "loading": "Loading…",
     "error": "Something went wrong",
     "retry": "Try again",
+    "cancel": "Cancel",
     "close": "Close"
   },
   "header": {
@@ -19,7 +20,8 @@
     "searchPlaceholder": "Search by code or company name",
     "signIn": "Sign in",
     "register": "Register",
-    "anonymous": "Guest"
+    "anonymous": "Guest",
+    "signOut": "Sign out"
   },
   "nav": {
     "marketOverview": "Market Overview",
@@ -27,6 +29,7 @@
     "screener": "Screener",
     "savedScreens": "My Saved Screens",
     "dcfScenarios": "My DCF Scenarios",
+    "settings": "Account Settings",
     "admin": "Admin"
   },
   "placeholder": {
@@ -80,7 +83,9 @@
     },
     "admin": {
       "title": "Admin Dashboard",
-      "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger."
+      "description": "Builder-only operational surface for summary, quarantine, coverage and the run ledger.",
+      "sessionErrorTitle": "The admin area could not be checked",
+      "sessionErrorBody": "Something went wrong while confirming your access. Please try again."
     }
   },
   "stockList": {
@@ -105,6 +110,173 @@
     "emptyUniverseBody": "There are no stocks to show in the covered universe.",
     "errorTitle": "The stock list could not be loaded",
     "errorBody": "Something went wrong while loading the list. Please try again."
+  },
+  "screener": {
+    "families": {
+      "valuation": "Valuation",
+      "quality": "Quality",
+      "growth": "Growth",
+      "financial_health": "Financial Health",
+      "dividends": "Dividends"
+    },
+    "metricSelectLabel": "Metric to add",
+    "addCriterion": "Add criterion",
+    "boundLabel": "Bound type",
+    "bound": {
+      "min": "At least",
+      "max": "At most",
+      "range": "Between"
+    },
+    "minValue": "{{metric}} — minimum value",
+    "maxValue": "{{metric}} — maximum value",
+    "windowLabel": "{{metric}} — window",
+    "windowYears": "{{years}} years",
+    "removeCriterion": "Remove criterion",
+    "clearAll": "Clear all",
+    "run": "Run screen",
+    "running": "Running…",
+    "runErrorTitle": "The screen could not be run",
+    "runErrorBody": "Something went wrong while running the screen. Your criteria were preserved; please try again.",
+    "initialTitle": "No results yet",
+    "initialBody": "Add criteria and run the screen to list matching stocks here.",
+    "resultsTitle": "Matching stocks",
+    "resultsCaption": "{{count}} stocks matched",
+    "matchCount": "{{count}} matches",
+    "excludedCount": "{{count}} stocks excluded for missing data",
+    "zeroTitle": "No matching stocks",
+    "zeroBody": "No stock matched these criteria. Try relaxing the criteria.",
+    "columns": {
+      "stock": "Company",
+      "symbol": "Code",
+      "sector": "Sector"
+    },
+    "saveNameLabel": "Screen name",
+    "saveButton": "Save screen",
+    "saving": "Saving…",
+    "savedConfirmation": "Saved “{{name}}”.",
+    "anonymousTitle": "Sign in to save",
+    "anonymousBody": "To save a screen you need to sign in or create an account. Your criteria will be preserved.",
+    "signIn": "Sign in",
+    "register": "Register",
+    "unverifiedTitle": "Verify your e-mail to save",
+    "unverifiedBody": "Saving screens requires a verified e-mail. Click the verification link we sent you; your criteria and name will be preserved.",
+    "unverifiedLink": "Go to account settings",
+    "duplicateName": "You already have a screen named “{{name}}”. Choose a different name.",
+    "saveErrorTitle": "The screen could not be saved",
+    "saveErrorBody": "Something went wrong. Your input was preserved; please try again.",
+    "activeScreenLabel": "Active screen: {{name}}",
+    "droppedCriteria": "The following criteria were dropped on re-run because they are no longer offered: {{criteria}}."
+  },
+  "savedScreens": {
+    "listLabel": "Saved screens",
+    "columns": {
+      "name": "Screen name",
+      "actions": "Actions"
+    },
+    "reRun": "Re-run",
+    "reRunning": "Running…",
+    "rename": "Rename",
+    "renameInputLabel": "New name for {{name}}",
+    "renameSave": "Save",
+    "renaming": "Saving…",
+    "renameCancel": "Cancel",
+    "delete": "Delete",
+    "deleteTitle": "Delete saved screen?",
+    "deleteDescription": "“{{name}}” will be permanently deleted. It will no longer appear in My Saved Screens or the Screener.",
+    "deleteConfirm": "Delete",
+    "emptyTitle": "You have no saved screens yet",
+    "emptyBody": "Build your criteria in the Screener and save a screen; it will be listed here.",
+    "emptyAction": "Go to the Screener",
+    "anonymousTitle": "Sign in to see your saved screens",
+    "anonymousBody": "Sign in or create an account to see your saved screens. The rest of the research content is available without an account.",
+    "signIn": "Sign in",
+    "register": "Register",
+    "listErrorTitle": "The saved screens could not be loaded",
+    "listErrorBody": "Something went wrong while loading the list. Please try again.",
+    "reRunErrorTitle": "The screen could not be run",
+    "reRunErrorBody": "Something went wrong while running the screen. The list is unchanged; please try again.",
+    "renameDuplicate": "You already have a screen named “{{name}}”. The previous name was kept.",
+    "renameErrorBody": "The name could not be changed. The previous name was kept; please try again.",
+    "deleteErrorTitle": "The screen could not be deleted",
+    "deleteErrorBody": "Something went wrong while deleting the screen. Please try again."
+  },
+  "dcfScenarios": {
+    "listLabel": "DCF scenarios",
+    "columns": {
+      "name": "Scenario name",
+      "actions": "Actions"
+    },
+    "groupLabel": "Scenarios for {{symbol}}",
+    "open": "Open",
+    "openLabel": "Open the {{name}} scenario in the calculator",
+    "rename": "Rename",
+    "renameLabel": "Rename the {{name}} scenario",
+    "renameInputLabel": "New name for {{name}}",
+    "renameSave": "Save",
+    "renaming": "Saving…",
+    "renameCancel": "Cancel",
+    "renameDuplicate": "You already have a scenario named “{{name}}” for this stock. The previous name was kept.",
+    "renameErrorBody": "The name could not be changed. The previous name was kept; please try again.",
+    "delete": "Delete",
+    "deleteLabel": "Delete the {{name}} scenario",
+    "deleteTitle": "Delete scenario?",
+    "deleteDescription": "The “{{name}}” scenario will be permanently deleted. It will no longer appear in My DCF Scenarios or in the calculator's picker.",
+    "deleteConfirm": "Delete",
+    "deleteErrorTitle": "The scenario could not be deleted",
+    "deleteErrorBody": "Something went wrong while deleting the scenario. Please try again.",
+    "emptyTitle": "You have no saved scenarios yet",
+    "emptyBody": "When you enter your assumptions in the DCF calculator and save a scenario, it will be listed here.",
+    "emptyAction": "Choose a stock",
+    "anonymousTitle": "Sign in to see your DCF scenarios",
+    "anonymousBody": "Sign in or create an account to open, rename, and delete your saved DCF scenarios. The rest of the research content is available without an account.",
+    "signIn": "Sign in",
+    "register": "Register",
+    "listErrorTitle": "DCF scenarios could not be loaded",
+    "listErrorBody": "Something went wrong while loading the list. Please try again."
+  },
+  "accountSettings": {
+    "loading": "Loading your account settings…",
+    "loadError": "Your account could not be loaded. Please try again.",
+    "anonymousTitle": "Sign in for account settings",
+    "anonymousBody": "Sign in or create an account to manage your account settings. The rest of the research content is available without an account.",
+    "signIn": "Sign in",
+    "register": "Register",
+    "languageTitle": "Language preference",
+    "languageLabel": "Interface language",
+    "languageHint": "Your choice applies immediately and is saved to your account; it is applied on every device you sign in from.",
+    "languageSaveFailed": "The language preference could not be saved. The previous language remains in use.",
+    "passwordTitle": "Change password",
+    "currentLabel": "Current password",
+    "newPasswordLabel": "New password",
+    "passwordRules": "Use at least 10 characters.",
+    "currentRequired": "Enter your current password.",
+    "newRequired": "Enter your new password.",
+    "newTooShort": "Password must be at least {{min}} characters.",
+    "currentMismatch": "The current password is incorrect.",
+    "passwordSubmit": "Change password",
+    "passwordSubmitting": "Changing…",
+    "passwordSuccess": "Your password has been changed. Your session stays active.",
+    "passwordError": "The password could not be changed. Your input was preserved; please try again.",
+    "entryPointsTitle": "My saved work",
+    "entryScreens": "My Saved Screens",
+    "entryScenarios": "My DCF Scenarios",
+    "verificationTitle": "E-mail verification",
+    "verificationEmailLabel": "E-mail address",
+    "verifiedBadge": "Verified",
+    "verifiedBody": "Your e-mail address is verified. You can save screens and DCF scenarios.",
+    "unverifiedBadge": "Not verified",
+    "unverifiedBody": "Your e-mail address is not verified yet. Click the verification link we sent you to enable saving.",
+    "resend": "Resend verification e-mail",
+    "resending": "Sending…",
+    "resent": "A new verification e-mail has been sent.",
+    "resendFailed": "We could not send the e-mail. Please try again.",
+    "deletionTitle": "Delete account",
+    "deletionBody": "Permanently deletes your account and all of your personal data.",
+    "deleteButton": "Delete my account",
+    "deleteDialogTitle": "Delete account?",
+    "deleteDialogDescription": "This cannot be undone. Your account, your personal data, your saved screens and your DCF scenarios will be permanently deleted.",
+    "deleteConfirm": "Delete account",
+    "deleteError": "The account could not be deleted. Please try again."
   },
   "headerSearch": {
     "viewAll": "View all matches",
@@ -168,6 +340,78 @@
       }
     }
   },
+  "dcf": {
+    "param": {
+      "base_fcf": "Starting free cash flow",
+      "growth_rate": "Growth rate",
+      "horizon_years": "Projection horizon",
+      "terminal_growth": "Terminal growth rate",
+      "discount_rate": "Discount rate",
+      "debt": "Debt",
+      "cash": "Cash & equivalents",
+      "share_count": "Share count (diluted)"
+    },
+    "unit": {
+      "currency": "TRY",
+      "percent": "%",
+      "years": "years",
+      "shares": "shares"
+    },
+    "canonicalSource": "Canonical fact · as of {{date}}",
+    "baselineDefault": "Baseline default",
+    "baselineVersion": "Baseline version {{version}}",
+    "error": {
+      "notNumber": "Enter a valid number.",
+      "notInteger": "Enter a whole number.",
+      "outOfRange": "This value is outside the valid range.",
+      "notComputable": "The model is not computable with these values (the discount rate must exceed the terminal growth)."
+    },
+    "fairValue": "Fair value (per share)",
+    "price": "Current price",
+    "framing": "Based on your assumptions",
+    "verdict": {
+      "above": "Based on your assumptions, the price sits {{percent}} above your fair value.",
+      "below": "Based on your assumptions, the price sits {{percent}} below your fair value.",
+      "equal": "Based on your assumptions, the price is very close to your fair value."
+    },
+    "unsaved": "Unsaved changes",
+    "resetToBaseline": "Reset to baseline",
+    "scenario": {
+      "heading": "Scenarios",
+      "nameLabel": "Scenario name",
+      "saveButton": "Save scenario",
+      "saving": "Saving…",
+      "savedConfirmation": "“{{name}}” saved.",
+      "anonymousTitle": "Sign in to save",
+      "anonymousBody": "Saving a scenario needs an account; your assumptions and name are preserved.",
+      "signIn": "Sign in",
+      "register": "Register",
+      "unverifiedTitle": "Verify your e-mail to save",
+      "unverifiedBody": "Saving scenarios requires a verified e-mail address; your assumptions and name are preserved.",
+      "unverifiedLink": "Go to account settings",
+      "duplicateName": "You already have a scenario named “{{name}}” for this stock. Choose a different name.",
+      "saveErrorTitle": "Scenario could not be saved",
+      "saveErrorBody": "Something went wrong. Your input is preserved; please try again.",
+      "pickerLabel": "This stock's scenarios",
+      "pickerAnonymous": "Sign in to see and load your saved scenarios for this stock.",
+      "pickerEmpty": "You have no saved scenarios for this stock.",
+      "pickerError": "Your saved scenarios could not be loaded.",
+      "load": "Load",
+      "loadConfirmTitle": "Discard the draft?",
+      "loadConfirmDescription": "Loading “{{name}}” will discard your unsaved changes.",
+      "loadConfirm": "Load and discard changes"
+    },
+    "missingInputs": {
+      "title": "Missing inputs",
+      "body": "Some inputs needed to value this stock are missing from the data sources: {{fields}}. No computation runs until you supply the missing values; the model works with the values you enter."
+    },
+    "sensitivity": {
+      "title": "Sensitivity table",
+      "axisLabel": "Discount rate \\ terminal growth",
+      "notComputable": "Not computable",
+      "currentCell": "Current result"
+    }
+  },
   "register": {
     "formAriaLabel": "Registration form",
     "emailLabel": "E-mail address",
@@ -191,6 +435,21 @@
     "returnToWork": "Return to your work",
     "noReturnUrl": "Go to the market overview"
   },
+  "signIn": {
+    "formAriaLabel": "Sign-in form",
+    "emailLabel": "E-mail address",
+    "emailInvalid": "Enter a valid e-mail address.",
+    "passwordLabel": "Password",
+    "passwordRequired": "Enter your password.",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalidCredentials": "The e-mail or password is incorrect.",
+    "lockedOut": "Too many failed attempts. Please try again later.",
+    "genericError": "Something went wrong. Please try again.",
+    "forgotPassword": "Forgot your password?",
+    "registerPrompt": "Don't have an account?",
+    "registerLink": "Register"
+  },
   "verifyEmail": {
     "title": "E-mail verification",
     "checking": "Verifying your e-mail…",
@@ -206,5 +465,145 @@
     "resent": "A new verification e-mail has been sent.",
     "resendFailed": "We could not send the e-mail. Please try again.",
     "backToRegister": "Back to registration"
+  },
+  "admin": {
+    "sectionsNavLabel": "Admin sections",
+    "accessDenied": {
+      "title": "You do not have access to this area",
+      "body": "The admin dashboard is only available to the builder role. Use the link below to return to platform content.",
+      "back": "Back to the market overview"
+    },
+    "sections": {
+      "summary": "Ops summary",
+      "quarantine": "Quarantine queue",
+      "coverage": "Coverage report",
+      "ledger": "Run ledger",
+      "stats": "Usage statistics"
+    },
+    "runStatus": {
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "partial": "Partial",
+      "running": "Running",
+      "queued": "Queued"
+    },
+    "summary": {
+      "jobsHeading": "Latest run per job",
+      "job": "Job",
+      "status": "Status",
+      "finishedAt": "Finished at",
+      "neverRun": "Never run",
+      "freshnessHeading": "Data freshness",
+      "dataType": "Data type",
+      "lastSuccess": "Last success",
+      "noLastSuccess": "No record",
+      "contentHeading": "Content coverage",
+      "descriptionsPublished": "Published descriptions",
+      "descriptionsDraft": "Draft descriptions",
+      "universe": "Universe",
+      "quarantineHeading": "Quarantine",
+      "openQuarantineLink": "Open the quarantine queue",
+      "refresh": "Refresh",
+      "errorTitle": "The ops summary could not be loaded",
+      "errorBody": "Something went wrong while loading the summary. Please try again."
+    },
+    "quarantine": {
+      "filterLabel": "Status",
+      "statusOpen": "Open",
+      "statusDismissed": "Dismissed",
+      "columns": {
+        "job": "Job",
+        "reason": "Reason",
+        "source": "Source",
+        "quarantinedAt": "Quarantined at",
+        "actions": "Actions"
+      },
+      "inspect": "Inspect payload",
+      "hide": "Hide payload",
+      "viewLedger": "Run ledger for this job",
+      "dismiss": "Dismiss",
+      "noteLabel": "Resolution note",
+      "noteRequired": "Enter a resolution note to dismiss.",
+      "dismissError": "The fact could not be dismissed. Please try again.",
+      "resolutionNote": "Resolution note",
+      "emptyOpenTitle": "No open quarantined facts",
+      "emptyOpenBody": "There are no open quarantined facts right now — the pipeline looks healthy.",
+      "emptyDismissedTitle": "No dismissed records",
+      "emptyDismissedBody": "There are no dismissed quarantined facts for this status.",
+      "errorTitle": "The quarantine queue could not be loaded",
+      "errorBody": "Something went wrong while loading the queue. Please try again."
+    },
+    "reason": {
+      "MISSING_PROVENANCE": "Missing provenance",
+      "NEGATIVE_PRICE": "Invalid price (negative)",
+      "UNPARSEABLE_PAYLOAD": "Unparseable payload",
+      "SCHEMA_MISMATCH": "Schema mismatch",
+      "CONFLICTING_VALUE": "Conflicting value",
+      "MISSING_CLASSIFICATION": "Missing classification"
+    },
+    "coverage": {
+      "scopeLabel": "Scope",
+      "scopeInstrument": "Instrument",
+      "scopeFund": "Fund",
+      "instrument": "Instrument",
+      "fund": "Fund",
+      "listingDate": "Listing date",
+      "dataTypes": "Data types",
+      "present": "Present",
+      "gap": "Missing",
+      "emptyTitle": "No coverage records",
+      "emptyBody": "There are no records to show for the selected scope.",
+      "errorTitle": "The coverage report could not be loaded",
+      "errorBody": "Something went wrong while loading the report. Please try again."
+    },
+    "dataTypes": {
+      "prices": "Prices",
+      "statements": "Statements",
+      "dividends": "Dividends",
+      "corporate_actions": "Corporate actions",
+      "disclosures": "KAP disclosures",
+      "nav": "NAV",
+      "performance": "Performance",
+      "holdings": "Holdings"
+    },
+    "ledger": {
+      "filterJob": "Job",
+      "filterStatus": "Status",
+      "allJobs": "All jobs",
+      "allStatuses": "All statuses",
+      "columns": {
+        "job": "Job",
+        "status": "Status",
+        "startedAt": "Started at",
+        "finishedAt": "Finished at"
+      },
+      "autoRefreshNotice": "This view refreshes periodically while a run is in progress.",
+      "refresh": "Refresh",
+      "triggerHeading": "Run a job",
+      "triggerJobLabel": "Job to run",
+      "backfillLabel": "Run a historical backfill",
+      "backfillFromLabel": "Start date",
+      "backfillFromRequired": "Enter a start date for the backfill.",
+      "trigger": "Run",
+      "triggerTitle": "Run job",
+      "triggerConfirm": "Confirm and run",
+      "triggerDescription": "The {{job}} job will run now.",
+      "triggerBackfillDescription": "The {{job}} job will run as a backfill from {{date}}.",
+      "cancel": "Cancel",
+      "emptyTitle": "No runs for this filter",
+      "emptyBody": "No runs match the selected job and status filter.",
+      "errorTitle": "The run ledger could not be loaded",
+      "errorBody": "Something went wrong while loading the ledger. Please try again.",
+      "triggerError": "The run could not be started. Please try again."
+    },
+    "stats": {
+      "registered": "Registered accounts",
+      "verified": "Verified accounts",
+      "savedScreens": "Saved screens",
+      "dcfScenarios": "DCF scenarios",
+      "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
+      "errorTitle": "The statistics could not be loaded",
+      "errorBody": "Something went wrong while loading the statistics. Please try again."
+    }
   }
 }
