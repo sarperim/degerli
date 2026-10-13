@@ -80,7 +80,7 @@ function FigureValue({
   return (
     <span className="tabular-nums">
       {percent
-        ? formatPercent(locale, figure.value)
+        ? formatPercent(locale, figure.value, 2)
         : formatNumber(locale, figure.value)}
       {figure.restated ? (
         <>
@@ -326,7 +326,7 @@ export function ProfitabilitySection({ symbol }: { symbol: string }) {
                         <NotMeaningful />
                       ) : (
                         <span className="tabular-nums">
-                          {formatPercent(locale, metric.value)}
+                          {formatPercent(locale, metric.value, 2)}
                         </span>
                       )}
                     </dd>
@@ -411,7 +411,7 @@ export function GrowthSection({ symbol }: { symbol: string }) {
                             </span>
                           ) : (
                             <span className="tabular-nums">
-                              {formatPercent(locale, window.value)}
+                              {formatPercent(locale, window.value, 2)}
                             </span>
                           )}
                           {window.windowYears !== null &&

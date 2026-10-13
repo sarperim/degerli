@@ -25,18 +25,42 @@ export function formatNumber(locale: string, value: number): string {
   }
 }
 
+/** Format a decimal for display in the active language (grouping + locale separators). */
+export function formatDecimal(
+  locale: string,
+  value: number,
+  maximumFractionDigits = 2,
+  minimumFractionDigits = 0,
+): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      maximumFractionDigits,
+      minimumFractionDigits,
+    }).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
 /**
  * Format a canonical `%` metric stored as a fraction (`0.15` → `15%`). The API
  * serves `%`-unit metrics as fractions (`03` §4); the UI adds the percent sign.
+ *
+ * `maximumFractionDigits` defaults to 1 (the DCF sensitivity axes and verdict);
+ * the stock page passes 2 for its growth/profitability figures.
  */
-export function formatPercent(locale: string, fraction: number): string {
+export function formatPercent(
+  locale: string,
+  fraction: number,
+  maximumFractionDigits = 1,
+): string {
   try {
     return new Intl.NumberFormat(locale, {
       style: 'percent',
-      maximumFractionDigits: 2,
+      maximumFractionDigits,
     }).format(fraction)
   } catch {
-    return `${fraction}%`
+    return `${(fraction * 100).toFixed(maximumFractionDigits)}%`
   }
 }
 

@@ -139,6 +139,7 @@ export const APP_ROUTES: ScreenRoute[] = [
     path: '/settings',
     titleKey: 'screens.accountSettings.title',
     descriptionKey: 'screens.accountSettings.description',
+    navLabelKey: 'nav.settings',
     requiresAuth: true,
   },
   {

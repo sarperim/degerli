@@ -7,6 +7,7 @@
     "loading": "Yükleniyor…",
     "error": "Bir şeyler ters gitti",
     "retry": "Yeniden dene",
+    "cancel": "Vazgeç",
     "close": "Kapat"
   },
   "header": {
@@ -28,6 +29,7 @@
     "screener": "Tarayıcı",
     "savedScreens": "Kayıtlı Taramalarım",
     "dcfScenarios": "DCF Senaryolarım",
+    "settings": "Hesap Ayarları",
     "admin": "Yönetim"
   },
   "placeholder": {
@@ -81,7 +83,9 @@
     },
     "admin": {
       "title": "Yönetim Paneli",
-      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi."
+      "description": "Yalnızca geliştiriciye açık operasyonel özet, karantina, kapsam ve çalıştırma günlüğü yüzeyi.",
+      "sessionErrorTitle": "Yönetim alanı doğrulanamadı",
+      "sessionErrorBody": "Erişiminiz doğrulanırken bir sorun oluştu. Lütfen tekrar deneyin."
     }
   },
   "stockPage": {
@@ -230,7 +234,120 @@
     "unverifiedLink": "Hesap ayarlarına git",
     "duplicateName": "“{{name}}” adıyla kayıtlı bir taramanız zaten var. Farklı bir ad seçin.",
     "saveErrorTitle": "Tarama kaydedilemedi",
-    "saveErrorBody": "Bir şeyler ters gitti. Girdikleriniz korundu; lütfen tekrar deneyin."
+    "saveErrorBody": "Bir şeyler ters gitti. Girdikleriniz korundu; lütfen tekrar deneyin.",
+    "activeScreenLabel": "Etkin tarama: {{name}}",
+    "droppedCriteria": "Yeniden çalıştırmada artık sunulmayan şu ölçütler çıkarıldı: {{criteria}}."
+  },
+  "savedScreens": {
+    "listLabel": "Kayıtlı taramalar",
+    "columns": {
+      "name": "Tarama adı",
+      "actions": "İşlemler"
+    },
+    "reRun": "Yeniden çalıştır",
+    "reRunning": "Çalıştırılıyor…",
+    "rename": "Adlandır",
+    "renameInputLabel": "{{name}} için yeni ad",
+    "renameSave": "Kaydet",
+    "renaming": "Kaydediliyor…",
+    "renameCancel": "Vazgeç",
+    "delete": "Sil",
+    "deleteTitle": "Kayıtlı taramayı sil?",
+    "deleteDescription": "“{{name}}” taraması kalıcı olarak silinecek. Bu tarama artık Kayıtlı Taramalarım'da ve Tarayıcı'da görünmeyecek.",
+    "deleteConfirm": "Sil",
+    "emptyTitle": "Henüz kayıtlı taramanız yok",
+    "emptyBody": "Tarayıcıda ölçütlerinizi oluşturup bir taramayı kaydettiğinizde burada listelenir.",
+    "emptyAction": "Tarayıcıya git",
+    "anonymousTitle": "Kayıtlı taramalarınız için giriş yapın",
+    "anonymousBody": "Kayıtlı taramalarınızı görmek için giriş yapın veya hesap oluşturun. Araştırma içeriğinin geri kalanı hesapsız kullanılabilir.",
+    "signIn": "Giriş yap",
+    "register": "Kayıt ol",
+    "listErrorTitle": "Kayıtlı taramalar yüklenemedi",
+    "listErrorBody": "Liste yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    "reRunErrorTitle": "Tarama çalıştırılamadı",
+    "reRunErrorBody": "Tarama çalıştırılırken bir sorun oluştu. Liste değişmedi; lütfen tekrar deneyin.",
+    "renameDuplicate": "“{{name}}” adıyla kayıtlı bir taramanız zaten var. Önceki ad korundu.",
+    "renameErrorBody": "Ad değiştirilemedi. Önceki ad korundu; lütfen tekrar deneyin.",
+    "deleteErrorTitle": "Tarama silinemedi",
+    "deleteErrorBody": "Tarama silinirken bir sorun oluştu. Lütfen tekrar deneyin."
+  },
+  "dcfScenarios": {
+    "listLabel": "DCF senaryoları",
+    "columns": {
+      "name": "Senaryo adı",
+      "actions": "İşlemler"
+    },
+    "groupLabel": "{{symbol}} hissesinin senaryoları",
+    "open": "Aç",
+    "openLabel": "{{name}} senaryosunu hesaplayıcıda aç",
+    "rename": "Adlandır",
+    "renameLabel": "{{name}} senaryosunu adlandır",
+    "renameInputLabel": "{{name}} için yeni ad",
+    "renameSave": "Kaydet",
+    "renaming": "Kaydediliyor…",
+    "renameCancel": "Vazgeç",
+    "renameDuplicate": "“{{name}}” adıyla bu hisse için kayıtlı bir senaryonuz zaten var. Önceki ad korundu.",
+    "renameErrorBody": "Ad değiştirilemedi. Önceki ad korundu; lütfen tekrar deneyin.",
+    "delete": "Sil",
+    "deleteLabel": "{{name}} senaryosunu sil",
+    "deleteTitle": "Senaryoyu sil?",
+    "deleteDescription": "“{{name}}” senaryosu kalıcı olarak silinecek. Bu senaryo artık DCF Senaryolarım'da ve hesaplayıcının seçicisinde görünmeyecek.",
+    "deleteConfirm": "Sil",
+    "deleteErrorTitle": "Senaryo silinemedi",
+    "deleteErrorBody": "Senaryo silinirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    "emptyTitle": "Henüz kayıtlı senaryonuz yok",
+    "emptyBody": "DCF hesaplayıcıda varsayımlarınızı girip bir senaryoyu kaydettiğinizde burada listelenir.",
+    "emptyAction": "Bir hisse seçin",
+    "anonymousTitle": "DCF senaryolarınız için giriş yapın",
+    "anonymousBody": "Kayıtlı DCF senaryolarınızı açmak, adlandırmak ve silmek için giriş yapın veya hesap oluşturun. Araştırma içeriğinin geri kalanı hesapsız kullanılabilir.",
+    "signIn": "Giriş yap",
+    "register": "Kayıt ol",
+    "listErrorTitle": "DCF senaryoları yüklenemedi",
+    "listErrorBody": "Liste yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+  },
+  "accountSettings": {
+    "loading": "Hesap ayarları yükleniyor…",
+    "loadError": "Hesap bilgileri yüklenemedi. Lütfen tekrar deneyin.",
+    "anonymousTitle": "Hesap ayarları için giriş yapın",
+    "anonymousBody": "Hesap ayarlarınızı yönetmek için giriş yapın veya hesap oluşturun. Araştırma içeriğinin geri kalanı hesapsız kullanılabilir.",
+    "signIn": "Giriş yap",
+    "register": "Kayıt ol",
+    "languageTitle": "Dil tercihi",
+    "languageLabel": "Arayüz dili",
+    "languageHint": "Seçim hemen uygulanır ve hesabınıza kaydedilir; giriş yaptığınız her cihazda geçerli olur.",
+    "languageSaveFailed": "Dil tercihi kaydedilemedi. Önceki dil kullanılmaya devam ediyor.",
+    "passwordTitle": "Parola değiştir",
+    "currentLabel": "Mevcut parola",
+    "newPasswordLabel": "Yeni parola",
+    "passwordRules": "En az 10 karakter kullanın.",
+    "currentRequired": "Mevcut parolanızı girin.",
+    "newRequired": "Yeni parolanızı girin.",
+    "newTooShort": "Parola en az {{min}} karakter olmalıdır.",
+    "currentMismatch": "Mevcut parola hatalı.",
+    "passwordSubmit": "Parolayı değiştir",
+    "passwordSubmitting": "Değiştiriliyor…",
+    "passwordSuccess": "Parolanız değiştirildi. Oturumunuz açık kalıyor.",
+    "passwordError": "Parola değiştirilemedi. Girdikleriniz korundu; lütfen tekrar deneyin.",
+    "entryPointsTitle": "Kayıtlı işlerim",
+    "entryScreens": "Kayıtlı Taramalarım",
+    "entryScenarios": "DCF Senaryolarım",
+    "verificationTitle": "E-posta doğrulama",
+    "verificationEmailLabel": "E-posta adresi",
+    "verifiedBadge": "Doğrulandı",
+    "verifiedBody": "E-posta adresiniz doğrulandı. Taramaları ve DCF senaryolarını kaydedebilirsiniz.",
+    "unverifiedBadge": "Doğrulanmadı",
+    "unverifiedBody": "E-posta adresiniz henüz doğrulanmadı. Kaydetmek için size gönderdiğimiz doğrulama bağlantısına tıklayın.",
+    "resend": "Doğrulama e-postasını yeniden gönder",
+    "resending": "Gönderiliyor…",
+    "resent": "Yeni bir doğrulama e-postası gönderildi.",
+    "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
+    "deletionTitle": "Hesabı sil",
+    "deletionBody": "Hesabınızı ve tüm kişisel verilerinizi kalıcı olarak siler.",
+    "deleteButton": "Hesabımı sil",
+    "deleteDialogTitle": "Hesabı sil?",
+    "deleteDialogDescription": "Bu işlem geri alınamaz. Hesabınız, kişisel verileriniz, kayıtlı taramalarınız ve DCF senaryolarınız kalıcı olarak silinecek.",
+    "deleteConfirm": "Hesabı sil",
+    "deleteError": "Hesap silinemedi. Lütfen tekrar deneyin."
   },
   "headerSearch": {
     "viewAll": "Tüm eşleşmeleri gör",
@@ -255,6 +372,78 @@
   "disclaimer": {
     "label": "Yasal uyarı",
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
+  },
+  "dcf": {
+    "param": {
+      "base_fcf": "Başlangıç serbest nakit akışı",
+      "growth_rate": "Büyüme oranı",
+      "horizon_years": "Projeksiyon ufku",
+      "terminal_growth": "Nihai büyüme oranı",
+      "discount_rate": "İskonto oranı",
+      "debt": "Borç",
+      "cash": "Nakit ve nakit benzerleri",
+      "share_count": "Hisse sayısı (sulandırılmış)"
+    },
+    "unit": {
+      "currency": "₺",
+      "percent": "%",
+      "years": "yıl",
+      "shares": "hisse"
+    },
+    "canonicalSource": "Kanonik tablo · {{date}} itibarıyla",
+    "baselineDefault": "Temel varsayılan",
+    "baselineVersion": "Temel sürüm {{version}}",
+    "error": {
+      "notNumber": "Geçerli bir sayı girin.",
+      "notInteger": "Tam sayı girin.",
+      "outOfRange": "Bu değer geçerli aralığın dışında.",
+      "notComputable": "Bu değerlerle model hesaplanamaz (iskonto oranı nihai büyümeden büyük olmalıdır)."
+    },
+    "fairValue": "Adil değer (hisse başına)",
+    "price": "Güncel fiyat",
+    "framing": "Kendi varsayımlarınıza göre",
+    "verdict": {
+      "above": "Kendi varsayımlarınıza göre fiyat, adil değerinizin {{percent}} üzerinde.",
+      "below": "Kendi varsayımlarınıza göre fiyat, adil değerinizin {{percent}} altında.",
+      "equal": "Kendi varsayımlarınıza göre fiyat, adil değerinize çok yakın."
+    },
+    "unsaved": "Kaydedilmemiş değişiklikler",
+    "resetToBaseline": "Temel değerlere dön",
+    "scenario": {
+      "heading": "Senaryolar",
+      "nameLabel": "Senaryo adı",
+      "saveButton": "Senaryoyu kaydet",
+      "saving": "Kaydediliyor…",
+      "savedConfirmation": "“{{name}}” kaydedildi.",
+      "anonymousTitle": "Kaydetmek için giriş yapın",
+      "anonymousBody": "Bir senaryoyu kaydetmek için giriş yapmanız veya hesap oluşturmanız gerekir; varsayımlarınız ve adınız korunacaktır.",
+      "signIn": "Giriş yap",
+      "register": "Kayıt ol",
+      "unverifiedTitle": "Kaydetmek için e-postanızı doğrulayın",
+      "unverifiedBody": "Senaryoları kaydetmek doğrulanmış bir e-posta gerektirir; varsayımlarınız ve adınız korunacaktır.",
+      "unverifiedLink": "Hesap ayarlarına git",
+      "duplicateName": "“{{name}}” adıyla bu hisse için kayıtlı bir senaryonuz zaten var. Farklı bir ad seçin.",
+      "saveErrorTitle": "Senaryo kaydedilemedi",
+      "saveErrorBody": "Bir şeyler ters gitti. Girdikleriniz korundu; lütfen tekrar deneyin.",
+      "pickerLabel": "Bu hissenin senaryoları",
+      "pickerAnonymous": "Bu hisse için kayıtlı senaryolarınızı görmek ve yüklemek üzere giriş yapın.",
+      "pickerEmpty": "Bu hisse için kayıtlı bir senaryonuz yok.",
+      "pickerError": "Kayıtlı senaryolarınız yüklenemedi.",
+      "load": "Yükle",
+      "loadConfirmTitle": "Taslak değişiklikler silinsin mi?",
+      "loadConfirmDescription": "“{{name}}” senaryosunu yüklemek, kaydedilmemiş değişikliklerinizi silecek.",
+      "loadConfirm": "Yükle ve değişiklikleri sil"
+    },
+    "missingInputs": {
+      "title": "Eksik girdiler",
+      "body": "Bu hissenin hesaplanması için gereken bazı girdiler veri kaynaklarında eksik: {{fields}}. Eksik değerleri siz sağlayana kadar hesaplama yapılmaz; girdiğiniz değerlerle model çalışır."
+    },
+    "sensitivity": {
+      "title": "Duyarlılık tablosu",
+      "axisLabel": "İskonto oranı \\ nihai büyüme",
+      "notComputable": "Hesaplanamaz",
+      "currentCell": "Geçerli sonuç"
+    }
   },
   "register": {
     "formAriaLabel": "Kayıt formu",
@@ -309,5 +498,145 @@
     "resent": "Yeni bir doğrulama e-postası gönderildi.",
     "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
     "backToRegister": "Kayıt sayfasına dön"
+  },
+  "admin": {
+    "sectionsNavLabel": "Yönetim bölümleri",
+    "accessDenied": {
+      "title": "Bu alana erişiminiz yok",
+      "body": "Yönetim paneli yalnızca builder rolüne açıktır. Platform içeriğine dönmek için aşağıdaki bağlantıyı kullanabilirsiniz.",
+      "back": "Piyasa genel görünümüne dön"
+    },
+    "sections": {
+      "summary": "Operasyon özeti",
+      "quarantine": "Karantina kuyruğu",
+      "coverage": "Kapsam raporu",
+      "ledger": "Çalıştırma günlüğü",
+      "stats": "Kullanım istatistikleri"
+    },
+    "runStatus": {
+      "succeeded": "Başarılı",
+      "failed": "Başarısız",
+      "partial": "Kısmi",
+      "running": "Çalışıyor",
+      "queued": "Sırada"
+    },
+    "summary": {
+      "jobsHeading": "İşlerin son çalıştırmaları",
+      "job": "İş",
+      "status": "Durum",
+      "finishedAt": "Tamamlanma zamanı",
+      "neverRun": "Henüz çalışmadı",
+      "freshnessHeading": "Veri tazeliği",
+      "dataType": "Veri türü",
+      "lastSuccess": "Son başarı",
+      "noLastSuccess": "Kayıt yok",
+      "contentHeading": "İçerik kapsamı",
+      "descriptionsPublished": "Yayımlanmış açıklama",
+      "descriptionsDraft": "Taslak açıklama",
+      "universe": "Evren",
+      "quarantineHeading": "Karantina",
+      "openQuarantineLink": "Karantina kuyruğunu aç",
+      "refresh": "Yenile",
+      "errorTitle": "Operasyon özeti yüklenemedi",
+      "errorBody": "Özet yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "quarantine": {
+      "filterLabel": "Durum",
+      "statusOpen": "Açık",
+      "statusDismissed": "Kapatıldı",
+      "columns": {
+        "job": "İş",
+        "reason": "Neden",
+        "source": "Kaynak",
+        "quarantinedAt": "Karantina tarihi",
+        "actions": "İşlemler"
+      },
+      "inspect": "Yükü incele",
+      "hide": "Yükü gizle",
+      "viewLedger": "Bu işin çalıştırma günlüğü",
+      "dismiss": "Kapat",
+      "noteLabel": "Çözüm notu",
+      "noteRequired": "Kapatmak için bir çözüm notu girin.",
+      "dismissError": "Kayıt kapatılamadı. Lütfen tekrar deneyin.",
+      "resolutionNote": "Çözüm notu",
+      "emptyOpenTitle": "Açık karantina kaydı yok",
+      "emptyOpenBody": "Şu anda açık karantina kaydı bulunmuyor; sistem sağlıklı görünüyor.",
+      "emptyDismissedTitle": "Kapatılmış kayıt yok",
+      "emptyDismissedBody": "Seçili durumda kapatılmış karantina kaydı bulunmuyor.",
+      "errorTitle": "Karantina kuyruğu yüklenemedi",
+      "errorBody": "Kuyruk yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "reason": {
+      "MISSING_PROVENANCE": "Kaynak bilgisi eksik",
+      "NEGATIVE_PRICE": "Geçersiz fiyat (negatif)",
+      "UNPARSEABLE_PAYLOAD": "Yük ayrıştırılamadı",
+      "SCHEMA_MISMATCH": "Şema uyuşmazlığı",
+      "CONFLICTING_VALUE": "Çelişen değer",
+      "MISSING_CLASSIFICATION": "Sınıflandırma eksik"
+    },
+    "coverage": {
+      "scopeLabel": "Kapsam",
+      "scopeInstrument": "Hisse",
+      "scopeFund": "Fon",
+      "instrument": "Hisse",
+      "fund": "Fon",
+      "listingDate": "Kotasyon tarihi",
+      "dataTypes": "Veri türleri",
+      "present": "Mevcut",
+      "gap": "Eksik",
+      "emptyTitle": "Kapsam kaydı yok",
+      "emptyBody": "Seçili kapsam için gösterilecek kayıt bulunmuyor.",
+      "errorTitle": "Kapsam raporu yüklenemedi",
+      "errorBody": "Rapor yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "dataTypes": {
+      "prices": "Fiyatlar",
+      "statements": "Mali tablolar",
+      "dividends": "Temettüler",
+      "corporate_actions": "Kurumsal işlemler",
+      "disclosures": "KAP bildirimleri",
+      "nav": "NAV",
+      "performance": "Getiri",
+      "holdings": "Portföy"
+    },
+    "ledger": {
+      "filterJob": "İş",
+      "filterStatus": "Durum",
+      "allJobs": "Tüm işler",
+      "allStatuses": "Tüm durumlar",
+      "columns": {
+        "job": "İş",
+        "status": "Durum",
+        "startedAt": "Başlangıç",
+        "finishedAt": "Bitiş"
+      },
+      "autoRefreshNotice": "Çalışan bir işlem olduğu için bu görünüm düzenli olarak güncellenir.",
+      "refresh": "Yenile",
+      "triggerHeading": "İş çalıştır",
+      "triggerJobLabel": "Çalıştırılacak iş",
+      "backfillLabel": "Geçmişe dönük (backfill) çalıştır",
+      "backfillFromLabel": "Başlangıç tarihi",
+      "backfillFromRequired": "Backfill için bir başlangıç tarihi girin.",
+      "trigger": "Çalıştır",
+      "triggerTitle": "İşi çalıştır",
+      "triggerConfirm": "Onayla ve çalıştır",
+      "triggerDescription": "{{job}} işi şimdi çalıştırılacak.",
+      "triggerBackfillDescription": "{{job}} işi {{date}} tarihinden itibaren geçmişe dönük çalıştırılacak.",
+      "cancel": "İptal",
+      "emptyTitle": "Bu filtreyle çalıştırma yok",
+      "emptyBody": "Seçili iş ve durum filtresiyle eşleşen çalıştırma bulunamadı.",
+      "errorTitle": "Çalıştırma günlüğü yüklenemedi",
+      "errorBody": "Günlük yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "triggerError": "Çalıştırma başlatılamadı. Lütfen tekrar deneyin."
+    },
+    "stats": {
+      "registered": "Kayıtlı hesap",
+      "verified": "Doğrulanmış hesap",
+      "savedScreens": "Kayıtlı tarama",
+      "dcfScenarios": "DCF senaryosu",
+      "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
+      "errorTitle": "İstatistikler yüklenemedi",
+      "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    }
   }
 }
