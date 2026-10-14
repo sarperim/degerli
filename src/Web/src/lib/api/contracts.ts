@@ -284,9 +284,18 @@ export interface ScreenerCriterion {
   window?: CagrWindow
 }
 
-/** `POST /api/v1/screener/run` request body (`03` §4). */
+/**
+ * `POST /api/v1/screener/run` request body (`03` §4).
+ *
+ * An ad-hoc run ships `criteria` directly. A saved-screen re-run also names the
+ * screen with `savedScreenId` (which the server checks the caller owns): this marks
+ * the run as a re-run, so the server drops any criterion whose metric has since been
+ * hidden and reports it in `droppedCriteria` (UC-SCR-003a, UXR-SCR-015) instead of the
+ * ad-hoc `METRIC_NOT_AVAILABLE` rejection. The re-run still ships the stored criteria.
+ */
 export interface ScreenerRunRequest {
-  criteria: ScreenerCriterion[]
+  criteria?: ScreenerCriterion[]
+  savedScreenId?: number
 }
 
 /** One matching stock row; `values` is keyed by the concept metric code. */
@@ -562,6 +571,28 @@ export interface AdminStatsResponse {
   accounts: { registered: number; verified: number }
   savedScreens: number
   dcfScenarios: number
+}
+
+/**
+ * One catalog metric with its visibility state, as the SCR-012 metric-visibility
+ * panel reads it (`GET /api/v1/admin/screener-metrics`; TKT-scr-005, UXR-MDF-023).
+ * Unlike the public catalog this includes hidden rows, so the panel can toggle them
+ * back on.
+ */
+export interface AdminMetricRow {
+  metricCode: string
+  family: string
+  unit: string | null
+  labelTr: string
+  labelEn: string
+  isScreenable: boolean
+  isCagr: boolean
+  sortOrder: number
+}
+
+/** `GET /api/v1/admin/screener-metrics` (`03` §8; TKT-scr-005). */
+export interface AdminMetricsResponse {
+  metrics: AdminMetricRow[]
 }
 
 /* ------------------------------------------------------------------ *

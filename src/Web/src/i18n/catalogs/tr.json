@@ -511,7 +511,8 @@
       "quarantine": "Karantina kuyruğu",
       "coverage": "Kapsam raporu",
       "ledger": "Çalıştırma günlüğü",
-      "stats": "Kullanım istatistikleri"
+      "stats": "Kullanım istatistikleri",
+      "metrics": "Ölçüt görünürlüğü"
     },
     "runStatus": {
       "succeeded": "Başarılı",
@@ -637,6 +638,25 @@
       "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
       "errorTitle": "İstatistikler yüklenemedi",
       "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "metrics": {
+      "columnMetric": "Ölçüt",
+      "columnFamily": "Aile",
+      "columnState": "Durum",
+      "columnActions": "İşlemler",
+      "screenable": "Görünür",
+      "hidden": "Gizli",
+      "hide": "Gizle",
+      "show": "Göster",
+      "confirmTitle": "{{metric}} görünürlüğünü değiştir",
+      "confirmDescription": "Bu ölçütü gizlerseniz, ölçüt oluşturucu artık onu sunmaz; bu ölçütü kullanan kayıtlı ekranlar yeniden çalıştırıldığında çıkarılan ölçüt olarak bildirilir.",
+      "confirmHide": "Gizle",
+      "confirmShow": "Göster",
+      "toggleError": "Görünürlük güncellenemedi. Lütfen tekrar deneyin.",
+      "errorTitle": "Ölçüt görünürlüğü yüklenemedi",
+      "errorBody": "Ölçütler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "emptyTitle": "Ölçüt bulunamadı",
+      "emptyBody": "Görüntülenecek ekran ölçütü bulunmuyor."
     }
   }
 }
