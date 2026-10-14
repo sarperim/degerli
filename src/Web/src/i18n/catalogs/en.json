@@ -103,7 +103,30 @@
     "sectionErrorTitle": "This section could not be loaded",
     "sectionErrorBody": "Something went wrong while loading this section. The other sections are unaffected.",
     "dcfHandoff": "Open DCF calculator",
-    "valuationPlaceholder": "The valuation section is provided by the valuation module.",
+    "valuation": {
+      "current": {
+        "title": "Current multiples"
+      },
+      "history": {
+        "title": "Price history",
+        "captionAdjusted": "{{count}} adjusted closes",
+        "captionRaw": "{{count}} closes"
+      },
+      "strip": {
+        "title": "Vs. sector",
+        "sectorMedian": "Sector median",
+        "noMedian": "No sector median",
+        "peerCount": "median of {{count}} peers",
+        "exclusionDisclosure": "The P/E median excludes loss-making peers ({{count}} excluded)."
+      },
+      "metrics": {
+        "pe": "P/E",
+        "pb": "P/B",
+        "ev_ebitda": "EV/EBITDA",
+        "ev_fcf": "EV/FCF",
+        "fcf_yield": "FCF Yield"
+      }
+    },
     "financials": {
       "period": "FY{{year}}",
       "columns": {
@@ -512,7 +535,8 @@
       "coverage": "Coverage report",
       "ledger": "Run ledger",
       "stats": "Usage statistics",
-      "dcfBaselines": "DCF baselines"
+      "dcfBaselines": "DCF baselines",
+      "metrics": "Metric visibility"
     },
     "runStatus": {
       "succeeded": "Succeeded",
@@ -650,6 +674,25 @@
       "successTitle": "Regeneration complete.",
       "successBody": "The regeneration run was added to the run ledger.",
       "errorBody": "The regeneration could not be started. Please try again."
+    },
+    "metrics": {
+      "columnMetric": "Metric",
+      "columnFamily": "Family",
+      "columnState": "State",
+      "columnActions": "Actions",
+      "screenable": "Visible",
+      "hidden": "Hidden",
+      "hide": "Hide",
+      "show": "Show",
+      "confirmTitle": "Change visibility of {{metric}}",
+      "confirmDescription": "Hiding this metric removes it from the criteria builder; saved screens that reference it report the dropped criterion when re-run.",
+      "confirmHide": "Hide",
+      "confirmShow": "Show",
+      "toggleError": "The visibility could not be updated. Please try again.",
+      "errorTitle": "Metric visibility could not be loaded",
+      "errorBody": "Something went wrong while loading the metrics. Please try again.",
+      "emptyTitle": "No metrics found",
+      "emptyBody": "There are no screenable metrics to display."
     }
   }
 }

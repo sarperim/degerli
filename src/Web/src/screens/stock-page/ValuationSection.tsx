@@ -1,0 +1,254 @@
+import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
+import { Line, LineChart, XAxis, YAxis } from 'recharts'
+
+import { NotMeaningful } from '@/components/honest-data'
+import type {
+  SectorStripEntry,
+  StockValuationResponse,
+  ValuationHistoricalSeries,
+} from '@/lib/api/contracts'
+import { formatAsOfDate, formatNumber, formatPercent } from '@/lib/format'
+import { SectionBody } from '@/screens/stock-page/SectionBody'
+import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
+import { SectionShell } from '@/screens/stock-page/StockSections'
+import { fetchStockValuation, stockPageQueryKeys } from '@/screens/stock-page/api'
+import {
+  isPercentValuationMetric,
+  valuationHistoryPoints,
+  VALUATION_METRIC_ORDER,
+  type ValuationMetricCode,
+} from '@/screens/stock-page/valuation'
+
+/**
+ * SCR-005 §2 — Valuation (FR-RES-006/007/013, UXR-RES-012/013/024/025).
+ *
+ * The section shows the current canonical multiples, the historical price series
+ * on its honest basis (adjusted when the served rows carry an adjusted close —
+ * BR-MDF-010) with the adjusted-data disclaimer, and the vs.-sector strip: the
+ * stock's five valuation-family multiples next to their sector medians, each with
+ * its peer count and — for P/E — the loss-maker exclusion disclosure. A metric
+ * with no meaningful own value shows the explicit not-meaningful state; a metric
+ * with no available sector median degrades to an honest no-data state. Copy is
+ * read from the catalogs; the chart is a Recharts line (architecture §5).
+ */
+
+/** Full label keys for the five strip metrics (literals, so i18n parity sees them). */
+const VALUATION_METRIC_LABEL_KEYS: Record<ValuationMetricCode, string> = {
+  pe: 'stockPage.valuation.metrics.pe',
+  pb: 'stockPage.valuation.metrics.pb',
+  ev_ebitda: 'stockPage.valuation.metrics.ev_ebitda',
+  ev_fcf: 'stockPage.valuation.metrics.ev_fcf',
+  fcf_yield: 'stockPage.valuation.metrics.fcf_yield',
+}
+
+/** The chart's fixed drawing area; the wrapper scrolls at narrow widths (UXR-G-025). */
+const CHART_WIDTH = 640
+const CHART_HEIGHT = 240
+
+/** Format a valuation metric in its own unit (percent for FCF yield, ratio otherwise). */
+function formatMetric(locale: string, code: string, value: number): string {
+  return isPercentValuationMetric(code)
+    ? formatPercent(locale, value, 2)
+    : formatNumber(locale, value)
+}
+
+/** The historical price series as an SVG line on its honest basis (FR-RES-006/013). */
+export function ValuationHistoryChart({
+  historical,
+}: {
+  historical: ValuationHistoricalSeries
+}) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'tr'
+  const points = valuationHistoryPoints(historical)
+  const basis = historical.adjusted ? 'adjusted' : 'raw'
+  const caption = historical.adjusted
+    ? t('stockPage.valuation.history.captionAdjusted', { count: points.length })
+    : t('stockPage.valuation.history.captionRaw', { count: points.length })
+
+  return (
+    <figure
+      data-testid="valuation-history-chart"
+      data-slot="valuation-history"
+      data-basis={basis}
+      className="flex flex-col gap-2"
+    >
+      <figcaption className="text-xs font-medium text-muted-foreground">
+        {t('stockPage.valuation.history.title')}
+        {' — '}
+        {caption}
+      </figcaption>
+      {points.length > 0 ? (
+        <div className="overflow-x-auto" role="img" aria-label={caption}>
+          <LineChart
+            width={CHART_WIDTH}
+            height={CHART_HEIGHT}
+            data={points}
+            accessibilityLayer
+            margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+          >
+            <XAxis
+              dataKey="date"
+              tickFormatter={(value: string) => formatAsOfDate(locale, value)}
+              tick={{ fontSize: 11 }}
+            />
+            <YAxis width={56} tick={{ fontSize: 11 }} />
+            <Line
+              type="monotone"
+              dataKey="close"
+              dot={false}
+              isAnimationActive={false}
+              strokeWidth={2}
+            />
+          </LineChart>
+        </div>
+      ) : null}
+    </figure>
+  )
+}
+
+/** One strip cell: own value, sector median, peer count (UXR-RES-013/024/025). */
+function StripMetric({
+  code,
+  entry,
+  locale,
+}: {
+  code: ValuationMetricCode
+  entry: SectorStripEntry
+  locale: string
+}) {
+  const { t } = useTranslation()
+  const label = t(VALUATION_METRIC_LABEL_KEYS[code])
+  return (
+    <div
+      data-metric={code}
+      className="flex flex-col gap-1 rounded-md border p-2"
+    >
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="flex flex-col gap-0.5">
+        <span
+          data-slot="stock-value"
+          className="text-sm font-medium tabular-nums text-foreground"
+        >
+          {entry.notMeaningful || entry.value === null ? (
+            <NotMeaningful />
+          ) : (
+            formatMetric(locale, code, entry.value)
+          )}
+        </span>
+        <span data-slot="sector-median" className="text-xs text-muted-foreground">
+          {entry.sectorMedian === null
+            ? t('stockPage.valuation.strip.noMedian')
+            : `${t('stockPage.valuation.strip.sectorMedian')}: ${formatMetric(
+                locale,
+                code,
+                entry.sectorMedian,
+              )}`}
+        </span>
+        {entry.peerCount !== null ? (
+          <span data-slot="peer-count" className="text-xs text-muted-foreground">
+            {t('stockPage.valuation.strip.peerCount', { count: entry.peerCount })}
+          </span>
+        ) : null}
+      </dd>
+    </div>
+  )
+}
+
+/**
+ * The vs.-sector strip: the five valuation-family multiples, each next to its
+ * sector median with the peer count behind it and the P/E loss-maker exclusion
+ * disclosed inline (UXR-RES-013/024/025).
+ */
+export function VsSectorStrip({ strip }: { strip: Record<string, SectorStripEntry> }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'tr'
+  const peExcluded = strip.pe?.excludedCount ?? 0
+
+  return (
+    <div data-slot="vs-sector-strip" className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-muted-foreground">
+        {t('stockPage.valuation.strip.title')}
+      </h3>
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {VALUATION_METRIC_ORDER.map((code) => {
+          const entry = strip[code]
+          if (entry === undefined) return null
+          return <StripMetric key={code} code={code} entry={entry} locale={locale} />
+        })}
+      </dl>
+      {peExcluded > 0 ? (
+        <p data-slot="pe-exclusion" className="text-xs text-muted-foreground">
+          {t('stockPage.valuation.strip.exclusionDisclosure', { count: peExcluded })}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** SCR-005 §2 — the Valuation section (FR-RES-006/007/013). */
+export function ValuationSection({ symbol }: { symbol: string }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'tr'
+  const label = t('stockPage.sections.valuation')
+  const query = useQuery({
+    queryKey: stockPageQueryKeys.valuation(symbol),
+    queryFn: ({ signal }) => fetchStockValuation(symbol, signal),
+  })
+
+  const data: StockValuationResponse | undefined = query.data
+
+  return (
+    <SectionShell section="valuation" titleKey="stockPage.sections.valuation">
+      <SectionBody
+        label={label}
+        isPending={query.isPending}
+        isError={query.isError}
+        onRetry={() => void query.refetch()}
+      >
+        {data ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium text-muted-foreground">
+                {t('stockPage.valuation.current.title')}
+              </h3>
+              <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {VALUATION_METRIC_ORDER.map((code) => {
+                  const value = data.current[code] ?? null
+                  return (
+                    <div
+                      key={code}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <dt className="text-xs text-muted-foreground">
+                        {t(VALUATION_METRIC_LABEL_KEYS[code])}
+                      </dt>
+                      <dd className="text-sm font-medium tabular-nums text-foreground">
+                        {value === null ? (
+                          <NotMeaningful />
+                        ) : (
+                          formatMetric(locale, code, value)
+                        )}
+                      </dd>
+                    </div>
+                  )
+                })}
+              </dl>
+            </div>
+
+            <ValuationHistoryChart historical={data.historical} />
+
+            <VsSectorStrip strip={data.strip} />
+
+            <SectionMarkers
+              asOf={data.asOf}
+              stale={data.stale}
+              adjusted={data.historical.adjusted}
+            />
+          </div>
+        ) : null}
+      </SectionBody>
+    </SectionShell>
+  )
+}

@@ -1,6 +1,6 @@
 # TKT-scr-005: Metric visibility — admin API, hidden-metric behaviors & admin panel
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/64
 - Size: M
 - Scope: `/src/Api` `PATCH /api/v1/admin/screener-metrics/{code} {isScreenable}` (builder-gated; catalog serves visible only; ad-hoc hidden/unknown metric → 400 `METRIC_NOT_AVAILABLE`; saved-screen re-run drops hidden criteria with `droppedCriteria[]`) and the `/src/Web` admin metric-visibility section (own per-section files on the TKT-mdf-012 shell): the 18 metrics with state, toggle behind a consequence-stating confirmation, catalog reflection on next load. Must NOT touch other admin sections.
 - Traces to: FR-SCR-017; UC-SCR-004 (main + alt a); UXR-MDF-023/024; UXR-SCR-011, UXR-SCR-015

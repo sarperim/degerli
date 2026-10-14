@@ -59,6 +59,24 @@ export const COVERAGE_SCOPE_KEYS: Record<CoverageScope, string> = {
 }
 
 /**
+ * The five screener metric families (TKT-scr-005). Reuses the screener's family
+ * vocabulary so the admin panel and the criteria builder name families identically
+ * (NFR-SCR-002); an unknown family degrades to its raw code.
+ */
+export const METRIC_FAMILY_KEYS: Record<string, string> = {
+  valuation: 'screener.families.valuation',
+  quality: 'screener.families.quality',
+  growth: 'screener.families.growth',
+  financial_health: 'screener.families.financial_health',
+  dividends: 'screener.families.dividends',
+}
+
+/** Key for a metric family, falling back to the raw code for unknown families. */
+export function familyKey(family: string): string {
+  return METRIC_FAMILY_KEYS[family] ?? family
+}
+
+/**
  * The canonical calendar date of an ISO timestamp, for locale-aware date-only
  * display.
  *

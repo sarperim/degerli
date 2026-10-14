@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 
 import { CoverageSection } from '@/screens/admin/CoverageSection'
 import { DcfBaselineSection } from '@/screens/admin/DcfBaselineSection'
+import { MetricVisibilitySection } from '@/screens/admin/MetricVisibilitySection'
 import { OpsSummarySection } from '@/screens/admin/OpsSummarySection'
 import { QuarantineSection } from '@/screens/admin/QuarantineSection'
 import { RunLedgerSection } from '@/screens/admin/RunLedgerSection'
@@ -25,6 +26,7 @@ export type AdminSectionId =
   | 'coverage'
   | 'ledger'
   | 'dcf-baselines'
+  | 'metrics'
   | 'stats'
 
 export const ADMIN_SECTION_KEYS: Record<AdminSectionId, string> = {
@@ -33,6 +35,7 @@ export const ADMIN_SECTION_KEYS: Record<AdminSectionId, string> = {
   coverage: 'admin.sections.coverage',
   ledger: 'admin.sections.ledger',
   'dcf-baselines': 'admin.sections.dcfBaselines',
+  metrics: 'admin.sections.metrics',
   stats: 'admin.sections.stats',
 }
 
@@ -42,5 +45,6 @@ export const ADMIN_SECTION_COMPONENTS: Record<AdminSectionId, ComponentType> = {
   coverage: CoverageSection,
   ledger: RunLedgerSection,
   'dcf-baselines': DcfBaselineSection,
+  metrics: MetricVisibilitySection,
   stats: StatsSection,
 }
