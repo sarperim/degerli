@@ -7,7 +7,8 @@ scope:
 
 # TKT-res-011: Fix TC-RES-034 timezone date-boundary defect in admin.spec.ts
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/72
 - Size: S
 - Scope: test-defect fix on the TKT-res-010 deliverable. `tests/e2e/src/admin.spec.ts` computes expected rendered dates Node-side — `new Intl.DateTimeFormat('tr', { dateStyle: 'medium' }).format(...)` at ~line 145 (admin-summary gold-row last-success) and ~line 300 (TC-RES-034 last-reviewed) — while the browser context is pinned to `locale: 'tr-TR'`, `timezoneId: 'Europe/Istanbul'` (UTC+3) in `tests/e2e/playwright.config.ts`. The Node test process runs in the runner's TZ (UTC on GitHub runners), so between 21:00:00–23:59:59 UTC the two environments are on different calendar days and the date assertions fail — a deterministic daily failure window, not a random flake. Confirmed on `dev`: runs 38643738824 and 38644590441 (2026-10-14T22:05Z) fail TC-RES-034's final assertion — the page rendered `Son inceleme: 15 Eki 2026` while the test expected `Son inceleme: 14 Eki 2026` (Playwright error context in the runs' uploaded reports). Test files only — the app is correct (it renders in the pinned browser context); `playwright.config.ts` may be touched only to export the pinned timezone constant if that fix variant is chosen (no behavior change); no `src/` changes.
 - Traces to: FR-RES-021, UC-RES-004 (public-effect step), TC-RES-034
