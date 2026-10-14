@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 
 import { CoverageSection } from '@/screens/admin/CoverageSection'
+import { DescriptionsSection } from '@/screens/admin/DescriptionsSection'
 import { OpsSummarySection } from '@/screens/admin/OpsSummarySection'
 import { QuarantineSection } from '@/screens/admin/QuarantineSection'
 import { RunLedgerSection } from '@/screens/admin/RunLedgerSection'
@@ -18,12 +19,19 @@ import { StatsSection } from '@/screens/admin/StatsSection'
  * `Record<AdminSectionId, …>` annotations keep both maps exhaustive.
  */
 
-export type AdminSectionId = 'summary' | 'quarantine' | 'coverage' | 'ledger' | 'stats'
+export type AdminSectionId =
+  | 'summary'
+  | 'quarantine'
+  | 'coverage'
+  | 'descriptions'
+  | 'ledger'
+  | 'stats'
 
 export const ADMIN_SECTION_KEYS: Record<AdminSectionId, string> = {
   summary: 'admin.sections.summary',
   quarantine: 'admin.sections.quarantine',
   coverage: 'admin.sections.coverage',
+  descriptions: 'admin.sections.descriptions',
   ledger: 'admin.sections.ledger',
   stats: 'admin.sections.stats',
 }
@@ -32,6 +40,7 @@ export const ADMIN_SECTION_COMPONENTS: Record<AdminSectionId, ComponentType> = {
   summary: OpsSummarySection,
   quarantine: QuarantineSection,
   coverage: CoverageSection,
+  descriptions: DescriptionsSection,
   ledger: RunLedgerSection,
   stats: StatsSection,
 }

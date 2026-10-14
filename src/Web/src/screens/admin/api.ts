@@ -9,10 +9,13 @@ import {
 import { apiFetch } from '@/lib/api/client'
 import {
   INGEST_TERMINAL_STATUSES,
+  type AdminDescription,
   type AdminStatsResponse,
   type AdminSummaryResponse,
   type CoverageResponse,
   type CoverageScope,
+  type DescriptionListResponse,
+  type DescriptionStatus,
   type IngestRunsResponse,
   type IngestTriggerResponse,
   type QuarantineItem,
@@ -43,6 +46,9 @@ export const adminQueryKeys = {
   /** Prefix that matches every ledger filter combination. */
   runsAll: () => ['admin', 'ingest-runs'] as const,
   stats: () => ['admin', 'stats'] as const,
+  descriptions: (status: DescriptionStatus) => ['admin', 'descriptions', status] as const,
+  /** Prefix that matches every description queue (any status filter). */
+  descriptionsAll: () => ['admin', 'descriptions'] as const,
 }
 
 /** True while any run is queued/running (the auto-refresh condition, UXR-MDF-015). */
@@ -150,6 +156,50 @@ export function useTriggerIngest(): UseMutationResult<
     onSuccess: () => {
       // A triggered run appears in the open ledger view without a manual refresh.
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.runsAll() })
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.summary() })
+    },
+  })
+}
+
+export function useAdminDescriptions(
+  status: DescriptionStatus,
+): UseQueryResult<DescriptionListResponse> {
+  return useQuery({
+    queryKey: adminQueryKeys.descriptions(status),
+    queryFn: ({ signal }) =>
+      apiFetch<DescriptionListResponse>(`/admin/descriptions?status=${status}`, { signal }),
+    staleTime: 0,
+  })
+}
+
+export function useSaveDescription(): UseMutationResult<
+  AdminDescription,
+  Error,
+  { id: number; textTr: string; textEn: string }
+> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, textTr, textEn }) =>
+      apiFetch<AdminDescription>(`/admin/descriptions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ textTr, textEn }),
+      }),
+    onSuccess: () => {
+      // Save edits in place (the queue payload is the editor payload).
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.descriptionsAll() })
+    },
+  })
+}
+
+export function usePublishDescription(): UseMutationResult<AdminDescription, Error, number> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id) =>
+      apiFetch<AdminDescription>(`/admin/descriptions/${id}/publish`, { method: 'POST' }),
+    onSuccess: () => {
+      // M-2/§8.4: publishing flips the queue status and changes the summary's
+      // description-coverage counts — both refresh without a manual refresh.
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.descriptionsAll() })
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.summary() })
     },
   })

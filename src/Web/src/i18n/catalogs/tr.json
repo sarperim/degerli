@@ -511,7 +511,8 @@
       "quarantine": "Karantina kuyruğu",
       "coverage": "Kapsam raporu",
       "ledger": "Çalıştırma günlüğü",
-      "stats": "Kullanım istatistikleri"
+      "stats": "Kullanım istatistikleri",
+      "descriptions": "Açıklamalar"
     },
     "runStatus": {
       "succeeded": "Başarılı",
@@ -637,6 +638,38 @@
       "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
       "errorTitle": "İstatistikler yüklenemedi",
       "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "descriptions": {
+      "filterLabel": "Durum",
+      "statusDraft": "Taslak",
+      "statusReviewed": "İncelendi",
+      "statusPublished": "Yayımlandı",
+      "emptyTitle": "Açıklama yok",
+      "emptyBody": "Seçili durumda gösterilecek işletme açıklaması bulunmuyor.",
+      "errorTitle": "Açıklamalar yüklenemedi",
+      "errorBody": "Açıklama kuyruğu yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "columns": {
+        "stock": "Hisse",
+        "status": "Durum",
+        "actions": "İşlemler"
+      },
+      "edit": "Düzenle",
+      "editorLabel": "{{symbol}} açıklama düzenleyicisi",
+      "editorHeading": "{{symbol}} açıklamasını düzenle",
+      "textTrLabel": "Türkçe metin",
+      "textEnLabel": "İngilizce metin",
+      "sourceRefsHeading": "KAP kaynakları",
+      "sourceRefStub": "KAP kaynağı #{{id}} (çözümlenemedi)",
+      "save": "Kaydet",
+      "saved": "Kaydedildi",
+      "saveError": "Açıklama kaydedilemedi. Girdiğiniz metinler korundu; lütfen tekrar deneyin.",
+      "publish": "Yayımla",
+      "publishDisabledReason": "Yayımlamak için her iki dilde de metin gereklidir.",
+      "publishTitle": "Açıklamayı yayımla",
+      "publishConfirm": "Bu açıklama {{symbol}} hisse sayfasında herkese açık olarak görünecek.",
+      "publishConfirmAction": "Yayımla",
+      "publishError": "Açıklama yayımlanamadı. Metinler korundu; lütfen tekrar deneyin.",
+      "publishedNotice": "Açıklama yayımlandı"
     }
   }
 }
