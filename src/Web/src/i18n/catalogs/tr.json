@@ -535,6 +535,7 @@
       "coverage": "Kapsam raporu",
       "ledger": "Çalıştırma günlüğü",
       "stats": "Kullanım istatistikleri",
+      "dcfBaselines": "DCF temel değerleri",
       "metrics": "Ölçüt görünürlüğü"
     },
     "runStatus": {
@@ -661,6 +662,18 @@
       "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
       "errorTitle": "İstatistikler yüklenemedi",
       "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "dcfBaselines": {
+      "heading": "DCF temel değerleri",
+      "explanation": "Temel değerler kanonik finansal verilerden türetilir; elle düzenlenmez. Yenileme, her hisse için yeni bir sürüm oluşturur.",
+      "regenerate": "Temel değerleri yenile",
+      "confirmTitle": "DCF temel değerlerini yenile",
+      "confirmDescription": "Temel değerler kanonik finansal verilerden yeniden oluşturulacak ve sürümlenecek. Her hisse için tek bir etkin sürüm olur; önceki sürümler korunur.",
+      "confirm": "Onayla ve yenile",
+      "cancel": "Vazgeç",
+      "successTitle": "Yenileme tamamlandı.",
+      "successBody": "Yenileme çalıştırması çalıştırma günlüğüne eklendi.",
+      "errorBody": "Yenileme başlatılırken bir sorun oluştu. Lütfen tekrar deneyin."
     },
     "metrics": {
       "columnMetric": "Ölçüt",

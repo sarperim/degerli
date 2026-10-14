@@ -23,6 +23,7 @@ public static class AdminEndpoints
         admin.MapDegerliAdminOpsEndpoints();
         admin.MapDegerliAdminQuarantineEndpoints();
         admin.MapDegerliAdminDescriptionEndpoints();
+        admin.MapDegerliAdminDcfBaselineEndpoints();
         admin.MapDegerliAdminScreenerMetricEndpoints();
 
         return admin;

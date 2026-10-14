@@ -1,6 +1,6 @@
 # TKT-val-009: DCF baseline regeneration — admin API & admin UI section
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/65
 - Size: M
 - Scope: `/src/Api` `POST /api/v1/admin/dcf-baselines/regenerate` (builder-gated; triggers the C3b regeneration job — version bump, one active per stock, previous versions retained, run visible in the ledger) and the `/src/Web` admin baseline-regeneration section (own per-section files on the TKT-mdf-012 shell): confirmation stating rebuild-from-canonical-facts + versioning, cancel aborts, pending lock, run visible in ledger, SCR-006 serves the new active baseline on next load. Must NOT touch other admin sections or the calculator.
 - Traces to: UC-VAL-003; UXR-MDF-025; BR-VAL-008; `02` §5.8
