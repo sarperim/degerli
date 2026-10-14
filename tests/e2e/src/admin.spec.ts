@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { catalogValue, loadCatalog } from './helpers/catalog'
+import { datePart, formatAsOfDateInBrowser } from './helpers/dates'
 
 /**
  * SCR-012 Admin Dashboard (L4) — TKT-mdf-012.
@@ -140,10 +141,12 @@ test.describe('TC-MDF-046 — ops summary renders', () => {
     await expect(goldRow).toBeVisible()
 
     // The last-success date is read from the API (never hardcoded) and rendered
-    // locale-aware (formatAsOfDate, tr), so the assertion tracks the now-anchored
-    // universe.
-    const expectedDate = new Intl.DateTimeFormat('tr', { dateStyle: 'medium' }).format(
-      new Date(staleRow!.lastSuccess as string),
+    // locale-aware (formatAsOfDate over the UTC date part, tr), so the assertion
+    // tracks the now-anchored universe. The expectation is derived in the browser
+    // context (TKT-res-011) so it is invariant to the Node process timezone.
+    const expectedDate = await formatAsOfDateInBrowser(
+      page,
+      datePart(staleRow!.lastSuccess as string),
     )
     await expect(goldRow).toContainText(expectedDate)
 
@@ -297,8 +300,12 @@ test.describe('TC-RES-034 — description review → publish → public effect',
     }
     expect(overview.status).toBe('published')
     expect(overview.lastReviewedAt).toBeTruthy()
-    const expectedDate = new Intl.DateTimeFormat('tr', { dateStyle: 'medium' }).format(
-      new Date(overview.lastReviewedAt as string),
+    // Derived in the browser context (TKT-res-011) so the expectation is invariant
+    // to the Node process timezone; the app renders the instant in the pinned
+    // browser timezone (Europe/Istanbul), not the runner's.
+    const expectedDate = await formatAsOfDateInBrowser(
+      page,
+      overview.lastReviewedAt as string,
     )
     const overviewRegion = page.getByRole('region', { name: TR('stockPage.sections.overview') })
     await expect(
