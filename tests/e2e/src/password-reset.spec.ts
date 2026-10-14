@@ -64,8 +64,22 @@ async function restoreUserAPassword(request: APIRequestContext): Promise<void> {
   const mailpit = new MailpitClient(request, MAILPIT_BASE_URL)
   await mailpit.clear()
 
-  const forgot = await request.post(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+  // The API enforces the antiforgery token on every unsafe /api/v1 call
+  // (`CsrfProtectionMiddleware`), including `forgot-password`/`reset-password`;
+  // the GET below issues the `degerli.csrf` cookie and the token to echo as the
+  // response's own `headerName` on the following POSTs, on this same request
+  // context so the cookie is carried (`03` §2; cf. `mailpit.spec.ts`).
+  const csrfRes = await request.get(`${API_BASE_URL}/api/v1/auth/csrf-token`, {
     headers: { 'X-Forwarded-For': '10.10.2.1' },
+  })
+  expect(csrfRes.status()).toBe(200)
+  const { token: csrfToken, headerName } = (await csrfRes.json()) as {
+    token: string
+    headerName: string
+  }
+
+  const forgot = await request.post(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+    headers: { 'X-Forwarded-For': '10.10.2.2', [headerName]: csrfToken },
     data: { email: USER_A },
   })
   expect(forgot.status()).toBe(200)
@@ -76,7 +90,7 @@ async function restoreUserAPassword(request: APIRequestContext): Promise<void> {
   const token = new URL(link).searchParams.get('token')
 
   const reset = await request.post(`${API_BASE_URL}/api/v1/auth/reset-password`, {
-    headers: { 'X-Forwarded-For': '10.10.2.2' },
+    headers: { 'X-Forwarded-For': '10.10.2.3', [headerName]: csrfToken },
     data: { token, newPassword: USER_A_ORIGINAL_PASSWORD },
   })
   expect(reset.status()).toBe(200)
