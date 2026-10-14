@@ -88,6 +88,100 @@
       "sessionErrorBody": "Something went wrong while confirming your access. Please try again."
     }
   },
+  "stockPage": {
+    "sectionsLabel": "Sections",
+    "sections": {
+      "overview": "Overview",
+      "valuation": "Valuation",
+      "financials": "Financials",
+      "profitability": "Profitability",
+      "growth": "Growth",
+      "balanceSheet": "Balance Sheet",
+      "dividends": "Dividends"
+    },
+    "descriptionLastReviewed": "Last reviewed: {{date}}",
+    "sectionErrorTitle": "This section could not be loaded",
+    "sectionErrorBody": "Something went wrong while loading this section. The other sections are unaffected.",
+    "dcfHandoff": "Open DCF calculator",
+    "valuation": {
+      "current": {
+        "title": "Current multiples"
+      },
+      "history": {
+        "title": "Price history",
+        "captionAdjusted": "{{count}} adjusted closes",
+        "captionRaw": "{{count}} closes"
+      },
+      "strip": {
+        "title": "Vs. sector",
+        "sectorMedian": "Sector median",
+        "noMedian": "No sector median",
+        "peerCount": "median of {{count}} peers",
+        "exclusionDisclosure": "The P/E median excludes loss-making peers ({{count}} excluded)."
+      },
+      "metrics": {
+        "pe": "P/E",
+        "pb": "P/B",
+        "ev_ebitda": "EV/EBITDA",
+        "ev_fcf": "EV/FCF",
+        "fcf_yield": "FCF Yield"
+      }
+    },
+    "financials": {
+      "period": "FY{{year}}",
+      "columns": {
+        "period": "Period",
+        "revenue": "Revenue",
+        "ebitda": "EBITDA",
+        "ebit": "EBIT",
+        "netIncome": "Net income",
+        "fcf": "Free cash flow"
+      }
+    },
+    "profitability": {
+      "metrics": {
+        "roic": "ROIC",
+        "roe": "ROE",
+        "gross_margin": "Gross margin",
+        "operating_margin": "Operating margin"
+      }
+    },
+    "growth": {
+      "families": {
+        "rev": "Revenue",
+        "eps": "EPS",
+        "fcf": "Free cash flow",
+        "div": "Dividends"
+      },
+      "window": "{{years}}Y",
+      "actualWindow": "actual {{years}}Y"
+    },
+    "balanceSheet": {
+      "period": "FY{{year}}",
+      "lines": {
+        "cash": "Cash",
+        "shortTermDebt": "Short-term debt",
+        "longTermDebt": "Long-term debt",
+        "totalEquity": "Total equity",
+        "currentAssets": "Current assets",
+        "currentLiabilities": "Current liabilities",
+        "sharesDiluted": "Diluted shares",
+        "sharesOutstanding": "Shares outstanding"
+      },
+      "bookValue": "Book value",
+      "bookValuePerShare": "Book value per share"
+    },
+    "dividends": {
+      "columns": {
+        "exDate": "Ex-date",
+        "payDate": "Pay date",
+        "amount": "Amount per share"
+      },
+      "ttm": "Trailing 12-month DPS",
+      "neverPaidTitle": "No dividends paid",
+      "neverPaidBody": "This company has not paid any dividends."
+    }
+  },
   "stockList": {
     "searchLabel": "Search by stock name or code",
     "searchPlaceholder": "Code or company name",
@@ -466,6 +560,32 @@
     "resendFailed": "We could not send the e-mail. Please try again.",
     "backToRegister": "Back to registration"
   },
+  "passwordReset": {
+    "requestDescription": "Enter your e-mail address; if it is registered, we will send a link to reset your password.",
+    "requestFormAriaLabel": "Password reset request form",
+    "emailLabel": "E-mail address",
+    "emailInvalid": "Enter a valid e-mail address.",
+    "requestSubmit": "Send reset link",
+    "requestSubmitting": "Sending…",
+    "requestGenericError": "Something went wrong. Please try again.",
+    "neutralTitle": "Your request has been received",
+    "neutralBody": "If this address is registered, we have sent a link to reset your password. Check your inbox.",
+    "backToSignIn": "Back to sign in",
+    "setDescription": "Enter a new password for your account.",
+    "setFormAriaLabel": "Password update form",
+    "passwordLabel": "New password",
+    "passwordRules": "Use at least 10 characters.",
+    "passwordInvalid": "Password must be at least {{min}} characters.",
+    "setSubmit": "Update password",
+    "setSubmitting": "Updating…",
+    "setGenericError": "Something went wrong. Please try again.",
+    "expiredTitle": "This reset link is expired or invalid",
+    "expiredBody": "This link has expired or is invalid. Request a new reset link to continue.",
+    "requestNewLink": "Request a new reset link",
+    "successTitle": "Your password has been updated",
+    "successBody": "You are signed in with your new password. You can continue your work.",
+    "continueToApp": "Continue to the app"
+  },
   "admin": {
     "sectionsNavLabel": "Admin sections",
     "accessDenied": {
@@ -478,7 +598,10 @@
       "quarantine": "Quarantine queue",
       "coverage": "Coverage report",
       "ledger": "Run ledger",
-      "stats": "Usage statistics"
+      "stats": "Usage statistics",
+      "descriptions": "Descriptions",
+      "dcfBaselines": "DCF baselines",
+      "metrics": "Metric visibility"
     },
     "runStatus": {
       "succeeded": "Succeeded",
@@ -604,6 +727,69 @@
       "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
       "errorTitle": "The statistics could not be loaded",
       "errorBody": "Something went wrong while loading the statistics. Please try again."
+    },
+    "descriptions": {
+      "filterLabel": "Status",
+      "statusDraft": "Draft",
+      "statusReviewed": "Reviewed",
+      "statusPublished": "Published",
+      "emptyTitle": "No descriptions",
+      "emptyBody": "There are no business descriptions in the selected status.",
+      "errorTitle": "Descriptions could not be loaded",
+      "errorBody": "Something went wrong while loading the description queue. Please try again.",
+      "columns": {
+        "stock": "Stock",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "edit": "Edit",
+      "editorLabel": "{{symbol}} description editor",
+      "editorHeading": "Edit the {{symbol}} description",
+      "textTrLabel": "Turkish text",
+      "textEnLabel": "English text",
+      "sourceRefsHeading": "KAP sources",
+      "sourceRefStub": "KAP source #{{id}} (unresolved)",
+      "save": "Save",
+      "saved": "Saved",
+      "saveError": "The description could not be saved. Your texts were preserved; please try again.",
+      "publish": "Publish",
+      "publishDisabledReason": "Both language versions are required to publish.",
+      "publishTitle": "Publish description",
+      "publishConfirm": "This description will be publicly visible on the {{symbol}} stock page.",
+      "publishConfirmAction": "Publish",
+      "publishError": "The description could not be published. Your texts were preserved; please try again.",
+      "publishedNotice": "Description published"
+    },
+    "dcfBaselines": {
+      "heading": "DCF baselines",
+      "explanation": "Baselines are derived from canonical facts and never hand-edited. Regeneration creates a new version for every stock.",
+      "regenerate": "Regenerate baselines",
+      "confirmTitle": "Regenerate DCF baselines",
+      "confirmDescription": "Baselines will be rebuilt from canonical facts and versioned. There is one active version per stock; previous versions are retained.",
+      "confirm": "Confirm and regenerate",
+      "cancel": "Cancel",
+      "successTitle": "Regeneration complete.",
+      "successBody": "The regeneration run was added to the run ledger.",
+      "errorBody": "The regeneration could not be started. Please try again."
+    },
+    "metrics": {
+      "columnMetric": "Metric",
+      "columnFamily": "Family",
+      "columnState": "State",
+      "columnActions": "Actions",
+      "screenable": "Visible",
+      "hidden": "Hidden",
+      "hide": "Hide",
+      "show": "Show",
+      "confirmTitle": "Change visibility of {{metric}}",
+      "confirmDescription": "Hiding this metric removes it from the criteria builder; saved screens that reference it report the dropped criterion when re-run.",
+      "confirmHide": "Hide",
+      "confirmShow": "Show",
+      "toggleError": "The visibility could not be updated. Please try again.",
+      "errorTitle": "Metric visibility could not be loaded",
+      "errorBody": "Something went wrong while loading the metrics. Please try again.",
+      "emptyTitle": "No metrics found",
+      "emptyBody": "There are no screenable metrics to display."
     }
   }
 }

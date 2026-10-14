@@ -250,6 +250,38 @@ export interface CsrfTokenResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Identity — password reset (`03` §6) — TKT-acc-009 (SCR-009).
+ * ------------------------------------------------------------------ */
+
+/** `POST /api/v1/auth/forgot-password` request body (`03` §6). */
+export interface ForgotPasswordRequest {
+  email: string
+}
+
+/**
+ * `POST /api/v1/auth/forgot-password` response (`03` §6) — always a byte-identical
+ * 200 neutral confirmation; the client renders fixed copy and never branches on it
+ * (UXR-ACC-012, enumeration-neutral).
+ */
+export interface ForgotPasswordResponse {
+  status: string
+}
+
+/** `POST /api/v1/auth/reset-password` request body (`03` §6). */
+export interface ResetPasswordRequest {
+  token: string
+  newPassword: string
+}
+
+/**
+ * `POST /api/v1/auth/reset-password` response (`03` §6) — 200 on success; the
+ * endpoint may establish a session, so `['session']` is invalidated (UXR-ACC-015).
+ */
+export interface ResetPasswordResponse {
+  status: string
+}
+
+/* ------------------------------------------------------------------ *
  * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
  * ------------------------------------------------------------------ */
 
@@ -333,9 +365,18 @@ export interface ScreenerCriterion {
   window?: CagrWindow
 }
 
-/** `POST /api/v1/screener/run` request body (`03` §4). */
+/**
+ * `POST /api/v1/screener/run` request body (`03` §4).
+ *
+ * An ad-hoc run ships `criteria` directly. A saved-screen re-run also names the
+ * screen with `savedScreenId` (which the server checks the caller owns): this marks
+ * the run as a re-run, so the server drops any criterion whose metric has since been
+ * hidden and reports it in `droppedCriteria` (UC-SCR-003a, UXR-SCR-015) instead of the
+ * ad-hoc `METRIC_NOT_AVAILABLE` rejection. The re-run still ships the stored criteria.
+ */
 export interface ScreenerRunRequest {
-  criteria: ScreenerCriterion[]
+  criteria?: ScreenerCriterion[]
+  savedScreenId?: number
 }
 
 /** One matching stock row; `values` is keyed by the concept metric code. */
@@ -373,6 +414,167 @@ export interface SavedScreenListResponse {
 export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
+}
+
+/* ------------------------------------------------------------------ *
+ * Stock page sections (`03-api-design.md` §3) — TKT-res-008 (SCR-005).
+ *
+ * Each of SCR-005's sections is its own endpoint with its own honest-data
+ * envelope (M-1/M-5): a data payload or an explicit missing-data payload
+ * (`state` + optional `coverage`) — never a blank treated as zero
+ * (BR-RES-008, UXR-G-006). The sections load, fail and retry independently.
+ * ------------------------------------------------------------------ */
+
+/** The three explicit missing-data states (architecture §10.7). */
+export type DataState = 'no-data' | 'preparing' | 'unavailable'
+
+/** Coverage boundary accompanying a missing-data payload (UXR-RES-022). */
+export interface DataCoverage {
+  availableFrom: string | null
+  boundaryNote: string | null
+}
+
+/** A missing-data response: `state` (+ `coverage`) instead of the data shape. */
+export interface MissingDataResponse extends HonestDataEnvelope {
+  state: DataState
+  coverage: DataCoverage | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/overview` (`03` §3; FR-RES-005/022/026). */
+export interface StockOverviewResponse extends HonestDataEnvelope {
+  status: 'published' | 'preparing'
+  textTr?: string | null
+  textEn?: string | null
+  lastReviewedAt?: string | null
+}
+
+/** A figure with its per-figure restatement marker (FR-RES-008/014). */
+export interface FinancialFigure {
+  value: number | null
+  restated: boolean
+  /** Set to `no-data` when the figure is genuinely absent (never blank-as-zero). */
+  state?: DataState
+}
+
+/** One period of the Financials table (revenue → EBITDA → EBIT → NI → FCF). */
+export interface FinancialPeriod {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  revenue: FinancialFigure
+  ebitda: FinancialFigure
+  ebit: FinancialFigure
+  netIncome: FinancialFigure
+  fcf: FinancialFigure
+}
+
+/** `GET /api/v1/stocks/{symbol}/financials` (`03` §3; FR-RES-008). */
+export interface StockFinancialsResponse extends HonestDataEnvelope {
+  periods: FinancialPeriod[]
+}
+
+/** A canonical metric value; `null` is explicitly not-meaningful (BR-RES-008). */
+export interface MetricValue {
+  value: number | null
+  notMeaningful: boolean
+}
+
+/** `GET /api/v1/stocks/{symbol}/profitability` (`03` §3; FR-RES-009). */
+export interface StockProfitabilityResponse extends HonestDataEnvelope {
+  /** Keyed by concept code: `roic`, `roe`, `gross_margin`, `operating_margin`. */
+  metrics: Record<string, MetricValue>
+}
+
+/** One CAGR entry: the requested `window` and the `windowYears` actually used. */
+export interface GrowthWindow {
+  window: number
+  windowYears: number | null
+  value: number | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/growth` (`03` §3; FR-RES-010/016). */
+export interface StockGrowthResponse extends HonestDataEnvelope {
+  /** Keyed by growth family: `rev`, `eps`, `fcf`, `div`. */
+  metrics: Record<string, GrowthWindow[]>
+}
+
+/** A balance-sheet line / aggregate figure with its restatement marker. */
+export type BalanceSheetFigure = FinancialFigure
+
+/** `GET /api/v1/stocks/{symbol}/balance-sheet` (`03` §3; FR-RES-011/027). */
+export interface StockBalanceSheetResponse extends HonestDataEnvelope {
+  periodType: string
+  fiscalYear: number
+  periodEndDate: string
+  restated: boolean
+  /** Keyed by line code: `cash`, `shortTermDebt`, `longTermDebt`, … */
+  lines: Record<string, BalanceSheetFigure>
+  bookValue: BalanceSheetFigure
+  bookValuePerShare: BalanceSheetFigure
+}
+
+/** One dated dividend payment (`03` §3; FR-RES-012). */
+export interface DividendRow {
+  exDate: string
+  payDate: string
+  amountPerShare: number
+  currency: string
+}
+
+/** `GET /api/v1/stocks/{symbol}/dividends` (`03` §3; FR-RES-012). */
+export interface StockDividendsResponse extends HonestDataEnvelope {
+  dividends: DividendRow[]
+  ttmPerShare?: number
+}
+
+/* ------------------------------------------------------------------ *
+ * Valuation section (`03` §3) — TKT-res-009 (SCR-005 §2).
+ *
+ * The server (`StockOverviewAndValuationEndpoints`) serves the current
+ * canonical multiples, the historical price series with its honest
+ * corporate-action-adjusted basis flag, and the vs.-sector strip. Raw and
+ * adjusted closes coexist so a later split never fabricates a cliff
+ * (BR-MDF-010); the strip carries the peer/exclusion counts that make the
+ * sector median honest (FR-RES-007, UXR-RES-024/025).
+ * ------------------------------------------------------------------ */
+
+/** One dated close in the valuation history; raw and adjusted coexist. */
+export interface ValuationPricePoint {
+  date: string
+  closeRaw: number
+  /** Null when no adjusted close was ingested — never a raw value presented as adjusted. */
+  closeAdjusted: number | null
+}
+
+/** The historical price series and its honest basis flag (FR-RES-006/013). */
+export interface ValuationHistoricalSeries {
+  /** True only when every served row carries an adjusted close (BR-MDF-010). */
+  adjusted: boolean
+  series: ValuationPricePoint[]
+}
+
+/**
+ * One vs.-sector strip entry (`03` §3; UXR-RES-013/024/025).
+ *
+ * `value` null is explicitly not-meaningful, never 0 (BR-RES-008); a null
+ * `sectorMedian` degrades that metric to an honest no-data state rather than a
+ * fabricated comparison.
+ */
+export interface SectorStripEntry {
+  value: number | null
+  notMeaningful: boolean
+  sectorMedian: number | null
+  peerCount: number | null
+  excludedCount: number | null
+}
+
+/** `GET /api/v1/stocks/{symbol}/valuation` (`03` §3; FR-RES-006/007). */
+export interface StockValuationResponse extends HonestDataEnvelope {
+  /** Current canonical multiples keyed by concept code (`pe`, `pb`, …); null = not meaningful. */
+  current: Record<string, number | null>
+  historical: ValuationHistoricalSeries
+  /** The five valuation-family strip entries, keyed by concept code. */
+  strip: Record<string, SectorStripEntry>
 }
 
 /* ------------------------------------------------------------------ *
@@ -500,6 +702,83 @@ export interface AdminStatsResponse {
   accounts: { registered: number; verified: number }
   savedScreens: number
   dcfScenarios: number
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` response (`03` §8; UC-VAL-003,
+ * UXR-MDF-025) — TKT-val-009. Mirrors the ingest-trigger result: the run that is
+ * now visible in the ledger plus the counts the C3b regeneration job wrote.
+ */
+export interface DcfBaselineRegenerateResponse {
+  runId: number | null
+  job: string
+  status: string
+  written: number
+  unchanged: number
+  quarantined: number
+}
+
+/**
+ * One catalog metric with its visibility state, as the SCR-012 metric-visibility
+ * panel reads it (`GET /api/v1/admin/screener-metrics`; TKT-scr-005, UXR-MDF-023).
+ * Unlike the public catalog this includes hidden rows, so the panel can toggle them
+ * back on.
+ */
+export interface AdminMetricRow {
+  metricCode: string
+  family: string
+  unit: string | null
+  labelTr: string
+  labelEn: string
+  isScreenable: boolean
+  isCagr: boolean
+  sortOrder: number
+}
+
+/** `GET /api/v1/admin/screener-metrics` (`03` §8; TKT-scr-005). */
+export interface AdminMetricsResponse {
+  metrics: AdminMetricRow[]
+}
+
+/* ------------------------------------------------------------------ *
+ * Admin descriptions (`03` §8 v1.2; SCR-012 §5) — TKT-res-010.
+ * ------------------------------------------------------------------ */
+
+/** The description review queue's status vocabulary (UXR-MDF-018). */
+export const DESCRIPTION_STATUSES = ['draft', 'reviewed', 'published'] as const
+export type DescriptionStatus = (typeof DESCRIPTION_STATUSES)[number]
+
+/**
+ * A KAP source reference presented alongside a description's editable texts
+ * (UXR-MDF-020, `03` §8 v1.2). Resolved refs carry the disclosure's type, date,
+ * title and URL; a reference whose id no longer resolves is served as a
+ * `{disclosureId}`-only stub — visible, never silently dropped (`01` §10.7).
+ */
+export interface DescriptionSourceRef {
+  disclosureId: number
+  disclosureType?: string
+  publishDate?: string | null
+  title?: string
+  sourceUrl?: string
+}
+
+/** One business description in the review queue (which is the editor payload). */
+export interface AdminDescription {
+  id: number
+  symbol: string
+  name: string
+  version: number
+  status: string
+  textTr: string | null
+  textEn: string | null
+  sourceRefs: DescriptionSourceRef[]
+  lastReviewedAt: string | null
+  publishedAt: string | null
+}
+
+/** `GET /api/v1/admin/descriptions?status=draft|reviewed|published` (`03` §8). */
+export interface DescriptionListResponse {
+  descriptions: AdminDescription[]
 }
 
 /* ------------------------------------------------------------------ *

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import {
   API_ERROR_STATUS,
   API_ERROR_TITLE,
+  type AdminMetricsResponse,
   type AdminStatsResponse,
   type AdminSummaryResponse,
   type ApiErrorCode,
@@ -10,10 +11,12 @@ import {
   type AnonymousSession,
   type CoverageResponse,
   type CsrfTokenResponse,
+  type DcfBaselineRegenerateResponse,
   type DcfBaselineResponse,
   type DcfComputeRequest,
   type DcfComputeResponse,
   type DcfSensitivity,
+  type ForgotPasswordResponse,
   type LoginResponse,
   type IngestRun,
   type IngestRunsResponse,
@@ -29,6 +32,7 @@ import {
   type QuarantineListResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
+  type ResetPasswordResponse,
   type SavedScenario,
   type SavedScreen,
   type ScreenerRunResponse,
@@ -347,6 +351,33 @@ export function resendVerificationHandler(
   body: ResendVerificationResponse = { verified: false },
 ) {
   return http.post(`${API_BASE}/auth/resend-verification`, () =>
+    HttpResponse.json(body),
+  )
+}
+
+/** Deterministic fixture: the always-200 neutral reset-request confirmation. */
+export const FORGOT_PASSWORD_FIXTURE: ForgotPasswordResponse = { status: 'accepted' }
+
+/**
+ * `POST /api/v1/auth/forgot-password` handler — always a neutral 200 (`03` §6).
+ * The response carries no registration signal; the UI renders fixed copy.
+ */
+export function forgotPasswordHandler(
+  body: ForgotPasswordResponse = FORGOT_PASSWORD_FIXTURE,
+) {
+  return http.post(`${API_BASE}/auth/forgot-password`, () =>
+    HttpResponse.json(body),
+  )
+}
+
+/** Deterministic fixture: reset-password 200 `{status:"reset"}`. */
+export const RESET_PASSWORD_FIXTURE: ResetPasswordResponse = { status: 'reset' }
+
+/** `POST /api/v1/auth/reset-password` handler — 200 (may establish a session). */
+export function resetPasswordHandler(
+  body: ResetPasswordResponse = RESET_PASSWORD_FIXTURE,
+) {
+  return http.post(`${API_BASE}/auth/reset-password`, () =>
     HttpResponse.json(body),
   )
 }
@@ -853,6 +884,94 @@ export const ADMIN_STATS_FIXTURE: AdminStatsResponse = {
 /** `GET /api/v1/admin/stats` handler. */
 export function adminStatsHandler(body: AdminStatsResponse = ADMIN_STATS_FIXTURE) {
   return http.get(`${API_BASE}/admin/stats`, () => HttpResponse.json(body))
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` fixture — the C3b regeneration
+ * run result (TKT-val-009); `runId` lets the UI point at the ledger row.
+ */
+export const DCF_BASELINE_REGENERATE_FIXTURE: DcfBaselineRegenerateResponse = {
+  runId: 21,
+  job: 'dcf-baselines',
+  status: 'succeeded',
+  written: 16,
+  unchanged: 0,
+  quarantined: 0,
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` handler recording each call (so a
+ * test can prove cancel aborts with no run). Accepts a static body or a thunk.
+ */
+export function dcfBaselineRegenerateHandler(
+  onRegenerate?: () => void,
+  body: DcfBaselineRegenerateResponse | (() => DcfBaselineRegenerateResponse) =
+    DCF_BASELINE_REGENERATE_FIXTURE,
+) {
+  return http.post(`${API_BASE}/admin/dcf-baselines/regenerate`, () => {
+    onRegenerate?.()
+    return HttpResponse.json(typeof body === 'function' ? body() : body)
+  })
+}
+
+/**
+ * The full screener catalog the visibility panel reads — all 18 metrics, flattened
+ * from the visible catalog with a `screenable` default (TKT-scr-005; UXR-MDF-023).
+ */
+export const ADMIN_METRICS_FIXTURE: AdminMetricsResponse = {
+  metrics: METRIC_CATALOG_FIXTURE.families.flatMap((family) =>
+    family.metrics.map((metric) => ({
+      metricCode: metric.metricCode,
+      family: family.family,
+      unit: metric.unit,
+      labelTr: metric.labelTr,
+      labelEn: metric.labelEn,
+      isScreenable: true,
+      isCagr: metric.isCagr,
+      sortOrder: metric.sortOrder,
+    })),
+  ),
+}
+
+/** `GET /api/v1/admin/screener-metrics` handler (static body). */
+export function adminMetricsHandler(body: AdminMetricsResponse = ADMIN_METRICS_FIXTURE) {
+  return http.get(`${API_BASE}/admin/screener-metrics`, () => HttpResponse.json(body))
+}
+
+/**
+ * Stateful metric-visibility handlers: a PATCH flips the row and later GETs reflect
+ * it, so a toggle's effect on the panel is observable (TC-SCR-021).
+ */
+export function adminMetricVisibilityHandlers(
+  initial: AdminMetricsResponse = ADMIN_METRICS_FIXTURE,
+) {
+  let metrics = initial.metrics.map((metric) => ({ ...metric }))
+
+  const list = http.get(`${API_BASE}/admin/screener-metrics`, () =>
+    HttpResponse.json({ metrics } satisfies AdminMetricsResponse),
+  )
+
+  const patch = http.patch(
+    `${API_BASE}/admin/screener-metrics/:code`,
+    async ({ request, params }) => {
+      const body = (await request.json().catch(() => ({}))) as { isScreenable?: boolean }
+      const code = String(params.code)
+      metrics = metrics.map((metric) =>
+        metric.metricCode === code
+          ? { ...metric, isScreenable: body.isScreenable ?? metric.isScreenable }
+          : metric,
+      )
+      const updated = metrics.find((metric) => metric.metricCode === code)
+      return updated ? HttpResponse.json(updated) : new HttpResponse(null, { status: 404 })
+    },
+  )
+
+  return {
+    handlers: [list, patch],
+    get metrics() {
+      return metrics
+    },
+  }
 }
 
 /**

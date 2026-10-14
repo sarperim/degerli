@@ -8,6 +8,7 @@ import { server } from '@/test/msw/server'
 import {
   ADMIN_SUMMARY_FIXTURE,
   adminCoverageHandler,
+  adminMetricsHandler,
   adminStatsHandler,
   adminSummaryHandler,
   BUILDER_SESSION_FIXTURE,
@@ -60,6 +61,7 @@ export function resetAdminTest() {
     adminSummaryHandler(() => ({ ...ADMIN_SUMMARY_FIXTURE, openQuarantineCount })),
     adminStatsHandler(),
     adminCoverageHandler(),
+    adminMetricsHandler(),
     ...quarantine.handlers,
     ...ingestRunsHandlers().handlers,
     ingestTriggerHandler(),

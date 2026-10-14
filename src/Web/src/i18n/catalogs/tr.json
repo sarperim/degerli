@@ -88,6 +88,100 @@
       "sessionErrorBody": "Erişiminiz doğrulanırken bir sorun oluştu. Lütfen tekrar deneyin."
     }
   },
+  "stockPage": {
+    "sectionsLabel": "Bölümler",
+    "sections": {
+      "overview": "Genel Bakış",
+      "valuation": "Değerleme",
+      "financials": "Finansallar",
+      "profitability": "Kârlılık",
+      "growth": "Büyüme",
+      "balanceSheet": "Bilanço",
+      "dividends": "Temettüler"
+    },
+    "descriptionLastReviewed": "Son inceleme: {{date}}",
+    "sectionErrorTitle": "Bu bölüm yüklenemedi",
+    "sectionErrorBody": "Bu bölüm yüklenirken bir sorun oluştu. Diğer bölümler etkilenmedi.",
+    "dcfHandoff": "DCF hesaplayıcıyı aç",
+    "valuation": {
+      "current": {
+        "title": "Güncel çarpanlar"
+      },
+      "history": {
+        "title": "Fiyat geçmişi",
+        "captionAdjusted": "{{count}} düzeltilmiş kapanış",
+        "captionRaw": "{{count}} kapanış"
+      },
+      "strip": {
+        "title": "Sektör karşılaştırması",
+        "sectorMedian": "Sektör medyanı",
+        "noMedian": "Sektör medyanı yok",
+        "peerCount": "{{count}} emsalin medyanı",
+        "exclusionDisclosure": "F/K medyanı zarar eden şirketleri hariç tutar ({{count}} hariç)."
+      },
+      "metrics": {
+        "pe": "F/K",
+        "pb": "PD/DD",
+        "ev_ebitda": "FD/FAVÖK",
+        "ev_fcf": "FD/Serbest Nakit Akışı",
+        "fcf_yield": "Serbest Nakit Akışı Getirisi"
+      }
+    },
+    "financials": {
+      "period": "FY{{year}}",
+      "columns": {
+        "period": "Dönem",
+        "revenue": "Hasılat",
+        "ebitda": "FAVÖK",
+        "ebit": "FVÖK",
+        "netIncome": "Net kâr",
+        "fcf": "Serbest nakit akışı"
+      }
+    },
+    "profitability": {
+      "metrics": {
+        "roic": "ROIC",
+        "roe": "ROE",
+        "gross_margin": "Brüt kâr marjı",
+        "operating_margin": "Faaliyet kâr marjı"
+      }
+    },
+    "growth": {
+      "families": {
+        "rev": "Hasılat",
+        "eps": "HBK",
+        "fcf": "Serbest nakit akışı",
+        "div": "Temettüler"
+      },
+      "window": "{{years}} yıl",
+      "actualWindow": "fiili {{years}} yıl"
+    },
+    "balanceSheet": {
+      "period": "FY{{year}}",
+      "lines": {
+        "cash": "Nakit",
+        "shortTermDebt": "Kısa vadeli borç",
+        "longTermDebt": "Uzun vadeli borç",
+        "totalEquity": "Toplam özkaynak",
+        "currentAssets": "Dönen varlıklar",
+        "currentLiabilities": "Kısa vadeli yükümlülükler",
+        "sharesDiluted": "Seyreltilmiş pay sayısı",
+        "sharesOutstanding": "Ödenmiş pay sayısı"
+      },
+      "bookValue": "Defter değeri",
+      "bookValuePerShare": "Hisse başına defter değeri"
+    },
+    "dividends": {
+      "columns": {
+        "exDate": "Hak kullanım tarihi",
+        "payDate": "Ödeme tarihi",
+        "amount": "Hisse başına tutar"
+      },
+      "ttm": "Son 12 ay hisse başına temettü",
+      "neverPaidTitle": "Temettü ödenmedi",
+      "neverPaidBody": "Bu şirket hiç temettü ödemedi."
+    }
+  },
   "stockList": {
     "searchLabel": "Hisse adı veya koduna göre ara",
     "searchPlaceholder": "Kod veya şirket adı",
@@ -466,6 +560,32 @@
     "resendFailed": "E-posta gönderilemedi. Lütfen tekrar deneyin.",
     "backToRegister": "Kayıt sayfasına dön"
   },
+  "passwordReset": {
+    "requestDescription": "E-posta adresinizi girin; kayıtlıysa parolanızı yenilemeniz için bir bağlantı göndeririz.",
+    "requestFormAriaLabel": "Parola sıfırlama isteği formu",
+    "emailLabel": "E-posta adresi",
+    "emailInvalid": "Geçerli bir e-posta adresi girin.",
+    "requestSubmit": "Sıfırlama bağlantısı gönder",
+    "requestSubmitting": "Gönderiliyor…",
+    "requestGenericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "neutralTitle": "İsteğiniz alındı",
+    "neutralBody": "Bu adres kayıtlıysa, parolanızı yenilemeniz için bir bağlantı gönderdik. Gelen kutunuzu kontrol edin.",
+    "backToSignIn": "Girişe dön",
+    "setDescription": "Hesabınız için yeni bir parola girin.",
+    "setFormAriaLabel": "Parola güncelleme formu",
+    "passwordLabel": "Yeni parola",
+    "passwordRules": "En az 10 karakter kullanın.",
+    "passwordInvalid": "Parola en az {{min}} karakter olmalıdır.",
+    "setSubmit": "Parolayı güncelle",
+    "setSubmitting": "Güncelleniyor…",
+    "setGenericError": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+    "expiredTitle": "Bu sıfırlama bağlantısı süresi dolmuş veya geçersiz",
+    "expiredBody": "Bağlantının süresi dolmuş veya geçersiz. Devam etmek için yeni bir sıfırlama bağlantısı isteyin.",
+    "requestNewLink": "Yeni sıfırlama bağlantısı iste",
+    "successTitle": "Parolanız güncellendi",
+    "successBody": "Yeni parolanızla giriş yaptınız. Çalışmanıza devam edebilirsiniz.",
+    "continueToApp": "Uygulamaya devam et"
+  },
   "admin": {
     "sectionsNavLabel": "Yönetim bölümleri",
     "accessDenied": {
@@ -478,7 +598,10 @@
       "quarantine": "Karantina kuyruğu",
       "coverage": "Kapsam raporu",
       "ledger": "Çalıştırma günlüğü",
-      "stats": "Kullanım istatistikleri"
+      "stats": "Kullanım istatistikleri",
+      "descriptions": "Açıklamalar",
+      "dcfBaselines": "DCF temel değerleri",
+      "metrics": "Ölçüt görünürlüğü"
     },
     "runStatus": {
       "succeeded": "Başarılı",
@@ -604,6 +727,69 @@
       "aggregateNote": "Yalnızca toplam sayılar gösterilir; hiçbir kullanıcıya özel veri paylaşılmaz.",
       "errorTitle": "İstatistikler yüklenemedi",
       "errorBody": "İstatistikler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "descriptions": {
+      "filterLabel": "Durum",
+      "statusDraft": "Taslak",
+      "statusReviewed": "İncelendi",
+      "statusPublished": "Yayımlandı",
+      "emptyTitle": "Açıklama yok",
+      "emptyBody": "Seçili durumda gösterilecek işletme açıklaması bulunmuyor.",
+      "errorTitle": "Açıklamalar yüklenemedi",
+      "errorBody": "Açıklama kuyruğu yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "columns": {
+        "stock": "Hisse",
+        "status": "Durum",
+        "actions": "İşlemler"
+      },
+      "edit": "Düzenle",
+      "editorLabel": "{{symbol}} açıklama düzenleyicisi",
+      "editorHeading": "{{symbol}} açıklamasını düzenle",
+      "textTrLabel": "Türkçe metin",
+      "textEnLabel": "İngilizce metin",
+      "sourceRefsHeading": "KAP kaynakları",
+      "sourceRefStub": "KAP kaynağı #{{id}} (çözümlenemedi)",
+      "save": "Kaydet",
+      "saved": "Kaydedildi",
+      "saveError": "Açıklama kaydedilemedi. Girdiğiniz metinler korundu; lütfen tekrar deneyin.",
+      "publish": "Yayımla",
+      "publishDisabledReason": "Yayımlamak için her iki dilde de metin gereklidir.",
+      "publishTitle": "Açıklamayı yayımla",
+      "publishConfirm": "Bu açıklama {{symbol}} hisse sayfasında herkese açık olarak görünecek.",
+      "publishConfirmAction": "Yayımla",
+      "publishError": "Açıklama yayımlanamadı. Metinler korundu; lütfen tekrar deneyin.",
+      "publishedNotice": "Açıklama yayımlandı"
+    },
+    "dcfBaselines": {
+      "heading": "DCF temel değerleri",
+      "explanation": "Temel değerler kanonik finansal verilerden türetilir; elle düzenlenmez. Yenileme, her hisse için yeni bir sürüm oluşturur.",
+      "regenerate": "Temel değerleri yenile",
+      "confirmTitle": "DCF temel değerlerini yenile",
+      "confirmDescription": "Temel değerler kanonik finansal verilerden yeniden oluşturulacak ve sürümlenecek. Her hisse için tek bir etkin sürüm olur; önceki sürümler korunur.",
+      "confirm": "Onayla ve yenile",
+      "cancel": "Vazgeç",
+      "successTitle": "Yenileme tamamlandı.",
+      "successBody": "Yenileme çalıştırması çalıştırma günlüğüne eklendi.",
+      "errorBody": "Yenileme başlatılırken bir sorun oluştu. Lütfen tekrar deneyin."
+    },
+    "metrics": {
+      "columnMetric": "Ölçüt",
+      "columnFamily": "Aile",
+      "columnState": "Durum",
+      "columnActions": "İşlemler",
+      "screenable": "Görünür",
+      "hidden": "Gizli",
+      "hide": "Gizle",
+      "show": "Göster",
+      "confirmTitle": "{{metric}} görünürlüğünü değiştir",
+      "confirmDescription": "Bu ölçütü gizlerseniz, ölçüt oluşturucu artık onu sunmaz; bu ölçütü kullanan kayıtlı ekranlar yeniden çalıştırıldığında çıkarılan ölçüt olarak bildirilir.",
+      "confirmHide": "Gizle",
+      "confirmShow": "Göster",
+      "toggleError": "Görünürlük güncellenemedi. Lütfen tekrar deneyin.",
+      "errorTitle": "Ölçüt görünürlüğü yüklenemedi",
+      "errorBody": "Ölçütler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "emptyTitle": "Ölçüt bulunamadı",
+      "emptyBody": "Görüntülenecek ekran ölçütü bulunmuyor."
     }
   }
 }

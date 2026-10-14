@@ -16,11 +16,16 @@ export function formatAsOfDate(locale: string, isoDate: string): string {
   }
 }
 
-/** Locale-grouped number (e.g. `174.500.000`), falling back to the raw value. */
+/**
+ * Locale-grouped number (e.g. `174.500.000`), falling back to the raw value.
+ *
+ * Defaults to at most two fraction digits (canonical ratio metrics such as a
+ * P/E of 12.4); callers that need other precision pass `options`.
+ */
 export function formatNumber(
   locale: string,
   value: number,
-  options: Intl.NumberFormatOptions = {},
+  options: Intl.NumberFormatOptions = { maximumFractionDigits: 2 },
 ): string {
   try {
     return new Intl.NumberFormat(locale, options).format(value)
@@ -74,8 +79,11 @@ export function formatRatioPercent(locale: string, value: number): string {
 }
 
 /**
- * Format a canonical rate (a fraction, 0.12) as a localized percentage
- * (`12%` / `%12`). Used for the DCF sensitivity axes and the verdict.
+ * Format a canonical `%` metric stored as a fraction (`0.15` → `15%`). The API
+ * serves `%`-unit metrics as fractions (`03` §4); the UI adds the percent sign.
+ *
+ * `maximumFractionDigits` defaults to 1 (the DCF sensitivity axes and verdict);
+ * the stock page passes 2 for its growth/profitability figures.
  */
 export function formatPercent(
   locale: string,
@@ -89,5 +97,22 @@ export function formatPercent(
     }).format(fraction)
   } catch {
     return `${(fraction * 100).toFixed(maximumFractionDigits)}%`
+  }
+}
+
+/** Format a monetary amount in its own currency code (e.g. TRY) for dividends. */
+export function formatCurrency(
+  locale: string,
+  value: number,
+  currency: string,
+): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 4,
+    }).format(value)
+  } catch {
+    return `${value} ${currency}`
   }
 }

@@ -205,3 +205,105 @@ test.describe('TC-MDF-051 / TC-FDF-012 — coverage report & scope switch', () =
     await expect(holdingsEntry.getByText(TR('admin.coverage.gap'))).toBeVisible()
   })
 })
+
+/**
+ * TC-RES-034 (L4) — admin description review → publish → public effect
+ * (`stock-research.md`; UXR-MDF-018..022, FR-RES-020/021, UC-RES-004 steps 2–4,
+ * M-2). The FU §9b descriptions: ALFA published, REST draft with both texts,
+ * ZETA draft with an empty EN (the publish-gate case).
+ *
+ * One test owns the whole draft → edited → published → publicly served
+ * transition so the mutation is deterministic (playwright `retries: 0`,
+ * `workers: 1`; the stack is reseeded per CI run).
+ */
+test.describe('TC-RES-034 — description review → publish → public effect', () => {
+  test('filters the queue, edits both texts with source refs, gates publish on both languages, and serves the published description', async ({
+    page,
+  }) => {
+    await signIn(page, BUILDER_EMAIL)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: TR('admin.sections.descriptions') }).click()
+
+    // UXR-MDF-018 — the queue lists descriptions filterable by status; the
+    // default draft view holds the two seeded drafts.
+    const queue = page.getByTestId('descriptions-table')
+    await expect(queue.getByRole('row', { name: /REST/ })).toBeVisible()
+    await expect(queue.getByRole('row', { name: /ZETA/ })).toBeVisible()
+
+    // Published filter surfaces the published ALFA row.
+    await page.getByLabel(TR('admin.descriptions.filterLabel')).selectOption('published')
+    await expect(queue.getByRole('row', { name: /ALFA/ })).toBeVisible()
+    // Its unresolvable source ref is served as a stub, never dropped (UXR-MDF-020).
+    await queue.getByRole('row', { name: /ALFA/ }).getByRole('button', { name: TR('admin.descriptions.edit') }).click()
+    const alfaEditor = page.getByTestId('description-editor')
+    await expect(alfaEditor.getByTestId('description-source-refs')).toContainText('9999')
+
+    // UXR-MDF-019/020 — the bilingual editor with the KAP source refs alongside.
+    await page.getByLabel(TR('admin.descriptions.filterLabel')).selectOption('draft')
+    await queue
+      .getByRole('row', { name: /REST/ })
+      .getByRole('button', { name: TR('admin.descriptions.edit') })
+      .click()
+    const editor = page.getByTestId('description-editor')
+    await expect(editor.getByLabel(TR('admin.descriptions.textTrLabel'))).not.toHaveValue('')
+    await expect(editor.getByLabel(TR('admin.descriptions.textEnLabel'))).not.toHaveValue('')
+    await expect(editor.getByTestId('description-source-refs')).toContainText(/kap\.org\.tr/)
+
+    // UXR-MDF-019 — editing both languages saves (the editor keeps the saved texts).
+    await editor.getByLabel(TR('admin.descriptions.textTrLabel')).fill('Güncel Türkçe açıklama.')
+    await editor.getByLabel(TR('admin.descriptions.textEnLabel')).fill('Updated English description.')
+    await editor.getByRole('button', { name: TR('admin.descriptions.save') }).click()
+    await expect(editor.getByText(TR('admin.descriptions.saved'))).toBeVisible()
+
+    // UXR-MDF-021 — publish is disabled while a language is empty, with the reason.
+    await queue
+      .getByRole('row', { name: /ZETA/ })
+      .getByRole('button', { name: TR('admin.descriptions.edit') })
+      .click()
+    const zetaEditor = page.getByTestId('description-editor')
+    await expect(zetaEditor.getByRole('button', { name: TR('admin.descriptions.publish') })).toBeDisabled()
+    await expect(zetaEditor.getByText(TR('admin.descriptions.publishDisabledReason'))).toBeVisible()
+
+    // UXR-MDF-022 — publishing REST requires a confirmation stating public visibility.
+    await queue
+      .getByRole('row', { name: /REST/ })
+      .getByRole('button', { name: TR('admin.descriptions.edit') })
+      .click()
+    const restEditor = page.getByTestId('description-editor')
+    await restEditor.getByRole('button', { name: TR('admin.descriptions.publish') }).click()
+    const dialog = page.getByRole('dialog', { name: TR('admin.descriptions.publishTitle') })
+    await expect(
+      dialog.getByText(TR('admin.descriptions.publishConfirm').replace('{{symbol}}', 'REST')),
+    ).toBeVisible()
+    await dialog
+      .getByRole('button', { name: TR('admin.descriptions.publishConfirmAction') })
+      .click()
+    await expect(restEditor.getByText(TR('admin.descriptions.publishedNotice'))).toBeVisible()
+
+    // M-2 — the summary's coverage counts update without a manual refresh.
+    await page.getByRole('button', { name: TR('admin.sections.summary') }).click()
+    await expect(page.getByTestId('coverage-count-published')).toHaveText('2')
+    await expect(page.getByTestId('coverage-count-draft')).toHaveText('1')
+
+    // Public effect — the stock's page serves the published description with its
+    // last-reviewed date; the "description in preparation" state is gone.
+    const overviewResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/api/v1/stocks/REST/overview') && response.ok(),
+    )
+    await page.goto('/stocks/REST')
+    const overview = (await (await overviewResponse).json()) as {
+      status: string
+      lastReviewedAt: string | null
+    }
+    expect(overview.status).toBe('published')
+    expect(overview.lastReviewedAt).toBeTruthy()
+    const expectedDate = new Intl.DateTimeFormat('tr', { dateStyle: 'medium' }).format(
+      new Date(overview.lastReviewedAt as string),
+    )
+    const overviewRegion = page.getByRole('region', { name: TR('stockPage.sections.overview') })
+    await expect(
+      overviewRegion.getByText(TR('stockPage.descriptionLastReviewed').replace('{{date}}', expectedDate)),
+    ).toBeVisible()
+    await expect(overviewRegion.getByText(TR('honestData.preparingTitle'))).toHaveCount(0)
+  })
+})
