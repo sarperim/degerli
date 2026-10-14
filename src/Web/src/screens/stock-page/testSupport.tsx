@@ -11,6 +11,7 @@ import type {
   StockGrowthResponse,
   StockOverviewResponse,
   StockProfitabilityResponse,
+  StockValuationResponse,
 } from '@/lib/api/contracts'
 import { StockPage } from '@/screens/stock-page/StockPage'
 import { API_BASE } from '@/test/msw/handlers'
@@ -161,6 +162,83 @@ export const NO_DIVIDENDS_FIXTURE: MissingDataResponse = {
   coverage: { availableFrom: '2016-04-12', boundaryNote: 'no dividends paid' },
 }
 
+/* ------------------------------------------------------------------ *
+ * Valuation section (TKT-res-009) — the `GET /stocks/{symbol}/valuation`
+ * payload mirroring `StockOverviewAndValuationEndpoints` (`03` §3).
+ * ------------------------------------------------------------------ */
+
+/**
+ * ALFA's populated valuation (FU §11.4 strip goldens): the adjusted basis with
+ * P/E 10.0 next to a 10.0 sector median over 3 peers, 2 loss-makers excluded.
+ */
+export const VALUATION_FIXTURE: StockValuationResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  current: { pe: 10.0, pb: 2.0, ev_ebitda: 5.5, ev_fcf: 22.0, fcf_yield: 0.05 },
+  historical: {
+    adjusted: true,
+    series: [
+      { date: '2026-10-01', closeRaw: 100, closeAdjusted: 10.0 },
+      { date: '2026-10-02', closeRaw: 98, closeAdjusted: 9.8 },
+      { date: '2026-10-05', closeRaw: 105, closeAdjusted: 10.5 },
+    ],
+  },
+  strip: {
+    pe: { value: 10.0, notMeaningful: false, sectorMedian: 10.0, peerCount: 3, excludedCount: 2 },
+    pb: { value: 2.0, notMeaningful: false, sectorMedian: 1.5, peerCount: 5, excludedCount: 0 },
+    ev_ebitda: { value: 5.5, notMeaningful: false, sectorMedian: 6.2, peerCount: 5, excludedCount: 0 },
+    ev_fcf: { value: 22.0, notMeaningful: false, sectorMedian: 18.4, peerCount: 5, excludedCount: 0 },
+    fcf_yield: { value: 0.05, notMeaningful: false, sectorMedian: 0.04, peerCount: 5, excludedCount: 0 },
+  },
+}
+
+/** BETA's loss-maker P/E (TC-RES-008): own value not-meaningful, median/counts retained. */
+export const BETA_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  current: { ...VALUATION_FIXTURE.current, pe: null },
+  strip: {
+    ...VALUATION_FIXTURE.strip,
+    pe: { value: null, notMeaningful: true, sectorMedian: 12.5, peerCount: 4, excludedCount: 3 },
+  },
+}
+
+/** A strip whose EV/FCF median is unavailable — honest no-data for that metric only. */
+export const NO_MEDIAN_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  strip: {
+    ...VALUATION_FIXTURE.strip,
+    ev_fcf: { value: 22.0, notMeaningful: false, sectorMedian: null, peerCount: null, excludedCount: null },
+  },
+}
+
+/**
+ * EPSL's adjusted series (TC-RES-032, TC-MDF-030): the raw close carries a split
+ * cliff (100 → 20) while the adjusted close is continuous (50 → 49), so asserting
+ * the adjusted basis is chosen proves no fabricated 80% crash is plotted.
+ */
+export const EPSL_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  historical: {
+    adjusted: true,
+    series: [
+      { date: '2025-06-02', closeRaw: 100, closeAdjusted: 50 },
+      { date: '2025-06-03', closeRaw: 20, closeAdjusted: 49 },
+    ],
+  },
+}
+
+/** A raw-basis history — the disclaimer must not be claimed over raw data. */
+export const RAW_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  historical: {
+    adjusted: false,
+    series: [
+      { date: '2026-10-01', closeRaw: 100, closeAdjusted: null },
+      { date: '2026-10-02', closeRaw: 98, closeAdjusted: null },
+    ],
+  },
+}
+
 /** `GET /stocks/:symbol/overview`. */
 export function stockOverviewHandler(body: StockOverviewResponse = PUBLISHED_OVERVIEW) {
   return http.get(`${API_BASE}/stocks/:symbol/overview`, () => HttpResponse.json(body))
@@ -198,10 +276,17 @@ export function stockDividendsHandler(body: StockDividendsResponse = DIVIDENDS_F
   )
 }
 
+export function stockValuationHandler(body: StockValuationResponse = VALUATION_FIXTURE) {
+  return http.get(`${API_BASE}/stocks/:symbol/valuation`, () =>
+    HttpResponse.json(body),
+  )
+}
+
 /** Register the default handlers for every stock-page section. */
 export function registerStockPageHandlers() {
   server.use(
     stockOverviewHandler(),
+    stockValuationHandler(),
     stockFinancialsHandler(),
     stockProfitabilityHandler(),
     stockGrowthHandler(),

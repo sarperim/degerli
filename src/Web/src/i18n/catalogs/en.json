@@ -103,7 +103,30 @@
     "sectionErrorTitle": "This section could not be loaded",
     "sectionErrorBody": "Something went wrong while loading this section. The other sections are unaffected.",
     "dcfHandoff": "Open DCF calculator",
-    "valuationPlaceholder": "The valuation section is provided by the valuation module.",
+    "valuation": {
+      "current": {
+        "title": "Current multiples"
+      },
+      "history": {
+        "title": "Price history",
+        "captionAdjusted": "{{count}} adjusted closes",
+        "captionRaw": "{{count}} closes"
+      },
+      "strip": {
+        "title": "Vs. sector",
+        "sectorMedian": "Sector median",
+        "noMedian": "No sector median",
+        "peerCount": "median of {{count}} peers",
+        "exclusionDisclosure": "The P/E median excludes loss-making peers ({{count}} excluded)."
+      },
+      "metrics": {
+        "pe": "P/E",
+        "pb": "P/B",
+        "ev_ebitda": "EV/EBITDA",
+        "ev_fcf": "EV/FCF",
+        "fcf_yield": "FCF Yield"
+      }
+    },
     "financials": {
       "period": "FY{{year}}",
       "columns": {
