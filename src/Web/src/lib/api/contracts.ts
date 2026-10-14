@@ -100,6 +100,55 @@ export interface MacroResponse extends HonestDataEnvelope {
   series: MacroSeries[]
 }
 
+/* ------------------------------------------------------------------ *
+ * Equity blocks (`03` §3) — SCR-001 (TKT-mov-005).
+ * ------------------------------------------------------------------ */
+
+/** One index level + its daily % change (`changePct` is already a percentage). */
+export interface IndexLevel {
+  level: number
+  changePct: number
+}
+
+/** Covered-universe breadth counts (advancing / declining / unchanged). */
+export interface MarketBreadth {
+  advancing: number
+  declining: number
+  unchanged: number
+}
+
+/** One top-mover entry — symbol, daily % change, traded share volume. */
+export interface MoverEntry {
+  symbol: string
+  changePct: number
+  volume: number
+}
+
+/** Per-sector daily performance keyed by the sector's stable code. */
+export type SectorPerformance = Record<string, number>
+
+/**
+ * `GET /api/v1/market/overview` (`03` §3; FR-MOV-001..006, 021) — the latest
+ * completed snapshot's equity blocks under the honest-data envelope.
+ *
+ * `state` is availability, not freshness (`stale` is the freshness flag): when no
+ * completed snapshot exists the server answers `200` with `state: "unavailable"`,
+ * null blocks and empty lists (M-1/BR-RES-008) — never an error, never
+ * blank-as-zero.
+ */
+export interface MarketOverviewResponse extends HonestDataEnvelope {
+  state: 'available' | 'unavailable'
+  indices: { xu100: IndexLevel; xu30: IndexLevel } | null
+  breadth: MarketBreadth | null
+  volumeTotal: number | null
+  marketPe: number | null
+  marketPeExcludedCount: number | null
+  marketDivYield: number | null
+  gainers: MoverEntry[]
+  losers: MoverEntry[]
+  sectorPerformance: SectorPerformance
+}
+
 /**
  * A covered-universe row (`GET /api/v1/stocks`, `03` §3; FR-RES-001).
  *
