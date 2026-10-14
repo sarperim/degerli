@@ -1,6 +1,6 @@
 # TKT-int-002: SC-002 core-loop e2e & cross-surface metric equality
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - Scope: the system-level e2e specs that span domains: the anonymous SC-002 core loop (dashboard → screener run → stock page sections → DCF compute with own assumptions → plain-language verdict), the research→valuation hand-off leg, and the cross-surface metric-equality sweep (same stock/metric/date identical across screener results, stock page, and DCF price; dashboard market P/E equals the stored snapshot aggregate). Test specs + any wiring fixes only. Must NOT change feature behavior beyond defects these specs expose.
 - Traces to: SC-002, OBJ-002; UC-RES-005; UXR-G-011; NFR-SCR-003, NFR-RES-003, NFR-VAL-003
