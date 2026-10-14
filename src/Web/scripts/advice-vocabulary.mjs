@@ -35,9 +35,11 @@ const WEB_ROOT = resolve(__dirname, '..')
 /**
  * Banned recommendation vocabulary — the maintained TR + EN list (I-XC-3).
  *
- * Matching is case-insensitive (Turkish-aware: `toLocaleLowerCase('tr')`) and
- * substring-based, because Turkish suffixes attach to the stem ("tavsiyesi",
- * "önerisi"). Bare "al"/"sat" stems are deliberately NOT listed: as substrings they
+ * Matching is case-insensitive and substring-based, because Turkish suffixes attach
+ * to the stem ("tavsiyesi", "önerisi"). The TR catalog is lowercased Turkish-aware
+ * (`toLocaleLowerCase('tr')`) so dotted/dotless I fold correctly; the EN catalog uses
+ * locale-neutral lowercasing so all-caps ASCII terms cannot evade the scan. Bare
+ * "al"/"sat" stems are deliberately NOT listed: as substrings they
  * match benign words, so the framed forms ("alım", "satım", "satın al", "almalı")
  * carry the intent instead.
  */
@@ -85,9 +87,15 @@ function parseArgs(argv) {
   return options
 }
 
-/** Flatten a nested catalog into dot-notation leaf keys with their string values. */
+/**
+ * Flatten a nested catalog into dot-notation leaf keys with their string values.
+ * Arrays are traversed too (indexed as `key[i]`), so array-valued catalog keys
+ * cannot smuggle a banned term past the scan while i18next still renders them.
+ */
 function flatten(value, prefix = '', out = []) {
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => flatten(child, `${prefix}[${index}]`, out))
+  } else if (value !== null && typeof value === 'object') {
     for (const [key, child] of Object.entries(value)) {
       flatten(child, prefix ? `${prefix}.${key}` : key, out)
     }
@@ -115,14 +123,19 @@ function readCatalog(path, label) {
   }
 }
 
-function findMatches(catalogPath, label, terms) {
+function findMatches(catalogPath, label, terms, locale) {
+  // Turkish-aware lowercasing is required for the TR catalog (dotted/dotless I),
+  // but it must NOT be applied to the EN catalog: `toLocaleLowerCase('tr')` maps
+  // uppercase `I` to dotless `ı`, so an all-caps EN term ("PRICE TARGET") would
+  // evade the scan. The EN catalog uses the locale-neutral lowercasing.
+  const lower = (text) => (locale ? text.toLocaleLowerCase(locale) : text.toLowerCase())
   const findings = []
   for (const [key, value] of readCatalog(catalogPath, label)) {
     if (key === DISCLAIMER_KEY) continue
     if (typeof value !== 'string') continue
-    const haystack = value.toLocaleLowerCase('tr')
+    const haystack = lower(value)
     for (const term of terms) {
-      if (haystack.includes(term.toLocaleLowerCase('tr'))) {
+      if (haystack.includes(lower(term))) {
         findings.push({ key, term, value })
         break
       }
@@ -135,7 +148,7 @@ function main() {
   const { tr, en } = parseArgs(process.argv.slice(2))
 
   const findings = [
-    ...findMatches(tr, 'TR', TR_TERMS),
+    ...findMatches(tr, 'TR', TR_TERMS, 'tr'),
     ...findMatches(en, 'EN', EN_TERMS),
   ]
 
