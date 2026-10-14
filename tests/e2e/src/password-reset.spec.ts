@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 import { API_BASE_URL, MAILPIT_BASE_URL } from './config'
 import { catalogValue, loadCatalog } from './helpers/catalog'
@@ -45,6 +45,42 @@ function tagWithClientIp(page: Page): void {
 const USER_A = 'user-a@degerli.test'
 const SAVED_SCREEN_NAME = 'Ekranım'
 const NEW_PASSWORD = 'new-correct-horse-battery'
+/** User A's seeded password (`fixtures/Degerli.Fixtures/FixtureUniverse.cs`), restored after the flow. */
+const USER_A_ORIGINAL_PASSWORD = 'FixturePass1!'
+
+/**
+ * Restores the shared seeded user A password to its original value through the
+ * public reset flow, so spec files that run after this one against the same
+ * un-reseeded `compose.ci` stack (e.g. `sign-in.spec.ts` TC-ACC-031) still
+ * authenticate as user A.
+ *
+ * `compose.ci.yml` seeds the fixture universe once and Playwright runs with no
+ * per-file reseed, so this file must not leave shared fixture state mutated. The
+ * e-mailed token is single-use, so the mailbox is cleared and a fresh link is
+ * requested; each call carries its own `X-Forwarded-For` so it never shares an
+ * `/auth/*` rate-limit bucket with the flow under test.
+ */
+async function restoreUserAPassword(request: APIRequestContext): Promise<void> {
+  const mailpit = new MailpitClient(request, MAILPIT_BASE_URL)
+  await mailpit.clear()
+
+  const forgot = await request.post(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+    headers: { 'X-Forwarded-For': '10.10.2.1' },
+    data: { email: USER_A },
+  })
+  expect(forgot.status()).toBe(200)
+
+  const { link } = await mailpit.waitForLink(/\/reset-password\?token=/, {
+    description: 'the password-reset link used to restore user A',
+  })
+  const token = new URL(link).searchParams.get('token')
+
+  const reset = await request.post(`${API_BASE_URL}/api/v1/auth/reset-password`, {
+    headers: { 'X-Forwarded-For': '10.10.2.2' },
+    data: { token, newPassword: USER_A_ORIGINAL_PASSWORD },
+  })
+  expect(reset.status()).toBe(200)
+}
 
 test.describe('TC-ACC-030 request stage — neutral confirmation', () => {
   test('shows an identical neutral confirmation for a registered and an unknown address', async ({
@@ -98,37 +134,49 @@ test.describe('TC-ACC-030 full reset via the e-mailed link', () => {
   }) => {
     tagWithClientIp(page)
     const mailpit = new MailpitClient(request, MAILPIT_BASE_URL)
-    await mailpit.clear()
 
-    // 1. Request the reset; a neutral confirmation is shown regardless.
-    await page.goto('/reset-password')
-    await page.getByLabel(TR('passwordReset.emailLabel')).fill(USER_A)
-    await page.getByRole('button', { name: TR('passwordReset.requestSubmit') }).click()
-    await expect(page.getByText(TR('passwordReset.neutralTitle'))).toBeVisible()
+    // This flow mutates the shared seeded user A password; restore it on the way
+    // out — even when an assertion fails — so later spec files that run against
+    // the same un-reseeded stack still authenticate as user A.
+    let passwordChanged = false
+    try {
+      await mailpit.clear()
 
-    // 2. The link from the e-mailed message opens the set-password stage directly
-    //    from an e-mail context (external entry point).
-    const { link } = await mailpit.waitForLink(/\/reset-password\?token=/, {
-      description: 'the password-reset link',
-    })
-    await page.goto(link)
-    await expect(
-      page.getByLabel(TR('passwordReset.passwordLabel'), { exact: false }),
-    ).toBeVisible()
+      // 1. Request the reset; a neutral confirmation is shown regardless.
+      await page.goto('/reset-password')
+      await page.getByLabel(TR('passwordReset.emailLabel')).fill(USER_A)
+      await page.getByRole('button', { name: TR('passwordReset.requestSubmit') }).click()
+      await expect(page.getByText(TR('passwordReset.neutralTitle'))).toBeVisible()
 
-    // 3. Set a valid new password with the inline rule satisfied.
-    await page
-      .getByLabel(TR('passwordReset.passwordLabel'), { exact: false })
-      .fill(NEW_PASSWORD)
-    await page.getByRole('button', { name: TR('passwordReset.setSubmit') }).click()
+      // 2. The link from the e-mailed message opens the set-password stage directly
+      //    from an e-mail context (external entry point).
+      const { link } = await mailpit.waitForLink(/\/reset-password\?token=/, {
+        description: 'the password-reset link',
+      })
+      await page.goto(link)
+      await expect(
+        page.getByLabel(TR('passwordReset.passwordLabel'), { exact: false }),
+      ).toBeVisible()
 
-    // 4. Success → placed into a signed-in state (UXR-ACC-015).
-    await expect(page.getByText(TR('passwordReset.successTitle'))).toBeVisible()
+      // 3. Set a valid new password with the inline rule satisfied.
+      await page
+        .getByLabel(TR('passwordReset.passwordLabel'), { exact: false })
+        .fill(NEW_PASSWORD)
+      await page.getByRole('button', { name: TR('passwordReset.setSubmit') }).click()
+      passwordChanged = true
 
-    // 5. Saved work is intact: the still-signed-in session lists user A's screen.
-    const screens = await page.request.get(`${API_BASE_URL}/api/v1/me/screens`)
-    expect(screens.status()).toBe(200)
-    const body = (await screens.json()) as { screens: Array<{ name: string }> }
-    expect(body.screens.map((screen) => screen.name)).toContain(SAVED_SCREEN_NAME)
+      // 4. Success → placed into a signed-in state (UXR-ACC-015).
+      await expect(page.getByText(TR('passwordReset.successTitle'))).toBeVisible()
+
+      // 5. Saved work is intact: the still-signed-in session lists user A's screen.
+      const screens = await page.request.get(`${API_BASE_URL}/api/v1/me/screens`)
+      expect(screens.status()).toBe(200)
+      const body = (await screens.json()) as { screens: Array<{ name: string }> }
+      expect(body.screens.map((screen) => screen.name)).toContain(SAVED_SCREEN_NAME)
+    } finally {
+      if (passwordChanged) {
+        await restoreUserAPassword(request)
+      }
+    }
   })
 })
