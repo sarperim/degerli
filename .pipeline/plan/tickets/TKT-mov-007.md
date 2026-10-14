@@ -1,6 +1,6 @@
 # TKT-mov-007: Sector performance period selector (Could — implement last)
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-14 (PR https://github.com/sarperim/degerli/pull/70, merge commit `f7c8078`). Review loop round 1 MERGEABLE (facet gate clean, CI green). F-MOV-1 honored (no formula invented; honest empty period block; no goldens). Artifact: `.pipeline/plan/reviews/TKT-mov-007-round-1.md`. NOTE: review-lead could not spawn reviewer lanes (subagent depth limit 1) — both lanes run in-context; independence not claimed.
 - PR: https://github.com/sarperim/degerli/pull/70 (against `dev`)
 - Size: S
 - Scope: FR-MOV-017 (Could): `period=1w|1m|ytd` parameter on the sector-performance block — snapshot period aggregates, selector UI on SCR-001, invalid period → 400. **Blocked-on-formula flag F-MOV-1 (accepted by the builder 2026-10-07):** the period-aggregate formula is undefined; the recommended formula (cap-weighted total return over the period, mirroring the locked daily formula) is adopted only when the feature is promoted; fixture history table + goldens are added at that time. TC-MOV-015 stays contract-only until then.
