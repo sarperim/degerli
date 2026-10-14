@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:i18n": "node scripts/i18n-parity.mjs",
+    "check:advice": "node scripts/advice-vocabulary.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
