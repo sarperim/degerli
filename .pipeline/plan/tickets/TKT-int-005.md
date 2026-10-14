@@ -1,6 +1,6 @@
 # TKT-int-005: Gated-save lifecycle flows (SCR + VAL + ACC, end-to-end)
 
-- Status: todo
+- Status: in-review — https://github.com/sarperim/degerli/pull/67
 - Size: M
 - Scope: the cross-domain e2e lifecycle specs for the login-to-save pattern with e-mail-verification gating: anonymous screener save → register → verify (MailPit link) → return with criteria intact → save completes; unverified gate unblocking on in-session verification; the same flows on the DCF calculator (scenario appears in picker and SCR-011); sign-in from a save prompt returning to work with the account language applied; verification from another tab unblocking an open session (M-9). Test specs + wiring fixes only.
 - Traces to: UC-SCR-002 (alternate a), UC-VAL-002 (alternate a), UC-ACC-002 (main, from save prompt); FR-SCR-012/013, FR-VAL-013, FR-ACC-008/010; UXR-G-023, UXR-G-024, UXR-G-030
