@@ -511,7 +511,8 @@
       "quarantine": "Quarantine queue",
       "coverage": "Coverage report",
       "ledger": "Run ledger",
-      "stats": "Usage statistics"
+      "stats": "Usage statistics",
+      "metrics": "Metric visibility"
     },
     "runStatus": {
       "succeeded": "Succeeded",
@@ -637,6 +638,25 @@
       "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
       "errorTitle": "The statistics could not be loaded",
       "errorBody": "Something went wrong while loading the statistics. Please try again."
+    },
+    "metrics": {
+      "columnMetric": "Metric",
+      "columnFamily": "Family",
+      "columnState": "State",
+      "columnActions": "Actions",
+      "screenable": "Visible",
+      "hidden": "Hidden",
+      "hide": "Hide",
+      "show": "Show",
+      "confirmTitle": "Change visibility of {{metric}}",
+      "confirmDescription": "Hiding this metric removes it from the criteria builder; saved screens that reference it report the dropped criterion when re-run.",
+      "confirmHide": "Hide",
+      "confirmShow": "Show",
+      "toggleError": "The visibility could not be updated. Please try again.",
+      "errorTitle": "Metric visibility could not be loaded",
+      "errorBody": "Something went wrong while loading the metrics. Please try again.",
+      "emptyTitle": "No metrics found",
+      "emptyBody": "There are no screenable metrics to display."
     }
   }
 }

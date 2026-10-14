@@ -4,6 +4,7 @@ using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Api.Screener;
@@ -19,10 +20,12 @@ namespace Degerli.Api.Screener;
 /// stock missing data for a criterion is excluded and counted, never zero-filled
 /// (BR-SCR-009/FR-SCR-014); an empty result set is a normal <c>200</c> (FR-SCR-006);
 /// an empty criteria array is <c>400 VALIDATION_FAILED</c> (I-SCR-1). Results are
-/// computed on demand — never persisted (UC-SCR-003).</item>
+/// computed on demand — never persisted (UC-SCR-003). A hidden/unknown metric in an
+/// ad-hoc submission is <c>400 METRIC_NOT_AVAILABLE</c> (UXR-SCR-011); a run that also
+/// names the saved screen it re-runs (<c>savedScreenId</c>, requiring the caller's
+/// session) instead drops since-hidden criteria into <c>droppedCriteria</c>
+/// (UC-SCR-003a, UXR-SCR-015).</item>
 /// </list>
-/// This ticket covers the core only; validation breadth/staleness/recompute and the
-/// saved-screen endpoints are later tickets (TKT-scr-003/004/005).
 /// </summary>
 public static class ScreenerEndpoints
 {
@@ -87,6 +90,8 @@ public static class ScreenerEndpoints
         HttpRequest request,
         DegerliDbContext db,
         TimeProvider clock,
+        UserManager<ApplicationUser> userManager,
+        HttpContext context,
         CancellationToken cancellationToken)
     {
         JsonDocument document;
@@ -107,6 +112,44 @@ public static class ScreenerEndpoints
                 return Validation(new[] { new ValidationField("body", "invalid_json") });
             }
 
+            // A saved-screen re-run names the screen it re-runs (`savedScreenId`) as
+            // well as the stored criteria. Naming the screen marks the run as a re-run,
+            // so a metric hidden since the screen was saved is dropped and reported
+            // rather than rejected (UC-SCR-003a, UXR-SCR-015; `03` §4). It is an action
+            // on a screen the caller owns, so it requires a session.
+            bool reRun;
+            if (root.TryGetProperty("savedScreenId", out var savedScreenIdElement))
+            {
+                if (savedScreenIdElement.ValueKind != JsonValueKind.Number
+                    || !savedScreenIdElement.TryGetInt64(out var savedScreenId)
+                    || savedScreenId <= 0)
+                {
+                    return Validation(new[] { new ValidationField("savedScreenId", "invalid") });
+                }
+
+                var user = await CurrentUserAsync(userManager, context);
+                if (user is null)
+                {
+                    return Unauthenticated();
+                }
+
+                // Ownership isolation via 404: a foreign id is indistinguishable from a
+                // missing one (FR-SCR-011).
+                var ownsScreen = await db.SavedScreens.AnyAsync(
+                    candidate => candidate.Id == savedScreenId && candidate.UserId == user.Id,
+                    cancellationToken);
+                if (!ownsScreen)
+                {
+                    return NotFound("id", savedScreenId);
+                }
+
+                reRun = true;
+            }
+            else
+            {
+                reRun = false;
+            }
+
             if (!root.TryGetProperty("criteria", out var criteriaElement)
                 || criteriaElement.ValueKind != JsonValueKind.Array
                 || criteriaElement.GetArrayLength() == 0)
@@ -125,18 +168,19 @@ public static class ScreenerEndpoints
                 StringComparer.Ordinal);
 
             var fields = new List<ValidationField>();
+            var dropped = new List<string>();
             var criteria = new List<Criterion>();
             foreach (var element in criteriaElement.EnumerateArray())
             {
-                var criterion = ParseCriterion(element, catalog, fields);
+                var criterion = ParseCriterion(element, catalog, fields, reRun, dropped);
                 if (criterion is not null)
                 {
                     criteria.Add(criterion);
                 }
             }
 
-            // A hidden/unknown metric is the dedicated availability error (03 §4);
-            // other shape problems are ordinary validation failures.
+            // A hidden/unknown metric is the dedicated availability error on an ad-hoc
+            // run (03 §4); other shape problems are ordinary validation failures.
             if (fields.Any(field => field.Code == "metric_not_available"))
             {
                 return MetricNotAvailable();
@@ -147,7 +191,14 @@ public static class ScreenerEndpoints
                 return Validation(fields);
             }
 
-            return await EvaluateAsync(db, clock, criteria, cancellationToken);
+            // A re-run whose every criterion has since been hidden has nothing left
+            // to screen by; the empty-criteria rule (I-SCR-1) still holds.
+            if (criteria.Count == 0)
+            {
+                return Validation(new[] { new ValidationField("criteria", "required") });
+            }
+
+            return await EvaluateAsync(db, clock, criteria, dropped, cancellationToken);
         }
     }
 
@@ -159,7 +210,9 @@ public static class ScreenerEndpoints
     private static Criterion? ParseCriterion(
         JsonElement element,
         IReadOnlyDictionary<string, bool> catalog,
-        List<ValidationField> fields)
+        List<ValidationField> fields,
+        bool reRun,
+        List<string> dropped)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -172,8 +225,20 @@ public static class ScreenerEndpoints
             : null;
         if (code is null || !catalog.TryGetValue(code, out var isGrowth))
         {
-            // The builder never offers a hidden/unknown metric (UXR-SCR-011); surfaced
-            // to the caller through the dedicated code (03 §4).
+            // On a saved-screen re-run a since-hidden metric is dropped and reported
+            // (UC-SCR-003a, UXR-SCR-015). The builder never offers a hidden/unknown
+            // metric on an ad-hoc run, so that submission is the dedicated availability
+            // error (UXR-SCR-011; 03 §4).
+            if (reRun && code is not null)
+            {
+                if (!dropped.Contains(code))
+                {
+                    dropped.Add(code);
+                }
+
+                return null;
+            }
+
             fields.Add(new ValidationField(code ?? "metricCode", "metric_not_available"));
             return null;
         }
@@ -241,6 +306,7 @@ public static class ScreenerEndpoints
         DegerliDbContext db,
         TimeProvider clock,
         IReadOnlyList<Criterion> criteria,
+        IReadOnlyList<string> dropped,
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
@@ -325,7 +391,7 @@ public static class ScreenerEndpoints
             stale,
             matchCount,
             excludedCount,
-            droppedCriteria = Array.Empty<string>(),
+            droppedCriteria = dropped,
             rows,
         });
     }
@@ -354,6 +420,24 @@ public static class ScreenerEndpoints
             && property.ValueKind == JsonValueKind.Number
             && property.TryGetInt32(out value);
     }
+
+    private static async Task<ApplicationUser?> CurrentUserAsync(
+        UserManager<ApplicationUser> userManager,
+        HttpContext context)
+        => context.User.Identity?.IsAuthenticated == true
+            ? await userManager.GetUserAsync(context.User)
+            : null;
+
+    private static IResult Unauthenticated()
+        => Results.Problem(ApiProblem.Create(
+            StatusCodes.Status401Unauthorized,
+            ApiErrorCodes.Unauthenticated));
+
+    private static IResult NotFound(string field, long id)
+        => Results.Problem(ApiProblem.Create(
+            StatusCodes.Status404NotFound,
+            ApiErrorCodes.NotFound,
+            new Dictionary<string, object?> { [field] = id }));
 
     /// <summary>Ad-hoc submission of a hidden/unknown metric (UXR-SCR-011, `03` §4).</summary>
     private static IResult MetricNotAvailable()
