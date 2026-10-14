@@ -10,6 +10,7 @@ import { DcfCalculatorScreen } from '@/screens/dcf/DcfCalculatorScreen'
 import { DcfScenariosScreen } from '@/screens/dcfScenarios/DcfScenariosScreen'
 import { RegisterScreen } from '@/screens/register/RegisterScreen'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
+import { PasswordResetScreen } from '@/screens/password-reset/PasswordResetScreen'
 import { SavedScreensScreen } from '@/screens/savedScreens/SavedScreensScreen'
 import { SignInScreen } from '@/screens/signIn/SignInScreen'
 import { ScreenerScreen } from '@/screens/screener/ScreenerScreen'
@@ -27,6 +28,7 @@ const SCREEN_ELEMENTS: Partial<Record<ScreenRoute['id'], ReactNode>> = {
   stockList: <StockListPage />,
   stockPage: <StockPage />,
   register: <RegisterScreen />,
+  passwordReset: <PasswordResetScreen />,
   signIn: <SignInScreen />,
   screener: <ScreenerScreen />,
   admin: <AdminScreen />,
