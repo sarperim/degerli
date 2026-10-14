@@ -100,6 +100,43 @@ export const STALE_MACRO_FIXTURE: MacroResponse = {
   ],
 }
 
+/**
+ * The SCR-001 macro strip fixture (TKT-mov-006): the six V1 series in serving
+ * order, every value available and fresh, typed against `MacroResponse`. Codes,
+ * units and sources mirror the seeded `macro_series` definitions (FR-MOV-009/014).
+ */
+export const MACRO_STRIP_FIXTURE: MacroResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  series: [
+    { code: 'TUIK_CPI', value: 45.2, unit: '% YoY', source: 'TÜİK', asOf: '2026-09-01', stale: false, state: 'available' },
+    { code: 'INDEP_CPI', value: 58.3, unit: '% YoY', source: 'ENAG', asOf: '2026-09-01', stale: false, state: 'available' },
+    { code: 'CBRT_REPO', value: 42.5, unit: '%', source: 'TCMB', asOf: '2026-09-23', stale: false, state: 'available' },
+    { code: 'USD_TRY', value: 47.1, unit: 'TRY', source: 'FX', asOf: '2026-10-06', stale: false, state: 'available' },
+    { code: 'EUR_TRY', value: 51.4, unit: 'TRY', source: 'FX', asOf: '2026-10-06', stale: false, state: 'available' },
+    { code: 'GOLD', value: 5200.0, unit: 'USD/oz', source: 'Gold', asOf: '2026-10-04', stale: false, state: 'available' },
+  ],
+}
+
+/** The strip with a stale GOLD series (the always-seeded stale block, TC-MOV-024). */
+export const MACRO_STRIP_STALE_FIXTURE: MacroResponse = {
+  ...MACRO_STRIP_FIXTURE,
+  stale: true,
+  series: MACRO_STRIP_FIXTURE.series.map((series) =>
+    series.code === 'GOLD' ? { ...series, stale: true } : series,
+  ),
+}
+
+/** The degraded strip: the independent inflation measure is unavailable (TC-MOV-018). */
+export const MACRO_STRIP_DEGRADED_FIXTURE: MacroResponse = {
+  ...MACRO_STRIP_FIXTURE,
+  series: MACRO_STRIP_FIXTURE.series.map((series) =>
+    series.code === 'INDEP_CPI'
+      ? { ...series, value: null, state: 'unavailable' as const }
+      : series,
+  ),
+}
+
 /** Convert an error code to the URL slug used in the problem `type`. */
 export function errorTypeSlug(code: ApiErrorCode): string {
   return code.toLowerCase().replace(/_/g, '-')

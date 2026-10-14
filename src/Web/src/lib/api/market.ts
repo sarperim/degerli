@@ -1,5 +1,5 @@
 import { apiGet } from '@/lib/api/client'
-import type { MarketOverviewResponse } from '@/lib/api/contracts'
+import type { MacroResponse, MarketOverviewResponse } from '@/lib/api/contracts'
 
 /**
  * Market overview data access (`03-api-design.md` §3; FR-MOV-001..006, 021).
@@ -26,6 +26,8 @@ export type MarketBlockId =
 export const marketQueryKeys = {
   all: ['market'] as const,
   overview: (block: MarketBlockId) => ['market', 'overview', block] as const,
+  /** The macro strip is a separate endpoint/failure domain from the equity blocks. */
+  macro: () => ['market', 'macro'] as const,
 }
 
 /** `GET /api/v1/market/overview?block=` — the snapshot plus the honest envelope. */
@@ -34,4 +36,14 @@ export function fetchMarketOverview(
   signal?: AbortSignal,
 ): Promise<MarketOverviewResponse> {
   return apiGet<MarketOverviewResponse>(`/market/overview?block=${block}`, signal)
+}
+
+/**
+ * `GET /api/v1/market/macro` (`03-api-design.md` §3; FR-MOV-007..010, 016) — the
+ * six macro series plus the honest envelope. Macro and equity are separate
+ * endpoints because they have separate failure domains (UC-MOV-002 vs UC-MDF-001):
+ * a macro outage must not blank the equity blocks and vice versa (SCR-001 §5).
+ */
+export function fetchMarketMacro(signal?: AbortSignal): Promise<MacroResponse> {
+  return apiGet<MacroResponse>('/market/macro', signal)
 }

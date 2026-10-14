@@ -400,6 +400,21 @@
     "moverLinkLabel": "{{symbol}} — {{change}} change, volume {{volume}}",
     "errorTitle": "This section could not be loaded",
     "errorBody": "Something went wrong while loading this section. Please try again.",
+    "macro": {
+      "title": "Macro indicators",
+      "inflationTitle": "Inflation",
+      "eodNote": "Macro data are end-of-day (EOD) values; they are not real-time.",
+      "source": "Source: {{source}}",
+      "independentUnavailable": "The independent inflation measure is currently unavailable.",
+      "series": {
+        "TUIK_CPI": "TÜİK CPI (YoY)",
+        "INDEP_CPI": "Independent CPI (YoY)",
+        "CBRT_REPO": "CBRT Policy Rate",
+        "USD_TRY": "USD/TRY",
+        "EUR_TRY": "EUR/TRY",
+        "GOLD": "Gold (oz)"
+      }
+    },
     "blocks": {
       "indices": {
         "title": "Indices",
