@@ -561,6 +561,7 @@
       "coverage": "Coverage report",
       "ledger": "Run ledger",
       "stats": "Usage statistics",
+      "descriptions": "Descriptions",
       "dcfBaselines": "DCF baselines",
       "metrics": "Metric visibility"
     },
@@ -688,6 +689,38 @@
       "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
       "errorTitle": "The statistics could not be loaded",
       "errorBody": "Something went wrong while loading the statistics. Please try again."
+    },
+    "descriptions": {
+      "filterLabel": "Status",
+      "statusDraft": "Draft",
+      "statusReviewed": "Reviewed",
+      "statusPublished": "Published",
+      "emptyTitle": "No descriptions",
+      "emptyBody": "There are no business descriptions in the selected status.",
+      "errorTitle": "Descriptions could not be loaded",
+      "errorBody": "Something went wrong while loading the description queue. Please try again.",
+      "columns": {
+        "stock": "Stock",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "edit": "Edit",
+      "editorLabel": "{{symbol}} description editor",
+      "editorHeading": "Edit the {{symbol}} description",
+      "textTrLabel": "Turkish text",
+      "textEnLabel": "English text",
+      "sourceRefsHeading": "KAP sources",
+      "sourceRefStub": "KAP source #{{id}} (unresolved)",
+      "save": "Save",
+      "saved": "Saved",
+      "saveError": "The description could not be saved. Your texts were preserved; please try again.",
+      "publish": "Publish",
+      "publishDisabledReason": "Both language versions are required to publish.",
+      "publishTitle": "Publish description",
+      "publishConfirm": "This description will be publicly visible on the {{symbol}} stock page.",
+      "publishConfirmAction": "Publish",
+      "publishError": "The description could not be published. Your texts were preserved; please try again.",
+      "publishedNotice": "Description published"
     },
     "dcfBaselines": {
       "heading": "DCF baselines",

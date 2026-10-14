@@ -692,6 +692,47 @@ export interface AdminMetricsResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Admin descriptions (`03` §8 v1.2; SCR-012 §5) — TKT-res-010.
+ * ------------------------------------------------------------------ */
+
+/** The description review queue's status vocabulary (UXR-MDF-018). */
+export const DESCRIPTION_STATUSES = ['draft', 'reviewed', 'published'] as const
+export type DescriptionStatus = (typeof DESCRIPTION_STATUSES)[number]
+
+/**
+ * A KAP source reference presented alongside a description's editable texts
+ * (UXR-MDF-020, `03` §8 v1.2). Resolved refs carry the disclosure's type, date,
+ * title and URL; a reference whose id no longer resolves is served as a
+ * `{disclosureId}`-only stub — visible, never silently dropped (`01` §10.7).
+ */
+export interface DescriptionSourceRef {
+  disclosureId: number
+  disclosureType?: string
+  publishDate?: string | null
+  title?: string
+  sourceUrl?: string
+}
+
+/** One business description in the review queue (which is the editor payload). */
+export interface AdminDescription {
+  id: number
+  symbol: string
+  name: string
+  version: number
+  status: string
+  textTr: string | null
+  textEn: string | null
+  sourceRefs: DescriptionSourceRef[]
+  lastReviewedAt: string | null
+  publishedAt: string | null
+}
+
+/** `GET /api/v1/admin/descriptions?status=draft|reviewed|published` (`03` §8). */
+export interface DescriptionListResponse {
+  descriptions: AdminDescription[]
+}
+
+/* ------------------------------------------------------------------ *
  * Valuation & DCF (`03` §5) — TKT-val-006 (SCR-006 calculator UI).
  * ------------------------------------------------------------------ */
 

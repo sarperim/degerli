@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import type { CoverageScope } from '@/lib/api/contracts'
+import type { CoverageScope, DescriptionStatus } from '@/lib/api/contracts'
 import type { AdminSectionId } from '@/screens/admin/adminSections'
 
 /**
@@ -22,11 +22,14 @@ export interface AdminUiState {
   ledgerJob: string | null
   /** Run-ledger status filter (null = all statuses). */
   ledgerStatus: string | null
+  /** Description-review status filter (SCR-012 §5, UXR-MDF-018). */
+  descriptionStatus: DescriptionStatus
 
   setActiveSection: (section: AdminSectionId) => void
   setQuarantineStatus: (status: QuarantineStatus) => void
   setCoverageScope: (scope: CoverageScope) => void
   setLedgerFilters: (filters: { job?: string | null; status?: string | null }) => void
+  setDescriptionStatus: (status: DescriptionStatus) => void
   resetAdminUi: () => void
 }
 
@@ -36,6 +39,7 @@ const initialAdminUiState = {
   coverageScope: 'instrument' as CoverageScope,
   ledgerJob: null,
   ledgerStatus: null,
+  descriptionStatus: 'draft' as DescriptionStatus,
 }
 
 export const useAdminUiStore = create<AdminUiState>()(
@@ -50,6 +54,7 @@ export const useAdminUiStore = create<AdminUiState>()(
           ledgerJob: job === undefined ? state.ledgerJob : job,
           ledgerStatus: status === undefined ? state.ledgerStatus : status,
         })),
+      setDescriptionStatus: (descriptionStatus) => set({ descriptionStatus }),
       resetAdminUi: () => set({ ...initialAdminUiState }),
     }),
     {
