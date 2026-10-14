@@ -511,7 +511,8 @@
       "quarantine": "Quarantine queue",
       "coverage": "Coverage report",
       "ledger": "Run ledger",
-      "stats": "Usage statistics"
+      "stats": "Usage statistics",
+      "dcfBaselines": "DCF baselines"
     },
     "runStatus": {
       "succeeded": "Succeeded",
@@ -637,6 +638,18 @@
       "aggregateNote": "Only aggregate counts are shown; no per-user data is ever displayed.",
       "errorTitle": "The statistics could not be loaded",
       "errorBody": "Something went wrong while loading the statistics. Please try again."
+    },
+    "dcfBaselines": {
+      "heading": "DCF baselines",
+      "explanation": "Baselines are derived from canonical facts and never hand-edited. Regeneration creates a new version for every stock.",
+      "regenerate": "Regenerate baselines",
+      "confirmTitle": "Regenerate DCF baselines",
+      "confirmDescription": "Baselines will be rebuilt from canonical facts and versioned. There is one active version per stock; previous versions are retained.",
+      "confirm": "Confirm and regenerate",
+      "cancel": "Cancel",
+      "successTitle": "Regeneration complete.",
+      "successBody": "The regeneration run was added to the run ledger.",
+      "errorBody": "The regeneration could not be started. Please try again."
     }
   }
 }

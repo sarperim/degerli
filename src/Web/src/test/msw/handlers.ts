@@ -10,6 +10,7 @@ import {
   type AnonymousSession,
   type CoverageResponse,
   type CsrfTokenResponse,
+  type DcfBaselineRegenerateResponse,
   type DcfBaselineResponse,
   type DcfComputeRequest,
   type DcfComputeResponse,
@@ -803,6 +804,34 @@ export const ADMIN_STATS_FIXTURE: AdminStatsResponse = {
 /** `GET /api/v1/admin/stats` handler. */
 export function adminStatsHandler(body: AdminStatsResponse = ADMIN_STATS_FIXTURE) {
   return http.get(`${API_BASE}/admin/stats`, () => HttpResponse.json(body))
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` fixture — the C3b regeneration
+ * run result (TKT-val-009); `runId` lets the UI point at the ledger row.
+ */
+export const DCF_BASELINE_REGENERATE_FIXTURE: DcfBaselineRegenerateResponse = {
+  runId: 21,
+  job: 'dcf-baselines',
+  status: 'succeeded',
+  written: 16,
+  unchanged: 0,
+  quarantined: 0,
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` handler recording each call (so a
+ * test can prove cancel aborts with no run). Accepts a static body or a thunk.
+ */
+export function dcfBaselineRegenerateHandler(
+  onRegenerate?: () => void,
+  body: DcfBaselineRegenerateResponse | (() => DcfBaselineRegenerateResponse) =
+    DCF_BASELINE_REGENERATE_FIXTURE,
+) {
+  return http.post(`${API_BASE}/admin/dcf-baselines/regenerate`, () => {
+    onRegenerate?.()
+    return HttpResponse.json(typeof body === 'function' ? body() : body)
+  })
 }
 
 /**

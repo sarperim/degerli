@@ -564,6 +564,20 @@ export interface AdminStatsResponse {
   dcfScenarios: number
 }
 
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` response (`03` §8; UC-VAL-003,
+ * UXR-MDF-025) — TKT-val-009. Mirrors the ingest-trigger result: the run that is
+ * now visible in the ledger plus the counts the C3b regeneration job wrote.
+ */
+export interface DcfBaselineRegenerateResponse {
+  runId: number | null
+  job: string
+  status: string
+  written: number
+  unchanged: number
+  quarantined: number
+}
+
 /* ------------------------------------------------------------------ *
  * Valuation & DCF (`03` §5) — TKT-val-006 (SCR-006 calculator UI).
  * ------------------------------------------------------------------ */

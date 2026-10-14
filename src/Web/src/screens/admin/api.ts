@@ -13,6 +13,7 @@ import {
   type AdminSummaryResponse,
   type CoverageResponse,
   type CoverageScope,
+  type DcfBaselineRegenerateResponse,
   type IngestRunsResponse,
   type IngestTriggerResponse,
   type QuarantineItem,
@@ -149,6 +150,33 @@ export function useTriggerIngest(): UseMutationResult<
       }),
     onSuccess: () => {
       // A triggered run appears in the open ledger view without a manual refresh.
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.runsAll() })
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.summary() })
+    },
+  })
+}
+
+/**
+ * Trigger the C3b DCF baseline regeneration (`02` §5.8; UC-VAL-003, UXR-MDF-025).
+ *
+ * Regeneration re-derives every covered stock's baseline from canonical facts and
+ * bumps the version. The returned run is recorded in the ledger, so the ledger and
+ * summary queries are invalidated — the run becomes visible without a manual
+ * refresh, and SCR-006 serves the new active baseline on its next load.
+ */
+export function useRegenerateDcfBaselines(): UseMutationResult<
+  DcfBaselineRegenerateResponse,
+  Error,
+  void
+> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<DcfBaselineRegenerateResponse>('/admin/dcf-baselines/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.runsAll() })
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.summary() })
     },
