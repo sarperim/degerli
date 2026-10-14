@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp } from 'lucide-react'
 import { AsOfDate, NoDataState, StaleBadge } from '@/components/honest-data'
 import { Button } from '@/components/ui/button'
 import { SkeletonText } from '@/components/ui/skeleton'
+import { MacroStrip } from '@/routes/MacroStrip'
 import { marketQueryKeys, fetchMarketOverview, type MarketBlockId } from '@/lib/api/market'
 import type { IndexLevel, MarketOverviewResponse, MoverEntry } from '@/lib/api/contracts'
 import { formatNumber, formatRatioPercent, formatSignedPercent } from '@/lib/format'
@@ -19,9 +20,10 @@ import { cn } from '@/lib/utils'
  * The daily "discover" entry point: index levels, sector performance (entries link
  * to the Stock List pre-filtered), market breadth, top movers with volume (entries
  * link to the stock page), total market volume, and the market-valuation block with
- * its loss-maker exclusion disclosure. The macro strip is a separate component set
- * (TKT-mov-006); the informational-only disclaimer is rendered by the shell footer
- * for research routes (UXR-G-016).
+ * its loss-maker exclusion disclosure. The macro strip (TKT-mov-006) is rendered
+ * below the equity grid from its own endpoint (separate failure domain); the
+ * informational-only disclaimer is rendered by the shell footer for research routes
+ * (UXR-G-016).
  *
  * Each block is its own query instance against the snapshot endpoint (M-5,
  * architecture §8.1), so a block loads, fails and retries independently — a single
@@ -460,6 +462,8 @@ export function MarketOverviewPage() {
         <MarketVolumeBlock query={volume} />
         <MarketValuationBlock query={valuation} />
       </div>
+
+      <MacroStrip />
     </section>
   )
 }

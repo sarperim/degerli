@@ -10,7 +10,12 @@ import { assertNetworkQuiet, recordRequests } from './helpers/network'
 
 test.describe('network-quiet helper', () => {
   test('reports a quiet SPA root (no /api requests during the window)', async ({ page }) => {
-    await page.goto('/')
+    // Wait for the SPA's initial data load to settle before opening the quiet
+    // window (TKT-mov-006): starting the window at `goto` caught the first
+    // render's own fetches, which are load, not polling. The window must guard
+    // against periodic data requests implying real-time updates (TC-XC-021/
+    // TC-MOV-022), so it is measured after load.
+    await page.goto('/', { waitUntil: 'networkidle' })
     // The global header reads the session once on mount — the control-plane read
     // that powers the sign-in/sign-out state (M-9, TKT-acc-008). The quiet window
     // guards against *data* polling implying real-time updates (TC-XC-021), so the

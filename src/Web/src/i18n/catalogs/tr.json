@@ -400,6 +400,21 @@
     "moverLinkLabel": "{{symbol}} — {{change}} değişim, hacim {{volume}}",
     "errorTitle": "Bu bölüm yüklenemedi",
     "errorBody": "Bu bölüm yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    "macro": {
+      "title": "Makro göstergeler",
+      "inflationTitle": "Enflasyon",
+      "eodNote": "Makro veriler gün sonu (EOD) değerleridir; gerçek zamanlı değildir.",
+      "source": "Kaynak: {{source}}",
+      "independentUnavailable": "Bağımsız enflasyon ölçüsü şu anda kullanılamıyor.",
+      "series": {
+        "TUIK_CPI": "TÜİK TÜFE (Yıllık)",
+        "INDEP_CPI": "Bağımsız TÜFE (Yıllık)",
+        "CBRT_REPO": "TCMB Politika Faizi",
+        "USD_TRY": "ABD Doları/TL",
+        "EUR_TRY": "Euro/TL",
+        "GOLD": "Altın (ons)"
+      }
+    },
     "blocks": {
       "indices": {
         "title": "Endeksler",
