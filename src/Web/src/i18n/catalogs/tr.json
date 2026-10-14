@@ -397,7 +397,7 @@
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
   },
   "marketOverview": {
-    "moverLinkLabel": "{{symbol}} — {{change}} değişim, hacim {{volume}}",
+    "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — değişim, hacim",
     "errorTitle": "Bu bölüm yüklenemedi",
     "errorBody": "Bu bölüm yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
     "macro": {
