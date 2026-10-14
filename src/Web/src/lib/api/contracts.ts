@@ -201,6 +201,38 @@ export interface CsrfTokenResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Identity — password reset (`03` §6) — TKT-acc-009 (SCR-009).
+ * ------------------------------------------------------------------ */
+
+/** `POST /api/v1/auth/forgot-password` request body (`03` §6). */
+export interface ForgotPasswordRequest {
+  email: string
+}
+
+/**
+ * `POST /api/v1/auth/forgot-password` response (`03` §6) — always a byte-identical
+ * 200 neutral confirmation; the client renders fixed copy and never branches on it
+ * (UXR-ACC-012, enumeration-neutral).
+ */
+export interface ForgotPasswordResponse {
+  status: string
+}
+
+/** `POST /api/v1/auth/reset-password` request body (`03` §6). */
+export interface ResetPasswordRequest {
+  token: string
+  newPassword: string
+}
+
+/**
+ * `POST /api/v1/auth/reset-password` response (`03` §6) — 200 on success; the
+ * endpoint may establish a session, so `['session']` is invalidated (UXR-ACC-015).
+ */
+export interface ResetPasswordResponse {
+  status: string
+}
+
+/* ------------------------------------------------------------------ *
  * Account settings (`03` §6) — TKT-acc-010 (SCR-010).
  * ------------------------------------------------------------------ */
 
@@ -621,6 +653,20 @@ export interface AdminStatsResponse {
   accounts: { registered: number; verified: number }
   savedScreens: number
   dcfScenarios: number
+}
+
+/**
+ * `POST /api/v1/admin/dcf-baselines/regenerate` response (`03` §8; UC-VAL-003,
+ * UXR-MDF-025) — TKT-val-009. Mirrors the ingest-trigger result: the run that is
+ * now visible in the ledger plus the counts the C3b regeneration job wrote.
+ */
+export interface DcfBaselineRegenerateResponse {
+  runId: number | null
+  job: string
+  status: string
+  written: number
+  unchanged: number
+  quarantined: number
 }
 
 /**
