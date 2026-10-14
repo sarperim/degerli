@@ -103,7 +103,30 @@
     "sectionErrorTitle": "Bu bölüm yüklenemedi",
     "sectionErrorBody": "Bu bölüm yüklenirken bir sorun oluştu. Diğer bölümler etkilenmedi.",
     "dcfHandoff": "DCF hesaplayıcıyı aç",
-    "valuationPlaceholder": "Değerleme bölümü değerleme modülü tarafından sağlanır.",
+    "valuation": {
+      "current": {
+        "title": "Güncel çarpanlar"
+      },
+      "history": {
+        "title": "Fiyat geçmişi",
+        "captionAdjusted": "{{count}} düzeltilmiş kapanış",
+        "captionRaw": "{{count}} kapanış"
+      },
+      "strip": {
+        "title": "Sektör karşılaştırması",
+        "sectorMedian": "Sektör medyanı",
+        "noMedian": "Sektör medyanı yok",
+        "peerCount": "{{count}} emsalin medyanı",
+        "exclusionDisclosure": "F/K medyanı zarar eden şirketleri hariç tutar ({{count}} hariç)."
+      },
+      "metrics": {
+        "pe": "F/K",
+        "pb": "PD/DD",
+        "ev_ebitda": "FD/FAVÖK",
+        "ev_fcf": "FD/Serbest Nakit Akışı",
+        "fcf_yield": "Serbest Nakit Akışı Getirisi"
+      }
+    },
     "financials": {
       "period": "FY{{year}}",
       "columns": {
@@ -512,7 +535,8 @@
       "coverage": "Kapsam raporu",
       "ledger": "Çalıştırma günlüğü",
       "stats": "Kullanım istatistikleri",
-      "descriptions": "Açıklamalar"
+      "descriptions": "Açıklamalar",
+      "metrics": "Ölçüt görünürlüğü"
     },
     "runStatus": {
       "succeeded": "Başarılı",
@@ -670,6 +694,25 @@
       "publishConfirmAction": "Yayımla",
       "publishError": "Açıklama yayımlanamadı. Metinler korundu; lütfen tekrar deneyin.",
       "publishedNotice": "Açıklama yayımlandı"
+    },
+    "metrics": {
+      "columnMetric": "Ölçüt",
+      "columnFamily": "Aile",
+      "columnState": "Durum",
+      "columnActions": "İşlemler",
+      "screenable": "Görünür",
+      "hidden": "Gizli",
+      "hide": "Gizle",
+      "show": "Göster",
+      "confirmTitle": "{{metric}} görünürlüğünü değiştir",
+      "confirmDescription": "Bu ölçütü gizlerseniz, ölçüt oluşturucu artık onu sunmaz; bu ölçütü kullanan kayıtlı ekranlar yeniden çalıştırıldığında çıkarılan ölçüt olarak bildirilir.",
+      "confirmHide": "Gizle",
+      "confirmShow": "Göster",
+      "toggleError": "Görünürlük güncellenemedi. Lütfen tekrar deneyin.",
+      "errorTitle": "Ölçüt görünürlüğü yüklenemedi",
+      "errorBody": "Ölçütler yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+      "emptyTitle": "Ölçüt bulunamadı",
+      "emptyBody": "Görüntülenecek ekran ölçütü bulunmuyor."
     }
   }
 }

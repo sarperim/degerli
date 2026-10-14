@@ -34,7 +34,7 @@ import {
 } from '@/screens/stock-page/api'
 
 /** Shared section chrome: heading + labelled body. */
-function SectionShell({
+export function SectionShell({
   section,
   titleKey,
   children,
@@ -152,24 +152,6 @@ export function OverviewSection({ symbol }: { symbol: string }) {
           )
         ) : null}
       </SectionBody>
-    </SectionShell>
-  )
-}
-
-/**
- * SCR-005 §2 — Valuation placeholder.
- *
- * The Valuation section UI (current/historical multiples, the vs.-sector strip)
- * is delivered by TKT-res-009; this screen only reserves the navigable section so
- * the seven-section contract holds. The adjusted-data disclaimer lives there.
- */
-export function ValuationSectionPlaceholder() {
-  const { t } = useTranslation()
-  return (
-    <SectionShell section="valuation" titleKey="stockPage.sections.valuation">
-      <p className="text-sm text-muted-foreground">
-        {t('stockPage.valuationPlaceholder')}
-      </p>
     </SectionShell>
   )
 }

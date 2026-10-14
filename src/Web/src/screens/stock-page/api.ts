@@ -7,6 +7,7 @@ import type {
   StockGrowthResponse,
   StockOverviewResponse,
   StockProfitabilityResponse,
+  StockValuationResponse,
 } from '@/lib/api/contracts'
 
 /**
@@ -18,9 +19,10 @@ import type {
  * fetch, and the client renders from the returned values.
  */
 
-/** Sections with their own endpoint (the Valuation section is TKT-res-009). */
+/** Sections with their own endpoint. */
 export type StockSectionEndpoint =
   | 'overview'
+  | 'valuation'
   | 'financials'
   | 'profitability'
   | 'growth'
@@ -34,6 +36,7 @@ export type SectionResponse<T> = T | MissingDataResponse
 export const stockPageQueryKeys = {
   all: (symbol: string) => ['stocks', symbol] as const,
   overview: (symbol: string) => ['stocks', symbol, 'overview'] as const,
+  valuation: (symbol: string) => ['stocks', symbol, 'valuation'] as const,
   financials: (symbol: string) => ['stocks', symbol, 'financials'] as const,
   profitability: (symbol: string) => ['stocks', symbol, 'profitability'] as const,
   growth: (symbol: string) => ['stocks', symbol, 'growth'] as const,
@@ -51,6 +54,19 @@ export function fetchStockOverview(
   signal?: AbortSignal,
 ): Promise<StockOverviewResponse> {
   return apiGet<StockOverviewResponse>(sectionPath(symbol, 'overview'), signal)
+}
+
+/**
+ * `GET /api/v1/stocks/{symbol}/valuation` — current multiples, the adjusted-basis
+ * historical series and the vs.-sector strip (FR-RES-006/007). The endpoint always
+ * serves the full payload (its honesty lives per-metric in the strip), so there is
+ * no section-level missing-data branch here.
+ */
+export function fetchStockValuation(
+  symbol: string,
+  signal?: AbortSignal,
+): Promise<StockValuationResponse> {
+  return apiGet<StockValuationResponse>(sectionPath(symbol, 'valuation'), signal)
 }
 
 /** `GET /api/v1/stocks/{symbol}/financials` — per-period statements (FR-RES-008). */

@@ -124,8 +124,11 @@ export function SavedScreensScreen() {
 
   function handleRerun(screen: SavedScreen) {
     setLastRerun(screen)
+    // Naming the screen marks this as a re-run: the server drops any criterion whose
+    // metric has since been hidden and reports it in `droppedCriteria` (UC-SCR-003a,
+    // UXR-SCR-015) instead of the ad-hoc METRIC_NOT_AVAILABLE rejection.
     run.mutate(
-      { criteria: screen.criteria },
+      { savedScreenId: screen.id, criteria: screen.criteria },
       {
         onSuccess: (data) => {
           setScreenerDraft(screenCriteriaToDrafts(screen.criteria, metricsByCode))

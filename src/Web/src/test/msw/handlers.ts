@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import {
   API_ERROR_STATUS,
   API_ERROR_TITLE,
+  type AdminMetricsResponse,
   type AdminStatsResponse,
   type AdminSummaryResponse,
   type ApiErrorCode,
@@ -803,6 +804,66 @@ export const ADMIN_STATS_FIXTURE: AdminStatsResponse = {
 /** `GET /api/v1/admin/stats` handler. */
 export function adminStatsHandler(body: AdminStatsResponse = ADMIN_STATS_FIXTURE) {
   return http.get(`${API_BASE}/admin/stats`, () => HttpResponse.json(body))
+}
+
+/**
+ * The full screener catalog the visibility panel reads — all 18 metrics, flattened
+ * from the visible catalog with a `screenable` default (TKT-scr-005; UXR-MDF-023).
+ */
+export const ADMIN_METRICS_FIXTURE: AdminMetricsResponse = {
+  metrics: METRIC_CATALOG_FIXTURE.families.flatMap((family) =>
+    family.metrics.map((metric) => ({
+      metricCode: metric.metricCode,
+      family: family.family,
+      unit: metric.unit,
+      labelTr: metric.labelTr,
+      labelEn: metric.labelEn,
+      isScreenable: true,
+      isCagr: metric.isCagr,
+      sortOrder: metric.sortOrder,
+    })),
+  ),
+}
+
+/** `GET /api/v1/admin/screener-metrics` handler (static body). */
+export function adminMetricsHandler(body: AdminMetricsResponse = ADMIN_METRICS_FIXTURE) {
+  return http.get(`${API_BASE}/admin/screener-metrics`, () => HttpResponse.json(body))
+}
+
+/**
+ * Stateful metric-visibility handlers: a PATCH flips the row and later GETs reflect
+ * it, so a toggle's effect on the panel is observable (TC-SCR-021).
+ */
+export function adminMetricVisibilityHandlers(
+  initial: AdminMetricsResponse = ADMIN_METRICS_FIXTURE,
+) {
+  let metrics = initial.metrics.map((metric) => ({ ...metric }))
+
+  const list = http.get(`${API_BASE}/admin/screener-metrics`, () =>
+    HttpResponse.json({ metrics } satisfies AdminMetricsResponse),
+  )
+
+  const patch = http.patch(
+    `${API_BASE}/admin/screener-metrics/:code`,
+    async ({ request, params }) => {
+      const body = (await request.json().catch(() => ({}))) as { isScreenable?: boolean }
+      const code = String(params.code)
+      metrics = metrics.map((metric) =>
+        metric.metricCode === code
+          ? { ...metric, isScreenable: body.isScreenable ?? metric.isScreenable }
+          : metric,
+      )
+      const updated = metrics.find((metric) => metric.metricCode === code)
+      return updated ? HttpResponse.json(updated) : new HttpResponse(null, { status: 404 })
+    },
+  )
+
+  return {
+    handlers: [list, patch],
+    get metrics() {
+      return metrics
+    },
+  }
 }
 
 /**

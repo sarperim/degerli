@@ -10,6 +10,8 @@ import { apiFetch } from '@/lib/api/client'
 import {
   INGEST_TERMINAL_STATUSES,
   type AdminDescription,
+  type AdminMetricRow,
+  type AdminMetricsResponse,
   type AdminStatsResponse,
   type AdminSummaryResponse,
   type CoverageResponse,
@@ -21,6 +23,7 @@ import {
   type QuarantineItem,
   type QuarantineListResponse,
 } from '@/lib/api/contracts'
+import { screenerQueryKeys } from '@/screens/screener/api'
 
 /**
  * Admin data access (`03-api-design.md` §8, AD-13; SCR-012).
@@ -49,6 +52,8 @@ export const adminQueryKeys = {
   descriptions: (status: DescriptionStatus) => ['admin', 'descriptions', status] as const,
   /** Prefix that matches every description queue (any status filter). */
   descriptionsAll: () => ['admin', 'descriptions'] as const,
+  /** The metric-visibility panel's full catalog (visible + hidden rows). */
+  metrics: () => ['admin', 'screener-metrics'] as const,
 }
 
 /** True while any run is queued/running (the auto-refresh condition, UXR-MDF-015). */
@@ -172,6 +177,16 @@ export function useAdminDescriptions(
   })
 }
 
+/** `GET /api/v1/admin/screener-metrics` — the full catalog with visibility state (TKT-scr-005). */
+export function useAdminMetrics(): UseQueryResult<AdminMetricsResponse> {
+  return useQuery({
+    queryKey: adminQueryKeys.metrics(),
+    queryFn: ({ signal }) =>
+      apiFetch<AdminMetricsResponse>('/admin/screener-metrics', { signal }),
+    staleTime: 0,
+  })
+}
+
 export function useSaveDescription(): UseMutationResult<
   AdminDescription,
   Error,
@@ -201,6 +216,32 @@ export function usePublishDescription(): UseMutationResult<AdminDescription, Err
       // description-coverage counts — both refresh without a manual refresh.
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.descriptionsAll() })
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.summary() })
+    },
+  })
+}
+
+/**
+ * `PATCH /api/v1/admin/screener-metrics/{code}` `{isScreenable}` — hide/unhide a
+ * metric without a code change (FR-SCR-017). On success the panel refreshes and the
+ * public criteria-builder catalog is invalidated so SCR-003 reflects the change on
+ * its next load without a manual refresh (mutation matrix SCR-012 metric-visibility row).
+ */
+export function useToggleMetricVisibility(): UseMutationResult<
+  AdminMetricRow,
+  Error,
+  { metricCode: string; isScreenable: boolean }
+> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ metricCode, isScreenable }) =>
+      apiFetch<AdminMetricRow>(`/admin/screener-metrics/${metricCode}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isScreenable }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.metrics() })
+      // UXR-SCR-011: the criteria builder stops offering a hidden metric on next load.
+      void queryClient.invalidateQueries({ queryKey: screenerQueryKeys.metrics() })
     },
   })
 }
