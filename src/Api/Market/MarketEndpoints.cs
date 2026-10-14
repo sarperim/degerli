@@ -59,12 +59,35 @@ public static class MarketEndpoints
     /// <summary>
     /// The equity blocks in one payload (TC-MOV-012): the latest completed snapshot row,
     /// or an honest <c>unavailable</c> state when no snapshot exists at all.
+    ///
+    /// <paramref name="period"/> is the Could-level sector-performance period selector
+    /// (FR-MOV-017/UXR-MOV-012, TC-MOV-015): <c>1w</c>/<c>1m</c>/<c>ytd</c> are the
+    /// supported tokens and anything else is <c>400 VALIDATION_FAILED</c>. The
+    /// period-aggregate formula is undefined (F-MOV-1, accepted 2026-10-07) and no period
+    /// aggregates are computed or stored in V1, so a supported period serves the sector
+    /// block as an honest empty "not yet computed" state rather than mislabelling the
+    /// daily figure; when the feature is promoted the snapshot gains the aggregates and
+    /// this branch reads them. The envelope (asOf/stale) is unchanged either way.
     /// </summary>
     private static async Task<IResult> OverviewAsync(
         DegerliDbContext db,
         TimeProvider clock,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? period = null)
     {
+        if (!TryNormalizePeriod(period, out var normalizedPeriod))
+        {
+            // An unsupported period is never silently ignored nor served as the daily
+            // default (TC-MOV-015); a validation problem names the parameter (`03` §7).
+            return Results.Problem(ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.ValidationFailed,
+                new Dictionary<string, object?>
+                {
+                    ["fields"] = new[] { new { field = "period", code = "unsupported" } },
+                }));
+        }
+
         var snapshot = await db.MarketSnapshots
             .OrderByDescending(row => row.SnapshotDate)
             .FirstOrDefaultAsync(cancellationToken);
@@ -96,6 +119,13 @@ public static class MarketEndpoints
         // Last-known-good: the served row trails the latest trading day (FR-MOV-010/016).
         var stale = snapshot.SnapshotDate < LatestTradingDayOnOrBefore(today);
 
+        // Daily (no period) reads the locked cap-weighted daily aggregate; a supported
+        // period serves its precomputed aggregate — empty until the feature is promoted
+        // (F-MOV-1), never the daily figure relabelled as a period figure.
+        var sectorPerformance = normalizedPeriod is null
+            ? ReadSectors(snapshot.SectorPerfJson)
+            : new Dictionary<string, decimal>(StringComparer.Ordinal);
+
         return Results.Ok(new
         {
             asOf = snapshot.SnapshotDate,
@@ -118,8 +148,31 @@ public static class MarketEndpoints
             marketDivYield = snapshot.MarketDivYield,
             gainers = ReadMovers(snapshot.GainersJson),
             losers = ReadMovers(snapshot.LosersJson),
-            sectorPerformance = ReadSectors(snapshot.SectorPerfJson),
+            sectorPerformance,
         });
+    }
+
+    /// <summary>
+    /// The supported sector-performance period tokens (`03` §3, FR-MOV-017 Could).
+    /// </summary>
+    private static readonly string[] SupportedPeriods = ["1w", "1m", "ytd"];
+
+    /// <summary>
+    /// Resolves the optional sector-performance <paramref name="period"/> query value.
+    /// Absent/blank means the daily view (<paramref name="normalized"/> is <c>null</c>);
+    /// a supported token is returned lower-cased; anything else is rejected (TC-MOV-015).
+    /// </summary>
+    private static bool TryNormalizePeriod(string? period, out string? normalized)
+    {
+        if (string.IsNullOrWhiteSpace(period))
+        {
+            normalized = null;
+            return true;
+        }
+
+        normalized = SupportedPeriods.FirstOrDefault(
+            candidate => string.Equals(candidate, period, StringComparison.OrdinalIgnoreCase));
+        return normalized is not null;
     }
 
     // ── Macro ────────────────────────────────────────────────────────────────

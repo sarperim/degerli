@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from 'react-router'
@@ -8,7 +8,12 @@ import { AsOfDate, NoDataState, StaleBadge } from '@/components/honest-data'
 import { Button } from '@/components/ui/button'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { MacroStrip } from '@/routes/MacroStrip'
-import { marketQueryKeys, fetchMarketOverview, type MarketBlockId } from '@/lib/api/market'
+import {
+  marketQueryKeys,
+  fetchMarketOverview,
+  type MarketBlockId,
+  type SectorPeriod,
+} from '@/lib/api/market'
 import type { IndexLevel, MarketOverviewResponse, MoverEntry } from '@/lib/api/contracts'
 import { formatNumber, formatRatioPercent, formatSignedPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -36,10 +41,10 @@ import { cn } from '@/lib/utils'
 type BlockQuery = UseQueryResult<MarketOverviewResponse>
 
 /** One independent per-block query against the shared snapshot endpoint (M-5). */
-function useMarketBlock(block: MarketBlockId): BlockQuery {
+function useMarketBlock(block: MarketBlockId, period: SectorPeriod = 'daily'): BlockQuery {
   return useQuery({
-    queryKey: marketQueryKeys.overview(block),
-    queryFn: ({ signal }) => fetchMarketOverview(block, signal),
+    queryKey: marketQueryKeys.overview(block, period),
+    queryFn: ({ signal }) => fetchMarketOverview(block, period, signal),
   })
 }
 
@@ -173,7 +178,65 @@ function IndexLevelsBlock({ query }: { query: BlockQuery }) {
   )
 }
 
-function SectorPerformanceBlock({ query }: { query: BlockQuery }) {
+/**
+ * The sector-performance period selector (FR-MOV-017 Could, UXR-MOV-012):
+ * a session-scoped choice of daily / 1W / 1M / YTD, never persisted
+ * server-side. Each non-daily selection re-queries the shared snapshot endpoint
+ * with its `period` token (the daily view omits it). The control is a labelled
+ * button group whose active option carries `aria-pressed` (never colour-only).
+ */
+function SectorPeriodSelector({
+  period,
+  onPeriodChange,
+}: {
+  period: SectorPeriod
+  onPeriodChange: (next: SectorPeriod) => void
+}) {
+  const { t } = useTranslation()
+  const options: { value: SectorPeriod; labelKey: string }[] = [
+    { value: 'daily', labelKey: 'marketOverview.blocks.sectors.period.daily' },
+    { value: '1w', labelKey: 'marketOverview.blocks.sectors.period.1w' },
+    { value: '1m', labelKey: 'marketOverview.blocks.sectors.period.1m' },
+    { value: 'ytd', labelKey: 'marketOverview.blocks.sectors.period.ytd' },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label={t('marketOverview.blocks.sectors.periodLabel')}
+      className="inline-flex items-center rounded-md border p-0.5"
+    >
+      {options.map(({ value, labelKey }) => {
+        const active = value === period
+        return (
+          <Button
+            key={value}
+            type="button"
+            size="sm"
+            variant={active ? 'default' : 'ghost'}
+            aria-pressed={active}
+            data-testid={`sector-period-${value}`}
+            onClick={() => {
+              if (!active) onPeriodChange(value)
+            }}
+          >
+            {t(labelKey)}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SectorPerformanceBlock({
+  query,
+  period,
+  onPeriodChange,
+}: {
+  query: BlockQuery
+  period: SectorPeriod
+  onPeriodChange: (next: SectorPeriod) => void
+}) {
   const { t } = useTranslation()
   return (
     <Block
@@ -183,25 +246,31 @@ function SectorPerformanceBlock({ query }: { query: BlockQuery }) {
     >
       {(data) => {
         const entries = Object.entries(data.sectorPerformance)
-        if (entries.length === 0) return <Unavailable />
         return (
-          <ul className="flex flex-col divide-y">
-            {entries.map(([code, change]) => (
-              <li key={code}>
-                <Link
-                  data-testid={`sector-entry-${code}`}
-                  to={`/stocks?sector=${encodeURIComponent(code)}`}
-                  aria-label={t('marketOverview.blocks.sectors.linkLabel', {
-                    sector: code,
-                  })}
-                  className="flex items-baseline justify-between gap-3 py-2 underline-offset-4 hover:underline focus-visible:underline"
-                >
-                  <span className="font-medium text-foreground">{code}</span>
-                  <ChangeValue value={change} />
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-3">
+            <SectorPeriodSelector period={period} onPeriodChange={onPeriodChange} />
+            {entries.length === 0 ? (
+              <Unavailable />
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {entries.map(([code, change]) => (
+                  <li key={code}>
+                    <Link
+                      data-testid={`sector-entry-${code}`}
+                      to={`/stocks?sector=${encodeURIComponent(code)}`}
+                      aria-label={t('marketOverview.blocks.sectors.linkLabel', {
+                        sector: code,
+                      })}
+                      className="flex items-baseline justify-between gap-3 py-2 underline-offset-4 hover:underline focus-visible:underline"
+                    >
+                      <span className="font-medium text-foreground">{code}</span>
+                      <ChangeValue value={change} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )
       }}
     </Block>
@@ -420,8 +489,11 @@ function MarketValuationBlock({ query }: { query: BlockQuery }) {
 
 export function MarketOverviewPage() {
   const { t } = useTranslation()
+  // The sector-performance period is session-scoped UI state (UXR-MOV-012 §6):
+  // never persisted server-side, reset on reload.
+  const [sectorPeriod, setSectorPeriod] = useState<SectorPeriod>('daily')
   const indices = useMarketBlock('indices')
-  const sectors = useMarketBlock('sectors')
+  const sectors = useMarketBlock('sectors', sectorPeriod)
   const breadth = useMarketBlock('breadth')
   const movers = useMarketBlock('movers')
   const volume = useMarketBlock('volume')
@@ -456,7 +528,11 @@ export function MarketOverviewPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <IndexLevelsBlock query={indices} />
-        <SectorPerformanceBlock query={sectors} />
+        <SectorPerformanceBlock
+          query={sectors}
+          period={sectorPeriod}
+          onPeriodChange={setSectorPeriod}
+        />
         <BreadthBlock query={breadth} />
         <TopMoversBlock query={movers} />
         <MarketVolumeBlock query={volume} />

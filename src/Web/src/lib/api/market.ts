@@ -22,20 +22,38 @@ export type MarketBlockId =
   | 'volume'
   | 'valuation'
 
+/**
+ * The sector-performance period tokens the API accepts (`03` §3; FR-MOV-017
+ * Could). `daily` is the default view and maps to the absence of the parameter.
+ */
+export type SectorPeriodToken = '1w' | '1m' | 'ytd'
+
+/** The sector-performance selector's session-scoped value (defaults to daily). */
+export type SectorPeriod = 'daily' | SectorPeriodToken
+
 /** Query-key factory — one place so prefetch/invalidation stay consistent. */
 export const marketQueryKeys = {
   all: ['market'] as const,
-  overview: (block: MarketBlockId) => ['market', 'overview', block] as const,
+  overview: (block: MarketBlockId, period: SectorPeriod = 'daily') =>
+    ['market', 'overview', block, period] as const,
   /** The macro strip is a separate endpoint/failure domain from the equity blocks. */
   macro: () => ['market', 'macro'] as const,
 }
 
-/** `GET /api/v1/market/overview?block=` — the snapshot plus the honest envelope. */
+/**
+ * `GET /api/v1/market/overview?block=&period=` — the snapshot plus the honest
+ * envelope. `period` is sent only for a non-daily sector-performance selection
+ * (FR-MOV-017 Could, UXR-MOV-012); the daily view omits it. The server still
+ * serves the whole snapshot per request (M-5); each block reads its own slice.
+ */
 export function fetchMarketOverview(
   block: MarketBlockId,
+  period: SectorPeriod = 'daily',
   signal?: AbortSignal,
 ): Promise<MarketOverviewResponse> {
-  return apiGet<MarketOverviewResponse>(`/market/overview?block=${block}`, signal)
+  const params = new URLSearchParams({ block })
+  if (period !== 'daily') params.set('period', period)
+  return apiGet<MarketOverviewResponse>(`/market/overview?${params.toString()}`, signal)
 }
 
 /**

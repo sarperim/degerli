@@ -157,6 +157,67 @@ describe('TC-MOV-016 equity blocks render with values', () => {
   })
 })
 
+describe('TC-MOV-015 sector performance period selector (Could, UXR-MOV-012)', () => {
+  it('offers 1W/1M/YTD, defaults to daily, and requests the selected period', async () => {
+    const user = userEvent.setup()
+    const sectorRequests: (string | null)[] = []
+
+    server.use(
+      http.get(`${API_BASE}/market/overview`, ({ request }) => {
+        const url = new URL(request.url)
+        const period = url.searchParams.get('period')
+        if (url.searchParams.get('block') === 'sectors') sectorRequests.push(period)
+        // Contract-only (F-MOV-1): the server serves the requested period's sector block
+        // under the same envelope; period values are deferred, so return a distinct
+        // shape that proves the period response (not the daily one) is rendered.
+        const sectorPerformance = period
+          ? { A: 0.5, B: 0.6, C: 0.7 }
+          : MARKET_OVERVIEW_FIXTURE.sectorPerformance
+        return HttpResponse.json({ ...MARKET_OVERVIEW_FIXTURE, sectorPerformance })
+      }),
+    )
+
+    renderPage()
+
+    const sectors = await screen.findByTestId('market-block-sectors')
+    // Default is the daily view (no period parameter).
+    expect(await within(sectors).findByTestId('sector-entry-A')).toHaveTextContent(
+      signedPct(0.253),
+    )
+
+    // The selector is present with all period options; daily is the default.
+    const group = within(sectors).getByRole('group', {
+      name: tr('marketOverview.blocks.sectors.periodLabel'),
+    })
+    expect(
+      within(group).getByRole('button', {
+        name: tr('marketOverview.blocks.sectors.period.daily'),
+      }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(group).getByRole('button', {
+        name: tr('marketOverview.blocks.sectors.period.1w'),
+      }),
+    ).toHaveAttribute('aria-pressed', 'false')
+
+    // Selecting 1W plumbs the parameter to the endpoint and renders its response.
+    await user.click(
+      within(group).getByRole('button', {
+        name: tr('marketOverview.blocks.sectors.period.1w'),
+      }),
+    )
+    await waitFor(() => expect(sectorRequests).toContain('1w'))
+    expect(await within(sectors).findByTestId('sector-entry-A')).toHaveTextContent(
+      signedPct(0.5),
+    )
+
+    // The honest envelope (as-of date) survives the period switch.
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull(),
+    )
+  })
+})
+
 describe('TC-MOV-025 blocks render and fail independently', () => {
   it('keeps other blocks rendered when one block fails, and recovers on retry', async () => {
     const user = userEvent.setup()

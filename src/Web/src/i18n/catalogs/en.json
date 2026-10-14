@@ -423,7 +423,14 @@
       },
       "sectors": {
         "title": "Sector performance",
-        "linkLabel": "{{sector}} sector — open the stock list"
+        "linkLabel": "{{sector}} sector — open the stock list",
+        "periodLabel": "Period",
+        "period": {
+          "daily": "1D",
+          "1w": "1W",
+          "1m": "1M",
+          "ytd": "YTD"
+        }
       },
       "breadth": {
         "title": "Market breadth",
