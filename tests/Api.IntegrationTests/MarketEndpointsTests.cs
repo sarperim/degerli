@@ -334,6 +334,78 @@ public sealed class MarketEndpointsTests : IClassFixture<PostgresFixture>
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MOV-015 — Sector performance period parameter (Could — contract-only)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MOV-015 (contract-only) — a supported <c>period</c> (<c>1w</c>/<c>1m</c>/<c>ytd</c>,
+    /// FR-MOV-017/UXR-MOV-012) is accepted: the endpoint serves the snapshot under the
+    /// same honest-data envelope. Golden period aggregates are deferred per F-MOV-1, so
+    /// this asserts the parameter is plumbed and the sector block is present — never a
+    /// period value.
+    /// </summary>
+    [Theory]
+    [InlineData("1w")]
+    [InlineData("1m")]
+    [InlineData("ytd")]
+    public async Task TC_MOV_015_period_parameter_is_accepted_and_serves_envelope(string period)
+    {
+        await ResetAsync();
+        await RunSnapshotAsync(T);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync($"/api/v1/market/overview?period={period}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Anonymous public read surface (BR-MOV-007).
+        Assert.False(response.Headers.Contains("Set-Cookie"));
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        // Same envelope as the daily request — the period parameter never changes the
+        // honesty stamps (asOf/stale keep their daily-snapshot semantics).
+        Assert.Equal(T.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+
+        // The sector block is served under the requested period. Shape only: period
+        // aggregates are blocked-on-formula (F-MOV-1), so no golden value is asserted.
+        Assert.Equal(JsonValueKind.Object, root.GetProperty("sectorPerformance").ValueKind);
+    }
+
+    /// <summary>
+    /// TC-MOV-015 (contract-only) — an unsupported <c>period</c> is rejected
+    /// <c>400 VALIDATION_FAILED</c> (RFC 7807), naming the parameter; it is never
+    /// silently ignored nor served as the daily default.
+    /// </summary>
+    [Theory]
+    [InlineData("2w")]
+    [InlineData("1y")]
+    [InlineData("daily")]
+    [InlineData("1d")]
+    public async Task TC_MOV_015_invalid_period_is_rejected(string period)
+    {
+        await ResetAsync();
+        await RunSnapshotAsync(T);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync($"/api/v1/market/overview?period={period}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("VALIDATION_FAILED", root.GetProperty("code").GetString());
+        var field = root.GetProperty("params").GetProperty("fields").EnumerateArray().Single();
+        Assert.Equal("period", field.GetProperty("field").GetString());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 

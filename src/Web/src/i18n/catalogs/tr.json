@@ -423,7 +423,14 @@
       },
       "sectors": {
         "title": "Sektör performansı",
-        "linkLabel": "{{sector}} sektörü — hisse listesini aç"
+        "linkLabel": "{{sector}} sektörü — hisse listesini aç",
+        "periodLabel": "Dönem",
+        "period": {
+          "daily": "1G",
+          "1w": "1H",
+          "1m": "1A",
+          "ytd": "YBB"
+        }
       },
       "breadth": {
         "title": "Piyasa genişliği",
