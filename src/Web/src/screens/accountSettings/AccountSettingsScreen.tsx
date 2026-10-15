@@ -397,18 +397,6 @@ function DeletionSection() {
       <p className="text-sm text-muted-foreground">
         {t('accountSettings.deletionBody')}
       </p>
-      <Button
-        type="button"
-        variant="destructive"
-        className="w-fit"
-        data-testid="delete-account"
-        onClick={() => {
-          remove.reset()
-          setConfirmOpen(true)
-        }}
-      >
-        {t('accountSettings.deleteButton')}
-      </Button>
 
       {remove.isError ? (
         <p role="alert" data-testid="delete-error" className="text-sm text-destructive">
@@ -418,7 +406,11 @@ function DeletionSection() {
 
       <ConfirmDialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(next) => {
+          // Clear a stale failure when reopening, then reflect Radix's state.
+          if (next) remove.reset()
+          setConfirmOpen(next)
+        }}
         title={t('accountSettings.deleteDialogTitle')}
         description={t('accountSettings.deleteDialogDescription')}
         confirmLabel={t('accountSettings.deleteConfirm')}
@@ -427,6 +419,18 @@ function DeletionSection() {
         destructive
         pending={remove.isPending}
         onConfirm={confirmDelete}
+        trigger={
+          // The delete control is the dialog trigger so Radix restores focus to it
+          // when the confirmation closes (UXR-G-028, TC-XC-020).
+          <Button
+            type="button"
+            variant="destructive"
+            className="w-fit"
+            data-testid="delete-account"
+          >
+            {t('accountSettings.deleteButton')}
+          </Button>
+        }
       />
     </section>
   )

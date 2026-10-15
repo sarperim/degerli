@@ -397,7 +397,7 @@
     "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
   },
   "marketOverview": {
-    "moverLinkLabel": "{{symbol}} — {{change}} change, volume {{volume}}",
+    "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — change, volume",
     "errorTitle": "This section could not be loaded",
     "errorBody": "Something went wrong while loading this section. Please try again.",
     "macro": {

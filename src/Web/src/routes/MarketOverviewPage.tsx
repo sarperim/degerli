@@ -264,7 +264,18 @@ function SectorPerformanceBlock({
                       className="flex items-baseline justify-between gap-3 py-2 underline-offset-4 hover:underline focus-visible:underline"
                     >
                       <span className="font-medium text-foreground">{code}</span>
-                      <ChangeValue value={change} />
+                      {/*
+                        The daily change is supplementary to the link's purpose (open
+                        the filtered list). Presenting it as a parenthetical aside keeps
+                        the link's accessible name (sector + intent) stable while the
+                        visible non-parenthetical text stays contained in that name
+                        (WCAG 2.5.3 Label in Name; UXR-G-027).
+                      */}
+                      <span className="text-muted-foreground">
+                        {'('}
+                        <ChangeValue value={change} className="text-foreground" />
+                        {')'}
+                      </span>
                     </Link>
                   </li>
                 ))}

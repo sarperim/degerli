@@ -391,7 +391,7 @@ export function DcfScenariosScreen() {
         onConfirm={confirmDelete}
       />
 
-      <Disclaimer />
+      <Disclaimer variant="note" />
     </section>
   )
 }

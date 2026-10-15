@@ -619,7 +619,7 @@ export function DcfCalculatorScreen() {
             />
           ) : null}
 
-          <Disclaimer />
+          <Disclaimer variant="note" />
         </>
       ) : null}
 
