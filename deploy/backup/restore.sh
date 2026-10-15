@@ -46,5 +46,5 @@ echo "restore: restoring into scratch database '${RESTORE_DB}'"
 )
 
 echo "restore: done. Inspect with:"
-echo "  docker compose -f $COMPOSE_FILE exec postgres psql -U degerli -d $RESTORE_DB -c '\\dt'"
-echo "  docker compose -f $COMPOSE_FILE exec postgres dropdb -U degerli $RESTORE_DB   # when finished"
+echo "  docker compose -f $COMPOSE_FILE exec postgres psql -U ${POSTGRES_USER:-degerli} -d $RESTORE_DB -c '\\dt'"
+echo "  docker compose -f $COMPOSE_FILE exec postgres dropdb -U ${POSTGRES_USER:-degerli} $RESTORE_DB   # when finished"

@@ -28,18 +28,20 @@
 		root * /srv
 		try_files {path} /index.html
 		file_server
+
+		# CSP is scoped to the SPA/HTML responses only; the API sets its own policy
+		# for JSON (architecture §10.5), so an unmatched global CSP would duplicate
+		# it. `style-src 'unsafe-inline'` is required by the Tailwind/shadcn-vars
+		# runtime style injection; scripts and connections stay same-origin.
+		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 	}
 
-	# Security headers for the HTML/asset responses (the API sets its own for
-	# JSON; architecture §10.5). `style-src 'unsafe-inline'` is required by the
-	# Tailwind/shadcn-vars runtime style injection; scripts and connections stay
-	# same-origin.
+	# Security headers applied to every response, including the proxied API.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 	}
 
 	log {

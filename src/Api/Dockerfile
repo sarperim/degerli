@@ -39,6 +39,12 @@ RUN apt-get update \
 # (appsettings.json `logs/`) can write without running the container as root.
 COPY --from=build --chown=app:app /app/publish ./
 
+# `WORKDIR /app` created /app as root:root; `COPY --chown` only re-owns the copied
+# contents, not the pre-existing directory. As `USER app` the Serilog file sink
+# cannot create /app/logs → UnauthorizedAccessException at startup, so hand the whole
+# app dir (and the log dir) to `app` before dropping privileges.
+RUN mkdir -p /app/logs && chown -R app:app /app
+
 USER app
 
 ENV ASPNETCORE_ENVIRONMENT=Production \

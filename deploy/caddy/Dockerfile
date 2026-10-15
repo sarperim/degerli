@@ -20,6 +20,9 @@ COPY src/Web/ ./
 RUN npm run build
 
 # --- Caddy runtime -------------------------------------------------------------
+# Runs as root (the stock image default): binding the privileged ports :80/:443 and
+# reading the Let's Encrypt material in the caddy-data volume needs it. The process
+# serves only static SPA files and a reverse proxy to `api`; no untrusted code runs here.
 FROM caddy:2
 
 # Built SPA → the document root referenced by the Caddyfile.

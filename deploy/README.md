@@ -74,7 +74,9 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
    docker compose -f compose.prod.yml up -d
    curl -fsS "$PUBLIC_URL/health"                            # must be 200
    ```
-3. fails the job (and alerts) if `/health` never returns `200` within ~150 s.
+3. fails the job if `/health` never returns `200` within ~150 s. There is no
+   in-workflow alert step; runtime alerting is handled by the UptimeRobot monitor
+   (see [Monitoring](#monitoring--uptimerobot)).
 
 > `workflow_run` requires `deploy.yml` to be on the **default branch** (`main`), so CD
 > is inert until this workflow is merged to `main`.
@@ -170,10 +172,16 @@ the repo or the images (`.env.example` is the template; architecture §6.3).
 
 | Where | Keys |
 |---|---|
-| GitHub Actions secrets | `SSH_PRIVATE_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` |
+| GitHub Actions secrets | `SSH_PRIVATE_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_HOST_KEY` |
 | GitHub Actions variables | `DEPLOY_PATH`, `PUBLIC_URL` |
 | VPS `.env` (compose) | `DOMAIN`, `POSTGRES_*`, `ConnectionStrings__Default`, `Smtp__*`, `Evren__ApiKey`, `APP_URL`, `ALERT_EMAIL` |
 | VPS `/etc/degerli/backup.env` | `BACKUP_PASSPHRASE`, `RCLONE_REMOTE` |
+
+`DEPLOY_HOST_KEY` is the deploy host's public host-key line exactly as it appears in
+`known_hosts` (e.g. `degerli.example ssh-ed25519 AAAA…`). Capture it once from a
+trusted network, verify the fingerprint out-of-band, and store it as a repository
+secret — the deploy job pins it and connects with `StrictHostKeyChecking=yes`, so a
+rogue/on-path host key aborts the deploy instead of being trusted silently (no TOFU).
 
 ---
 
