@@ -1,8 +1,8 @@
 # Consolidated Coverage Matrix
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.1 — approved (builder final review 2026-10-07) — the closing document of the test-planning package
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.2 — approved v1.1 (builder final review 2026-10-07); v1.2 (2026-10-15) adds the post-board correctness cases (13 new TCs) — the closing document of the test-planning package
 **Consolidates:** every FR, UC flow, NFR, UXR, and SC from the approved brief / analysis / UX / architecture (v1.2) package against the test cases of the eight domain plans.
-**Test case universe:** 238 cases — TC-MDF (53) · TC-MOV (25) · TC-SCR (32) · TC-RES (36) · TC-VAL (27) · TC-ACC (32) · TC-FDF (12) · TC-XC (21). Methods: `unit | integration | component | e2e | script | manual | operational` (strategy §9.4).
+**Test case universe:** 251 cases (**+13 in v1.4** — TC-MDF 53→62 · TC-MOV 25→27 · TC-VAL 27→28 · TC-FDF 12→13). By plan: TC-MDF (62) · TC-MOV (27) · TC-SCR (32) · TC-RES (36) · TC-VAL (28) · TC-ACC (32) · TC-FDF (13) · TC-XC (21). Methods: `unit | integration | component | e2e | script | manual | operational` (strategy §9.4).
 
 **How to read:** each row points to test case IDs; full case specifications live in the domain plans. `cross-ref` = owned by another plan's case; `manual`/`operational` = recorded verification ledger entry (owner: builder). Detailed per-domain flow breakdowns are in each plan's §5.
 
@@ -113,6 +113,26 @@
 | FR-FDF-004 | FDF-005, 012 |
 | FR-FDF-005 | FDF-008 |
 | FR-FDF-006 | FDF-006 |
+
+### v1.4 additions (2026-10-15) — post-board correctness cases
+
+New TCs (all in the domain plans' §7 "post-board correctness" sections; fixtures FU v1.4) and their requirement traces — added rather than merged into the rows above so the delta stays legible pending test-planner confirmation:
+
+| TC | Traces | Covers |
+|---|---|---|
+| TC-MDF-054 | FR-MDF-002, FR-MDF-019, BR-MDF-011 | multiple restatements / integer version sequence |
+| TC-MDF-055 | FR-MDF-002, FR-MDF-008 | unit-scale + currency normalization, `MISSING_FX_RATE` |
+| TC-MDF-056 | FR-MDF-002, FR-MDF-012 | financial-profile ingest without quarantine |
+| TC-MDF-057 | FR-MDF-013 | financial-profile metric NULL matrix |
+| TC-MDF-058 | FR-MDF-013, FR-MDF-018 | corporate-action-adjusted per-share CAGRs |
+| TC-MDF-059 | FR-MDF-013 | `OCF`-based FCF + KAP sign convention |
+| TC-MDF-060 | FR-MDF-013, FR-MDF-014 | TMS 29 regime-break flag |
+| TC-MDF-061 | FR-MDF-001, FR-MDF-008, FR-MDF-018 | price-source contract + per-row provenance |
+| TC-MDF-062 | FR-MDF-007, FR-MDF-011 | constituents launch-seed + pre-launch coverage gap |
+| TC-MOV-026 | FR-MOV-014 | EVDS-consolidated macro adapter |
+| TC-MOV-027 | FR-MOV-008, FR-MOV-014 | manual independent-CPI entry |
+| TC-VAL-028 | FR-VAL-001, FR-VAL-003 | financial-sector DCF verdict |
+| TC-FDF-013 | FR-FDF-003, FR-FDF-004 | ticker-level holdings descoped to coverage gap |
 
 **Won't FRs (16 — out of scope by BA decision, not defects):** FR-MDF-017 · FR-MOV-018/019 · FR-SCR-018/019 · FR-RES-023/024/025 · FR-VAL-011/012/013 · FR-ACC-011/012 · FR-FDF-007/008/009. Negative/boundary tests exist only where the architecture defines rejection behavior (unknown metric → METRIC_NOT_AVAILABLE; no public fund routes → FDF-010).
 
@@ -258,4 +278,4 @@
 **The contract:** the coder agent implements against these plans; a unit of work is done when its tests pass. Once approved, test cases may not be weakened to make an implementation pass — only the builder can change a test case, via the change-propagation rule (strategy §14): every TC change lists the affected requirement IDs and tickets for re-validation. Expected values derive from the approved documents and the fixture universe — never from an implementation.
 
 ---
-*Change record: v1.0 2026-10-06 — initial consolidated coverage matrix, submitted for final review. v1.1 2026-10-07 — builder final review applied: F-VAL-1 ruled (reading (a), goldens verified, corner corrected to 8.99623); F-MOV-1 accepted (golden deferred to promotion); Q3 resolved → TC-MDF-053 (+1 case, total 238, FR-MDF-018 row); Q5 resolved (window-suffixed codes, plain upsert key); Q6 confirmed deferred; all §6 interpretations and the manual ledger acknowledged; upstream `02` mirror-update gaps flagged; modified TCs: TC-VAL-002 (golden), TC-MDF-034 (key made definitive, wording only) — none implemented yet, re-validation by construction.*
+*Change record: v1.0 2026-10-06 — initial consolidated coverage matrix, submitted for final review. v1.1 2026-10-07 — builder final review applied: F-VAL-1 ruled (reading (a), goldens verified, corner corrected to 8.99623); F-MOV-1 accepted (golden deferred to promotion); Q3 resolved → TC-MDF-053 (+1 case, total 238, FR-MDF-018 row); Q5 resolved (window-suffixed codes, plain upsert key); Q6 confirmed deferred; all §6 interpretations and the manual ledger acknowledged; upstream `02` mirror-update gaps flagged; modified TCs: TC-VAL-002 (golden), TC-MDF-034 (key made definitive, wording only) — none implemented yet, re-validation by construction.* **v1.2 2026-10-15 — post-board correctness cases added (13 new TCs: TC-MDF-054..062, TC-MOV-026/027, TC-VAL-028, TC-FDF-013; §2 "v1.4 additions" block; universe 238→251), tracing the builder's verified post-board feedback against `02` v1.3 / `03` v1.4 / FU v1.4. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.**

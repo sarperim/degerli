@@ -423,4 +423,62 @@
 - **Recorded interpretations (no decision needed):** unknown job code → 404 (TC-042); Mon–Fri trading days in fixtures, holiday calendar config-only; quarantine reason-code catalog defined by FU §2; median even-count = mean of middles; TTM = FY with ALFA's ΣQ consistency fixture; a rights action with q ≤ 0 or P_C ≤ 0 is invalid (rejected by validation, never a factor) — TC-053 column (e), plan-specified.
 
 ---
-*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated. v1.3 2026-10-13 — **§14 change-propagation (builder-approved via the TKT-mdf-012 review round-1 escalation, routing item 1, option A): TC-MDF-047, TC-MDF-048, TC-MDF-049 re-leveled L4 → L3 (Vitest + MSW).** Reason — recorded harness limitation (review-lead-verified): compose.ci seeds no open quarantined fact; the admin trigger endpoint is synchronous, so no non-terminal ingest run is observable in the browser; no slow source is wired into the compose stack. Steps, expected results and traces unchanged; only the level and the per-case justification were added. Affected ticket recorded for re-validation: **TKT-mdf-012** (its C1/C2 findings resolve against this record; the L3 tests on PR #55 become the canonical level). Strategy §5.4 lists admin critical flows 1–8 under e2e coverage — flows 2/3/4 (these three TCs) are now covered at L3; flagged for the test-planner's next strategy pass. **This v1.3 record was applied by the delivery planner on the builder's explicit instruction and requires test-planner confirmation** (strategy §13/§14 — the test-planner owns this document and its change-propagation log).*
+## 7. Post-board correctness cases — v1.4 (builder-approved 2026-10-15 via the delivery planner; test-planner confirmation pending)
+
+These cases pin the fixes from the builder's post-board feedback (`02` v1.3, `03` v1.4, FU v1.4). Levels per the convention above; fixtures per FU v1.4.
+
+**TC-MDF-054 — Multiple restatements of one period are sequence-versioned**
+- Preconditions: REST2 fixture (FU §3b) — one period published as v0 (NI 60), restated once (NI 75), restated a second time (NI 80).
+- Steps: ingest all three versions in publication order; then run metrics-recompute and read the served statement.
+- Expected: three `financial_statements` rows with `version` = 0, 1, 2 (no unique-constraint violation on the second restatement); serving selects **v2 (NI 80)**; `derived_metrics.is_rested` = true; v0/v1 retained. Re-ingesting an identical payload is an idempotent no-op.
+- Traces: FR-MDF-002, FR-MDF-019, BR-MDF-011, `02` §3.1/§5.7 · Level: L2 · Design: state transition — as_reported → restated → restated-again
+
+**TC-MDF-055 — Statement unit-scale & currency normalization (with FX)**
+- Preconditions: USDX fixture (FU §3b) declaring `unitScale: "millions"`, `currency: "USD"`; `USD_TRY` 2025-12-31 = 42.00 in `macro_values` (FU §7).
+- Steps: ingest USDX FY2025; read `fin_line_items` + statement provenance.
+- Expected: stored values are **raw single-unit TRY** — `NI` = 10 × 10⁶ × 42.00 = **420,000,000**; `SHARES_DILUTED` = 20,000,000; `source_unit_scale` = `millions`, `source_currency` = `USD` recorded. A payload omitting the scale/currency declaration quarantines `SCHEMA_MISMATCH`; a USD payload with no period-end FX rate quarantines **`MISSING_FX_RATE`** (never guessed).
+- Traces: FR-MDF-002, FR-MDF-008, `02` §1.8/§3.1/§5.9 · Level: L2 · Design: decision table — scale × currency × FX-present
+
+**TC-MDF-056 — Bank/insurance statements ingest without quarantine; profile recorded**
+- Preconditions: BANKA fixture (bank-shaped, no `REV`/`COGS`/`CUR_ASSETS`) and SIGORTA (insurance).
+- Steps: ingest both; read `instruments.accounting_profile` and the stored lines; run the universe sync afterwards.
+- Expected: statements stored (no quarantine for absent industrial lines); `accounting_profile` = `bank`/`insurance`; a subsequent universe sync does **not** overwrite the profile (classification, not a source fact). Default profile for the seeded 16 remains `industrial`.
+- Traces: FR-MDF-002, FR-MDF-012, `02` §3.1 · Level: L2 · Design: decision table — profile × line absence
+
+**TC-MDF-057 — Financial-profile metric NULL matrix**
+- Preconditions: BANKA (incl. a spurious `REV` 500) and SIGORTA ingested; price seeded; metrics-recompute.
+- Steps: read all metric values for both.
+- Expected (BANKA, FU §3b): `pe` = 30.0, `pb` = 3.0, `roe` = 0.10 compute; **NULL**: `ev_ebitda`, `ev_fcf`, `fcf_yield`, `roic`, `gross_margin` (despite the spurious `REV`), `operating_margin`, `fcf_cagr_*`, `net_debt_ebitda`, `interest_coverage`, `current_ratio`. SIGORTA: `pe` 12.0, `pb` 1.2, `roe` 0.10; same ten NULL. No NULL is served as 0.
+- Traces: FR-MDF-013, `02` §6.2 (profile gating) · Level: L1+L2 · Design: decision table — profile × metric
+
+**TC-MDF-058 — Corporate-action-adjusted per-share CAGRs**
+- Preconditions: EPSL deep history (FU §5.3); actions fixture (split 0.2 + bonus 10/11).
+- Steps: metrics-recompute; read `eps_cagr_3y`, `div_cagr_3y`, `eps_cagr_5y`, `div_cagr_5y`.
+- Expected: `eps_cagr_3y` = **0.062659**, `div_cagr_3y` = **0.062659** (adjusted series); `eps_cagr_5y`/`div_cagr_5y` = NULL (< 5 intervals); both computed CAGRs carry `is_adjusted` = true. Guard: the unadjusted (0.75/3.125)^(1/3)−1 = −0.378553 must **not** appear.
+- Traces: FR-MDF-013, FR-MDF-018, `02` §6.2 · Level: L1+L2 · Design: golden values + negative guard
+
+**TC-MDF-059 — `OCF`-based FCF and the KAP sign convention**
+- Preconditions: ALFA FY2025 statements with `OCF` 250 (§5) and the sign-convention payload (`CAPEX −150`, `OCF` 250).
+- Steps: metrics-recompute on both.
+- Expected: `FCF` = `OCF − |CAPEX|` = 250 − 150 = **100** in both; the negative-CAPEX case is *subtracted*, not added; EV/FCF-dependent goldens unchanged (FU §11.1); a CF statement missing `OCF` → FCF metrics NULL (PART unchanged).
+- Traces: FR-MDF-013, `02` §6.1/§6.2 · Level: L1+L2 · Design: golden values + sign-trap boundary
+
+**TC-MDF-060 — TMS 29 regime-break flag**
+- Preconditions: ALFA (windows span 2023-12-31) and ZETA (FY2024–FY2025, entirely after).
+- Steps: metrics-recompute; read `regime_break` for each CAGR.
+- Expected: ALFA `rev_cagr_*`/`eps_cagr_*`/`fcf_cagr_*`/`div_cagr_*` = **TRUE** (min FY period-end < 2023-12-31 ≤ max FY period-end); ZETA CAGRs = **FALSE**; NEWP CAGRs NULL with no flag. The flag is served in the metric-payload flags object (`03` §4).
+- Traces: FR-MDF-013/014, `02` §3.1/§6.2 · Level: L2 · Design: decision table — window × boundary
+
+**TC-MDF-061 — Price source contract (İş Yatırım) and per-row provenance**
+- Preconditions: İş Yatırım-shaped price payload (`03` §1.2) + the Yahoo contingency payload (FU §10).
+- Steps: run the prices job against each; read `daily_prices.source_ref`.
+- Expected: rows stored with `source_ref` = `isyatirim` (primary) / `yahoo` (contingency) respectively — each row records its concrete source; asserted close/volume outcomes unchanged (FU §4); `index_levels` rows likewise provenance-stamped; backfill depth recorded.
+- Traces: FR-MDF-001, FR-MDF-008, FR-MDF-018 · Level: L2 · Design: contract + provenance assertion
+
+**TC-MDF-062 — Constituents launch-seed & pre-launch coverage gap**
+- Preconditions: the existing `universe-add-remove.json` (FU §10) plus a seeded current-membership base.
+- Steps: run the launch seed; apply `universe-add-remove.json`; read `index_constituents` + `coverage_metadata`.
+- Expected: seed writes current membership (`effective_to` NULL) append-only; the change set adds new rows without mutating existing ones; `coverage_metadata` records a `universe`-scope gap for pre-launch constituent history (`available_from` = launch date) — an explicit accepted gap, not a silent absence.
+- Traces: FR-MDF-007, FR-MDF-011, BR-MDF-005/007 · Level: L2 · Design: state transition + recorded-gap check
+
+*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated. v1.3 2026-10-13 — **§14 change-propagation (builder-approved via the TKT-mdf-012 review round-1 escalation, routing item 1, option A): TC-MDF-047, TC-MDF-048, TC-MDF-049 re-leveled L4 → L3 (Vitest + MSW).** Reason — recorded harness limitation (review-lead-verified): compose.ci seeds no open quarantined fact; the admin trigger endpoint is synchronous, so no non-terminal ingest run is observable in the browser; no slow source is wired into the compose stack. Steps, expected results and traces unchanged; only the level and the per-case justification were added. Affected ticket recorded for re-validation: **TKT-mdf-012** (its C1/C2 findings resolve against this record; the L3 tests on PR #55 become the canonical level). Strategy §5.4 lists admin critical flows 1–8 under e2e coverage — flows 2/3/4 (these three TCs) are now covered at L3; flagged for the test-planner's next strategy pass. **This v1.3 record was applied by the delivery planner on the builder's explicit instruction and requires test-planner confirmation** (strategy §13/§14 — the test-planner owns this document and its change-propagation log).* **v1.4 2026-10-15 — post-board correctness cases (§7) added: TC-MDF-054..062, tracing the builder's verified feedback (statement versioning, unit/currency normalization, financial-profile posture, adjusted per-share CAGRs, `OCF`-based FCF, TMS 29 regime flag, price-source provenance, constituents seed) against `02` v1.3 / `03` v1.4 / FU v1.4. Affected tickets: TKT-mdf-013..022, TKT-mov-008/009, TKT-val-010, TKT-fdf-003, TKT-foundation-015. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.*

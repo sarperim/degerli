@@ -115,4 +115,12 @@
 - **I-FDF-3 (interpretation):** TEF0003's performance absence is a recorded coverage gap (row-less data type with a note), consistent with BR-FDF-004's partial-coverage posture.
 
 ---
+## 7. Post-board correctness case — v1.4 (builder-approved 2026-10-15 via the delivery planner; test-planner confirmation pending)
+
+**TC-FDF-013 — Ticker-level holdings descoped to a recorded coverage gap**
+- Preconditions: the existing **TEF0002** fixture (FU §8) — a fund with NAV + performance rows and no ticker-level holdings (the allocation-only reality of TEFAS).
+- Steps: run the fund ingest; read `fund_navs`, `fund_performances`, `fund_holdings`, and `coverage_metadata`.
+- Expected: NAV and performance rows stored; **no ticker-level `fund_holdings` rows ingested** (the source does not expose them) and **no quarantine** (absence is expected, not a data-quality failure); per-fund `coverage_metadata` records the accepted holdings gap (BR-FDF-004). The `fund_holdings` table/columns remain in the schema for future look-through phases.
+- Traces: FR-FDF-003/004, BR-FDF-004, ASM-002, `02` §3.7 · Level: L2 · Design: recorded-gap check (negative case)
+
 *Change record: v1.0 2026-10-06 — initial FDF test plan, batch mode. Approved at the builder's final review 2026-10-07 — §6 interpretations I-FDF-1..3 upheld.*

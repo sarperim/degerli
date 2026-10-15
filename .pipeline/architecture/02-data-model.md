@@ -1,9 +1,9 @@
-# Data Model — v1.2
+# Data Model — v1.3
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** approved — v1.1 added `quarantined_facts`; v1.2 (2026-10-07) applied the builder final-review mirror patches: DCF `debt`-parameter clarification (F-VAL-1), rights-issue adjustment factor (Q3), window-suffixed CAGR codes + volume correction (Q5). Change records in `01-system-architecture.md` §13.1.
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** approved — v1.1 added `quarantined_facts`; v1.2 (2026-10-07) applied the builder final-review mirror patches: DCF `debt`-parameter clarification (F-VAL-1), rights-issue adjustment factor (Q3), window-suffixed CAGR codes + volume correction (Q5); **v1.3 (2026-10-15) applies the builder's post-board correctness feedback** (12 verified issues across schema, formulas, sector accounting, data sources, test fidelity): statement `version` sequence, statement unit-scale/currency normalization, corporate-action-adjusted per-share CAGRs, `OCF`-based FCF, TMS 29 regime-break flag, `accounting_profile` + financial-sector metric posture, sector-aware DCF. Change records in `01-system-architecture.md` §13.1.
 **Implements:** all Data Entities sections of the 7 approved domain reports, consolidated; resolves the cross-domain conflicts listed in §5.
-**Engine:** PostgreSQL 17+ · **Access:** EF Core 10 (migrations, CRUD) + raw SQL for metric computation · **Conventions:** snake_case tables/columns; all timestamps `timestamptz` (UTC); all monetary values `numeric(18,4)` with explicit `currency` where multi-currency possible (TRY default); dates `date`.
+**Engine:** PostgreSQL 17+ · **Access:** EF Core 10 (migrations, CRUD) + raw SQL for metric computation · **Conventions:** snake_case tables/columns; all timestamps `timestamptz` (UTC); all monetary values `numeric(18,4)` with explicit `currency` where multi-currency possible (TRY default); **canonical monetary facts are stored in raw single-unit TRY** (1 TRY, 1 share — no thousands/millions scaling; §3.1 normalization); dates `date`.
 
 ---
 
@@ -13,9 +13,10 @@
 2. **Provenance is structural** (FR-MDF-008, NFR-MDF-004): every fact table carries `source_ref` (uri or run reference) and `recorded_at`, both NOT NULL.
 3. **One canonical number per metric** (BR-MDF-009): metric *values* live only in `derived_metrics` / `sector_metric_medians` / `market_snapshots`, written only by the Metrics Engine (C3b). Formulas are fixed in §6.
 4. **Raw and adjusted prices coexist** (BR-MDF-010): `daily_prices` stores both series; historical analysis reads adjusted, current display reads raw; the served payload states which.
-5. **Restatements are versions, not overwrites** (BR-MDF-011, FR-MDF-019): `financial_statements.version ∈ {as_reported, restated}`; current display uses the latest restated version, flagged; as-reported retained.
+5. **Restatements are versions, not overwrites** (BR-MDF-011, FR-MDF-019): `financial_statements.version` is an **integer sequence** — `0` = as-reported, `1, 2, …` = successive restatements in publication order (a period may be restated more than once, as on KAP under TMS 29); current display uses the highest version, flagged; every earlier version is retained.
 6. **Constraints enforce invariants** the UI depends on: duplicate-name rejection (UXR-G-029) via unique indexes; publish-requires-both-languages (BR-RES-003) via CHECK.
 7. **Identity uses ASP.NET Core Identity's** standard schema (prefixed `asp_net_*`), extended with custom columns — not re-invented.
+8. **Scale and currency are normalized at the ETL boundary, provenance retained** (§3.1): sources report in mixed unit scales and reporting currencies; `fin_line_items` stores one canonical unit/currency, and each statement records the source's declared scale/currency for audit.
 
 ## 2. Entity overview
 
@@ -47,6 +48,7 @@
 | isin | text | nullable |
 | name | text NOT NULL | official name (not translated — language-neutral display) |
 | sector_id | bigint FK→sectors | nullable → unclassified flag (UC-MDF-003a) |
+| accounting_profile | text NOT NULL DEFAULT `'industrial'` | `industrial` / `bank` / `insurance` / `reit` — drives which metrics are meaningful (§6.2) and whether the DCF applies (§6.4). Builder-curated checked-in seed for BIST 100 financial-sector members; a source sync never overwrites it (it is a classification, not a source fact). |
 | listing_date | date | IPO date, feeds coverage context (FR-RES-016) |
 | delisting_date | date | nullable |
 | status | text | active / delisted |
@@ -80,15 +82,19 @@ Also `index_levels` (`index_id`, `level_date`, `close`, `source_ref`) — same g
 | period_end_date | date NOT NULL | fiscal period end |
 | fiscal_year | int | |
 | statement_type | text | `IS` / `BS` / `CF` |
-| version | text | `as_reported` or `restated` |
-| restatement_date | date NULL | set when version=restated |
+| version | int NOT NULL | `0` = as-reported; `1, 2, …` = restatement sequence in publication order (v1.3 — a period may be restated repeatedly, e.g. successive TMS 29 re-basings) |
+| restatement_date | date NULL | publication date of this restating report (NULL for version 0) |
 | published_at | date | KAP publish date |
+| source_unit_scale | text NOT NULL | the source's declared scale: `units` / `thousands` / `millions` — audit provenance for the §3.1 normalization (v1.3) |
+| source_currency | text NOT NULL | the statement's reporting currency: `TRY` / `USD` / `EUR` (v1.3) |
 | source_ref, recorded_at | | provenance |
-| | UNIQUE | (instrument_id, period_type, period_end_date, statement_type, version) |
+| | UNIQUE | (instrument_id, period_type, period_end_date, statement_type, version) — serving selects max `version` per (instrument, period_type, period_end_date, statement_type) |
 
-One instrument → * statements; each statement → * line items.
+One instrument → * statements; each statement → * line items. **Serving rule (v1.3):** current metrics/display use `ORDER BY version DESC LIMIT 1` per natural key (highest version); `is_rested` = `version > 0`; all earlier versions retained (§1.1).
 
-**`fin_line_items`** — statement lines mapped to the canonical chart of accounts (§6.1): `statement_id` FK, `item_code` text (canonical), `value` numeric. UNIQUE (statement_id, item_code). Canonical mapping from the source taxonomy happens in ETL (C3a) — this is where KAP/XBRL tags collapse to one internal vocabulary.
+**`fin_line_items`** — statement lines mapped to the canonical chart of accounts (§6.1): `statement_id` FK, `item_code` text (canonical), `value` numeric **in raw single-unit TRY**. UNIQUE (statement_id, item_code). Canonical mapping from the source taxonomy happens in ETL (C3a) — this is where KAP/XBRL tags collapse to one internal vocabulary.
+
+**Unit & currency normalization (v1.3; issue 2):** sources report in mixed unit scales (*nominal TRY vs. thousands vs. millions*) and reporting currencies (heavyweights such as THYAO report in USD). The C3a ETL normalizes **every** `fin_line_items.value` (including `SHARES_DILUTED`/`SHARES_OUT`, to raw share counts) to raw single-unit TRY before insert: scale is applied from the payload's declared `source_unit_scale`; a non-TRY `source_currency` is converted at the **period-end rate** (the latest `macro_values` row for `USD_TRY`/`EUR_TRY` with `value_date ≤ period_end_date`). This makes `mcap = close_raw × SHARES_DILUTED`, `NI_TTM`, and `EBITDA_TTM` dimensionally consistent, so ratios cannot be off by a factor of 1,000 or the FX rate. An undeclared/invalid scale or currency is a payload-schema failure (`SCHEMA_MISMATCH`); a currency needing conversion with no period-end rate is quarantined with reason `MISSING_FX_RATE` (catalog extended in FU §2). See §5.9 for the FX read edge.
 
 **`dividends`** — *Dividend* (FR-MDF-003): `id`, `instrument_id` FK, `ex_date`, `pay_date` NULL, `amount_per_share` numeric, `currency`, `source_ref`. Instrument 1 → * dividends.
 
@@ -107,7 +113,8 @@ Adjustment-factor system (BR-MDF-010; Q3 resolution 2026-10-07): split 1-for-n �
 | value | numeric | NULL = not meaningful (e.g., P/E for loss-maker) — never 0-for-missing |
 | window_years | int NULL | actual window used for CAGRs (FR-MDF-014) |
 | is_adjusted | bool | basis marker (FR-MDF-018) |
-| is_rested | bool | computed from restated statement version (FR-MDF-019) |
+| is_rested | bool | computed from `version > 0` statement rows (FR-MDF-019) |
+| regime_break | bool NULL | v1.3 — CAGR metrics only: TRUE when the compounding window spans the TMS 29 transition (min FY `period_end_date` < 2023-12-31 ≤ max FY `period_end_date`); drives the regime-break warning (§6.2). |
 | computed_at | timestamptz | |
 
 Append-only by date; the Metrics Engine writes one row per instrument × metric per trading day for all 18 concepts / 26 window-suffixed metric codes (≈650k rows/yr — §7 volumes). **Rejected alternative:** separate current-table (upserted) + history-table — two code paths for one concept; volume does not justify it.
@@ -232,14 +239,15 @@ Serving rule: latest `published` version per instrument; none → `preparing` st
 | 5.4 | **Account deletion vs. KVKK consent retention** (ACC: BR-ACC-005 remove personal data; NFR-ACC-004 consent records retained as KVKK evidence). | `DELETE /api/v1/me` hard-deletes the user row (cascade: saved_screens, dcf_scenarios) and sets `consent_records.user_id = NULL`, keeping `user_ref_hash` + notice version + date. Rationale: consent evidence must outlive the account; a salted hash identifier keeps the record useful without identifying the person. |
 | 5.5 | **Business description inputs**: descriptions are RES content, drafted from KAP disclosures owned by MDF. | C4 pipeline reads MDF's `kap_disclosures`; drafts are stored in RES's `business_descriptions` with `source_refs_json` pointing back to disclosure ids. Clean one-way dependency RES→MDF, matching the domain map. |
 | 5.6 | **Macro value revisions** (UC-MOV-002b: "revision stored as new dated record" vs. "one canonical value per series per date" BR-MOV-008). | `macro_values` allows multiple `recorded_at` rows per (series, date); the canonical value is the latest. Storage keeps history; serving keeps uniqueness. Same pattern as statement restatements (5.7). |
-| 5.7 | **Restated statements** (BR-MDF-011: display latest restated, retain as-reported). | Both versions stored (`version` column); serving layer selects latest restated per (instrument, period, type) and flags `is_rested` through to metrics (`derived_metrics.is_rested`) and UI marks. |
+| 5.7 | **Restated statements** (BR-MDF-011: display latest restated, retain as-reported). | All versions stored (`version` int sequence, v1.3); serving selects the **highest version** per (instrument, period, type) and flags `is_rested` (version > 0) through to metrics (`derived_metrics.is_rested`) and UI marks. A second restatement is version 2, not a constraint violation (issue 1). |
+| 5.9 | **Statement currency normalization vs. MOV's ownership of FX** (v1.3): MDF statements are normalized to TRY (§3.1), but the FX series (`USD_TRY`, `EUR_TRY`) are MOV-owned macro facts. | The statement ETL reads the latest `macro_values` row at or before the period end (a read-only MDF→MOV edge, the only such edge — recorded here as a deliberate coupling). MOV ingestion for FX runs before the statement job in the daily chain; a statement whose period-end FX is unavailable is quarantined (`MISSING_FX_RATE`), never converted at a guessed rate. |
 | 5.8 | **DCF baselines "build-time"** (VAL: builder-defined, versioned, per build cycle) vs. canonical-fact derivation. | Baselines are *derived rows*, not hand-edited content: C3b generates them from canonical facts (FCF, net debt, cash, share count) + builder default rules for growth/horizon/rates (config). Regeneration is an admin/CLI action; every regeneration bumps `version`. Rationale: hand-maintained numbers would violate the no-black-box posture (NFR-VAL-004) and rot silently. |
 
 ## 6. Canonical quantitative definitions (owned by `/src/Core`, C3b)
 
 ### 6.1 Canonical chart of accounts (`fin_line_items.item_code`)
 
-`REV` revenue · `COGS` cost of sales · `GROSS_PROFIT` (= REV−COGS when not reported) · `SGA` · `EBIT` operating income · `DEPR_AMORT` D&A · `EBITDA` (= EBIT + D&A when not reported) · `FIN_EXP` net interest/finance expense · `TAX_EXP` income tax expense · `PRETAX_INC` · `NI` net income · `MINORITY_INT` · `CAPEX` · `ΔWC` change in working capital (from CF statement components) · `CASH` cash & equivalents · `ST_DEBT`, `LT_DEBT` · `TOTAL_EQUITY` (attributable) · `CUR_ASSETS`, `CUR_LIAB` · `SHARES_DILUTED` · `SHARES_OUT`. `OTHER_*` codes pass through source items not yet mapped (recorded, ignored by metrics — honest gap, not silent drop).
+`REV` revenue · `COGS` cost of sales · `GROSS_PROFIT` (= REV−COGS when not reported) · `SGA` · `EBIT` operating income · `DEPR_AMORT` D&A · `EBITDA` (= EBIT + D&A when not reported) · `FIN_EXP` net interest/finance expense · `TAX_EXP` income tax expense · `PRETAX_INC` · `NI` net income · `MINORITY_INT` · **`OCF` operating cash flow (net cash from operating activities — *İşletme Faaliyetlerinden Nakit Akışları*, reported directly on every KAP cash-flow statement; v1.3, issue 4)** · `CAPEX` (capital expenditure; stored as the source reports it — KAP reports outflows as negative) · `ΔWC` change in working capital (from CF statement components; retained for reference — no longer used in canonical FCF) · `CASH` cash & equivalents · `ST_DEBT`, `LT_DEBT` · `TOTAL_EQUITY` (attributable) · `CUR_ASSETS`, `CUR_LIAB` · `SHARES_DILUTED` · `SHARES_OUT`. `OTHER_*` codes pass through source items not yet mapped (recorded, ignored by metrics — honest gap, not silent drop).
 
 ### 6.2 The 18 screener metrics (FR-SCR-001 / FR-MDF-013)
 
@@ -264,7 +272,13 @@ Serving rule: latest `published` version per instrument; none → `preparing` st
 | `div_cagr` | dividends | CAGR of DPS over window | <2 payments → NULL |
 | `payout_ratio` | dividends | Σ DIV_TTM / NI_TTM | NI ≤ 0 → NULL (may exceed 1 — displayed honestly) |
 
-`FCF = NI + DEPR_AMORT − ΔWC − CAPEX` (indirect method, canonical). `mcap = close_raw × SHARES_DILUTED`. Growth criteria store the chosen window (3/5/10Y) in the criterion (FR-SCR-015). **Windowed CAGR storage (Q5 resolution, 2026-10-07): window-suffixed metric codes** — `rev_cagr_3y/5y/10y`, `eps_cagr_3y/5y/10y`, `fcf_cagr_3y/5y/10y`, `div_cagr_3y/5y/10y` — 14 non-growth + 12 windowed = **26 metric codes**; `derived_metrics.window_years` records the interval actually used when history is shorter than the nominal window (FR-MDF-014 honesty).
+`FCF = OCF − |CAPEX|` (v1.3, issue 4 — canonical). Operating cash flow is taken as **reported** (the KAP cash-flow statement's net operating-activities figure, which already reflects non-cash TMS 29 items such as monetary gain/loss, FX revaluations, and provisions that the old `NI + D&A − ΔWC` reconstruction missed); `|CAPEX|` guards the KAP sign convention where outflows are negative (so a reported −150 deductible is *subtracted*, not added). FCF is NULL when `OCF` or `CAPEX` is missing. *Rejected (retained for the record): the indirect `NI + DEPR_AMORT − ΔWC − CAPEX` reconstruction — sign-fragile and incomplete under Turkish IFRS/TMS 29.* `mcap = close_raw × SHARES_DILUTED` (raw single-unit TRY, §3.1). Growth criteria store the chosen window (3/5/10Y) in the criterion (FR-SCR-015). **Windowed CAGR storage (Q5 resolution, 2026-10-07): window-suffixed metric codes** — `rev_cagr_3y/5y/10y`, `eps_cagr_3y/5y/10y`, `fcf_cagr_3y/5y/10y`, `div_cagr_3y/5y/10y` — 14 non-growth + 12 windowed = **26 metric codes**; `derived_metrics.window_years` records the interval actually used when history is shorter than the nominal window (FR-MDF-014 honesty).
+
+**Per-share CAGR basis — corporate-action adjustment (v1.3, issue 3):** the historical **EPS** and **DPS** series feeding `eps_cagr_*` and `div_cagr_*` are multiplied by the same cumulative corporate-action factor **Π** used for `close_adjusted` (§3.1 adjustment system), taking all splits/bonus issues/rights issues **after** the fact's basis date (a fiscal period end for EPS; the dividend's ex-date for DPS). Without this, a 400% bonus issue (*bedelsiz*) makes a historical year's EPS/DPS appear several times today's and produces a deeply negative CAGR. These growth metrics carry `is_adjusted = true` (the existing basis marker, FR-MDF-018).
+
+**Regime-break flag — TMS 29 (v1.3, issue 5):** the TMS 29 inflation-accounting transition took effect for fiscal periods ending **2023-12-31**; nominal TRY before and inflation-adjusted TRY after are not comparable. Any CAGR whose window spans that boundary (min FY period-end < 2023-12-31 ≤ max FY period-end) is written with `derived_metrics.regime_break = TRUE` and its serving surfaces carry a regime-break warning — the value stays nominal (CPI deflation is deferred; see the optional follow-up). CAGRs entirely after the boundary are un-flagged; those entirely before are un-flagged (no TMS 29 steps inside).
+
+**Accounting-profile gating (v1.3, issue 6):** for `accounting_profile ∈ {bank, insurance}` the following metrics are **not-meaningful by profile** and evaluate to NULL *even if the underlying lines happen to exist*: `ev_ebitda`, `ev_fcf`, `fcf_yield`, `roic`, `gross_margin`, `operating_margin`, `fcf_cagr_*`, `net_debt_ebitda`, `interest_coverage`, `current_ratio`. Banks and insurers report under BDDK/insurance rules and have no `REV`/`COGS`/`EBITDA`/`FCF`/`CUR_ASSETS` semantics; a stray mapped line must never produce a plausible-looking number. `pe`, `pb`, `roe`, `eps_cagr_*`, `div_yield`, `div_cagr_*`, `payout_ratio` compute normally (their inputs — NI, equity, shares, dividends — are meaningful for financials). `industrial` and `reit` profiles keep the natural not-meaningful rules in the table above. Bank/insurance statements with absent industrial lines are **never quarantined** on that ground (absence is expected, not a schema failure).
 
 ### 6.3 Market & sector aggregates
 
@@ -282,7 +296,7 @@ EquityValue  = PV_explicit + TV/(1+r)^N + Cash − Debt
 FairValuePS  = EquityValue / SharesDiluted
 MOS          = (FairValuePS − Price) / FairValuePS        (plain-language verdict, client-rendered)
 ```
-Parameters (confirmed set, OQ-UX-001; builder clarification 2026-10-07): `base_fcf, growth_rate, horizon_years (1..10), terminal_growth, discount_rate, debt, cash, share_count` — all user-editable (BR-VAL-002); **`debt` = total debt (ST+LT)**, not net — `cash` and `debt` are distinct parameters, both affect the result (NFR-VAL-004 no-black-box; F-VAL-1 ruling). Sensitivity grid: `discount_rate × terminal_growth` (default 5×5 centered on user values). Not computable → `DCF_NOT_COMPUTABLE` with the violated constraint named (UXR-VAL-009 analog for math, not missing data).
+Parameters (confirmed set, OQ-UX-001; builder clarification 2026-10-07): `base_fcf, growth_rate, horizon_years (1..10), terminal_growth, discount_rate, debt, cash, share_count` — all user-editable (BR-VAL-002); **`debt` = total debt (ST+LT)**, not net — `cash` and `debt` are distinct parameters, both affect the result (NFR-VAL-004 no-black-box; F-VAL-1 ruling). Sensitivity grid: `discount_rate × terminal_growth` (default 5×5 centered on user values). Not computable → `DCF_NOT_COMPUTABLE` with the violated constraint named (UXR-VAL-009 analog for math, not missing data). **Financial-sector exclusion (v1.3, issue 6):** for `accounting_profile ∈ {bank, insurance}` a free-cash-flow-to-firm DCF does not apply — baseline generation records the instrument with a `sector_not_applicable` state (no FCF-derived baseline), and the calculator returns `DCF_NOT_COMPUTABLE` with reason `financial_sector` and an honest sector explanation. This is a *not-applicable* verdict, distinct from the missing-inputs state.
 
 ## 7. Volume estimates & retention
 
@@ -302,5 +316,5 @@ Total DB estimate **2–6 GB** → fits Backblaze B2 free tier (10 GB) for the 3
 
 - EF Core migrations, **forward-only** (no down-migrations in prod); applied by the deploy job (`docker compose run --rm api migrate`) before `up -d` (§01 §6.2).
 - Every migration runs in CI against a real Postgres (Testcontainers) before it can merge — migration correctness is test-gated, not hope-gated.
-- Fact-table schema changes are additive (new columns/tables); existing fact rows are never rewritten (§1.1). Derived tables (`derived_metrics`, snapshots, medians) may be recomputed by re-running the engine after definition changes — definitions are versioned in `/src/Core` and metric recompute is idempotent by (key, as_of_date).
+- Fact-table schema changes are additive (new columns/tables); existing fact rows are never rewritten (§1.1). Derived tables (`derived_metrics`, snapshots, medians) may be recomputed by re-running the engine after definition changes — definitions are versioned in `/src/Core` and metric recompute is idempotent by (key, as_of_date). **v1.3 model changes:** `financial_statements.version` type change (`text` → `int`, values migrated `as_reported`→0 / `restated`→1) plus new `source_unit_scale`/`source_currency`; `instruments.accounting_profile`; `derived_metrics.regime_break`. The `version` type change is a one-time forward migration (values remapped in the migration; no fact row invented or dropped).
 - Seed data: `metric_catalog` (18 rows), `macro_series` (6 rows), `builder` role + builder account bootstrap — via a checked-in seed migration/script, exercised in CI and local compose.

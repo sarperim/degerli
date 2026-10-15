@@ -232,4 +232,12 @@ PV_explicit = 100·Σ(1.1/1.12)^t (t=1..5) = **473.8436**; TV = 100·1.1⁵·1.0
 - **I-VAL-3 (interpretation):** grid step sizes are 0.01 on both axes, centered on user values (inferred from the `03` §5 example payload's 0.13–0.17 / 0.02–0.06 grids).
 
 ---
+## 7. Post-board correctness case — v1.4 (builder-approved 2026-10-15 via the delivery planner; test-planner confirmation pending)
+
+**TC-VAL-028 — Financial-sector DCF verdict**
+- Preconditions: BANKA (bank) and SIGORTA (insurance) fixtures (FU §3b) ingested with prices.
+- Steps: run `dcf-baselines`; `GET /api/v1/stocks/BANKA/dcf`; `POST …/dcf/compute` with any valid parameter set; repeat for a normal stock (ALFA) as control.
+- Expected: baseline generation records BANKA/SIGORTA with a `sector_not_applicable` state (no FCF-derived baseline row) — never a spurious FCF baseline; `POST …/compute` returns **`422 DCF_NOT_COMPUTABLE`** with `params.reason = "financial_sector"` and a sector explanation (distinct from the missing-inputs `200` state); ALFA computes normally (FVPS 13.1969, MoS −0.5155 unchanged).
+- Traces: FR-VAL-001/003, `02` §6.4, `03` §5/§7 · Level: L2+L3 · Design: decision table — profile × DCF outcome + control
+
 *Change record: v1.0 2026-10-06 — initial VAL test plan, batch mode. v1.1 2026-10-07 — builder final review: F-VAL-1 ruled (reading (a) — total-debt parameter, formula as written); goldens independently re-verified under exact arithmetic; sensitivity corner (0.14, 0.01) corrected 8.9952 → 8.99623 in TC-VAL-002 + FU §11.5; §6 interpretations I-VAL-1..3 upheld; plan approved.*

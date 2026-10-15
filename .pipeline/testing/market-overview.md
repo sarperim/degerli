@@ -215,4 +215,18 @@
 - **I-MOV-3 (interpretation):** UC-MOV-004 alternate a (a linked stock with no stock page) is impossible by construction — movers are computed over the covered universe; asserted as an invariant (entries are universe stocks) rather than a fallback path.
 
 ---
+## 7. Post-board correctness cases — v1.4 (builder-approved 2026-10-15 via the delivery planner; test-planner confirmation pending)
+
+**TC-MOV-026 — Macro ingest via the consolidated EVDS adapter**
+- Preconditions: EVDS-envelope macro payload covering the five official series (FU §7/§10); TCMB EVDS API key configured.
+- Steps: run the macro job; read `macro_values` for each series; simulate a failure (stale case).
+- Expected: `TUIK_CPI`, `CBRT_REPO`, `USD_TRY`, `EUR_TRY`, `GOLD` ingested from one adapter; a re-published (revised) value appends a new `recorded_at` row (canonical = latest); a source failure keeps last-known-good, marks stale, alerts (existing MOV freshness behavior unchanged). Strip goldens (FU §11.3) unchanged.
+- Traces: FR-MOV-014, UC-MOV-002, `03` §1 · Level: L2 · Design: multi-series ingestion + revision case
+
+**TC-MOV-027 — Manual independent-CPI entry (admin)**
+- Preconditions: builder session; no `INDEP_CPI` value for the month yet.
+- Steps: `POST /api/v1/admin/macro/indep-cpi {valueDate, value}`; re-post the same date with a corrected value; read the served macro strip payload.
+- Expected: first post appends a `macro_values` row (series `INDEP_CPI`, `recorded_at` = entry time); the correction appends a second row → canonical = latest; a non-builder session gets `403`. Before any entry, the strip degrades to official-only with the "independent measure unavailable" note (UXR-MOV-008). No `INDEP_CPI` value ever arrives from the macro adapter.
+- Traces: FR-MOV-008/014, UC-MOV-003, `03` §8 · Level: L2 · Design: mutation + revision + authorization
+
 *Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved.*

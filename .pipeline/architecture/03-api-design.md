@@ -1,7 +1,7 @@
-# API Design — v1.3
+# API Design — v1.4
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
-**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 added the admin dashboard endpoints; v1.2 adds the `GET /admin/descriptions` response sketch serving KAP source refs (UXR-MDF-020); v1.3 (2026-10-07) renames the DCF baseline param `net_debt` → `debt` (F-VAL-1 builder clarification — total debt ST+LT; change records in `01-system-architecture.md` §13.1)
+**Prepared by:** architect · **Date:** 2026-10-06 · **Status:** submitted for builder approval — v1.1 added the admin dashboard endpoints; v1.2 adds the `GET /admin/descriptions` response sketch serving KAP source refs (UXR-MDF-020); v1.3 (2026-10-07) renames the DCF baseline param `net_debt` → `debt` (F-VAL-1 builder clarification — total debt ST+LT); **v1.4 (2026-10-15) applies the builder's post-board correctness feedback**: financial-sector DCF verdict (`DCF_NOT_COMPUTABLE` reason `financial_sector`), manual independent-CPI admin entry, `regimeBreak` on served growth metrics, and the per-row price-source provenance note (change records in `01-system-architecture.md` §13.1)
 **Serves:** the React SPA (C1) — the only first-party client; designed consumable by any future JSON client (mobile is delayed per builder decision D-01 and requires a brief amendment before being built).
 **Style:** REST over JSON, HTTPS only, prefix `/api/v1`. OpenAPI document served at `GET /api/v1/openapi.json` (Microsoft.AspNetCore.OpenApi, anonymous).
 
@@ -10,7 +10,7 @@
 ## 1. Principles
 
 1. **Codes and numbers from the server; words from the client.** The API returns stable error `code`s, metric codes, state markers — never user-facing prose. All display text (TR/EN) is rendered by the SPA from i18n catalogs (bilingual completeness enforced by CI, §01 §10.6).
-2. **The honest-data envelope on every data response** (§01 §10.7): `asOf`, `stale`, and where applicable `adjusted`, per-figure `restated`, and `coverage`/`state` for missing data. Missing data is `200` + state, never blank-as-zero (BR-RES-008).
+2. **The honest-data envelope on every data response** (§01 §10.7): `asOf`, `stale`, and where applicable `adjusted`, per-figure `restated`, and `coverage`/`state` for missing data. Missing data is `200` + state, never blank-as-zero (BR-RES-008). **Source provenance is per-row (v1.4):** every fact carries `source_ref` naming the concrete source that produced it; where a data type may come from more than one source (daily prices/index levels: **İş Yatırım primary, Yahoo Finance `.IS` contingency**), each stored row records which one — so a mixed-source history stays auditable, and coverage/admin views can break coverage down by source.
 3. **One source per number** (BR-MDF-009): all metric values come from the Metrics Engine's tables; endpoints never compute.
 4. **Write endpoints mirror the mutation matrix** (UX `01-interaction-rules.md` §2): every mutation the matrix lists has exactly one endpoint; list/picker freshness is the SPA's query-invalidation job (§01 §8.4).
 5. **Public by default, auth only for `/me` and `/admin`** (BR-ACC-003): research surfaces are anonymous.
@@ -70,10 +70,13 @@ Response (always `200` on a well-formed run — emptiness and exclusions are dat
   "droppedCriteria": [],
   "rows": [
     { "symbol": "ASELS", "name": "Aselsan", "sector": "Savunma",
-      "values": { "pe": 12.4, "roe": 18.2, "rev_cagr": 24.1 } }
+      "values": { "pe": 12.4, "roe": 18.2, "rev_cagr": 24.1 },
+      "metricFlags": { "rev_cagr": { "windowYears": 5, "regimeBreak": true, "isAdjusted": false, "isRestated": false } } }
   ]
 }
 ```
+
+- **Metric flags (v1.4):** `metricFlags` is an additive companion map (keyed by the same metric codes as `values`) carrying the per-metric basis markers — `windowYears` (actual CAGR window), `regimeBreak` (TMS 29 spanning-window warning, `02` §6.2), `isAdjusted` (corporate-action-adjusted basis) and `isRestated`. A metric with no marker may be omitted. The same flags object is served by the stock-page growth/valuation sections so the regime-break and adjusted/restated markers render consistently (UXR-G-011 consistency). Absent flags ⇒ no marker.
 
 - Stocks missing data for a criterion are excluded and counted (`excludedCount`, BR-SCR-009/FR-SCR-014); never pass, never zero-filled.
 - **Re-run of a saved screen** referencing a since-hidden metric: the criterion is dropped, run proceeds, `droppedCriteria[]` names it (UC-SCR-003a → UXR-SCR-015). **Ad-hoc** submission of a hidden/unknown metric: `400 VALIDATION_FAILED` (`code: METRIC_NOT_AVAILABLE`) — the builder never offered it (UXR-SCR-011).
@@ -132,6 +135,7 @@ Request: the 8 parameters (confirmed set, OQ-UX-001). Response (single path for 
 
 - Pure function; no auth; no persistence; stateless (NFR-VAL-004: nothing affects the result beyond the request + canonical price).
 - Mathematically not computable (e.g., `discount_rate ≤ terminal_growth`, horizon outside 1..10): `422 DCF_NOT_COMPUTABLE` with the violated constraint in `params` — the SPA keeps the last valid result visible and marks the invalid field (UXR-VAL-008).
+- **Financial-sector profile (v1.4):** for an instrument whose `accounting_profile ∈ {bank, insurance}`, the endpoint returns `422 DCF_NOT_COMPUTABLE` with `params.reason = "financial_sector"` (no field-highlight — the whole model does not apply) and an honest sector explanation; this is distinct from the missing-inputs `200` state. The SPA renders it from the reason code (i18n), not the math-constraint path.
 - The SPA debounces calls 300 ms and always computes through this endpoint — including on load with baseline params (no separate client-side model; single canonical formula, AD-08).
 - The plain-language verdict is rendered client-side from `marginOfSafety` + i18n (FR-VAL-006, BR-VAL-004).
 
@@ -192,7 +196,7 @@ RFC 7807; machine `code` + i18n-neutral `params`; the SPA renders all user-facin
 | `NOT_FOUND` | 404 | unknown symbol/id (incl. stocks outside the covered universe) |
 | `EMAIL_TAKEN` | 409 | registration with existing address |
 | `DUPLICATE_NAME` | 409 | screen name (per account) / scenario name (per account+stock) |
-| `DCF_NOT_COMPUTABLE` | 422 | math constraint violated (e.g., r ≤ g_t) |
+| `DCF_NOT_COMPUTABLE` | 422 | math constraint violated (e.g., r ≤ g_t) — `params.reason = "math"`; or financial-sector profile — `params.reason = "financial_sector"` (v1.4) |
 | `TOKEN_EXPIRED` | 410 | expired/used verification or reset token |
 | `LOCKED_OUT` | 429 | lockout window active |
 | `RATE_LIMITED` | 429 | rate limit exceeded (`params.retryAfter`) |
@@ -210,6 +214,7 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
 | `GET /api/v1/admin/coverage?scope=instrument\|fund` | coverage report (equity + funds) | UC-MDF-004, UC-FDF-003 |
 | `GET /api/v1/admin/ingest-runs?job=&status=` | run-ledger monitoring | UC-MDF-001 (ops), UC-MOV-005, UC-FDF-002 (ops) |
 | `POST /api/v1/admin/ingest/{job}/run` | trigger/backfill — `{job}` ∈ job codes below; body may carry `{backfillFrom}` | UC-MDF-002 |
+| `POST /api/v1/admin/macro/indep-cpi` `{valueDate, value}` | **manual independent-CPI entry (v1.4)**: appends a `macro_values` row for series `INDEP_CPI` (`recorded_at` = entry time; canonical value = latest `recorded_at`) — the source (ENAG or equivalent) publishes one number per month with no API/stable HTML, so the builder enters it on release day instead of scraping (ASM-009, OQ-MOV-001). Idempotent per (series, value_date) by the existing macro revision rule | UC-MOV-002, UC-MOV-003, FR-MOV-014 |
 | `GET /api/v1/admin/descriptions?status=draft\|reviewed\|published` | **review queue + editor payload (v1.2 sketch below)**: per entry — stock, status, version, both texts, KAP source refs (`sourceRefs`), review/publication stamps | UC-RES-004, UXR-MDF-020 |
 | `PATCH /api/v1/admin/descriptions/{id}` `{textTr?, textEn?}` | edit both languages (FR-RES-021) | UC-RES-004 |
 | `POST /api/v1/admin/descriptions/{id}/publish` | publication gate — rejects if either language empty (FR-RES-020, BR-RES-003) | UC-RES-004 |

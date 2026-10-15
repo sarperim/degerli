@@ -1,6 +1,6 @@
 # Fixture Universe — Shared Test Data Contract
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — approved (MDF Gate 2 + builder final review 2026-10-07)
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.4 — approved (MDF Gate 2 + builder final review 2026-10-07); **v1.4 (2026-10-15)** applies the builder's post-board correctness feedback — statement unit-scale/currency declarations, `OCF` lines and the `FCF = OCF − |CAPEX|` re-baseline, EPSL action-overlapping EPS/DPS history, on-demand `BANKA`/`USDX`/second-restatement fixtures, the TMS 29 regime boundary, and the `MISSING_FX_RATE` reason. Applied by the delivery planner on the builder's explicit instruction; **test-planner confirmation pending** (this document is test-planner-owned — see the change record).
 **Purpose:** one synthetic, checked-in dataset shared by integration (L2) and e2e (L4) tests. **No real BIST symbols, names, or values.** Every golden value asserted in any domain test plan is derived here, by hand, from `02-data-model.md` §6 formulas — never from an implementation. Test code loads this dataset via the checked-in `fixtures/` module (strategy §12).
 
 ---
@@ -16,9 +16,11 @@
 
 - **Trading days:** Mon–Fri (fixtures carry no holidays; the production holiday calendar is config and is not exercised by automated tests — recorded interpretation).
 - **Fixture trading days:** `T` (latest), `T−1`, `T−2`, … `T−9`; L2 absolute mapping with R = Tue 2026-10-06: `T` = 2026-10-06, `T−1` = 2026-10-05 (Mon), `T−2` = 2026-10-02 (Fri).
-- **Money:** TRY millions unless a column says otherwise; prices in TRY; volumes in shares. Percentages as decimals in payloads (0.05 = 5%).
+- **Money (v1.4):** the §5/§5.1/§5.2 tables are authored in **TRY millions** for readability; wire payloads declare their scale (`unitScale: "millions"`) and currency (`currency: "TRY"`), and the audience value is that **the ETL stores raw single-unit TRY** (`02` §3.1): a stored `fin_line_items.value` = tabulated figure × 10⁶, and `SHARES_DILUTED`/`SHARES_OUT` are stored as raw share counts (tabulated M × 10⁶). All §11 **ratio** goldens are scale-invariant and therefore unchanged; the tests that assert *stored absolute values* (e.g. TC-MDF-003) expect the raw value. Prices in TRY (single unit); volumes in shares. Percentages as decimals in payloads (0.05 = 5%).
 - **Mover eligibility threshold (config under test):** volume ≥ **1,000,000** shares (BR-MOV-011; production value is set from the real volume distribution — the test value lives in test config only).
-- **Quarantine reason codes (defined by this plan; implementation follows):** `NEGATIVE_PRICE`, `MISSING_PROVENANCE`, `SCHEMA_MISMATCH`, `UNPARSEABLE_PAYLOAD`, `MISSING_CLASSIFICATION`, `CONFLICTING_VALUE` (a valid fact conflicting with an already-stored fact for the same key — builder decision Q1, 2026-10-06).
+- **Quarantine reason codes (defined by this plan; implementation follows):** `NEGATIVE_PRICE`, `MISSING_PROVENANCE`, `SCHEMA_MISMATCH`, `UNPARSEABLE_PAYLOAD`, `MISSING_CLASSIFICATION`, `CONFLICTING_VALUE` (a valid fact conflicting with an already-stored fact for the same key — builder decision Q1, 2026-10-06), **`MISSING_FX_RATE`** (v1.4 — a statement in a non-TRY reporting currency whose period-end FX rate is absent; the normalization precondition per `02` §3.1/§5.9).
+- **Statement versioning (v1.4, `02` §3.1):** `financial_statements.version` is an integer sequence — `0` = as-reported, `1, 2, …` = restatements in publication order. Wire payloads still *declare* `"as_reported"`/`"restated"`; the store assigns the sequence (0, then 1, 2, …) per natural key. Serving = highest version.
+- **TMS 29 regime boundary (v1.4):** 2023-12-31 is the inflation-accounting transition; a CAGR window with min FY `period_end_date` < 2023-12-31 ≤ max FY `period_end_date` is *spanning* → `regime_break` TRUE (TC-MDF-060).
 - **Median convention:** standard statistical median; even peer count → mean of the two middle values.
 - **CAGR window semantics (this plan's resolution of FR-MDF-014):** window W (3/5/10Y) = W compounding intervals between endpoint FYs; `window_years` = intervals actually used; **< 2 FYs → NULL**; sign change in the series → NULL for `fcf_cagr` only (per `02` §6.2).
 - **Corporate-action adjustment factors (defined here; rights-issue formula resolved on the builder's final review 2026-10-07, Q3):** split 1-for-n → factor `1/n`; bonus issue of b new per 1 held → factor `1/(1+b)`; **rights issue of q new shares per 1 held at subscription price `P_S`, with cum price `P_C` = the last raw close on/before the action's effective date → factor `(P_C + q·P_S) / ((1+q)·P_C)`** (theoretical ex-rights price `TERP = (P_C + q·P_S)/(1+q)`; factor = `TERP/P_C`; reduces to the bonus factor `1/(1+q)` when `P_S = 0`, and to `1` when `P_S = P_C` — no adjustment); factors compose multiplicatively over time; `close_adjusted = close_raw × Π factors of all actions after the price date`.
@@ -48,6 +50,19 @@
 Sectors: `A` Teknoloji / Technology, `B` Sanayi / Industry, `C` Gıda / Food (bilingual labels per `02` §3.1).
 
 **Index membership:** all 16 are current XU100 constituents (effective_from = listing dates, effective_to NULL). **XU30 subset:** ALFA, EPSL, KAPPA, REST, ETA.
+
+### 3b. On-demand fixtures (v1.4 — *not* part of the seeded 16)
+
+These exist so a new rule has a named trigger without perturbing any universe-wide golden (§11.3/§11.4). Each test **creates its own state** (§12) by ingesting the named payload; they never appear in the seeded universe or the snapshot/breadth/median aggregates.
+
+| symbol | profile / shape | purpose |
+|---|---|---|
+| BANKA | `accounting_profile = bank`; bank-shaped statements (no `REV`/`COGS`/`EBIT`/`EBITDA`/`CUR_ASSETS`; carries `NI` 300, `TOTAL_EQUITY` 3000, `SHARES_DILUTED` 300, `CASH` 500, `ST_DEBT` 2000, `LT_DEBT` 1000) **plus a spurious `REV` 500 and `DEPR_AMORT` 50** to prove profile gating overrides stray lines; price 30.00 | TC-MDF-056 (ingest without quarantine), TC-MDF-057 (metric NULL matrix), TC-VAL-028 (DCF `financial_sector`) |
+| SIGORTA | `accounting_profile = insurance`; same industrial-line absence; price 12.00 | TC-MDF-057, TC-VAL-028 (second financial profile) |
+| USDX | `accounting_profile = industrial`, reporting currency **USD**; FY2025 lines in **USD M** (NI 10, `SHARES_DILUTED` 20, REV 100, EQUITY 60), declares `currency: "USD"`, `unitScale: "millions"`; price 420.00 TRY | TC-MDF-055 (currency normalization at period-end FX → stored NI = 10 × 10⁶ × 42.00 = 420,000,000 raw TRY) |
+| REST2 | REST with a **second** restatement: v0 (NI 60), v1 (NI 75), **v2 (NI 80)** | TC-MDF-054 (highest version serves; all retained) |
+
+BANKA/SIGORTA/USDX share counts are raw (×10⁶ at storage). BANKA-derived goldens (TC-MDF-057, raw-unit, price 30.00): `pe` = 30/(300/300) = **30.0**; `pb` = 30/(3000/300) = **3.0**; `roe` = 300/3000 = **0.10**; the ten profile-gated metrics **NULL** despite the spurious `REV`. SIGORTA-derived (price 12.00, NI 24, equity 240, shares 24): `pe` **12.0**, `pb` **1.2**, `roe` **0.10**, gated metrics NULL.
 
 ## 4. Daily prices (T−1 → T) and volumes
 
@@ -95,7 +110,17 @@ Sectors: `A` Teknoloji / Technology, `B` Sanayi / Industry, `C` Gıda / Food (bi
 | NU | 320 | 230 | 90 | 45 | 15 | 60 | 9 | 36 | 7 | 40 | 20 | 5 | 27 | 45 | 60 | 95 | 260 | 150 | 100 |
 | UNSEC | 260 | 185 | 75 | 40 | 12 | 52 | 7 | 33 | 7 | 45 | 22 | 5 | 28 | 40 | 55 | 90 | 210 | 120 | 80 |
 
-*REST: FY2025 exists twice — `as_reported` (published 2026-03-10, NI 60) and `restated` (restatement_date 2026-06-20, **NI 75** — the tabulated row). Current metrics serve the restated version.
+*REST: FY2025 exists twice — `as_reported` (published 2026-03-10, NI 60) and `restated` (restatement_date 2026-06-20, **NI 75** — the tabulated row). Current metrics serve the highest version (v1).
+
+**`OCF` column (v1.4 — the canonical FCF re-baseline).** The statement payloads gain an `OCF` line (net operating cash flow) and `FCF` is computed as `OCF − |CAPEX|` (`02` §6.2). To keep every existing FCF-dependent golden (§11.1 `ev_fcf`/`fcf_yield`/`fcf_cagr_*`, §11.5 `base_fcf`) **unchanged**, the fixture OCF is authored as `tabulated FCF + CAPEX`:
+
+| symbol | ALFA | BETA | GAMA | DELTA | REST | EPSL | ZETA | ETA | THETA | PART | NEWP | IOTA | KAPPA | LAMDA | NU | UNSEC |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| OCF | 250 | −50 | −50 | 60 | 100 | 350 | 27 | 110 | 80 | — | 14 | 10 | 40 | 38 | 47 | 50 |
+
+So, e.g., ALFA: `FCF = 250 − |150| = 100` (unchanged). PART has no CF statement → `OCF` absent → FCF metrics NULL (unchanged). Deep-history FY statements (§5.1) carry `OCF` lines likewise (`OCF = §5.1 FCF + FY CAPEX`), preserving the §5.1 FCF series.
+
+**KAP sign convention (v1.4):** `CAPEX` is stored **as the source reports it** — KAP cash-flow statements report investing outflows as *negative*. The §5/§5.1 tables show CAPEX as positive magnitudes for readability; the canned payload `statements-kap-sign-convention.json` carries ALFA FY2025 with `CAPEX −150`, `OCF 250` (as-reported shape) and expects the same stored `FCF = 250 − |−150| = 100` (TC-MDF-059).
 
 ### 5.1 ALFA deep history (FY series for CAGRs)
 
@@ -116,6 +141,21 @@ Sectors: `A` Teknoloji / Technology, `B` Sanayi / Industry, `C` Gıda / Food (bi
 - **NEWP** (1 FY): FY2025 only → every CAGR NULL + no-data state with listing-date context (2025-08-01).
 - **KAPPA FCF by FY** (sign change): 2021 +20, 2022 +25, 2023 +10, 2024 −5, 2025 −30 → `fcf_cagr` NULL; FCF_TTM −30 → `ev_fcf`, `fcf_yield` NULL.
 
+### 5.3 EPSL deep history — corporate-action-adjusted per-share CAGRs (v1.4, TC-MDF-058)
+
+EPSL carries the corporate actions (1:5 split effective 2025-06-02 → factor 0.2; 1:10 bonus effective 2026-03-02 → factor 10/11) mid-way through its FY history, so its per-share series must be adjusted before CAGR (`02` §6.2 — Π over actions *after* each fact's date; both actions apply to FY ≤ 2024, only the bonus to FY2025). As-reported FY values (what the payloads carry) and their adjusted equivalents:
+
+| FY | shares (M) | NI (TRY M) | EPS as-reported | DPS as-reported (ex-date) | Π | EPS adjusted | DPS adjusted |
+|---|---|---|---|---|---|---|---|
+| 2022 | 80 | 250 | 3.125 | 1.25 (2022-12-31) | 2/11 | **0.568182** | **0.227273** |
+| 2023 | 80 | 264 | 3.30 | 1.30 (2023-12-31) | 2/11 | **0.600000** | **0.236364** |
+| 2024 | 80 | 280 | 3.50 | 1.375 (2024-12-31) | 2/11 | **0.636364** | **0.250000** |
+| 2025 | 400 | 300 | 0.75 | 0.30 (2025-12-31) | 10/11 | **0.681818** | **0.272727** |
+
+FY2025's as-reported values match §3 (shares 400 M) and §5 (NI 300); the FY2025 DPS 0.30 also reproduces §6's EPSL DIV_TTM 120 M (= 0.30 × 400 M) — no other EPSL dividend rows exist, so the TTM window catches only the 2025-12-31 ex-date. Pre-split share count = 80 M (400 ÷ 5).
+
+Goldens: **`eps_cagr_3y` = (0.681818/0.568182)^(1/3) − 1 = 0.062659**; **`div_cagr_3y` = (0.272727/0.227273)^(1/3) − 1 = 0.062659**; `eps_cagr_5y`/`eps_cagr_10y` and `div_cagr_5y`/`div_cagr_10y` = **NULL** (4 FYs → only the 3Y window has enough intervals). *Contrast — the bug this fixes:* the unadjusted `eps_cagr_3y` would be (0.75/3.125)^(1/3) − 1 = **−0.378553** (a spurious ≈ −38 %/yr from the split alone). Both adjusted CAGR metrics carry `is_adjusted = true`.
+
 ## 6. Dividends
 
 - **ALFA** (quarterly, TTM DPS 1.00): ex-dates 2026-01-15, 2026-04-15, 2026-07-15, 2026-10-01, each 0.25 TRY, currency TRY, pay_date ex+20d. FY DPS series per §5.1.
@@ -133,6 +173,8 @@ Sectors: `A` Teknoloji / Technology, `B` Sanayi / Industry, `C` Gıda / Food (bi
 | USD_TRY | R (T) | 47.10 | TRY | T 21:30 | fresh, daily |
 | EUR_TRY | R (T) | 51.40 | TRY | T 21:30 | fresh, daily |
 | GOLD | R−10d | 5200.00 | USD/oz | R−10d | **stale** — last successful ingest 10 days before T (drives every stale-marker test) |
+
+**USD_TRY historical row (v1.4 — statement FX normalization):** `USD_TRY` 2025-12-31 = **42.00** (recorded_at 2026-01-02) — the period-end rate the statement ETL uses to normalize USD reporters (§3b USDX, TC-MDF-055). The macro strip reads the *latest* row per series, so the strip goldens above are unchanged. **`INDEP_CPI` is no longer sourced from the macro adapter** (v1.4, TC-MOV-027): the independent measure is entered through the admin endpoint, so the EVDS-shaped payload covers the five official series only; `macro-indep-cpi-absent.json` still models "no manual entry yet" → the paired display degrades to official-only (UXR-MOV-008).
 
 ## 8. Funds (FDF fixtures)
 
@@ -165,6 +207,13 @@ Corresponding `kap_disclosures` seed rows: ids 8841 (ALFA, annual_report, 2026-0
 ## 10. WireMock canned-source catalog (named fixtures)
 
 `prices-ok.json` (T, all 16) · `prices-ok-tminus1.json` · `prices-invalid-negative-close.json` (ALFA close −5) · `prices-missing-provenance.json` · `prices-unparseable.json` (truncated body) · `prices-conflicting-value.json` (ALFA close 21.00 for already-stored T — quarantine per Q1) · `prices-source-down` (500 forever) · `prices-source-slow.json` (5s delay — drives the in-progress run-ledger test) · `prices-variant-threshold.json` (12 eligible gainers incl. one at exactly the 1,000,000 threshold — drives the movers boundary test) · `statements-ok-alfa-fy2025.json` (incl. quarters) · `statements-restated-rest.json` · `statements-no-cf-part.json` · `dividends-ok.json` · `corporate-actions-ok.json` (EPSL split + bonus) · `disclosures-ok.json` · `universe-add-remove.json` (membership change set) · `universe-missing-sector.json` · `index-levels-ok.json` · `macro-ok.json` · `macro-indep-cpi-absent.json` (degraded profile) · `tefas-*.json` (3 funds) · `evren-draft-ok.json` (RES plan).
+
+**v1.4 additions & reshapes:**
+- **Statement payloads** carry `unitScale` + `currency` (defaults `"millions"`/`"TRY"`; USDX declares `"millions"`/`"USD"`). New: `statements-bank-banka.json` (§3b BANKA, incl. the spurious `REV`), `statements-insurance-sigorta.json` (§3b SIGORTA), `statements-usd-reporter.json` (§3b USDX), `statements-restated-rest-v2.json` (§3b REST2 — second restatement), `statements-kap-sign-convention.json` (§5 CAPEX −150). The existing statement payloads gain an `OCF` line (§5).
+- **`version` in statement payloads** stays `"as_reported"`/`"restated"`; the store assigns the integer sequence (TC-MDF-054).
+- **Price payloads are re-shaped to the İş Yatırım envelope** (source name `isyatirim`; per-row source recorded); asserted DB outcomes are unchanged (TC-MDF-061). A `prices-yahoo-contingency.json` models the documented fallback source so its rows record `source_ref = "yahoo"`.
+- **Macro payloads are re-shaped to the EVDS envelope** (`macro-ok.json` covers the five official series; asserted DB outcomes unchanged — TC-MOV-026). INDEP_CPI arrives via the admin endpoint, not a payload.
+- **Reused (no new payloads):** the constituents launch-seed/coverage-gap case (TC-MDF-062) drives the existing `universe-add-remove.json`; the holdings-coverage-gap case (TC-FDF-013) drives the existing **TEF0002** fund row (§8 — already "none; coverage gap recorded"). Both assertions are about the recorded behavior, not a new payload shape.
 
 ## 11. Derived golden values (asserted in the domain plans; derived here)
 
@@ -262,4 +311,4 @@ Corresponding `kap_disclosures` seed rows: ids 8841 (ALFA, annual_report, 2026-0
 Fake `TimeProvider` at L1/L2 (absolute dates above); now-anchored seeds at L4 (`T` = seed day; GOLD stale = T−10); assertions on flags, offsets, and payload values — never wall-clock dates; i18n assertions load `tr.json`/`en.json` from the repo; all randomness fixed; every test creates its own mutable state.
 
 ---
-*Change record: v1.0 2026-10-06 — initial fixture universe, submitted with the MDF Gate 2 plan. v1.1 2026-10-06 — builder decisions applied: Q1 conflicting-price quarantine (`CONFLICTING_VALUE` + canned payload), Q2 sector-performance formula locked (cap-weighted), Q3 rights-issue adjustment deferred (no rights fixtures), Q4 compute-from-available CAGR reading confirmed, movers-boundary variant payload added. v1.2 2026-10-06 — batch-mode additions: §9b business-description fixtures (published/draft/empty-EN/unresolvable-ref cases), §9 saved-content seeds specified, §11.5 DCF baselines for all stocks with the Q-VAL-1 parameter reading and full golden derivation (FVPS 13.1969, MOS −0.5155, grid corners 24.0000 / 8.9952). v1.3 2026-10-07 — builder final-review rulings applied: Q-VAL-1/F-VAL-1 resolved (total-debt reading (a)); goldens independently re-verified under exact arithmetic — sensitivity corner (0.14, 0.01) corrected 8.9952 → **8.99623** (hand-arithmetic slip); Q3 rights-issue factor defined (FU §2, golden §11.6); Q5 windowed-CAGR storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key).*
+*Change record: v1.0 2026-10-06 — initial fixture universe, submitted with the MDF Gate 2 plan. v1.1 2026-10-06 — builder decisions applied: Q1 conflicting-price quarantine (`CONFLICTING_VALUE` + canned payload), Q2 sector-performance formula locked (cap-weighted), Q3 rights-issue adjustment deferred (no rights fixtures), Q4 compute-from-available CAGR reading confirmed, movers-boundary variant payload added. v1.2 2026-10-06 — batch-mode additions: §9b business-description fixtures (published/draft/empty-EN/unresolvable-ref cases), §9 saved-content seeds specified, §11.5 DCF baselines for all stocks with the Q-VAL-1 parameter reading and full golden derivation (FVPS 13.1969, MOS −0.5155, grid corners 24.0000 / 8.9952). v1.3 2026-10-07 — builder final-review rulings applied: Q-VAL-1/F-VAL-1 resolved (total-debt reading (a)); goldens independently re-verified under exact arithmetic — sensitivity corner (0.14, 0.01) corrected 8.9952 → **8.99623** (hand-arithmetic slip); Q3 rights-issue factor defined (FU §2, golden §11.6); Q5 windowed-CAGR storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key).* **v1.4 2026-10-15 — post-board correctness feedback (applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending):** §2 unit/currency normalization convention + `MISSING_FX_RATE` + integer statement-version semantics + TMS 29 regime boundary; §3b on-demand fixtures BANKA/SIGORTA/USDX/REST2 (outside the seeded 16 — no universe-golden cascade); §5 `OCF` column (`= FCF + CAPEX`, so all FCF goldens are unchanged) + KAP sign convention; §5.3 EPSL adjusted per-share history (eps_cagr_3y / div_cagr_3y = 0.062659; unadjusted would be −0.378553); §7 USD_TRY 2025-12-31 = 42.00 + INDEP_CPI moved to manual entry; §10 payload additions/reshapes (statements unitScale/currency + OCF, bank/insurance/USD/second-restatement/sign-convention payloads, İş Yatırım price envelope, EVDS macro envelope, universe-launch-seed, tefas-allocation-only).
