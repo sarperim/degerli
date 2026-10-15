@@ -123,12 +123,23 @@ jobs:
     steps:
       - name: Resolve the image tag
         id: tag
+        env:
+          # Passed via env (not inline interpolation) so a dispatch input cannot
+          # inject shell into this step.
+          DISPATCH_TAG: ${{ inputs.image_tag }}
+          BUILD_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            value="${DISPATCH_TAG}"
           else
-            echo "value=${{ needs.build-and-push.outputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            value="${BUILD_TAG}"
           fi
+          # Guard: image tags are short/long hex SHAs only.
+          if ! printf '%s' "$value" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::refusing to deploy with a non-SHA image tag: '${value}'"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy on the VPS
         env:
