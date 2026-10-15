@@ -135,6 +135,7 @@ if (!app.Environment.IsProduction())
 }
 
 app.Run();
+return 0;
 
 static IResult CsrfToken(HttpContext context, IAntiforgery antiforgery)
 {
