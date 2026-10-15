@@ -3,7 +3,7 @@
 **Domain:** valuation-dcf · **Prepared:** 2026-10-06
 **Traces:** UC-VAL-001, UC-VAL-002; FR-VAL-001–010 · BR-VAL-001–010 · SD-001 · ASM-007
 **Global rules applied:** UXR-G-001–029 (esp. G-003/004 error & input preservation, G-018/019/020 form safety, G-021 draft preservation, G-023/024 login-to-save, G-029 duplicate-name rejection)
-**Status:** written under the standing no-stop instruction. DCF parameter set (§4.1) and sensitivity axes **confirmed by the builder (2026-10-06, OQ-UX-001)**. Scenario-save flow amended for e-mail-verification gating (2026-10-06, OQ-UX-003 → Option B).
+**Status:** written under the standing no-stop instruction. DCF parameter set (§4.1) and sensitivity axes **confirmed by the builder (2026-10-06, OQ-UX-001)**. Scenario-save flow amended for e-mail-verification gating (2026-10-06, OQ-UX-003 → Option B). **Amended 2026-10-16 (post-board correctness flow-back):** UXR-VAL-022/023 added — financial-sector "not applicable" state (architecture `02` v1.3 §6.4, `03` v1.4 §5/§7; ticket TKT-val-010); see `99-ux-audit.md` §9.
 
 ---
 
@@ -65,6 +65,8 @@ Sensitivity grid axes (SD-001): **discount rate × terminal growth rate — conf
 | UXR-VAL-021 | A save attempt by a signed-in but unverified account is blocked with a plain-language verify-your-e-mail message and the verification path; the assumptions (and entered name) are preserved, and the save becomes available immediately after verification. | UXR-G-030, Gate 4 decision (OQ-UX-003 → B) | Should |
 | UXR-VAL-014 | Loading a scenario restores its parameter values exactly as saved and recomputes all outputs from them; loading over unsaved changes requires an explicit confirmation that the draft will be discarded. | FR-VAL-010, UC-VAL-002, mutation matrix, UXR-G-022 pattern | Should |
 | UXR-VAL-015 | The calculator provides a picker listing this stock's saved scenarios for loading. | FR-VAL-010, UC-VAL-002 | Should |
+| UXR-VAL-022 | For a stock whose accounting profile is `bank` or `insurance` — where a free-cash-flow-to-firm DCF does not apply — the calculator opens in a sector not-applicable state: it shows an honest plain-language explanation that the model does not apply to financial institutions, and no baseline parameters, fair value, price comparison, verdict, or sensitivity are displayed; the parameter panel, results, and sensitivity grid are suppressed rather than shown inert, and the primary action is to return to the Stock Page. | FR-VAL-001, FR-VAL-003; architecture `02` v1.3 §6.4, `03` v1.4 §5/§7 (added 2026-10-16) | Must |
+| UXR-VAL-023 | The sector not-applicable state is rendered from the served not-applicable state / `DCF_NOT_COMPUTABLE` reason `financial_sector` (i18n-neutral code, not the math-constraint path) and is distinguishable from the missing-inputs state (UXR-VAL-009) and the math-constraint state (UXR-VAL-008): it presents no editable parameters, no field-level highlighting, and no retained last-valid result, and no scenario save/load action is offered for that stock. | FR-VAL-001, FR-VAL-003; architecture `03` v1.4 §5 (`params.reason = "financial_sector"`), §7 (added 2026-10-16) | Must |
 
 ## 5. States
 
@@ -73,6 +75,7 @@ Sensitivity grid axes (SD-001): **discount rate × terminal growth rate — conf
 - **Scenario-loaded:** assumptions exactly as saved; modification indication resets.
 - **Validation-error (per parameter):** inline message; recompute suppressed; last valid result stays (UXR-VAL-008).
 - **Missing-inputs:** explanation of what is missing; no computation (UXR-VAL-009).
+- **Sector not-applicable:** for `bank`/`insurance` profiles, the calculator opens with the honest explanation that a free-cash-flow-to-firm DCF does not apply; no parameter panel, results, verdict, or sensitivity, and no editable inputs to fix — distinct from missing-inputs (UXR-VAL-009) and math-constraint (UXR-VAL-008), which both keep the inputs present. Primary action = return to the Stock Page (UXR-VAL-022/023).
 - **Save/load pending:** pending indication and lock on the trigger (UXR-G-002/020).
 - **Saved:** confirmation; scenario appears in picker and SCR-011 (mutation matrix).
 - **Error (save/load):** plain-language error + retry; all inputs and the entered name preserved (UXR-G-003/004).
@@ -87,11 +90,12 @@ Sensitivity grid axes (SD-001): **discount rate × terminal growth rate — conf
 | Saved scenarios | Server | Per account, per stock, until deleted | Valuation & DCF domain (FR-VAL-009) | Saves/renames/deletes reflect in the picker and SCR-011 without manual refresh (mutation matrix) |
 | Active parameter values (draft) | UI | Session draft | User edits | Preserved across navigation and the auth hop (UXR-G-021); replaced only by loading a scenario or explicit reset to baseline |
 | Current EOD price | Server | Daily | MDF canonical price (BR-VAL-003, NFR-VAL-003) | Displayed with as-of date; same value as the stock page |
+| Accounting profile (DCF applicability) | Server | Per instrument (builder-curated classification) | MDF `instruments.accounting_profile` (`02` v1.3 §3.1) | Read-only; determines whether the calculator opens computable or in the sector not-applicable state (UXR-VAL-022) — never user-editable |
 | Computed outputs (fair value, verdict, sensitivity) | Derived | Ephemeral | Pure function of displayed inputs + canonical price | Recomputed on every parameter change (UXR-VAL-004); never persisted except as part of a saved scenario's inputs |
 
 ## 7. Data-heavy surfaces
 
-- **Parameter panel:** 8 (proposed) labeled inputs with units; canonical defaults labeled with source/as-of; restatement markings where applicable; inline validation.
+- **Parameter panel:** 8 (proposed) labeled inputs with units; canonical defaults labeled with source/as-of; restatement markings where applicable; inline validation. For `bank`/`insurance` profiles the panel is suppressed and replaced by the sector not-applicable explanation (UXR-VAL-022) — no inert or editable fields are shown.
 - **Sensitivity table (Should):** grid of fair values across the two axes; recomputes with every parameter change; current single-point result identifiable within the grid; degrades to a no-data state if not computable.
 - **No pagination/sorting** — fixed structures. Freshness: the price is EOD with as-of date; outputs never imply precision beyond the user's own inputs and the canonical facts (NFR-VAL-004 — no black box).
 
@@ -105,6 +109,7 @@ Parameter panel, results, and sensitivity table remain fully operable at narrow 
 - The verdict is text, not color-only (e.g., "cheap/expensive" is never conveyed by color alone).
 - Sensitivity table has row/column headers; the current-result cell is programmatically indicated.
 - Keyboard operability and visible focus throughout (UXR-G-026/027).
+- The sector not-applicable explanation is text (not color- or icon-only) and its return-to-stock action is keyboard operable (UXR-VAL-022).
 
 ## 10. Critical flows
 
@@ -114,6 +119,7 @@ Parameter panel, results, and sensitivity table remain fully operable at narrow 
 4. **Unsaved-changes guard.** Given unsaved modifications, when the user loads a scenario, then a confirmation is required before the draft is discarded.
 5. **Missing inputs (UC-VAL-001a).** Given a stock with missing statement inputs, when the user opens the calculator, then it explains what is missing instead of computing on partial data.
 6. **Full core loop (SC-002).** Given an anonymous user on the dashboard, when they run a screener, open a result's stock page, study sections, and open the DCF calculator with their own assumptions, then they end with a plain-language verdict of price vs. their fair value — the complete discover → screen → research → value → decide chain without ever needing an account.
+7. **Financial-sector not-applicable (TC-VAL-028).** Given a stock whose accounting profile is `bank` or `insurance`, when the user opens the DCF calculator from its stock page, then it opens in the sector not-applicable state with an honest explanation that a free-cash-flow-to-firm DCF does not apply to financial institutions; when any compute is attempted, then the served `financial_sector` reason renders as that same explanation with no field highlighting and no last-valid result; the parameter panel, sensitivity grid, and scenario actions are not shown; the user's primary action is to return to the Stock Page.
 
 ---
 

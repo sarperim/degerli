@@ -16,6 +16,6 @@ scope:
 - Traces to: FR-VAL-001, FR-VAL-003; UC-VAL-001, UC-VAL-003; BR-VAL-001/008
 - Acceptance: TC-VAL-028 — TDD: tests first, then green; spec in `.pipeline/testing/valuation-dcf.md` §7.
 - Architecture refs: `02-data-model.md` §6.4 (financial-sector exclusion); `03-api-design.md` §5 (DCF compute), §7 (`DCF_NOT_COMPUTABLE` reason)
-- UX refs: SCR-006 — sector-specific not-computable state (**ux-designer flow-back pending**: UXR not yet written; a small alignment ticket follows)
+- UX refs: SCR-006 (UXR-VAL-022, UXR-VAL-023 — sector not-applicable state; a UI-alignment ticket follows)
 - Dependencies: TKT-mdf-015, TKT-mdf-017, TKT-mdf-020
 - Parallel group: P-28

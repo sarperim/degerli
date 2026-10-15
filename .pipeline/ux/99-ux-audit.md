@@ -3,7 +3,7 @@
 **Project:** Değerli (working name) — BIST Value Investing Platform
 **Prepared by:** ux-designer · **Date:** 2026-10-06
 **Scope audited:** `.pipeline/ux/` in full — 00-screen-inventory.md (12 screens after the 2026-10-06 SCR-012 amendment), 01-interaction-rules.md (30 global rules + 27-row mutation matrix after the amendment), market-overview.md, stock-screening.md, stock-research.md, valuation-dcf.md, user-accounts.md, market-data-foundation.md (156 numbered UXRs total: 128 at Gate 4 + 28 added with SCR-012 after the flag rulings).
-**Status:** ✅ all three flagged decisions resolved by the builder (2026-10-06) — see §2. Specs amended in place; change-propagation recorded in §6. **Post-Gate-4 amendment (2026-10-06):** SCR-012 Admin Dashboard added per builder instruction via architecture AD-13 — audited in §8; §1–§7 below remain the Gate 4 record for the original 11 screens.
+**Status:** ✅ all three flagged decisions resolved by the builder (2026-10-06) — see §2. Specs amended in place; change-propagation recorded in §6. **Post-Gate-4 amendment (2026-10-06):** SCR-012 Admin Dashboard added per builder instruction via architecture AD-13 — audited in §8; §1–§7 below remain the Gate 4 record for the original 11 screens. **Post-board correctness flow-back (2026-10-16):** two UI additions written for already-implemented screens — TMS 29 regime-break marker (SCR-005, UXR-RES-026/027) and financial-sector DCF "not applicable" state (SCR-006, UXR-VAL-022/023) — see §9.
 
 ---
 
@@ -96,3 +96,43 @@ The UX package is complete and internally consistent: 11 screens, 128 testable r
 **Proposed enhancements (out of scope, NOT specified):** run-ledger pagination; symbol search/filtering in the coverage report; a "reviewed" status-transition control for descriptions (no endpoint exists in the architecture — only edit and publish).
 
 **Change propagation.** Architecture already records AD-13 (v1.1) — the UX amendment adds no architectural obligation beyond what v1.1 carries; the matrix's six new rows state the invalidation contracts the implemented architecture must already satisfy given `no-store` admin caching. **The one architect-routed open item (flag ruling 3, UXR-MDF-020) is CLOSED:** the architect's v1.2 amendment (2026-10-06) documents `GET /admin/descriptions` serving `sourceRefs` (`03` §8; change record `01` §13.1) — additive response documentation only. The UXR-G-012 annotation and UXR-MDF-015 amendment (auto-refresh) were verified client-side only — no architectural change (the `/admin` 60 req/min limit comfortably accommodates polling; conclusion recorded in the v1.2 change record). The architecture's three accuracy touches from v1.2 (inputs count 12 screens/156 UXRs; C1 "public screens" + SCR-012 tag; §8.3 SCR-012 note) are consistent with this package. Test-planner/planner have not yet run, so no downstream artifact requires re-validation — they derive from the amended UX package and **architecture v1.2**. A brief-delta line for the admin surface (BA lane) is still recommended, as it is a post-brief scope addition even though every function traces to approved items.
+
+---
+
+## 9. Post-board correctness flow-back — TMS 29 marker & financial-sector DCF (2026-10-16)
+
+**Provenance.** The builder's post-board correctness pass amended the architecture (`02-data-model.md` **v1.3**, `03-api-design.md` **v1.4**, `01-system-architecture.md` §13.1 **v1.4**, 2026-10-15) and regenerated the affected test plans. Two of the changes require UI structure/behavior additions to already-implemented screens; the builder directed the ux-designer to write the missing UXRs. The architecture's v1.4 change record already flags these as "UXR-resolved display markers (SCR-005/006/012 — ux-designer flow-back open)"; the tickets `TKT-mdf-018` and `TKT-val-010` both carry "ux-designer flow-back pending". This section closes the SCR-005 and SCR-006 items. **The SCR-012 independent-CPI (ENAG) manual-entry control is intentionally NOT written** — the source site is down; it remains held with the architecture item, and no UX requirement is created for it in this pass.
+
+**Changes applied (IDs fixed; nothing renumbered):**
+
+| Addition | Screen / section | New UXRs | Consumes | Traces to |
+|---|---|---|---|---|
+| TMS 29 regime-break warning marker | SCR-005 (Stock Page), Growth section | **UXR-RES-026**, **UXR-RES-027** | payload flag `metricFlags[<metricCode>].regimeBreak` (server `derived_metrics.regime_break`) | FR-MDF-013, FR-MDF-014; `02` v1.3 §3.1/§6.2; `03` v1.4 §4; TC-MDF-060 |
+| Financial-sector DCF "not applicable" state | SCR-006 (DCF Calculator) | **UXR-VAL-022**, **UXR-VAL-023** | served `sector_not_applicable` state / `DCF_NOT_COMPUTABLE` `params.reason = "financial_sector"` | FR-VAL-001, FR-VAL-003; `02` v1.3 §6.4; `03` v1.4 §5/§7; TC-VAL-028 |
+
+**Failure-catalog audit — the two additions:**
+
+| Failure type | Finding | Resolution |
+|---|---|---|
+| Static-page / consistency failure | The regime-break marker reuses the established honest-data marker pattern (UXR-G-009/UXR-RES-019 restatement, UXR-RES-020 adjusted) and is driven by the same served flags object the screener receives (`03` v1.4 §4), so the same stock/metric/date is marked consistently (UXR-G-011). | **Fixed in spec** — UXR-RES-026/027 |
+| Missing-feedback / false-affordance failure | The DCF not-applicable state could tempt an implementation to render 8 editable fields that can never compute. UXR-VAL-022 pins *suppression*, not inert fields, and names the primary action (return to the Stock Page) — no false affordance. | **Fixed in spec** — UXR-VAL-022 |
+| Error/empty-state ambiguity failure | The not-applicable state is explicitly distinguished from missing-inputs (UXR-VAL-009) and math-constraint (UXR-VAL-008): no editable inputs, no field highlight, no retained last-valid result, no scenario actions (UXR-VAL-023). | **Fixed in spec** — UXR-VAL-023 |
+| Accessibility failure | Both markers are textual and programmatically associated; the not-applicable return action is keyboard operable (spec §9 of each screen). | **Fixed in spec** |
+
+**Mutation matrix.** Neither addition is a state-changing user action — both are read-only display states/verdicts — so `01-interaction-rules.md` §2 is unchanged (no new rows). UXR-RES-026/027 are consumed on a screen that hosts no mutations (SCR-005); UXR-VAL-022/023 replace the computable path of SCR-006 for a profile subset without adding a mutation.
+
+**Traceability.** UXR-RES-026/027 → FR-MDF-013, FR-MDF-014 (both Must) ⇒ screen MoSCoW unchanged (SCR-005 Must; highest hosted FR is Must). UXR-VAL-022/023 → FR-VAL-001, FR-VAL-003 (both Must) ⇒ SCR-006 MoSCoW unchanged (Must). No new UC and no new screen, so `00-screen-inventory.md` §2/§4 need no structural change; its §3 honest-data obligation list is satisfied through the amended SCR-005 spec.
+
+**Change-propagation record (per the `99` §6 / architecture §13.1 convention):**
+
+- **Affected UXR IDs:** added UXR-RES-026, UXR-RES-027 (SCR-005); added UXR-VAL-022, UXR-VAL-023 (SCR-006). No existing UXR edited; no IDs renumbered or removed.
+- **Affected screen specs:** `.pipeline/ux/stock-research.md` (SCR-005 §4/§5/§6/§7/§9/§10 + header), `.pipeline/ux/valuation-dcf.md` (SCR-006 §4/§5/§6/§7/§9/§10 + header).
+- **Affected FR/TC traces:** FR-MDF-013/014 — TC-MDF-060 (`testing/market-data-foundation.md` §7) is the acceptance test; the coverage matrix `testing/99-coverage-matrix.md` should add UXR-RES-026/027 to its SCR-005 rows. FR-VAL-001/003 — TC-VAL-028 (`testing/valuation-dcf.md` §7) is the acceptance test; the same plan's coverage matrix should add UXR-VAL-022/023.
+- **Affected tickets:** **TKT-mdf-018** (regime-break flag — its "UI rendering ticket deferred until UXR lands" precondition is now satisfied; a small UI-alignment ticket should follow) and **TKT-val-010** (financial-sector DCF verdict — "a small alignment ticket follows" is now unblocked). Both tickets' UX-ref notes may be updated from "flow-back pending" to the UXR IDs above.
+- **Downstream re-validation:** the test plans already contain TC-MDF-060 and TC-VAL-028 (written from the architecture, pre-UXR). They now have UXR traces; the test-planner should attach the new UXR IDs to those TCs and to the coverage matrix. No architectural obligation is added beyond architecture v1.4.
+
+**Open / deferred decisions (for the builder):**
+
+1. **SCR-003 (Screener) consuming side — flagged, not specified here.** `TKT-mdf-018` lists the screener (`03` §4 `metricFlags`) as a UX ref alongside SCR-005. This pass was scoped by the builder to SCR-005/SCR-006 only (deliverable list); the screener's rendering of a `regimeBreak` marker on result rows is therefore **left to a follow-up UXR in `stock-screening.md`**. UXR-G-011 (same stock/metric/date consistency across surfaces) already binds the screener to the same canonical value, but the marker's on-row presentation is unspecified. Recommend a follow-up pass before the screener UI alignment ticket lands.
+2. **User-facing copy left to the builder (by design):** both additions consume i18n-neutral codes (`regimeBreak`, `financial_sector`) — the TR/EN warning and explanation text are not written here (per role: no copy), and must be authored in the i18n catalogs.
+3. **ENAG / SCR-012 manual-entry control:** held — not written (source down); no requirement created.

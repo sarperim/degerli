@@ -3,7 +3,7 @@
 **Domain:** stock-research · **Prepared:** 2026-10-06
 **Traces:** UC-RES-001, UC-RES-002, UC-RES-003, UC-RES-005; FR-RES-001–022, 026, 027 · BR-RES-001–013 · display obligations from BR-MDF-010/011, FR-MDF-011/014/016/018/019
 **Global rules applied:** UXR-G-001–029 (esp. G-006 no-data honesty, G-007/008 as-of & stale, G-009 restatement, G-010 adjusted-data, G-011 canonical consistency, G-021 section-state preservation)
-**Status:** written under the standing no-stop instruction. Vs.-sector strip metric set and basis **confirmed by the builder (2026-10-06, OQ-UX-002)**.
+**Status:** written under the standing no-stop instruction. Vs.-sector strip metric set and basis **confirmed by the builder (2026-10-06, OQ-UX-002)**. **Amended 2026-10-16 (post-board correctness flow-back):** UXR-RES-026/027 added — TMS 29 regime-break warning marker on the Growth section (architecture `02` v1.3 §3.1/§6.2, `03` v1.4 §4/§5; ticket TKT-mdf-018); see `99-ux-audit.md` §9.
 
 ---
 
@@ -126,6 +126,8 @@ The strip shows the stock's **five valuation-family metrics — P/E, P/B, EV/EBI
 | UXR-RES-023 | The page provides navigation to the DCF calculator for this stock. | FR-RES-018, UC-RES-005 | Must |
 | UXR-RES-024 | The vs.-sector strip displays the peer count behind each sector median (e.g., "median of 23 peers"), so the user can judge the median's basis. | OQ-UX-002 confirmation (2026-10-06); honest-display principle | Should |
 | UXR-RES-025 | Where the stock's own multiple is not meaningful (e.g., P/E with negative earnings), the strip shows an explicit not-meaningful state for that metric rather than a value. | OQ-UX-002 confirmation (2026-10-06); BR-RES-008 | Should |
+| UXR-RES-026 | Every Growth-section CAGR metric whose served per-metric flags carry `regimeBreak` true is marked with a visible regime-break marker on the metric and a regime-break warning footnote at the bottom of the Growth section; the metric's value remains displayed and is never hidden or replaced by a no-data state. | FR-MDF-013, FR-MDF-014; architecture `02` v1.3 §3.1/§6.2, `03` v1.4 §4 (added 2026-10-16) | Must |
+| UXR-RES-027 | The regime-break marker is driven by the served per-metric flag (`metricFlags[<metricCode>].regimeBreak`) and is rendered distinguishably from the restatement marker (UXR-RES-019) and the adjusted-data disclaimer (UXR-RES-020); an absent flag renders no marker. | FR-MDF-013, FR-MDF-014; UXR-G-011; architecture `03` v1.4 §4 (added 2026-10-16) | Must |
 
 ## 5. States
 
@@ -135,6 +137,7 @@ The strip shows the stock's **five valuation-family metrics — P/E, P/B, EV/EBI
 - **No-data (per section/metric):** explicit state with coverage boundary (UXR-RES-022) — never blanks-as-zero.
 - **Shorter history:** CAGRs computed from available history with the actual window indicated (UXR-RES-016).
 - **Restated:** asterisk + bottom footnote + warning on affected figures (UXR-RES-019).
+- **Regime-break (Growth):** CAGRs whose compounding window spans the TMS 29 transition (2023-12-31) carry the regime-break marker and a bottom-of-section warning footnote; the nominal value is still shown, never hidden (UXR-RES-026/027). A CAGR entirely on one side of the transition is unmarked.
 - **Stale:** as-of date + stale marker (UXR-RES-021).
 - **Error (per section):** plain-language error + retry for that section (UXR-G-003).
 - **Mutation-pending / empty:** N/A — the Stock Page hosts no mutations (mutation matrix §2); it has no legitimate whole-page empty state (a covered stock always has a page; per-section states above handle absence).
@@ -144,13 +147,14 @@ The strip shows the stock's **five valuation-family metrics — P/E, P/B, EV/EBI
 | State | Owner | Lifetime | Source of truth | Sync / invalidation |
 |-------|-------|----------|-----------------|--------------------|
 | All financial figures and metrics (every section) | Server | EOD / per reporting period | MDF canonical facts and metrics (BR-RES-004 — the page computes nothing) | Read-only; served with as-of, staleness, restatement, and adjusted markings from MDF |
+| Growth CAGR metric flags (`windowYears`, `regimeBreak`, `isAdjusted`, `isRestated`) | Server | Per computed metric (EOD) | MDF canonical metrics (`derived_metrics`, served as per-metric flags per architecture `03` v1.4 §4) | Read-only; drives the Growth-section markers (UXR-RES-026/027) — the page renders the flags it is served, it never computes them |
 | Business description (published version) | Server | Per builder review cycle | Stock Research domain (status: published only; BR-RES-002/003) | Read-only; last-reviewed date displayed (UXR-RES-010) |
 | Active section | UI | Session | User selection | Preserved across navigation away/back (UXR-G-021) |
 | Language | Global | Per device / per account | UXR-G-014 | Description re-renders in the selected language (both versions exist pre-publication) |
 
 ## 7. Data-heavy surfaces
 
-- **Financial tables/series (Financials, Profitability, Growth, Balance Sheet, Dividends):** loading, populated, no-data with coverage boundary, shorter-history indication, restatement marking, adjusted-data disclaimer on historical series, stale marking, per-section error with retry. Figures are never presented with precision or freshness beyond their source: every table binds to its as-of date/period (UXR-G-007), and adjusted series are labeled (UXR-G-010).
+- **Financial tables/series (Financials, Profitability, Growth, Balance Sheet, Dividends):** loading, populated, no-data with coverage boundary, shorter-history indication, restatement marking, regime-break marking on spanning CAGRs, adjusted-data disclaimer on historical series, stale marking, per-section error with retry. Figures are never presented with precision or freshness beyond their source: every table binds to its as-of date/period (UXR-G-007), and adjusted series are labeled (UXR-G-010).
 - **Historical valuation (Valuation section):** historical series on the adjusted basis with the adjusted-data disclaimer (BR-MDF-010), same canonical values as the screener for the current period (UXR-G-011).
 - **Dividend history:** full dated history as ingested; no-data state where a stock has never paid dividends is an explicit, honest state ("no dividends paid" with coverage boundary), not an error.
 - **Vs.-sector strip (Should):** stock value + sector median per metric, exclusion disclosure; degrades to a no-data state if sector medians are unavailable for a metric.
@@ -164,6 +168,7 @@ All seven sections remain navigable and readable at narrow widths (UXR-G-025); f
 - Tables use semantic structures with labeled rows/columns (UXR-G-028).
 - Section navigation is keyboard operable; the current section is programmatically indicated (UXR-G-026/027).
 - Restatement warnings and adjusted-data disclaimers are textual (not color- or icon-only); the asterisk is text and its footnote is reachable.
+- The regime-break marker is textual (not color- or icon-only), is programmatically associated with the CAGR metric it affects, and its footnote is reachable (UXR-RES-026).
 - Daily-change / trend direction in series is conveyed by more than color alone.
 
 ## 10. Critical flows
@@ -174,3 +179,4 @@ All seven sections remain navigable and readable at narrow widths (UXR-G-025); f
 4. **Short history.** Given a stock listed in 2021, when the user views the Growth section, then the 3Y/5Y CAGRs indicate the actual window used, and the 10Y CAGR shows the honest no-data/shorter-history state rather than a fabricated value.
 5. **Adjusted historical data.** Given a stock with corporate actions in its history, when the user views historical valuation, then the series is corporate-action-adjusted and carries the adjusted-data disclaimer.
 6. **Back-navigation preserves position.** Given the user is on the Balance Sheet section, when they navigate to another screen and return, then the Balance Sheet section is still active.
+7. **TMS 29 regime break.** Given a stock whose 3Y/5Y CAGR window spans the 2023-12-31 TMS 29 transition, when the user views the Growth section, then the affected CAGRs carry the regime-break marker, the bottom-of-section footnote explains the nominal/inflation-accounting comparability break, and the CAGR values remain displayed; a CAGR whose window lies entirely on one side of the transition carries no marker.
