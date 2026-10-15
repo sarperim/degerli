@@ -4,7 +4,8 @@
 # Three jobs, all on free public-repo GitHub-hosted runners, no secrets required:
 #   1. backend — restore · build · test (xUnit + Testcontainers PostgreSQL 17;
 #      migrations applied; fixture-universe golden values).
-#   2. web     — npm ci · ESLint · tsc --noEmit · Vitest · i18n parity · vite build.
+#   2. web     — npm ci · ESLint · tsc --noEmit · Vitest · i18n parity ·
+#      advice-vocabulary · vite build.
 #   3. e2e     — compose.ci.yml stack (API + PostgreSQL + seeded fixtures + MailPit)
 #      then the Playwright smoke suite, bounded by its 5-minute budget gate.
 #
@@ -109,6 +110,11 @@ jobs:
 
       - name: i18n parity check (TR/EN)
         run: npm run check:i18n
+
+      # Info-only posture backstop (NFR-MOV-006 / UXR-G-017, TC-XC-007): the
+      # catalogs must carry no recommendation vocabulary.
+      - name: Advice-vocabulary check (TR/EN)
+        run: npm run check:advice
 
       - name: Build (vite)
         run: npm run build

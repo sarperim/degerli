@@ -105,6 +105,8 @@ if (!app.Environment.IsProduction())
     api.MapGet("/_probe/rate", () => Results.Ok(new { ok = true })).AllowAnonymous();
     api.MapGet("/_probe/throw", ThrowProbe);
     api.MapGet("/stocks/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
+    api.MapGet("/market/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
+    api.MapGet("/screener/metrics/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
     api.MapGet("/me/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
     auth.MapPost("/_probe", () => Results.NoContent()).AllowAnonymous();
     admin.MapGet("/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
