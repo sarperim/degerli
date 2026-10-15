@@ -4,26 +4,27 @@ namespace Degerli.Ingestion.Funds;
 
 /// <summary>
 /// The TEFAS fund-universe payload (FR-FDF-001..003). One fetch carries every fund the
-/// source publishes for the day — the fund identity plus its NAV history, performance
-/// rows and (where available) a holdings snapshot. The universe bound (BR-FDF-006) is
-/// applied to this list: only equity and equity-heavy mixed funds are ingested, the
-/// out-of-scope types are skipped and counted (I-FDF-1), never quarantined.
+/// source publishes for the day — the fund identity plus its NAV history and performance
+/// rows. TEFAS does not expose ticker-level holdings (only NAV/performance/asset-class
+/// allocation), so the payload no longer carries a holdings snapshot: the fund ingest
+/// records a per-fund holdings coverage gap instead (v1.4, TC-FDF-013). The universe bound
+/// (BR-FDF-006) is applied to this list: only equity and equity-heavy mixed funds are
+/// ingested, the out-of-scope types are skipped and counted (I-FDF-1), never quarantined.
 /// </summary>
 public sealed record TefasUniversePayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
     [property: JsonPropertyName("funds")] IReadOnlyList<TefasFund>? Funds);
 
 /// <summary>
-/// One fund's block inside the TEFAS universe payload. The shape mirrors the FU §10
-/// <c>tefas-*</c> canned payload: a fund identity, its NAV rows, performance rows and
-/// holdings lines.
+/// One fund's block inside the TEFAS universe payload: a fund identity, its NAV rows and
+/// performance rows. Ticker-level holdings are deliberately absent — the source does not
+/// expose them (see <see cref="TefasUniversePayload"/>).
 /// </summary>
 public sealed record TefasFund(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
     [property: JsonPropertyName("fund")] TefasFundInfo? Fund,
     [property: JsonPropertyName("navs")] IReadOnlyList<TefasNavItem>? Navs,
-    [property: JsonPropertyName("performance")] IReadOnlyList<TefasPerformanceItem>? Performance,
-    [property: JsonPropertyName("holdings")] IReadOnlyList<TefasHoldingItem>? Holdings);
+    [property: JsonPropertyName("performance")] IReadOnlyList<TefasPerformanceItem>? Performance);
 
 /// <summary>Fund identity as published by TEFAS.</summary>
 public sealed record TefasFundInfo(
@@ -43,9 +44,12 @@ public sealed record TefasPerformanceItem(
     [property: JsonPropertyName("returnValue")] decimal? ReturnValue);
 
 /// <summary>
-/// One holdings line. <see cref="Symbol"/> is present when the source maps the line to a
-/// BIST symbol; otherwise <see cref="NameRaw"/> is retained for the look-through link and
-/// <c>instrument_id</c> stays NULL (never dropped — FR-FDF-003).
+/// One ticker-level holdings line of the retained look-through capability. TEFAS does not
+/// expose these (the ingest is descoped — TC-FDF-013); the type is the write-shape for
+/// <see cref="TefasFundStore.UpsertHoldingsAsync"/>, kept for future look-through phases.
+/// <see cref="Symbol"/> is present when the line maps to a BIST symbol; otherwise
+/// <see cref="NameRaw"/> is retained and <c>instrument_id</c> stays NULL (never dropped —
+/// FR-FDF-003).
 /// </summary>
 public sealed record TefasHoldingItem(
     [property: JsonPropertyName("lineNo")] int LineNo,

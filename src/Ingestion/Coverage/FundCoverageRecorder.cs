@@ -145,7 +145,9 @@ public sealed class FundCoverageRecorder
     }
 
     private static string GapNote(string dataType) =>
-        $"No {dataType} data available for this fund; recorded as an explicit coverage gap (NFR-FDF-001).";
+        dataType == CoverageDataTypes.Holdings
+            ? "TEFAS does not expose ticker-level holdings; recorded as an accepted coverage gap (BR-FDF-004)."
+            : $"No {dataType} data available for this fund; recorded as an explicit coverage gap (NFR-FDF-001).";
 
     private static string SourceLimitNote(DateOnly requestedFrom, DateOnly achievedFrom) =>
         $"Source history begins {achievedFrom:yyyy-MM-dd}; backfill target {requestedFrom:yyyy-MM-dd} not reached (source limit).";

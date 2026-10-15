@@ -5,6 +5,8 @@ using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Coverage;
+using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Jobs;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -117,9 +119,13 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
         Assert.Equal(0, await db.FundPerformances.CountAsync(p => p.FundId == "TEF0003"));
     }
 
-    /// <summary>TC-FDF-003 — holdings ingest with partial coverage and symbol matching.</summary>
+    /// <summary>TC-FDF-003 — ticker-level holdings are descoped (v1.4 post-board correctness): the
+    /// <c>fund-holdings</c> job no longer ingests a ticker-level snapshot from TEFAS (the source
+    /// exposes NAV/performance/asset-class allocation only); the per-fund holdings gap is recorded
+    /// in <c>coverage_metadata</c> and nothing is quarantined. The store's look-through write
+    /// capability is retained and asserted in TC-FDF-011.</summary>
     [Fact]
-    public async Task TC_FDF_003_Holdings_ingest_with_partial_coverage_and_symbol_matching()
+    public async Task TC_FDF_003_Ticker_level_holdings_descoped_and_recorded_as_a_gap()
     {
         await ResetAsync();
         StubUniverse(Universe("TEF0001", "TEF0002", "TEF0003"));
@@ -128,35 +134,22 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
         var result = await RunAsync(provider, "fund-holdings");
 
         Assert.Equal("succeeded", result.Status);
-        Assert.Equal(4, result.Written);
+        Assert.Equal(0, result.Written);
 
         await using var db = _postgres.CreateContext();
-        var alfaId = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
-        var epslId = await db.Instruments.Where(i => i.Symbol == "EPSL").Select(i => i.Id).SingleAsync();
 
-        var tef1 = await db.FundHoldings.Where(h => h.FundId == "TEF0001").OrderBy(h => h.LineNo).ToListAsync();
-        Assert.Equal(3, tef1.Count);
-        Assert.Equal(alfaId, tef1[0].InstrumentId);
-        Assert.Equal(0.05m, tef1[0].Weight);
-        Assert.Equal(250_000m, tef1[0].Units);
-        Assert.Equal(epslId, tef1[1].InstrumentId);
-        Assert.Equal(0.03m, tef1[1].Weight);
-        Assert.Equal(120_000m, tef1[1].Units);
-        Assert.Null(tef1[2].InstrumentId);
-        Assert.Equal("Yabancı Hisse X", tef1[2].NameRaw);
+        // No ticker-level rows are ingested from the TEFAS payload.
+        Assert.False(await db.FundHoldings.AnyAsync());
 
-        // TEF0002 publishes no holdings: gap recorded, no rows.
-        Assert.False(await db.FundHoldings.AnyAsync(h => h.FundId == "TEF0002"));
+        // The absence is recorded per fund, never silent (BR-FDF-004); TEF0002's is explicit.
+        var tef2 = await db.CoverageMetadata.SingleAsync(row =>
+            row.Scope == "fund" && row.FundId == "TEF0002" && row.DataType == CoverageDataTypes.Holdings);
+        Assert.Null(tef2.AvailableFrom);
+        Assert.Null(tef2.AvailableTo);
+        Assert.False(string.IsNullOrWhiteSpace(tef2.Notes), "the accepted holdings gap must be recorded");
 
-        // TEF0003's single partial line is stored honestly (NULL weight/units).
-        var tef3 = Assert.Single(await db.FundHoldings.Where(h => h.FundId == "TEF0003").ToListAsync());
-        Assert.Equal("Hisse Y", tef3.NameRaw);
-        Assert.Null(tef3.Weight);
-        Assert.Null(tef3.Units);
-
-        Assert.All(
-            await db.FundHoldings.AsNoTracking().ToListAsync(),
-            h => Assert.Equal(T, h.AsOfDate));
+        // Absence is expected, not a data-quality failure: nothing is quarantined.
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "fund-holdings"));
     }
 
     /// <summary>TC-FDF-004 — the fund universe is bounded to equity and equity-heavy mixed
@@ -241,7 +234,11 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
         Assert.Contains("CONFLICTING_VALUE", alert.Subject);
     }
 
-    /// <summary>TC-FDF-011 — holdings→instrument link integrity holds both ways.</summary>
+    /// <summary>TC-FDF-011 — the holdings→instrument look-through link is retained for future
+    /// phases: a stored line's symbol matches an MDF instrument, an unmatched line keeps
+    /// <c>name_raw</c> with a NULL id, and referential integrity holds both ways. With the TEFAS
+    /// ticker-level ingest descoped (TC-FDF-003/TC-FDF-013), the capability lives in the store
+    /// and is exercised here directly.</summary>
     [Fact]
     public async Task TC_FDF_011_Holdings_to_instrument_link_integrity()
     {
@@ -249,7 +246,24 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
         StubUniverse(Universe("TEF0001", "TEF0002", "TEF0003"));
         await using var provider = BuildIngestion();
 
-        await RunAsync(provider, "fund-holdings");
+        // The universe sync creates the fund rows the look-through link references.
+        await RunAsync(provider, "fund-nav");
+
+        await using (var seed = _postgres.CreateContext())
+        {
+            var store = new TefasFundStore(seed);
+            var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            await store.UpsertHoldingsAsync(
+                "TEF0001",
+                T,
+                "tefas://funds/TEF0001",
+                recordedAt,
+                [
+                    new TefasHoldingItem(1, "ALFA", null, 0.05m, 250_000m),
+                    new TefasHoldingItem(2, "EPSL", null, 0.03m, 120_000m),
+                    new TefasHoldingItem(3, null, "Yabancı Hisse X", 0.02m, null),
+                ]);
+        }
 
         await using var db = _postgres.CreateContext();
         var holdings = await db.FundHoldings.AsNoTracking().ToListAsync();
