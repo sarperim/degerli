@@ -1,0 +1,80 @@
+# Production stack (architecture 01-system-architecture.md §5/§6.2, TKT-int-006).
+#
+#   docker compose -f compose.prod.yml pull
+#   docker compose -f compose.prod.yml run --rm api migrate
+#   docker compose -f compose.prod.yml up -d
+#
+# Runs on the Hetzner VPS from the deploy job in .github/workflows/deploy.yml. Images
+# are pulled from public GHCR (`ghcr.io/sarperim/degerli/api` + `.../web`) — the VPS
+# needs no registry credentials (architecture §5/§6.3). All secrets come from the
+# git-ignored VPS `.env` (see .env.example); the repo and the images carry none.
+#
+# Rollback = pin IMAGE_TAG to the previous image SHA and `up -d` again — see
+# deploy/README.md. Not to be confused with compose.dev.yml (hot-reload local dev) or
+# compose.ci.yml (CI e2e stack).
+
+name: degerli
+
+x-api-environment: &api-environment
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_URLS: http://+:8080
+  ConnectionStrings__Default: ${ConnectionStrings__Default:?set ConnectionStrings__Default in .env}
+  Smtp__Host: ${Smtp__Host:?set Smtp__Host in .env}
+  Smtp__Port: ${Smtp__Port:-587}
+  Smtp__User: ${Smtp__User}
+  Smtp__Password: ${Smtp__Password}
+  Smtp__From: ${Smtp__From:?set Smtp__From in .env}
+  Smtp__UseStartTls: ${Smtp__UseStartTls:-true}
+  Evren__ApiKey: ${Evren__ApiKey}
+  APP_URL: ${APP_URL:?set APP_URL in .env}
+  ALERT_EMAIL: ${ALERT_EMAIL:?set ALERT_EMAIL in .env}
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-degerli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-degerli}
+    # No published port: the database is reachable only on the compose network
+    # (backups run through `docker compose exec`).
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-degerli} -d ${POSTGRES_DB:-degerli}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/sarperim/degerli/api}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *api-environment
+    # Internal only; Caddy is the single public entrypoint.
+    expose:
+      - "8080"
+
+  caddy:
+    image: ${WEB_IMAGE:-ghcr.io/sarperim/degerli/web}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

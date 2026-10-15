@@ -1,0 +1,49 @@
+# Caddy 2 production site config (architecture 01-system-architecture.md §5
+# reverse-proxy row, §10.5 security posture; TKT-int-006).
+#
+# One host serving the SPA and the API on the same origin (`03-api-design.md` §2):
+#   * the bare {$DOMAIN} site label makes Caddy obtain and renew a Let's Encrypt
+#     certificate automatically and 301-redirect plain HTTP to HTTPS;
+#   * `/api/*` and `/health` are reverse-proxied to the `api` compose service;
+#   * everything else is served from /srv with history fallback so the React
+#     Router SPA owns the client-side routes.
+#
+# {$DOMAIN} is injected by compose.prod.yml from the VPS `.env` — no secrets live in
+# this file.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# --- API + liveness (must precede the SPA catch-all) ---------------------
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle /health {
+		reverse_proxy api:8080
+	}
+
+	# --- SPA statics with client-side-routing fallback -----------------------
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Security headers for the HTML/asset responses (the API sets its own for
+	# JSON; architecture §10.5). `style-src 'unsafe-inline'` is required by the
+	# Tailwind/shadcn-vars runtime style injection; scripts and connections stay
+	# same-origin.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

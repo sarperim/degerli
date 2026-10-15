@@ -9,7 +9,29 @@ using Degerli.Ingestion;
 using Degerli.Persistence;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
+
+// Forward-only migrator entrypoint (architecture §6.2; `02-data-model.md` §8). The
+// deploy job runs `docker compose run --rm api migrate` before `up -d`; the trailing
+// `migrate` argument reaches this branch. It applies the pending EF migrations against
+// the configured connection string and exits without starting the web host, so the API
+// never serves an un-migrated schema. Checked before the host builder so the bare
+// `migrate` token never reaches the command-line configuration provider.
+if (args.Contains("migrate", StringComparer.OrdinalIgnoreCase))
+{
+    var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        Console.Error.WriteLine("migrate: no connection string (set ConnectionStrings__Default).");
+        return 2;
+    }
+
+    await using var migrationDb = new DegerliDbContext(DegerliDbContextOptions.Build(connectionString));
+    await migrationDb.Database.MigrateAsync();
+    Console.WriteLine("migrate: database schema is up to date.");
+    return 0;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 

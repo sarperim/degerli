@@ -438,24 +438,31 @@ default.
 ### Prerequisites
 
 * Docker + Docker Compose
-* .NET 10 SDK (only if you build or run without Docker)
+* Node.js 22 (to run the SPA dev server)
+* .NET 10 SDK (only if you build or run the API without Docker)
 
 ### Quickstart
+
+The backend stack — PostgreSQL 17, MailPit and the API — runs in Docker; the React SPA
+runs on Vite and proxies `/api` to it. Six commands from a fresh clone:
 
 ```bash
 git clone https://github.com/sarperim/degerli.git
 cd degerli
-docker compose -f compose.dev.yml up
+docker compose -f compose.dev.yml up -d            # Postgres + MailPit + API
+docker compose -f compose.dev.yml run --rm migrate # apply EF migrations + seed
+cd src/Web && npm ci                              # install SPA dependencies (locked)
+npm run dev                                        # SPA at http://localhost:5173
 ```
 
-Then:
+Then open <http://localhost:5173>. The supporting services are:
 
 * API liveness — <http://localhost:8080/health> → `200 Healthy`
 * MailPit inbox — <http://localhost:8025>
 * PostgreSQL — `localhost:5432` (user / password / database: `degerli`)
 
-Sources under `src/` are bind-mounted, so editing a `.cs` file rebuilds and reloads
-the running API.
+No `.env` file is required: every value has a safe local default. Sources under `src/`
+are bind-mounted, so editing a `.cs` file rebuilds and reloads the running API.
 
 ### Configuration
 
@@ -483,6 +490,28 @@ run on demand:
 ```bash
 docker compose -f compose.dev.yml run --rm contentpipeline
 ```
+
+---
+
+# Production & Operations
+
+The public deployment is a single VPS running [`compose.prod.yml`](compose.prod.yml):
+Caddy (automatic Let's Encrypt TLS, SPA statics, `/api` reverse proxy) in front of the
+ASP.NET Core API and PostgreSQL. Images are built and pushed to public GHCR by GitHub
+Actions and deployed over SSH after CI passes on `main`.
+
+* **CI** — [`ci.yml`](.github/workflows/ci.yml): backend · web · e2e on every PR.
+* **CD** — [`deploy.yml`](.github/workflows/deploy.yml): build + push
+  `ghcr.io/sarperim/degerli/{api,web}`, apply migrations, `compose up -d`, then a
+  `GET /health` smoke-check (non-200 fails the job). Rollback is a re-deploy of the
+  previous image tag.
+* **Backups** — nightly encrypted `pg_dump` → Backblaze B2 (30-day retention, rclone),
+  with a documented restore drill (RTO 4 h / RPO 24 h).
+* **Uptime** — UptimeRobot 5-minute checks against `/health`.
+
+The full runbook (first-time setup, deploy, rollback, backups, monitoring) lives in
+[`deploy/README.md`](deploy/README.md). No secrets are committed — `.env.example` is the
+template and the images carry none.
 
 ---
 
