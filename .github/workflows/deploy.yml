@@ -1,0 +1,216 @@
+# Continuous deployment (architecture 01-system-architecture.md §6.2, §6.3;
+# TKT-int-006).
+#
+# Fires only after the CI workflow completes successfully on `main`, then:
+#   1. builds + pushes the production images to public GHCR
+#      (ghcr.io/sarperim/degerli/api + .../web, tagged :<sha> and :latest);
+#   2. SSHs to the VPS and runs compose pull → `api migrate` → `up -d`;
+#   3. smoke-checks `GET /health` and fails the job on any non-200.
+#
+# Rollback is a re-deploy of the previous image tag: run this workflow manually
+# (workflow_dispatch) with the prior short SHA — compose.prod.yml is tag-pinned, so
+# `up -d` pulls and restarts exactly that image. See deploy/README.md.
+#
+# NOTE: `workflow_run` requires this file to exist on the default branch, so CD only
+# becomes active once this workflow is merged to `main`.
+#
+# Required repository secrets: SSH_PRIVATE_KEY, DEPLOY_HOST, DEPLOY_USER,
+#   DEPLOY_HOST_KEY (the VPS host's known_hosts line — see deploy/README.md §Secrets).
+# Required repository variables: DEPLOY_PATH (checkout dir on the VPS),
+#   PUBLIC_URL (e.g. https://degerli.example). No secret is ever written to the repo.
+
+name: Deploy
+
+on:
+  # Runs after the "CI" workflow finishes; the job below gates on a green run on main.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  # Manual (re)deploy of a specific image tag — the documented rollback path.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag/SHA to (re)deploy (rollback)."
+        required: true
+        type: string
+
+# Least privilege: `packages: write` is granted only to the image build/push job
+# below; the SSH deploy job needs nothing beyond reading the repo.
+permissions:
+  contents: read
+
+# Never run two deploys at once; do not cancel an in-flight deploy.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/sarperim/degerli/api
+  WEB_IMAGE: ghcr.io/sarperim/degerli/web
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build + push both production images for this commit.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & push images
+    if: >-
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Pushing to GHCR needs package write; scoped to this job only.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout the deployed commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The github.sha of a workflow_run is the default branch; deploy the exact
+          # commit CI validated.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Derive image tag
+        id: meta
+        run: echo "tag=$(echo '${{ github.event.workflow_run.head_sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: src/Api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.API_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push web (Caddy + SPA) image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/caddy/Dockerfile
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Pull, migrate and (re)start the stack on the VPS, then smoke-check /health.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy over SSH
+    needs: [build-and-push]
+    # Run after a successful build, or on a manual rollback dispatch.
+    if: >-
+      always()
+      && (needs.build-and-push.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve the image tag
+        id: tag
+        env:
+          # Passed via env (not inline interpolation) so a dispatch input cannot
+          # inject shell into this step.
+          DISPATCH_TAG: ${{ inputs.image_tag }}
+          BUILD_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            value="${DISPATCH_TAG}"
+          else
+            value="${BUILD_TAG}"
+          fi
+          # Guard: image tags are short/long hex SHAs only.
+          if ! printf '%s' "$value" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::refusing to deploy with a non-SHA image tag: '${value}'"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy on the VPS
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          # Fail fast rather than SSH with empty coordinates.
+          : "${SSH_PRIVATE_KEY:?secret SSH_PRIVATE_KEY is required}"
+          : "${DEPLOY_HOST:?secret DEPLOY_HOST is required}"
+          : "${DEPLOY_USER:?secret DEPLOY_USER is required}"
+          : "${DEPLOY_HOST_KEY:?secret DEPLOY_HOST_KEY is required}"
+          : "${DEPLOY_PATH:?repository variable DEPLOY_PATH is required}"
+          : "${PUBLIC_URL:?repository variable PUBLIC_URL is required}"
+          : "${IMAGE_TAG:?no image tag resolved}"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pin the VPS host key from a secret (no TOFU). DEPLOY_HOST_KEY is the full
+          # known_hosts line for the deploy host, e.g. "degerli.example ssh-ed25519 AAAA…".
+          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          # The remote script is read from stdin ('bash -s'); the tag and public URL
+          # are passed as positional args so nothing secret touches the shell history.
+          # StrictHostKeyChecking=yes fails closed unless the host matches the pin.
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              bash -s -- "$IMAGE_TAG" "$PUBLIC_URL" "$DEPLOY_PATH" <<'REMOTE'
+            set -euo pipefail
+            IMAGE_TAG="$1"
+            PUBLIC_URL="$2"
+            DEPLOY_PATH="$3"
+            export IMAGE_TAG
+
+            cd "$DEPLOY_PATH"
+
+            echo "==> Pulling images for tag ${IMAGE_TAG}"
+            docker compose -f compose.prod.yml pull
+
+            echo "==> Applying forward-only EF migrations"
+            docker compose -f compose.prod.yml run --rm api migrate
+
+            echo "==> Starting the stack"
+            docker compose -f compose.prod.yml up -d
+
+            echo "==> Smoke-checking ${PUBLIC_URL}/health"
+            for attempt in $(seq 1 30); do
+              code="$(curl -s -o /dev/null -w '%{http_code}' "${PUBLIC_URL}/health" || true)"
+              if [ "$code" = "200" ]; then
+                echo "Health check passed after ${attempt} attempt(s)."
+                exit 0
+              fi
+              sleep 5
+            done
+
+            echo "Health check FAILED (last status: ${code:-none})."
+            docker compose -f compose.prod.yml ps
+            exit 1
+          REMOTE
