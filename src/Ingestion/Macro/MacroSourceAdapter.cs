@@ -20,6 +20,15 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     /// <summary>The concrete source name recorded for EVDS-sourced values (03 §1).</summary>
     public const string EvdsSource = "evds";
 
+    /// <summary>
+    /// The bounded value-date lookback (days) the EVDS request spans (DR-2): EVDS filters by
+    /// <em>observation</em> date, so a run-date-only window would never return the monthly
+    /// TÜİK CPI (dated month-start) or the per-release CBRT repo (dated its decision date).
+    /// 90 days safely covers the longest cadence (monthly) plus its publication lag while
+    /// keeping the fetch bounded; re-reads are idempotent in the store.
+    /// </summary>
+    private const int LookbackDays = 90;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ISourceClient _client;
@@ -39,7 +48,7 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
-        var raw = await _client.GetStringAsync(BuildRequestPath(date), cancellationToken).ConfigureAwait(false);
+        var raw = await FetchStringAsync(BuildRequestPath(date), cancellationToken).ConfigureAwait(false);
 
         EvdsMacroPayload? envelope;
         try
@@ -67,18 +76,54 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     }
 
     /// <summary>
-    /// Builds the EVDS multi-series request: the five official series, the requested value
-    /// date window and the reviewer-facing JSON type, with the configured API key. EVDS
-    /// separates series identifiers with <c>-</c> and dates are <c>dd-MM-yyyy</c>.
+    /// Builds the EVDS multi-series request: the five official series, a bounded value-date
+    /// window ending at the requested run date, the reviewer-facing JSON type, and the
+    /// configured API key. EVDS separates series identifiers with <c>-</c> and dates are
+    /// <c>dd-MM-yyyy</c>. The window is a lookback (not a single day) because EVDS filters by
+    /// observation date and the periodic series are not dated the run date (DR-2).
     /// </summary>
     private string BuildRequestPath(DateOnly date)
     {
         var series = string.Join('-', EvdsSeries.RequestOrder);
-        var window = date.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture);
+        var end = date.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture);
+        var start = date.AddDays(-LookbackDays).ToString("dd-MM-yyyy", CultureInfo.InvariantCulture);
         var query = string.Create(
             CultureInfo.InvariantCulture,
-            $"?series={Uri.EscapeDataString(series)}&startDate={window}&endDate={window}&type=json&key={Uri.EscapeDataString(_options.EvdsApiKey)}");
+            $"?series={Uri.EscapeDataString(series)}&startDate={start}&endDate={end}&type=json&key={Uri.EscapeDataString(_options.EvdsApiKey)}");
         return _options.Path + query;
+    }
+
+    /// <summary>
+    /// Fetches through the source client, stripping the EVDS API key from any failure surface
+    /// (SEC-1, CWE-598). The key must travel in the query string — the source-client seam has
+    /// no header channel — so a non-success response would otherwise produce a
+    /// <see cref="SourceFetchException"/> whose message echoes the live secret.
+    /// </summary>
+    private async Task<string> FetchStringAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SourceFetchException exception)
+        {
+            throw RedactClientFailure(exception);
+        }
+    }
+
+    private SourceFetchException RedactClientFailure(SourceFetchException exception)
+    {
+        var message = exception.Message;
+        if (!string.IsNullOrEmpty(_options.EvdsApiKey))
+        {
+            message = message
+                .Replace(_options.EvdsApiKey, "***", StringComparison.Ordinal)
+                .Replace(Uri.EscapeDataString(_options.EvdsApiKey), "***", StringComparison.Ordinal);
+        }
+
+        return string.Equals(message, exception.Message, StringComparison.Ordinal)
+            ? exception
+            : new SourceFetchException(message);
     }
 
     /// <summary>

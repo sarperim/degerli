@@ -19,7 +19,7 @@ public sealed class MacroSourceOptions
     public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>Path of the macro resource relative to <see cref="BaseUrl"/>.</summary>
-    public string Path { get; set; } = "/macro";
+    public string Path { get; set; } = "/service/evds";
 
     /// <summary>
     /// The free TCMB EVDS API key (OQ-MOV-005 resolution). Sent as the <c>key</c> query
@@ -56,7 +56,6 @@ public sealed record MacroItem(
 /// </summary>
 public sealed record EvdsMacroPayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
-    [property: JsonPropertyName("totalCount")] int TotalCount,
     [property: JsonPropertyName("series")] IReadOnlyList<EvdsObservation>? Series);
 
 /// <summary>One EVDS observation.</summary>
