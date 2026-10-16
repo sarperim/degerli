@@ -31,6 +31,12 @@ public sealed record CanonicalStatement(
 /// Everything the 18 canonical metric concepts need for one instrument at one date
 /// (02 §6.2). Pure input — no clock, no DB, no hidden state.
 /// </summary>
+/// <param name="AccountingProfile">
+/// The instrument's builder-curated accounting classification (<c>industrial</c>/
+/// <c>bank</c>/<c>insurance</c>/<c>reit</c>; 02 §3.1). For <c>bank</c>/<c>insurance</c>
+/// the industrial metrics are not-meaningful by profile and are forced NULL (§6.2);
+/// <c>industrial</c> and <c>reit</c> keep the natural not-meaningful rules.
+/// </param>
 public sealed record CanonicalMetricsInput(
     decimal Price,
     decimal? SharesDiluted,
@@ -42,7 +48,8 @@ public sealed record CanonicalMetricsInput(
     decimal? DividendTtmPerShare,
     bool HasEverPaidDividend,
     bool IsRested,
-    bool IsAdjusted);
+    bool IsAdjusted,
+    string AccountingProfile = CanonicalMetrics.IndustrialProfile);
 
 /// <summary>One computed metric row: the value and, for CAGRs, the actual window used.</summary>
 /// <param name="Code">Window-suffixed metric code (02 §6.2, Q5).</param>
@@ -71,6 +78,53 @@ public sealed record ComputedMetric(
 /// </summary>
 public static class CanonicalMetrics
 {
+    /// <summary>
+    /// The default accounting profile (<c>02</c> §3.1): an instrument not classified as a
+    /// financial-sector member keeps the natural not-meaningful metric rules.
+    /// </summary>
+    public const string IndustrialProfile = "industrial";
+
+    /// <summary>
+    /// The accounting profiles whose industrial metric concepts are not meaningful
+    /// (<c>02</c> §6.2, v1.3): banks and insurers report under BDDK/insurance rules with
+    /// no <c>REV</c>/<c>COGS</c>/<c>EBITDA</c>/<c>FCF</c>/<c>CUR_ASSETS</c> semantics, so a
+    /// stray mapped line must never produce a plausible-looking industrial number.
+    /// </summary>
+    private static readonly IReadOnlySet<string> ProfileGatingProfiles =
+        new HashSet<string>(StringComparer.Ordinal) { "bank", "insurance" };
+
+    /// <summary>
+    /// The twelve metric codes a financial profile forces to NULL (<c>02</c> §6.2):
+    /// the ten industrial concepts — <c>ev_ebitda</c>, <c>ev_fcf</c>, <c>fcf_yield</c>,
+    /// <c>roic</c>, <c>gross_margin</c>, <c>operating_margin</c>,
+    /// <c>fcf_cagr_*</c> (×3 windows), <c>net_debt_ebitda</c>, <c>interest_coverage</c>,
+    /// <c>current_ratio</c>. <c>pe</c>/<c>pb</c>/<c>roe</c>/<c>eps_cagr_*</c>/
+    /// <c>div_*</c>/<c>payout_ratio</c> keep computing — their inputs are meaningful for
+    /// financials.
+    /// </summary>
+    private static readonly IReadOnlySet<string> ProfileGatedCodes =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            MetricCodes.EvEbitda,
+            MetricCodes.EvFcf,
+            MetricCodes.FcfYield,
+            MetricCodes.Roic,
+            MetricCodes.GrossMargin,
+            MetricCodes.OperatingMargin,
+            MetricCodes.NetDebtEbitda,
+            MetricCodes.InterestCoverage,
+            MetricCodes.CurrentRatio,
+            MetricCodes.FcfCagr3y,
+            MetricCodes.FcfCagr5y,
+            MetricCodes.FcfCagr10y,
+        };
+
+    /// <summary>
+    /// Whether a metric code is not-meaningful by accounting profile (<c>02</c> §6.2) —
+    /// forced to NULL for <c>bank</c>/<c>insurance</c> regardless of stray mapped lines.
+    /// </summary>
+    private static bool IsProfileGated(string code) => ProfileGatedCodes.Contains(code);
+
     /// <summary>Computes all 26 metric codes for one instrument.</summary>
     public static IReadOnlyList<ComputedMetric> Compute(CanonicalMetricsInput input)
     {
@@ -127,6 +181,19 @@ public static class CanonicalMetrics
         AddCagr(metrics, MetricCodes.DivCagr3y, input.DpsByFiscalYear, 3, nullOnSignChange: false, input);
         AddCagr(metrics, MetricCodes.DivCagr5y, input.DpsByFiscalYear, 5, nullOnSignChange: false, input);
         AddCagr(metrics, MetricCodes.DivCagr10y, input.DpsByFiscalYear, 10, nullOnSignChange: false, input);
+
+        // Accounting-profile gating (02 §6.2, v1.3): for `bank`/`insurance` the ten
+        // industrial concepts evaluate to NULL even when the underlying lines happen to
+        // exist — a stray mapped REV/EBIT/... must never produce a plausible-looking
+        // number. `industrial` and `reit` keep the natural not-meaningful rules.
+        if (ProfileGatingProfiles.Contains(input.AccountingProfile))
+        {
+            metrics = metrics
+                .Select(metric => IsProfileGated(metric.Code)
+                    ? metric with { Value = null, WindowYears = null, RegimeBreak = null }
+                    : metric)
+                .ToList();
+        }
 
         return metrics;
     }

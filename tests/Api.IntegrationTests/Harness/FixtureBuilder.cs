@@ -1,6 +1,8 @@
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Degerli.Persistence.Seed;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Api.IntegrationTests.Harness;
 
@@ -61,19 +63,76 @@ public sealed class FixtureBuilder
         return sector;
     }
 
-    public async Task<Instrument> CreateInstrumentAsync(string symbol, long? sectorId = null)
+    public async Task<Instrument> CreateInstrumentAsync(
+        string symbol,
+        long? sectorId = null,
+        string accountingProfile = AccountingProfiles.Industrial,
+        DateOnly? listingDate = null)
     {
         var instrument = new Instrument
         {
             Symbol = symbol,
             Name = $"Test {symbol}",
             SectorId = sectorId,
+            AccountingProfile = accountingProfile,
+            ListingDate = listingDate,
             SourceRef = $"fixture:{symbol}",
             RecordedAt = Epoch,
         };
         _db.Instruments.Add(instrument);
         await _db.SaveChangesAsync();
         return instrument;
+    }
+
+    /// <summary>
+    /// A daily EOD price row for one instrument (FR-MDF-001) — the covered-universe
+    /// precondition the Metrics Engine keys on.
+    /// </summary>
+    public async Task<DailyPrice> CreatePriceAsync(
+        long instrumentId,
+        DateOnly date,
+        decimal close,
+        string sourceRef = "fixture:price")
+    {
+        var price = new DailyPrice
+        {
+            InstrumentId = instrumentId,
+            PriceDate = date,
+            CloseRaw = close,
+            SourceRef = sourceRef,
+            RecordedAt = Epoch,
+        };
+        _db.DailyPrices.Add(price);
+        await _db.SaveChangesAsync();
+        return price;
+    }
+
+    /// <summary>
+    /// Adds a current (open-ended) index membership — the covered-universe view the
+    /// stock sections resolve symbols through (02 §3.1, <c>v_current_universe</c>).
+    /// </summary>
+    public async Task<IndexConstituent> CreateCurrentConstituentAsync(
+        string indexCode,
+        long instrumentId,
+        DateOnly effectiveFrom)
+    {
+        var indexId = await _db.Indices
+            .Where(index => index.Code == indexCode)
+            .Select(index => index.Id)
+            .SingleAsync();
+
+        var membership = new IndexConstituent
+        {
+            IndexId = indexId,
+            InstrumentId = instrumentId,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = null,
+            SourceRef = $"fixture:{indexCode}",
+            RecordedAt = Epoch,
+        };
+        _db.IndexConstituents.Add(membership);
+        await _db.SaveChangesAsync();
+        return membership;
     }
 
     public async Task<SavedScreen> CreateScreenAsync(
