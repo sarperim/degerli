@@ -6,11 +6,14 @@ namespace Degerli.Ingestion.Coverage;
 
 /// <summary>
 /// Writes the recording side of <c>coverage_metadata</c> (FR-MDF-011, FR-MDF-010,
-/// NFR-MDF-003; 02 §3.1). Two entry points:
+/// NFR-MDF-003; 02 §3.1). Three entry points:
 /// <list type="bullet">
 /// <item><see cref="RecordPricesCoverageAsync"/> — after a price backfill, records the
 /// per-instrument achieved depth and a note when the requested target exceeded the
 /// source's real history limit (UC-MDF-002 alternate a, BR-MDF-006).</item>
+/// <item><see cref="RecordUniverseSeedGapAsync"/> — records the accepted pre-launch
+/// constituent-history gap at <c>universe</c> scope, so the absent history is explicit
+/// rather than silently omitted (FR-MDF-007/011, BR-MDF-007).</item>
 /// <item><see cref="ReconcileUniverseAsync"/> — the no-silent-gaps rule: every current
 /// universe instrument × data type gets a row, carrying the depth when data exists or an
 /// explicit gap note when it does not. Nothing is silently omitted.</item>
@@ -36,7 +39,7 @@ public sealed class CoverageRecorder
     /// The absent history is written as an explicit gap (`available_from` = launch), never
     /// silently omitted. Idempotent on (scope, data_type).
     /// </summary>
-    public async Task<int> RecordUniverseSeedGapAsync(
+    public async Task RecordUniverseSeedGapAsync(
         DateOnly launchDate,
         CancellationToken cancellationToken = default)
     {
@@ -75,7 +78,6 @@ public sealed class CoverageRecorder
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return 1;
     }
 
     /// <summary>

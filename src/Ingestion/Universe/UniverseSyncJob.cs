@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
@@ -19,11 +20,15 @@ public sealed class UniverseSyncJob : IIngestJob
     /// <summary>Stable job code used by the ledger, scheduler and admin trigger.</summary>
     public const string Code = "universe-sync";
 
+    /// <summary>The covered universe index (BR-MDF-005): the BIST 100.</summary>
+    private const string UniverseIndexCode = "XU100";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ISourceAdapter<UniversePayload> _universeAdapter;
     private readonly ISourceAdapter<IndexLevelsPayload> _indexLevelsAdapter;
     private readonly UniverseSyncStore _store;
+    private readonly CoverageRecorder _coverage;
     private readonly IQuarantineWriter _quarantine;
     private readonly IIngestionAlerter _alerter;
     private readonly TimeProvider _clock;
@@ -33,6 +38,7 @@ public sealed class UniverseSyncJob : IIngestJob
         ISourceAdapter<UniversePayload> universeAdapter,
         ISourceAdapter<IndexLevelsPayload> indexLevelsAdapter,
         UniverseSyncStore store,
+        CoverageRecorder coverage,
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         TimeProvider clock,
@@ -41,6 +47,7 @@ public sealed class UniverseSyncJob : IIngestJob
         _universeAdapter = universeAdapter;
         _indexLevelsAdapter = indexLevelsAdapter;
         _store = store;
+        _coverage = coverage;
         _quarantine = quarantine;
         _alerter = alerter;
         _clock = clock;
@@ -81,6 +88,45 @@ public sealed class UniverseSyncJob : IIngestJob
             .ConfigureAwait(false);
 
         var quarantined = 0;
+
+        // Launch seed (FR-MDF-007, BR-MDF-005/007): at launch there is no membership
+        // history, so the current BIST 100 is seeded once from the full universe
+        // snapshot the source publishes (the covered universe). The seed fires only on
+        // cold start — when the snapshot carries no effective-dated change set and no
+        // open XU100 membership row exists yet — and records the accepted pre-launch
+        // history gap once. This is the seed + coverage record only: the daily
+        // change-detection path below is untouched, and a normal day (an open row
+        // exists) skips this step entirely.
+        var seededMemberships = 0;
+        if (fetched.Payload.EffectiveDate is null
+            && SnapshotSymbols(fetched.Payload) is { Count: > 0 } seedSymbols
+            && !await _store.HasOpenConstituentsAsync(UniverseIndexCode, cancellationToken).ConfigureAwait(false))
+        {
+            var seed = await _store
+                .SeedLaunchConstituentsAsync(
+                    fetched.SourceRef,
+                    request.Date,
+                    UniverseIndexCode,
+                    seedSymbols,
+                    now,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            seededMemberships = seed.Seeded;
+
+            // Unresolved symbols are reported and quarantined, never silently dropped
+            // (NFR-MDF-003).
+            foreach (var symbol in seed.UnknownSymbols)
+            {
+                _logger.LogWarning(
+                    "universe-sync: launch seed symbol {Symbol} resolved to no stored instrument (UNKNOWN_REFERENCE)",
+                    symbol);
+                await QuarantineAsync(fetched.SourceRef, symbol, "UNKNOWN_REFERENCE", cancellationToken)
+                    .ConfigureAwait(false);
+                quarantined++;
+            }
+
+            await _coverage.RecordUniverseSeedGapAsync(request.Date, cancellationToken).ConfigureAwait(false);
+        }
 
         // A membership change referencing an unknown index/instrument is an integrity
         // gap: quarantine and count it rather than dropping it (NFR-MDF-003, FR-MDF-012).
@@ -172,12 +218,26 @@ public sealed class UniverseSyncJob : IIngestJob
         var written = universe.InstrumentsWritten
             + universe.MembershipsAdded
             + universe.MembershipsClosed
+            + seededMemberships
             + indexWritten;
         var unchanged = universe.InstrumentsUnchanged + indexUnchanged;
         var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
 
         return new IngestResult(Code, written, unchanged, quarantined, status);
     }
+
+    /// <summary>
+    /// The candidate launch-seed symbols: every instrument the full universe snapshot
+    /// publishes (the source's covered universe is the BIST 100, BR-MDF-005). The caller
+    /// guards on <see cref="UniversePayload.EffectiveDate"/> so a payload carrying an
+    /// effective-dated change set never seeds.
+    /// </summary>
+    private static List<string> SnapshotSymbols(UniversePayload payload) =>
+        (payload.Instruments ?? [])
+            .Select(instrument => instrument.Symbol)
+            .Where(symbol => !string.IsNullOrWhiteSpace(symbol))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
     private Task QuarantineAsync(
         string? sourceRef,

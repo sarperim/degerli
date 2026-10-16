@@ -311,6 +311,29 @@ public sealed class UniverseSyncStore
         return new UniverseLaunchSeedResult(seeded, alreadyPresent, unknown);
     }
 
+    /// <summary>
+    /// Whether the index already carries a currently-open membership row — i.e. the
+    /// one-time launch seed has run (FR-MDF-007). The job uses this to make the
+    /// cold-start seed a single, idempotent step that never fires on a normal day.
+    /// </summary>
+    public async Task<bool> HasOpenConstituentsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return indexId is not null
+            && await _db.IndexConstituents
+                .AnyAsync(c => c.IndexId == indexId.Value && c.EffectiveTo == null, cancellationToken)
+                .ConfigureAwait(false);
+    }
+
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(
         string sourceRef,
         DateTimeOffset recordedAt,
