@@ -6,6 +6,7 @@ using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -391,6 +392,93 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         Assert.Contains("NEWP", current);
     }
 
+    /// <summary>TKT-mdf-022 — the job's cold-start launch seed records the current BIST 100
+    /// membership and the pre-launch coverage gap through the production entry point
+    /// (FR-MDF-007/011, BR-MDF-005/007), not just the store.</summary>
+    [Fact]
+    public async Task Launch_seed_and_pre_launch_gap_are_recorded_by_the_job()
+    {
+        await ColdStartUniverseAsync();
+
+        var constituents = L2.Memberships
+            .Where(m => m.IndexCode == "XU100")
+            .Select(m => m.Symbol)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
+        await using var host = BuildIngestion(UniversePath, IndexPath);
+
+        var result = await RunAsync(host, "universe-sync");
+
+        // The covered universe is seeded; the job does not fail.
+        Assert.NotEqual(IngestResult.Failed, result.Status);
+
+        await using var db = _postgres.CreateContext();
+        var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+        var rows = await db.IndexConstituents.Where(c => c.IndexId == xu100).ToListAsync();
+
+        // Current membership is seeded append-only at launch.
+        Assert.Equal(constituents.Count, rows.Count);
+        Assert.All(rows, row =>
+        {
+            Assert.Equal(T, row.EffectiveFrom);
+            Assert.Null(row.EffectiveTo);
+        });
+
+        // The pre-launch constituent-history gap is recorded by the job, explicitly.
+        var gap = await db.CoverageMetadata.SingleAsync(c => c.Scope == "universe");
+        Assert.Equal(CoverageDataTypes.Constituents, gap.DataType);
+        Assert.Equal(T, gap.AvailableFrom);
+        Assert.Null(gap.AvailableTo);
+        Assert.False(
+            string.IsNullOrWhiteSpace(gap.Notes),
+            "the accepted pre-launch constituent gap must be recorded (BR-MDF-007)");
+    }
+
+    /// <summary>TKT-mdf-022 — a snapshot carrying instruments but no XU100 index reference
+    /// degrades to "no seed": the job logs and continues (index levels still processed)
+    /// instead of throwing out of the seed and failing the whole run (FR-MDF-007).</summary>
+    [Fact]
+    public async Task Missing_xu100_index_reference_degrades_the_seed_without_failing_the_job()
+    {
+        await ColdStartUniverseAsync();
+
+        // A full universe snapshot (no effective date) publishing sectors and instruments
+        // but deliberately no XU100 index reference.
+        var body = JsonSerializer.Serialize(new
+        {
+            sourceRef = "kap://universe/no-index",
+            sectors = L2.Sectors
+                .Select(s => new { code = s.Code, nameTr = s.NameTr, nameEn = s.NameEn })
+                .ToList(),
+            instruments = L2.Instruments
+                .Select(i => new { symbol = i.Symbol, name = i.Name, sectorCode = i.SectorCode, listingDate = i.ListingDate })
+                .ToList(),
+        }, JsonOptions);
+        _wireMock.StubJson(UniversePath, body);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
+        await using var host = BuildIngestion(UniversePath, IndexPath);
+
+        var result = await RunAsync(host, "universe-sync");
+
+        // The missing index reference must not abort the job (it previously propagated out
+        // of SeedLaunchConstituentsAsync and failed the whole run).
+        Assert.NotEqual(IngestResult.Failed, result.Status);
+        Assert.True(
+            host.Logs.Contains(evt => evt.MessageTemplate.Text.Contains("launch seed skipped", StringComparison.Ordinal)),
+            "the skipped seed must be logged, never silent");
+
+        await using var db = _postgres.CreateContext();
+        Assert.False(await db.Indices.AnyAsync(i => i.Code == "XU100"), "the payload stored no XU100 index");
+        Assert.Empty(await db.IndexConstituents.ToListAsync());
+
+        // The rest of the job still ran: the index-levels payload was processed (its
+        // XU100/XU30 levels rejected as UNKNOWN_REFERENCE), so the run is not a failure.
+        Assert.True(await db.QuarantinedFacts.AnyAsync(q => q.ReasonCode == "UNKNOWN_REFERENCE"));
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -459,6 +547,30 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
             await db.Database.ExecuteSqlRawAsync("DELETE FROM indices");
             await db.Database.ExecuteSqlRawAsync("DELETE FROM sectors");
         }
+    }
+
+    /// <summary>
+    /// Cold-start baseline for the launch-seed tests: the fixture instrument base is
+    /// present, but the membership history, index reference rows and coverage rows are
+    /// empty, so the job's own cold-start seed path is what runs (FR-MDF-007).
+    /// </summary>
+    private async Task ColdStartUniverseAsync()
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM coverage_metadata");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
+        await FixtureSeeder.ApplyAsync(db, L2);
+
+        // FixtureSeeder re-seeds the membership history, the index levels and the index
+        // references; clear them again so the job is the only writer and the seed truly
+        // starts cold. Delete the indices' dependents first so the FK constraints hold.
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM indices");
+        await db.Database.ExecuteSqlRawAsync("UPDATE instruments SET sector_id = NULL");
     }
 
     private static async Task<List<object?[]>> QueryAsync(DegerliDbContext db, string sql)

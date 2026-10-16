@@ -29,6 +29,16 @@ public sealed record IndexLevelsSyncResult(
     IReadOnlyList<IndexLevelFact> Rejected);
 
 /// <summary>
+/// Outcome of the one-time launch seed (FR-MDF-007, BR-MDF-005): how many current
+/// constituents were newly recorded and how many were already present (idempotent
+/// re-run), plus any symbol that resolved to no stored instrument.
+/// </summary>
+public sealed record UniverseLaunchSeedResult(
+    int Seeded,
+    int AlreadyPresent,
+    IReadOnlyList<string> UnknownSymbols);
+
+/// <summary>
 /// Fact storage for the universe tables (FR-MDF-006/007; 02 §3.1): sector and index
 /// reference rows (upserted by natural key from the payload), instruments,
 /// sector links (kept current per instrument), effective-dated append-only
@@ -209,6 +219,138 @@ public sealed class UniverseSyncStore
             membershipsClosed,
             unclassified,
             rejected);
+    }
+
+    /// <summary>
+    /// Seeds the current membership of one index at launch (FR-MDF-007, BR-MDF-005):
+    /// records each current constituent as an open membership row
+    /// (<c>effective_from</c> = launch date, <c>effective_to</c> NULL), append-only. No
+    /// pre-launch history is fabricated — the absence is recorded separately as a
+    /// universe-scope coverage gap. Idempotent: an instrument that already has an open
+    /// row, or a seeded row at the same launch date, is left untouched (never re-written),
+    /// so a re-run adds nothing. Symbols that resolve to no stored instrument are reported,
+    /// never silently dropped (NFR-MDF-003).
+    /// </summary>
+    public async Task<UniverseLaunchSeedResult> SeedLaunchConstituentsAsync(
+        string sourceRef,
+        DateOnly launchDate,
+        string indexCode,
+        IReadOnlyCollection<string> symbols,
+        DateTimeOffset recordedAt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+        ArgumentNullException.ThrowIfNull(symbols);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                $"Cannot seed the launch universe: index '{indexCode}' is not stored (FR-MDF-006).");
+
+        var instrumentIds = await _db.Instruments
+            .ToDictionaryAsync(i => i.Symbol, i => i.Id, StringComparer.Ordinal, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Load the membership rows for this index once: a row is a no-op if the instrument
+        // is currently open, or if it already carries a seed row for this same launch date
+        // (an append-only re-run never appends a duplicate or re-writes an existing row).
+        var rows = await _db.IndexConstituents
+            .Where(c => c.IndexId == indexId)
+            .Select(c => new { c.InstrumentId, c.EffectiveFrom, c.EffectiveTo })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var openInstruments = rows
+            .Where(c => c.EffectiveTo is null)
+            .Select(c => c.InstrumentId)
+            .ToHashSet();
+        var seededAtLaunch = rows
+            .Where(c => c.EffectiveFrom == launchDate)
+            .Select(c => c.InstrumentId)
+            .ToHashSet();
+
+        var seeded = 0;
+        var alreadyPresent = 0;
+        var unknown = new List<string>();
+
+        foreach (var symbol in symbols.Distinct(StringComparer.Ordinal))
+        {
+            if (!instrumentIds.TryGetValue(symbol, out var instrumentId))
+            {
+                unknown.Add(symbol);
+                continue;
+            }
+
+            if (openInstruments.Contains(instrumentId) || seededAtLaunch.Contains(instrumentId))
+            {
+                alreadyPresent++;
+                continue;
+            }
+
+            _db.IndexConstituents.Add(new IndexConstituent
+            {
+                IndexId = indexId,
+                InstrumentId = instrumentId,
+                EffectiveFrom = launchDate,
+                EffectiveTo = null,
+                SourceRef = sourceRef,
+                RecordedAt = recordedAt,
+            });
+            seededAtLaunch.Add(instrumentId);
+            seeded++;
+        }
+
+        if (seeded > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return new UniverseLaunchSeedResult(seeded, alreadyPresent, unknown);
+    }
+
+    /// <summary>
+    /// Whether the index already carries a currently-open membership row — i.e. the
+    /// one-time launch seed has run (FR-MDF-007). The job uses this to make the
+    /// cold-start seed a single, idempotent step that never fires on a normal day.
+    /// </summary>
+    public async Task<bool> HasOpenConstituentsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return indexId is not null
+            && await _db.IndexConstituents
+                .AnyAsync(c => c.IndexId == indexId.Value && c.EffectiveTo == null, cancellationToken)
+                .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether the index reference row is stored (FR-MDF-006). The job guards the
+    /// one-time launch seed on this: a snapshot that publishes instruments but carries
+    /// no XU100 index reference has no index to attach the seeded memberships to, so the
+    /// seed must degrade to "no seed" rather than throwing and aborting the rest of the
+    /// job. <see cref="HasOpenConstituentsAsync"/> alone cannot express this — it returns
+    /// false both for "index stored, no open row" and "index not stored".
+    /// </summary>
+    public async Task<bool> IndexExistsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        return await _db.Indices
+            .AnyAsync(i => i.Code == indexCode, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(

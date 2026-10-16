@@ -6,11 +6,14 @@ namespace Degerli.Ingestion.Coverage;
 
 /// <summary>
 /// Writes the recording side of <c>coverage_metadata</c> (FR-MDF-011, FR-MDF-010,
-/// NFR-MDF-003; 02 §3.1). Two entry points:
+/// NFR-MDF-003; 02 §3.1). Three entry points:
 /// <list type="bullet">
 /// <item><see cref="RecordPricesCoverageAsync"/> — after a price backfill, records the
 /// per-instrument achieved depth and a note when the requested target exceeded the
 /// source's real history limit (UC-MDF-002 alternate a, BR-MDF-006).</item>
+/// <item><see cref="RecordUniverseSeedGapAsync"/> — records the accepted pre-launch
+/// constituent-history gap at <c>universe</c> scope, so the absent history is explicit
+/// rather than silently omitted (FR-MDF-007/011, BR-MDF-007).</item>
 /// <item><see cref="ReconcileUniverseAsync"/> — the no-silent-gaps rule: every current
 /// universe instrument × data type gets a row, carrying the depth when data exists or an
 /// explicit gap note when it does not. Nothing is silently omitted.</item>
@@ -22,9 +25,77 @@ public sealed class CoverageRecorder
 {
     internal const string InstrumentScope = "instrument";
 
+    /// <summary>The universe scope: coverage that describes the covered universe as a whole (FR-MDF-011).</summary>
+    internal const string UniverseScope = "universe";
+
     private readonly DegerliDbContext _db;
 
     public CoverageRecorder(DegerliDbContext db) => _db = db;
+
+    /// <summary>
+    /// Records the accepted pre-launch constituent-history gap at <c>universe</c> scope
+    /// (FR-MDF-007/011, BR-MDF-007): no free structured 10-year constituent history
+    /// exists, so the universe membership is available only from the launch date forward.
+    /// The absent history is written as an explicit gap (`available_from` = launch), never
+    /// silently omitted. Idempotent on (scope, data_type).
+    /// </summary>
+    public async Task RecordUniverseSeedGapAsync(
+        DateOnly launchDate,
+        CancellationToken cancellationToken = default)
+    {
+        const string note =
+            "No free structured pre-launch constituent history exists; universe membership is " +
+            "recorded from the launch date forward. Pre-launch constituency is an accepted " +
+            "coverage gap (FR-MDF-007 assumption, BR-MDF-007).";
+
+        var existing = await _db.CoverageMetadata
+            .FirstOrDefaultAsync(
+                c => c.Scope == UniverseScope
+                    && c.DataType == CoverageDataTypes.Constituents
+                    && c.InstrumentId == null
+                    && c.FundId == null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            _db.CoverageMetadata.Add(new CoverageMetadata
+            {
+                Scope = UniverseScope,
+                InstrumentId = null,
+                FundId = null,
+                DataType = CoverageDataTypes.Constituents,
+                AvailableFrom = launchDate,
+                AvailableTo = null,
+                Notes = note,
+            });
+        }
+        else
+        {
+            existing.AvailableFrom = launchDate;
+            existing.AvailableTo = null;
+            existing.Notes = note;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether the accepted pre-launch <c>universe</c>-scope constituent-history gap row
+    /// already exists (FR-MDF-007/011, BR-MDF-007). The job records the gap only when it
+    /// is absent — independently of whether the one-time seed ran — so a cold start that
+    /// already carries open XU100 memberships still records it, and the launch date it
+    /// carries stays fixed across later runs.
+    /// </summary>
+    public async Task<bool> HasUniverseSeedGapAsync(CancellationToken cancellationToken = default) =>
+        await _db.CoverageMetadata
+            .AnyAsync(
+                c => c.Scope == UniverseScope
+                    && c.DataType == CoverageDataTypes.Constituents
+                    && c.InstrumentId == null
+                    && c.FundId == null,
+                cancellationToken)
+            .ConfigureAwait(false);
 
     /// <summary>
     /// Records the achieved backfill depth per instrument for <c>prices</c>. When the
