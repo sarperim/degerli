@@ -8,7 +8,8 @@ scope:
 
 # TKT-foundation-015: Real-source payload catalog & parsing fidelity
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/82
 - Size: L
 - Scope: a **second, real-shape** WireMock payload catalog — capture the actual raw HTTP payloads for five test tickers (`ASELS`, `THYAO`, `GARAN`, `FROTO`, and one recent IPO chosen at capture time) from the live İş Yatırım / KAP / EVDS endpoints into a real-source catalog (separate from the synthetic FU catalog), and add parsing tests exercising real-world shapes: Turkish locale numeric formatting (`1.234.567,89`), `ISO-8859-9`/`windows-1254` encodings, and inconsistent KAP XBRL tags. The FU golden values are untouched — this catalog tests *parsing shape*, not goldens. Capture is bounded (5 tickers, limited history); redistribution terms recorded per RISK-MDF-001. Must NOT alter the synthetic FU catalog or the golden contract.
 - Traces to: FR-MDF-001, FR-MDF-002, FR-MOV-014; UC-MDF-001, UC-MDF-002; NFR-MDF-004
