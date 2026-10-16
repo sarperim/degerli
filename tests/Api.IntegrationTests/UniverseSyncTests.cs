@@ -564,9 +564,11 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
         await FixtureSeeder.ApplyAsync(db, L2);
 
-        // FixtureSeeder re-seeds the membership history and the index references; clear
-        // them again so the job is the only writer and the seed truly starts cold.
+        // FixtureSeeder re-seeds the membership history, the index levels and the index
+        // references; clear them again so the job is the only writer and the seed truly
+        // starts cold. Delete the indices' dependents first so the FK constraints hold.
         await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM indices");
         await db.Database.ExecuteSqlRawAsync("UPDATE instruments SET sector_id = NULL");
     }
