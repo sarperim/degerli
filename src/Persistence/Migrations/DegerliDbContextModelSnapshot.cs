@@ -629,9 +629,8 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("statement_type");
 
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasColumnType("text")
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
                         .HasColumnName("version");
 
                     b.HasKey("Id")

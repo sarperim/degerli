@@ -138,15 +138,12 @@ public sealed class MetricsEngine
             .OrderBy(d => d)
             .ToList();
 
-        // Latest restated version serves; as-reported is retained (02 §5.7, BR-MDF-011).
+        // The highest version serves; earlier versions are retained (02 §5.7, BR-MDF-011).
         FinancialStatement? Pick(DateOnly periodEnd, string statementType)
-        {
-            var candidates = statements
+            => statements
                 .Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType)
-                .ToList();
-            return candidates.FirstOrDefault(s => s.Version == "restated")
-                ?? candidates.FirstOrDefault(s => s.Version == "as_reported");
-        }
+                .OrderByDescending(s => s.Version)
+                .FirstOrDefault();
 
         decimal? Line(FinancialStatement? statement, string code)
         {
@@ -172,7 +169,7 @@ public sealed class MetricsEngine
             is0 = Pick(latest, "IS");
             bs0 = Pick(latest, "BS");
             cf0 = Pick(latest, "CF");
-            isRested = new[] { is0, bs0, cf0 }.Any(s => s?.Version == "restated");
+            isRested = new[] { is0, bs0, cf0 }.Any(s => s is not null && s.Version > 0);
             ttm = new CanonicalStatement(
                 Rev: Line(is0, Rev),
                 Cogs: Line(is0, Cogs),

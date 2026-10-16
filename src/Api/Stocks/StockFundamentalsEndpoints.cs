@@ -410,15 +410,14 @@ public static class StockFundamentalsEndpoints
                 group => group.ToDictionary(line => line.ItemCode, line => line.Value, StringComparer.Ordinal));
     }
 
-    /// <summary>Picks the latest served version of a statement type: restated preferred, else as-reported.</summary>
+    /// <summary>Picks the latest served version of a statement type: the highest version.</summary>
     private static FinancialStatement? Pick(IReadOnlyList<FinancialStatement> rows, string statementType)
-    {
-        var candidates = rows.Where(row => row.StatementType == statementType).ToList();
-        return candidates.FirstOrDefault(row => row.Version == "restated")
-            ?? candidates.FirstOrDefault(row => row.Version == "as_reported");
-    }
+        => rows
+            .Where(row => row.StatementType == statementType)
+            .OrderByDescending(row => row.Version)
+            .FirstOrDefault();
 
-    private static bool IsRestated(FinancialStatement? statement) => statement?.Version == "restated";
+    private static bool IsRestated(FinancialStatement? statement) => statement is not null && statement.Version > 0;
 
     private static decimal? Line(
         FinancialStatement? statement,

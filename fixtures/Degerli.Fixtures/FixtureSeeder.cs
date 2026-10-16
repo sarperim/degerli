@@ -259,6 +259,7 @@ public static class FixtureSeeder
         CancellationToken ct)
     {
         var instrumentIds = await db.Instruments.ToDictionaryAsync(i => i.Symbol, i => i.Id, ct).ConfigureAwait(false);
+        var versions = AssignStatementVersions(set.Statements);
 
         var existing = (await db.FinancialStatements
                 .Select(s => new { s.InstrumentId, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version })
@@ -270,7 +271,7 @@ public static class FixtureSeeder
         foreach (var statement in set.Statements)
         {
             var instrumentId = instrumentIds[statement.Symbol];
-            if (!existing.Add(Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, statement.Version)))
+            if (!existing.Add(Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, versions[statement])))
             {
                 continue;
             }
@@ -282,7 +283,7 @@ public static class FixtureSeeder
                 PeriodEndDate = statement.PeriodEndDate,
                 FiscalYear = statement.FiscalYear,
                 StatementType = statement.StatementType,
-                Version = statement.Version,
+                Version = versions[statement],
                 RestatementDate = statement.RestatementDate,
                 PublishedAt = statement.PublishedAt,
                 SourceRef = $"{SourceRef}:statements",
@@ -311,7 +312,7 @@ public static class FixtureSeeder
         foreach (var statement in set.Statements)
         {
             var instrumentId = instrumentIds[statement.Symbol];
-            var statementId = statementIds[Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, statement.Version)];
+            var statementId = statementIds[Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, versions[statement])];
             foreach (var (itemCode, value) in statement.Lines)
             {
                 if (!existingLines.Add($"{statementId}|{itemCode}"))
@@ -329,6 +330,34 @@ public static class FixtureSeeder
         }
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Assigns the integer restatement sequence the store derives from the payload's
+    /// <c>as_reported</c>/<c>restated</c> declaration (FU §2, 02 §3.1): <c>0</c> =
+    /// as-reported, then <c>1, 2, …</c> per natural key in list (publication) order. The
+    /// seed mirrors the store so the fixture universe matches the ingest path.
+    /// </summary>
+    private static Dictionary<FixtureStatement, int> AssignStatementVersions(IReadOnlyList<FixtureStatement> statements)
+    {
+        var result = new Dictionary<FixtureStatement, int>(ReferenceEqualityComparer.Instance);
+        var counters = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var statement in statements)
+        {
+            if (string.Equals(statement.Version, "as_reported", StringComparison.Ordinal))
+            {
+                result[statement] = 0;
+                continue;
+            }
+
+            var key = $"{statement.Symbol}|{statement.PeriodType}|{statement.PeriodEndDate:yyyy-MM-dd}|{statement.StatementType}";
+            var next = counters.TryGetValue(key, out var current) ? current : 0;
+            result[statement] = next + 1;
+            counters[key] = next + 1;
+        }
+
+        return result;
     }
 
     private static async Task SeedDividendsAsync(
@@ -780,6 +809,6 @@ public static class FixtureSeeder
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
-    private static string Key(long instrumentId, string periodType, DateOnly periodEnd, string statementType, string version) =>
+    private static string Key(long instrumentId, string periodType, DateOnly periodEnd, string statementType, int version) =>
         $"{instrumentId}|{periodType}|{periodEnd:yyyy-MM-dd}|{statementType}|{version}";
 }

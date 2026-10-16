@@ -188,6 +188,22 @@ public sealed class CannedSourceCatalogTests : IClassFixture<PostgresFixture>
                 doc.RootElement.GetProperty("statements").EnumerateArray(),
                 s => s.GetProperty("statementType").GetString() == "CF");
         }
+
+        // REST2 (FU §3b, TC-MDF-054): one FY2025 period published three times — as-reported
+        // (NI 60) and *two* restatements (NI 75 and NI 80). The wire declaration repeats
+        // `restated`; the store assigns the integer sequence from the restatement dates.
+        var rest2 = CannedSourceCatalog.Get(set, CannedSourceCatalog.StatementsRestatedRestV2);
+        using (var doc = JsonDocument.Parse(rest2.Body))
+        {
+            Assert.Equal("REST", doc.RootElement.GetProperty("symbol").GetString());
+            var income = doc.RootElement.GetProperty("statements").EnumerateArray()
+                .Where(s => s.GetProperty("statementType").GetString() == "IS")
+                .ToList();
+            Assert.Equal(3, income.Count);
+            Assert.Contains(income, s => s.GetProperty("version").GetString() == "as_reported" && s.GetProperty("lines").GetProperty("NI").GetDecimal() == 60m);
+            Assert.Contains(income, s => s.GetProperty("version").GetString() == "restated" && s.GetProperty("lines").GetProperty("NI").GetDecimal() == 75m);
+            Assert.Contains(income, s => s.GetProperty("version").GetString() == "restated" && s.GetProperty("lines").GetProperty("NI").GetDecimal() == 80m);
+        }
     }
 
     [Fact]

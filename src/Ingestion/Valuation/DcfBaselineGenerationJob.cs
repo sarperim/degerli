@@ -38,7 +38,6 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
     private const string StatementIncome = "IS";
     private const string StatementBalanceSheet = "BS";
     private const string StatementCashFlow = "CF";
-    private const string Restated = "restated";
     private const string Ni = "NI";
     private const string DeprAmort = "DEPR_AMORT";
     private const string Capex = "CAPEX";
@@ -175,11 +174,11 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             .OrderBy(d => d)
             .ToList();
 
-        // Latest restated version serves; as-reported is retained (02 §5.7, BR-MDF-011).
+        // The highest version serves; earlier versions are retained (02 §5.7, BR-MDF-011).
         FinancialStatement? Pick(DateOnly periodEnd, string statementType)
             => statements
                 .Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType)
-                .OrderByDescending(s => s.Version == Restated)
+                .OrderByDescending(s => s.Version)
                 .FirstOrDefault();
 
         decimal? Line(FinancialStatement? statement, string code)
@@ -218,9 +217,10 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             : (decimal?)null;
         var shareCount = Line(balance, SharesDiluted);
 
-        // A fact is restated when the statement it was read from is the restated version.
-        var fcfRested = income?.Version == Restated || cashFlow?.Version == Restated;
-        var balanceRested = balance?.Version == Restated;
+        // A fact is restated when the statement it was read from is a restatement (version > 0).
+        var fcfRested = income is not null && income.Version > 0
+            || cashFlow is not null && cashFlow.Version > 0;
+        var balanceRested = balance is not null && balance.Version > 0;
 
         var parameters = new Dictionary<string, object?>(StringComparer.Ordinal);
         var refs = new Dictionary<string, object?>(StringComparer.Ordinal);

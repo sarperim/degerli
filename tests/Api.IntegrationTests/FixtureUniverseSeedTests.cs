@@ -125,7 +125,7 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         await using var db = await SeedL2Async();
         var alfa = await InstrumentIdAsync(db, "ALFA");
 
-        var fy = await LinesAsync(db, alfa, AlfaFy2025End, "FY", "as_reported");
+        var fy = await LinesAsync(db, alfa, AlfaFy2025End, "FY", 0);
 
         Assert.Equal(1000m, fy[FinItemCodes.Rev]);
         Assert.Equal(600m, fy[FinItemCodes.Cogs]);
@@ -152,7 +152,7 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         var sums = new Dictionary<string, decimal>();
         foreach (var quarter in quarters)
         {
-            foreach (var (code, value) in await LinesAsync(db, alfa, quarter, "Q", "as_reported"))
+            foreach (var (code, value) in await LinesAsync(db, alfa, quarter, "Q", 0))
             {
                 sums[code] = sums.GetValueOrDefault(code) + value;
             }
@@ -175,13 +175,13 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         await using var db = await SeedL2Async();
 
         var rest = await InstrumentIdAsync(db, "REST");
-        var asReported = await LinesAsync(db, rest, AlfaFy2025End, "FY", "as_reported");
-        var restated = await LinesAsync(db, rest, AlfaFy2025End, "FY", "restated");
+        var asReported = await LinesAsync(db, rest, AlfaFy2025End, "FY", 0);
+        var restated = await LinesAsync(db, rest, AlfaFy2025End, "FY", 1);
         Assert.Equal(60m, asReported[FinItemCodes.Ni]);
         Assert.Equal(75m, restated[FinItemCodes.Ni]);
 
         var restatedStatement = await db.FinancialStatements.SingleAsync(s =>
-            s.InstrumentId == rest && s.Version == "restated" && s.StatementType == "IS");
+            s.InstrumentId == rest && s.Version == 1 && s.StatementType == "IS");
         Assert.Equal(new DateOnly(2026, 6, 20), restatedStatement.RestatementDate);
         Assert.Equal(2, await db.FinancialStatements.CountAsync(s => s.InstrumentId == rest && s.StatementType == "IS"));
 
@@ -215,7 +215,7 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         };
         foreach (var (year, fcf) in expected)
         {
-            var lines = await LinesAsync(db, kappa, new DateOnly(year, 12, 31), "FY", "as_reported");
+            var lines = await LinesAsync(db, kappa, new DateOnly(year, 12, 31), "FY", 0);
             var derived = lines[FinItemCodes.Ni] + lines[FinItemCodes.DeprAmort] - lines[FinItemCodes.Dwc] - lines[FinItemCodes.Capex];
             Assert.Equal(fcf, derived);
         }
@@ -371,7 +371,7 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         long instrumentId,
         DateOnly periodEnd,
         string periodType,
-        string version)
+        int version)
     {
         var statementIds = await db.FinancialStatements
             .Where(s => s.InstrumentId == instrumentId && s.PeriodEndDate == periodEnd && s.PeriodType == periodType && s.Version == version)
