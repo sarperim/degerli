@@ -11,7 +11,8 @@ scope:
 
 # TKT-mov-008: Consolidated macro ingestion via TCMB EVDS
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/78
 - Size: M
 - Scope: the macro source adapter — fetch the five official series (`TUIK_CPI`, `CBRT_REPO`, `USD_TRY`, `EUR_TRY`, `GOLD`) from a single TCMB EVDS API adapter (free API key, config), replacing the scattered per-source plan. Resolves OQ-MOV-005. Keeps the existing revision/staleness behavior. `INDEP_CPI` is out of scope (TKT-mov-009). Must NOT touch the statement FX reader (TKT-mdf-014) or the fund adapter.
 - Traces to: FR-MOV-014; UC-MOV-001, UC-MOV-002; BR-MOV-003
