@@ -14,6 +14,7 @@ scope:
   - tests/Api.IntegrationTests/MetricsEngineTests.cs
   - tests/Api.IntegrationTests/ScreenerRunEndpointTests.cs
   - tests/Api.IntegrationTests/StockFundamentalsEndpointsTests.cs
+  - fixtures/Degerli.Fixtures/FixtureUniverse.cs
 ---
 
 # TKT-mdf-018: TMS 29 regime-break flag on spanning CAGRs
