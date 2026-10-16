@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Degerli.Ingestion.Prices;
 
 /// <summary>
-/// The İşbank candidate EOD price payload (FU §10 <c>prices-*.json</c>). The top-level
+/// The İş Yatırım EOD price payload (FU §10 <c>prices-*.json</c>). The top-level
 /// <see cref="SourceRef"/> is the provenance carried onto every stored fact (FR-MDF-008);
 /// its absence is the missing-provenance class (TC-MDF-008).
 /// </summary>
@@ -31,6 +31,46 @@ public sealed record PriceFact(
 public sealed record PricesHistoryPayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
     [property: JsonPropertyName("rows")] IReadOnlyList<DatedPriceFact> Rows);
+
+/// <summary>
+/// The Yahoo Finance <c>.IS</c> contingency envelope (FR-MDF-001, 03 §1.2). Yahoo's
+/// public chart payload is range-shaped and carries no provenance field, so the adapter
+/// detects it by its <see cref="Chart"/> root and stamps the concrete source
+/// (<c>yahoo</c>) itself. The two sources' envelopes are distinct on purpose: a stored
+/// row always names the source that actually produced it.
+/// </summary>
+public sealed record YahooPricesPayload(
+    [property: JsonPropertyName("chart")] YahooChart? Chart);
+
+/// <summary>Yahoo chart container (<c>chart.result[]</c>).</summary>
+public sealed record YahooChart(
+    [property: JsonPropertyName("result")] IReadOnlyList<YahooChartResult>? Result);
+
+/// <summary>One instrument's chart result: meta + parallel timestamp/quote arrays.</summary>
+public sealed record YahooChartResult(
+    [property: JsonPropertyName("meta")] YahooMeta? Meta,
+    [property: JsonPropertyName("timestamp")] IReadOnlyList<long>? Timestamp,
+    [property: JsonPropertyName("indicators")] YahooIndicators? Indicators);
+
+/// <summary>Yahoo result metadata carrying the (suffixed) ticker.</summary>
+public sealed record YahooMeta(
+    [property: JsonPropertyName("symbol")] string? Symbol,
+    [property: JsonPropertyName("currency")] string? Currency);
+
+/// <summary>Yahoo indicators container.</summary>
+public sealed record YahooIndicators(
+    [property: JsonPropertyName("quote")] IReadOnlyList<YahooQuote>? Quote);
+
+/// <summary>
+/// Yahoo's quote arrays — index-aligned with the result's <c>timestamp</c> array (a
+/// null element marks a missing observation for that timestamp).
+/// </summary>
+public sealed record YahooQuote(
+    [property: JsonPropertyName("open")] IReadOnlyList<decimal?>? Open,
+    [property: JsonPropertyName("high")] IReadOnlyList<decimal?>? High,
+    [property: JsonPropertyName("low")] IReadOnlyList<decimal?>? Low,
+    [property: JsonPropertyName("close")] IReadOnlyList<decimal?>? Close,
+    [property: JsonPropertyName("volume")] IReadOnlyList<long?>? Volume);
 
 /// <summary>One dated instrument row within a backfill history payload.</summary>
 public sealed record DatedPriceFact(

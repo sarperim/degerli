@@ -19,6 +19,8 @@ namespace Degerli.Api.IntegrationTests;
 /// (TC-MDF-001, TC-MDF-002, TC-MDF-008, TC-MDF-052). Every test runs the real job
 /// against a migrated Testcontainers PostgreSQL and the FU §10 WireMock source double,
 /// composing the same <c>AddMarketDataIngestion</c> registration the API host uses.
+/// The price source is İş Yatırım (<c>source_ref</c> = <c>isyatirim</c>; TKT-mdf-021);
+/// the per-row provenance contract is exercised in <see cref="PriceSourceContractTests"/>.
 /// TC-MDF-009 (schema invariants) is the structural conformance suite
 /// <see cref="SchemaConformanceTests"/> — this ticket's storage invariants rest on it.
 /// </summary>
@@ -61,7 +63,7 @@ public sealed class PriceIngestionTests : IClassFixture<PostgresFixture>, IClass
             var fact = expected[symbols[row.InstrumentId]];
             Assert.Equal(fact.CloseRaw, row.CloseRaw);
             Assert.Equal(fact.Volume, row.Volume);
-            Assert.Equal($"isbank://eod/{T:yyyy-MM-dd}", row.SourceRef);
+            Assert.Equal("isyatirim", row.SourceRef);
             Assert.False(string.IsNullOrWhiteSpace(row.SourceRef));
             Assert.NotEqual(default, row.RecordedAt);
         }

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Degerli.Ingestion.Prices;
 
 /// <summary>
-/// The <c>prices</c> EOD job (FR-MDF-001, UC-MDF-001 step 1): fetch the İşbank price
+/// The <c>prices</c> EOD job (FR-MDF-001, UC-MDF-001 step 1): fetch the İş Yatırım price
 /// payload, enforce provenance and the append-only/idempotent fact-storage invariants,
 /// quarantine anything refused, and report the outcome for the run ledger. When the
 /// request carries a <c>backfillFrom</c> the job runs in <b>backfill mode</b>
