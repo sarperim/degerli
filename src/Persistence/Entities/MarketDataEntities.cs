@@ -113,6 +113,15 @@ public class FinancialStatement
 
     public DateOnly? RestatementDate { get; set; }
     public DateOnly? PublishedAt { get; set; }
+
+    /// <summary>The source's declared unit scale (<c>units</c>/<c>thousands</c>/<c>millions</c>)
+    /// — audit provenance for the §3.1 normalization (02 §3.1, v1.3).</summary>
+    public string SourceUnitScale { get; set; } = null!;
+
+    /// <summary>The statement's reporting currency (<c>TRY</c>/<c>USD</c>/<c>EUR</c>);
+    /// non-TRY values are converted to TRY at the period-end rate before insert (02 §3.1).</summary>
+    public string SourceCurrency { get; set; } = null!;
+
     public string SourceRef { get; set; } = null!;
     public DateTimeOffset RecordedAt { get; set; }
 }

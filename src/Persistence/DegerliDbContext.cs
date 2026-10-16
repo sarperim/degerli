@@ -170,6 +170,8 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.Property(x => x.PeriodType).IsRequired();
             b.Property(x => x.StatementType).IsRequired();
             b.Property(x => x.Version).IsRequired();
+            b.Property(x => x.SourceUnitScale).IsRequired();
+            b.Property(x => x.SourceCurrency).IsRequired();
             b.Property(x => x.SourceRef).IsRequired();
             b.HasIndex(x => new { x.InstrumentId, x.PeriodType, x.PeriodEndDate, x.StatementType, x.Version }).IsUnique();
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);

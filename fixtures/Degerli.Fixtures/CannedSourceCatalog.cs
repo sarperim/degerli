@@ -45,6 +45,7 @@ public static class CannedSourceCatalog
     public const string StatementsRestatedRest = "statements-restated-rest";
     public const string StatementsRestatedRestV2 = "statements-restated-rest-v2";
     public const string StatementsNoCfPart = "statements-no-cf-part";
+    public const string StatementsUsdReporter = "statements-usd-reporter";
     public const string DividendsOk = "dividends-ok";
     public const string CorporateActionsOk = "corporate-actions-ok";
     public const string DisclosuresOk = "disclosures-ok";
@@ -89,6 +90,7 @@ public static class CannedSourceCatalog
         StatementsRestatedRest,
         StatementsRestatedRestV2,
         StatementsNoCfPart,
+        StatementsUsdReporter,
         DividendsOk,
         CorporateActionsOk,
         DisclosuresOk,
@@ -129,6 +131,7 @@ public static class CannedSourceCatalog
             [StatementsRestatedRest] = Payload(StatementsRestatedRest, "kap", BuildStatementsBody(set, "REST")),
             [StatementsRestatedRestV2] = Payload(StatementsRestatedRestV2, "kap", BuildRestatedRestV2Body(set)),
             [StatementsNoCfPart] = Payload(StatementsNoCfPart, "kap", BuildStatementsBody(set, "PART")),
+            [StatementsUsdReporter] = Payload(StatementsUsdReporter, "kap", BuildUsdReporterBody()),
             [DividendsOk] = Payload(DividendsOk, "kap", BuildDividendsBody(set)),
             [CorporateActionsOk] = Payload(CorporateActionsOk, "kap", BuildCorporateActionsBody(set)),
             [DisclosuresOk] = Payload(DisclosuresOk, "kap", BuildDisclosuresBody(set)),
@@ -327,7 +330,7 @@ public static class CannedSourceCatalog
             .Select(ToStatementItem)
             .ToList();
 
-        return Serialize(new { sourceRef = $"kap://statements/{symbol}", symbol, statements });
+        return Serialize(new { sourceRef = $"kap://statements/{symbol}", symbol, unitScale = "units", currency = "TRY", statements });
     }
 
     /// <summary>
@@ -361,7 +364,48 @@ public static class CannedSourceCatalog
                 lines));
         }
 
-        return Serialize(new { sourceRef = "kap://statements/REST/v2", symbol = "REST", statements = items });
+        return Serialize(new { sourceRef = "kap://statements/REST/v2", symbol = "REST", unitScale = "units", currency = "TRY", statements = items });
+    }
+
+    /// <summary>
+    /// The USD reporting-currency fixture (FU §3b, TC-MDF-055): USDX's FY2025 as-reported
+    /// statements, tabulated in USD <em>millions</em> and declaring
+    /// <c>unitScale: "millions"</c> / <c>currency: "USD"</c>. The statement ETL normalizes to
+    /// raw single-unit TRY at the period-end FX rate (FU §7: USD_TRY 2025-12-31 = 42.00), so
+    /// the stored NI = 10 × 10⁶ × 42.00 = 420,000,000 and SHARES_DILUTED = 20 × 10⁶ =
+    /// 20,000,000 (a share count scales but is never FX-converted). On-demand: USDX is not
+    /// part of the seeded 16 and appears in no universe-wide golden.
+    /// </summary>
+    private static string BuildUsdReporterBody()
+    {
+        var periodEnd = new DateOnly(2025, 12, 31);
+        var published = new DateOnly(2026, 3, 10);
+        var statements = new List<StatementItem>
+        {
+            new(
+                "FY", periodEnd, 2025, "IS", "as_reported", null, published,
+                new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                {
+                    [FinItemCodes.Rev] = 100m,
+                    [FinItemCodes.Ni] = 10m,
+                }),
+            new(
+                "FY", periodEnd, 2025, "BS", "as_reported", null, published,
+                new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                {
+                    [FinItemCodes.TotalEquity] = 60m,
+                    [FinItemCodes.SharesDiluted] = 20m,
+                }),
+        };
+
+        return Serialize(new
+        {
+            sourceRef = "kap://statements/USDX",
+            symbol = "USDX",
+            unitScale = "millions",
+            currency = "USD",
+            statements,
+        });
     }
 
     private static StatementItem ToStatementItem(FixtureStatement s) =>

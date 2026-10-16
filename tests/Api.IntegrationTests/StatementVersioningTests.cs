@@ -128,6 +128,8 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
         var restatedPayload = new StatementsPayload(
             "kap://statements/REST/restated-first",
             "REST",
+            "units",
+            "TRY",
             [
                 new StatementFact(
                     "FY", periodEnd, 2025, "IS", "restated", new DateOnly(2026, 9, 15), periodEnd,
@@ -149,6 +151,8 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
         var asReportedPayload = new StatementsPayload(
             "kap://statements/REST/as-reported",
             "REST",
+            "units",
+            "TRY",
             [
                 new StatementFact(
                     "FY", periodEnd, 2025, "IS", "as_reported", null, periodEnd,
@@ -181,6 +185,8 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
         var payload = new StatementsPayload(
             "kap://statements/REST/no-date",
             "REST",
+            "units",
+            "TRY",
             [
                 new StatementFact(
                     "FY", periodEnd, 2025, "IS", "restated", null, periodEnd,

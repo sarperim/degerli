@@ -1,3 +1,4 @@
+using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,28 @@ public sealed class FinancialStatementStore
     private const string AsReported = "as_reported";
     private const string Restated = "restated";
 
+    // 02 §3.1 — the source's declared unit scale (FU §2) and its factor to single units.
+    private static readonly IReadOnlyDictionary<string, decimal> UnitScaleFactors =
+        new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            ["units"] = 1m,
+            ["thousands"] = 1_000m,
+            ["millions"] = 1_000_000m,
+        };
+
+    // 02 §3.1/§5.9 — the macro series a non-TRY reporting currency is converted from.
+    private static readonly IReadOnlyDictionary<string, string> FxSeriesByCurrency =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["USD"] = "USD_TRY",
+            ["EUR"] = "EUR_TRY",
+        };
+
+    // Share-count lines are normalized by scale only — they are counts, not money, so no
+    // FX conversion applies (02 §3.1).
+    private static readonly HashSet<string> ShareCountCodes =
+        new(StringComparer.Ordinal) { "SHARES_DILUTED", "SHARES_OUT" };
+
     private readonly DegerliDbContext _db;
 
     public FinancialStatementStore(DegerliDbContext db) => _db = db;
@@ -37,6 +60,19 @@ public sealed class FinancialStatementStore
         ArgumentNullException.ThrowIfNull(payload);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
 
+        // The payload's scale/currency declaration is mandatory and must be valid: an
+        // undeclared or unknown scale/currency is a payload-schema failure (02 §3.1,
+        // TC-MDF-055) — never a silent guess.
+        var currency = payload.Currency;
+        var isTry = string.Equals(currency, "TRY", StringComparison.Ordinal);
+        if (payload.UnitScale is null
+            || !UnitScaleFactors.TryGetValue(payload.UnitScale, out var scale)
+            || currency is null
+            || !(isTry || FxSeriesByCurrency.ContainsKey(currency)))
+        {
+            return new StatementWriteResult(payload.Symbol, 0, 0, [QuarantineReason.SchemaMismatch]);
+        }
+
         var instrumentId = await _db.Instruments
             .Where(i => i.Symbol == payload.Symbol)
             .Select(i => (long?)i.Id)
@@ -44,7 +80,27 @@ public sealed class FinancialStatementStore
             .ConfigureAwait(false);
         if (instrumentId is null)
         {
-            return new StatementWriteResult(payload.Symbol, 0, 0, ["SCHEMA_MISMATCH"]);
+            return new StatementWriteResult(payload.Symbol, 0, 0, [QuarantineReason.SchemaMismatch]);
+        }
+
+        // Period-end FX per distinct period end (02 §5.9): the latest macro_values row for
+        // the currency's series at or before the period end. A non-TRY statement with no
+        // such row is refused with MISSING_FX_RATE, never converted at a guessed rate.
+        var fxByPeriodEnd = new Dictionary<DateOnly, decimal?>();
+        if (!isTry)
+        {
+            var seriesCode = FxSeriesByCurrency[currency!];
+            foreach (var periodEnd in payload.Statements.Select(s => s.PeriodEndDate).Distinct())
+            {
+                var rate = await _db.MacroValues
+                    .Where(m => m.SeriesCode == seriesCode && m.ValueDate <= periodEnd)
+                    .OrderByDescending(m => m.ValueDate)
+                    .ThenByDescending(m => m.RecordedAt)
+                    .Select(m => (decimal?)m.Value)
+                    .FirstOrDefaultAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                fxByPeriodEnd[periodEnd] = rate;
+            }
         }
 
         var existing = await _db.FinancialStatements
@@ -115,6 +171,20 @@ public sealed class FinancialStatementStore
                 continue;
             }
 
+            // A non-TRY statement with no period-end rate is refused, never converted at a
+            // guessed rate (02 §3.1/§5.9, TC-MDF-055). Only reached when the fact is new —
+            // an idempotent re-send of an already-stored fact stays a no-op.
+            decimal? fxRate = null;
+            if (!isTry)
+            {
+                fxRate = fxByPeriodEnd[fact.PeriodEndDate];
+                if (fxRate is null)
+                {
+                    rejected.Add(QuarantineReason.MissingFxRate);
+                    continue;
+                }
+            }
+
             var statement = new FinancialStatement
             {
                 InstrumentId = instrumentId.Value,
@@ -125,6 +195,8 @@ public sealed class FinancialStatementStore
                 Version = version,
                 RestatementDate = fact.RestatementDate,
                 PublishedAt = fact.PublishedAt,
+                SourceUnitScale = payload.UnitScale!,
+                SourceCurrency = currency!,
                 SourceRef = sourceRef,
                 RecordedAt = recordedAt,
             };
@@ -137,7 +209,7 @@ public sealed class FinancialStatementStore
                 {
                     StatementId = statement.Id,
                     ItemCode = itemCode,
-                    Value = value,
+                    Value = Normalize(itemCode, value, scale, fxRate),
                 });
             }
 
@@ -155,6 +227,23 @@ public sealed class FinancialStatementStore
         // One quarantine row per payload per reason code — a payload is the unit of
         // inspection, so repeated refusals of the same class collapse to one entry.
         return new StatementWriteResult(payload.Symbol, inserted, unchanged, rejected.Distinct().ToList());
+    }
+
+    /// <summary>
+    /// Normalizes one mapped line to raw single-unit TRY (02 §3.1): the source's declared
+    /// scale is applied to every value; a non-TRY reporting currency is then converted at
+    /// the period-end rate. Share-count lines scale only — a share count is not money, so
+    /// no FX conversion applies.
+    /// </summary>
+    private static decimal Normalize(string itemCode, decimal value, decimal scale, decimal? fxRate)
+    {
+        var normalized = value * scale;
+        if (fxRate is decimal rate && !ShareCountCodes.Contains(itemCode))
+        {
+            normalized *= rate;
+        }
+
+        return normalized;
     }
 
     private static HashSet<T> Stored<T>(Dictionary<string, HashSet<T>> map, string key)

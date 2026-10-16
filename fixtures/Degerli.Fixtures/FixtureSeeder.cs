@@ -22,6 +22,12 @@ public static class FixtureSeeder
 {
     private const string SourceRef = "fixture:universe";
 
+    // The declared scale/currency recorded on every seeded statement (02 §3.1): the
+    // fixture universe is authored in the canonical stored unit, so seeded facts are
+    // already raw single-unit TRY.
+    private const string FixtureStatementUnitScale = "units";
+    private const string FixtureStatementCurrency = "TRY";
+
     /// <summary>Seeds (or tops up) the fixture universe for <paramref name="set"/>.</summary>
     public static async Task ApplyAsync(
         DegerliDbContext db,
@@ -286,6 +292,13 @@ public static class FixtureSeeder
                 Version = versions[statement],
                 RestatementDate = statement.RestatementDate,
                 PublishedAt = statement.PublishedAt,
+                // The fixture universe is authored in the canonical stored unit (the
+                // FU §5/§5.1 tables' TRY-M figures are the values this module stores):
+                // the seeded facts are single-unit TRY, so the declared source scale is
+                // `units` and the currency TRY — no scaling is applied on the seed path
+                // (the ETL normalization is exercised by the on-demand USDX fixture).
+                SourceUnitScale = FixtureStatementUnitScale,
+                SourceCurrency = FixtureStatementCurrency,
                 SourceRef = $"{SourceRef}:statements",
                 RecordedAt = At(set.Anchor),
             });
@@ -471,7 +484,7 @@ public static class FixtureSeeder
             .Select(v => (v.SeriesCode, v.ValueDate, v.RecordedAt))
             .ToHashSet();
 
-        foreach (var value in set.MacroValues)
+        foreach (var value in set.MacroValues.Concat(FixtureUniverse.StatementFxReferenceValues))
         {
             if (!existing.Add((value.SeriesCode, value.ValueDate, value.RecordedAt)))
             {

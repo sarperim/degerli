@@ -619,10 +619,20 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("restatement_date");
 
+                    b.Property<string>("SourceCurrency")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_currency");
+
                     b.Property<string>("SourceRef")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("source_ref");
+
+                    b.Property<string>("SourceUnitScale")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_unit_scale");
 
                     b.Property<string>("StatementType")
                         .IsRequired()
