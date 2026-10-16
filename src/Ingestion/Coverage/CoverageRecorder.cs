@@ -81,6 +81,23 @@ public sealed class CoverageRecorder
     }
 
     /// <summary>
+    /// Whether the accepted pre-launch <c>universe</c>-scope constituent-history gap row
+    /// already exists (FR-MDF-007/011, BR-MDF-007). The job records the gap only when it
+    /// is absent — independently of whether the one-time seed ran — so a cold start that
+    /// already carries open XU100 memberships still records it, and the launch date it
+    /// carries stays fixed across later runs.
+    /// </summary>
+    public async Task<bool> HasUniverseSeedGapAsync(CancellationToken cancellationToken = default) =>
+        await _db.CoverageMetadata
+            .AnyAsync(
+                c => c.Scope == UniverseScope
+                    && c.DataType == CoverageDataTypes.Constituents
+                    && c.InstrumentId == null
+                    && c.FundId == null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
     /// Records the achieved backfill depth per instrument for <c>prices</c>. When the
     /// earliest stored row is later than the requested target, the source limit is
     /// written as a coverage note (the limitation is recorded, never fabricated over).

@@ -93,38 +93,58 @@ public sealed class UniverseSyncJob : IIngestJob
         // history, so the current BIST 100 is seeded once from the full universe
         // snapshot the source publishes (the covered universe). The seed fires only on
         // cold start — when the snapshot carries no effective-dated change set and no
-        // open XU100 membership row exists yet — and records the accepted pre-launch
-        // history gap once. This is the seed + coverage record only: the daily
-        // change-detection path below is untouched, and a normal day (an open row
-        // exists) skips this step entirely.
+        // open XU100 membership row exists yet. This is the seed + coverage record only:
+        // the daily change-detection path below is untouched, and a normal day (an open
+        // row exists) skips this step entirely.
         var seededMemberships = 0;
         if (fetched.Payload.EffectiveDate is null
             && SnapshotSymbols(fetched.Payload) is { Count: > 0 } seedSymbols
             && !await _store.HasOpenConstituentsAsync(UniverseIndexCode, cancellationToken).ConfigureAwait(false))
         {
-            var seed = await _store
-                .SeedLaunchConstituentsAsync(
-                    fetched.SourceRef,
-                    request.Date,
-                    UniverseIndexCode,
-                    seedSymbols,
-                    now,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            seededMemberships = seed.Seeded;
-
-            // Unresolved symbols are reported and quarantined, never silently dropped
-            // (NFR-MDF-003).
-            foreach (var symbol in seed.UnknownSymbols)
+            if (!await _store.IndexExistsAsync(UniverseIndexCode, cancellationToken).ConfigureAwait(false))
             {
+                // A snapshot that publishes instruments but no XU100 index reference has
+                // no index to attach the seed to: degrade to "no seed" rather than let
+                // the throwing seed abort the rest of the job (index-levels, …).
                 _logger.LogWarning(
-                    "universe-sync: launch seed symbol {Symbol} resolved to no stored instrument (UNKNOWN_REFERENCE)",
-                    symbol);
-                await QuarantineAsync(fetched.SourceRef, symbol, "UNKNOWN_REFERENCE", cancellationToken)
-                    .ConfigureAwait(false);
-                quarantined++;
+                    "universe-sync: launch seed skipped — index {IndexCode} is not stored (UNKNOWN_REFERENCE)",
+                    UniverseIndexCode);
             }
+            else
+            {
+                var seed = await _store
+                    .SeedLaunchConstituentsAsync(
+                        fetched.SourceRef,
+                        request.Date,
+                        UniverseIndexCode,
+                        seedSymbols,
+                        now,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                seededMemberships = seed.Seeded;
 
+                // Unresolved symbols are reported and quarantined, never silently dropped
+                // (NFR-MDF-003).
+                foreach (var symbol in seed.UnknownSymbols)
+                {
+                    _logger.LogWarning(
+                        "universe-sync: launch seed symbol {Symbol} resolved to no stored instrument (UNKNOWN_REFERENCE)",
+                        symbol);
+                    await QuarantineAsync(fetched.SourceRef, symbol, "UNKNOWN_REFERENCE", cancellationToken)
+                        .ConfigureAwait(false);
+                    quarantined++;
+                }
+            }
+        }
+
+        // The accepted pre-launch constituent-history gap (FR-MDF-007/011, BR-MDF-007) is
+        // recorded exactly once, independently of whether the seed above ran: a cold start
+        // that already carries open XU100 memberships (e.g. a bootstrap that seeds the
+        // reference data plus memberships) must still record it rather than silently omit
+        // it. The recorder upsert is idempotent, and guarding on existence keeps the
+        // recorded launch date fixed across later runs.
+        if (!await _coverage.HasUniverseSeedGapAsync(cancellationToken).ConfigureAwait(false))
+        {
             await _coverage.RecordUniverseSeedGapAsync(request.Date, cancellationToken).ConfigureAwait(false);
         }
 

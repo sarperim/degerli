@@ -334,6 +334,25 @@ public sealed class UniverseSyncStore
                 .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Whether the index reference row is stored (FR-MDF-006). The job guards the
+    /// one-time launch seed on this: a snapshot that publishes instruments but carries
+    /// no XU100 index reference has no index to attach the seeded memberships to, so the
+    /// seed must degrade to "no seed" rather than throwing and aborting the rest of the
+    /// job. <see cref="HasOpenConstituentsAsync"/> alone cannot express this — it returns
+    /// false both for "index stored, no open row" and "index not stored".
+    /// </summary>
+    public async Task<bool> IndexExistsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        return await _db.Indices
+            .AnyAsync(i => i.Code == indexCode, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(
         string sourceRef,
         DateTimeOffset recordedAt,
