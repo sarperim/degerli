@@ -21,6 +21,14 @@ public class Instrument
     /// <summary>NULL = unclassified (UC-MDF-003a).</summary>
     public long? SectorId { get; set; }
 
+    /// <summary>
+    /// Builder-curated accounting classification (<c>industrial</c>/<c>bank</c>/
+    /// <c>insurance</c>/<c>reit</c>; 02 §3.1). Drives which metrics are meaningful
+    /// (§6.2) and whether the DCF applies (§6.4). It is a classification, not a
+    /// source fact: a source sync never overwrites it.
+    /// </summary>
+    public string AccountingProfile { get; set; } = null!;
+
     public DateOnly? ListingDate { get; set; }
     public DateOnly? DelistingDate { get; set; }
 

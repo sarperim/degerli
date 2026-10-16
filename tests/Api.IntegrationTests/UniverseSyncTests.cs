@@ -479,10 +479,69 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         Assert.True(await db.QuarantinedFacts.AnyAsync(q => q.ReasonCode == "UNKNOWN_REFERENCE"));
     }
 
+    /// <summary>
+    /// TKT-mdf-015 — the accounting profile is a builder-curated classification, not a
+    /// source fact (02 §3.1, TC-MDF-056): a newly-seen instrument is classified from the
+    /// checked-in seed, and a source sync that updates an existing instrument never
+    /// overwrites its profile.
+    /// </summary>
+    [Fact]
+    public async Task Profile_is_classified_from_the_checked_in_seed_and_never_overwritten_by_a_sync()
+    {
+        await ResetUniverseAsync();
+        await using (var setup = _postgres.CreateContext())
+        {
+            // Clean any prior run's artefacts, then give an existing instrument a curated,
+            // non-industrial profile to prove the sync does not reset it.
+            await setup.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE symbol = 'GARAN'");
+            await setup.Database.ExecuteSqlRawAsync(
+                "UPDATE instruments SET accounting_profile = 'insurance' WHERE symbol = 'BETA'");
+        }
+
+        // The payload: a new financial-sector member (GARAN — a seed-listed bank) and an
+        // existing instrument (BETA) whose sector link genuinely moves (A → C).
+        var body = JsonSerializer.Serialize(new
+        {
+            sourceRef = "kap://universe/profiles",
+            instruments = new[]
+            {
+                new { symbol = "GARAN", name = "Garanti Fixture A.Ş.", sectorCode = "A", listingDate = "2010-01-04" },
+                new { symbol = "BETA", name = "Beta Yazılım A.Ş.", sectorCode = "C", listingDate = "2012-05-10" },
+            },
+        }, JsonOptions);
+        const string profilePath = "/canned-sources/universe-profiles";
+        _wireMock.StubJson(profilePath, body);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
+        await using var host = BuildIngestion(profilePath, IndexPath);
+
+        await RunAsync(host, "universe-sync");
+
+        await using (var db = _postgres.CreateContext())
+        {
+            // The new member is classified from the checked-in list.
+            Assert.Equal(
+                Degerli.Persistence.Seed.AccountingProfiles.Bank,
+                await db.Instruments.Where(i => i.Symbol == "GARAN").Select(i => i.AccountingProfile).SingleAsync());
+
+            // The existing member was updated (its sector moved) yet keeps its profile.
+            var sectorC = await db.Sectors.Where(s => s.Code == "C").Select(s => s.Id).SingleAsync();
+            var beta = await db.Instruments.SingleAsync(i => i.Symbol == "BETA");
+            Assert.Equal(sectorC, beta.SectorId);
+            Assert.Equal("insurance", beta.AccountingProfile);
+        }
+
+        // Restore the shared baseline.
+        await using (var cleanup = _postgres.CreateContext())
+        {
+            await cleanup.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE symbol = 'GARAN'");
+            await cleanup.Database.ExecuteSqlRawAsync(
+                "UPDATE instruments SET accounting_profile = 'industrial' WHERE symbol = 'BETA'");
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
-
     /// <summary>
     /// The ingestion composition used in production, retargeted at the Testcontainers
     /// database and the WireMock source double. A recording mail double replaces the

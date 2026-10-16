@@ -1,4 +1,5 @@
 using Degerli.Persistence.Entities;
+using Degerli.Persistence.Seed;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -119,6 +120,12 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.Property(x => x.Id).ValueGeneratedOnAdd();
             b.Property(x => x.Symbol).IsRequired();
             b.Property(x => x.Name).IsRequired();
+            // 02 §3.1 — builder-curated classification; defaults to `industrial` and is
+            // never overwritten by a source sync.
+            b.Property(x => x.AccountingProfile)
+                .HasColumnName("accounting_profile")
+                .HasDefaultValue(AccountingProfiles.Industrial)
+                .IsRequired();
             b.Property(x => x.SourceRef).IsRequired();
             b.HasIndex(x => x.Symbol).IsUnique();
             b.HasOne<Sector>().WithMany().HasForeignKey(x => x.SectorId).OnDelete(DeleteBehavior.Restrict);

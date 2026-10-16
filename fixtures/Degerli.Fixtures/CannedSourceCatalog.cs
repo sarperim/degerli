@@ -46,6 +46,8 @@ public static class CannedSourceCatalog
     public const string StatementsRestatedRestV2 = "statements-restated-rest-v2";
     public const string StatementsNoCfPart = "statements-no-cf-part";
     public const string StatementsUsdReporter = "statements-usd-reporter";
+    public const string StatementsBankBanka = "statements-bank-banka";
+    public const string StatementsInsuranceSigorta = "statements-insurance-sigorta";
     public const string DividendsOk = "dividends-ok";
     public const string CorporateActionsOk = "corporate-actions-ok";
     public const string DisclosuresOk = "disclosures-ok";
@@ -91,6 +93,8 @@ public static class CannedSourceCatalog
         StatementsRestatedRestV2,
         StatementsNoCfPart,
         StatementsUsdReporter,
+        StatementsBankBanka,
+        StatementsInsuranceSigorta,
         DividendsOk,
         CorporateActionsOk,
         DisclosuresOk,
@@ -132,6 +136,8 @@ public static class CannedSourceCatalog
             [StatementsRestatedRestV2] = Payload(StatementsRestatedRestV2, "kap", BuildRestatedRestV2Body(set)),
             [StatementsNoCfPart] = Payload(StatementsNoCfPart, "kap", BuildStatementsBody(set, "PART")),
             [StatementsUsdReporter] = Payload(StatementsUsdReporter, "kap", BuildUsdReporterBody()),
+            [StatementsBankBanka] = Payload(StatementsBankBanka, "kap", BuildBankBankaBody()),
+            [StatementsInsuranceSigorta] = Payload(StatementsInsuranceSigorta, "kap", BuildInsuranceSigortaBody()),
             [DividendsOk] = Payload(DividendsOk, "kap", BuildDividendsBody(set)),
             [CorporateActionsOk] = Payload(CorporateActionsOk, "kap", BuildCorporateActionsBody(set)),
             [DisclosuresOk] = Payload(DisclosuresOk, "kap", BuildDisclosuresBody(set)),
@@ -408,8 +414,76 @@ public static class CannedSourceCatalog
         });
     }
 
-    private static StatementItem ToStatementItem(FixtureStatement s) =>
-        new(
+    /// <summary>
+    /// The bank-shaped statement fixture (FU §3b, TC-MDF-056): BANKA reports under
+    /// BDDK rules — no <c>REV</c>/<c>COGS</c>/<c>EBIT</c>/<c>EBITDA</c>/<c>CUR_ASSETS</c>.
+    /// The payload deliberately carries a <em>spurious</em> <c>REV</c> 500 and
+    /// <c>DEPR_AMORT</c> 50 so the profile gate (02 §6.2, TKT-mdf-020) can prove a stray
+    /// line never produces a plausible-looking industrial metric. NI 300, equity 3000,
+    /// shares 300, cash 500, ST_DEBT 2000, LT_DEBT 1000. On-demand: BANKA is not one of
+    /// the seeded 16 and appears in no universe-wide golden.
+    /// </summary>
+    private static string BuildBankBankaBody() =>
+        Serialize(new
+        {
+            sourceRef = "kap://statements/BANKA",
+            symbol = "BANKA",
+            unitScale = "units",
+            currency = "TRY",
+            statements = new List<StatementItem>
+            {
+                new(
+                    "FY", new DateOnly(2025, 12, 31), 2025, "IS", "as_reported", null, new DateOnly(2026, 3, 10),
+                    new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                    {
+                        [FinItemCodes.Ni] = 300m,
+                        [FinItemCodes.Rev] = 500m,
+                        [FinItemCodes.DeprAmort] = 50m,
+                    }),
+                new(
+                    "FY", new DateOnly(2025, 12, 31), 2025, "BS", "as_reported", null, new DateOnly(2026, 3, 10),
+                    new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                    {
+                        [FinItemCodes.TotalEquity] = 3000m,
+                        [FinItemCodes.SharesDiluted] = 300m,
+                        [FinItemCodes.Cash] = 500m,
+                        [FinItemCodes.StDebt] = 2000m,
+                        [FinItemCodes.LtDebt] = 1000m,
+                    }),
+            },
+        });
+
+    /// <summary>
+    /// The insurance-shaped statement fixture (FU §3b, TC-MDF-056): SIGORTA reports under
+    /// insurance rules with the same industrial-line absence as BANKA. NI 24, equity 240,
+    /// shares 24. On-demand: SIGORTA is not one of the seeded 16.
+    /// </summary>
+    private static string BuildInsuranceSigortaBody() =>
+        Serialize(new
+        {
+            sourceRef = "kap://statements/SIGORTA",
+            symbol = "SIGORTA",
+            unitScale = "units",
+            currency = "TRY",
+            statements = new List<StatementItem>
+            {
+                new(
+                    "FY", new DateOnly(2025, 12, 31), 2025, "IS", "as_reported", null, new DateOnly(2026, 3, 10),
+                    new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                    {
+                        [FinItemCodes.Ni] = 24m,
+                    }),
+                new(
+                    "FY", new DateOnly(2025, 12, 31), 2025, "BS", "as_reported", null, new DateOnly(2026, 3, 10),
+                    new SortedDictionary<string, decimal>(StringComparer.Ordinal)
+                    {
+                        [FinItemCodes.TotalEquity] = 240m,
+                        [FinItemCodes.SharesDiluted] = 24m,
+                    }),
+            },
+        });
+
+    private static StatementItem ToStatementItem(FixtureStatement s) =>        new(
             s.PeriodType,
             s.PeriodEndDate,
             s.FiscalYear,

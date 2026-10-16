@@ -15,7 +15,8 @@ scope:
 
 # TKT-mdf-015: `accounting_profile` classification & financial-statement ingest posture
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/80
 - Size: M
 - Scope: the `instruments.accounting_profile` column + a checked-in builder-curated seed list of BIST 100 financial-sector members, the universe/seed path (profile is a classification — a source sync must not overwrite it), and the ingest posture that bank/insurance statements with absent industrial lines are never quarantined. Must NOT touch the metric formulas (TKT-mdf-020) or the DCF (TKT-val-010).
 - Traces to: FR-MDF-002, FR-MDF-012; UC-MDF-001 (alternate b), UC-MDF-003; BR-MDF-007

@@ -1,3 +1,5 @@
+using Degerli.Persistence.Seed;
+
 namespace Degerli.Fixtures;
 
 /// <summary>Sector row (FU §3; 02 §3.1) with bilingual labels.</summary>
@@ -13,7 +15,8 @@ public sealed record FixtureInstrument(
     string? SectorCode,
     DateOnly ListingDate,
     long SharesDiluted,
-    string Archetype);
+    string Archetype,
+    string AccountingProfile = AccountingProfiles.Industrial);
 
 /// <summary>Effective-dated index membership (XU100 all, XU30 subset).</summary>
 public sealed record FixtureMembership(
