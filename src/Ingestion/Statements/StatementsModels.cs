@@ -12,6 +12,8 @@ namespace Degerli.Ingestion.Statements;
 public sealed record StatementsPayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
     [property: JsonPropertyName("symbol")] string Symbol,
+    [property: JsonPropertyName("unitScale")] string? UnitScale,
+    [property: JsonPropertyName("currency")] string? Currency,
     [property: JsonPropertyName("statements")] IReadOnlyList<StatementFact> Statements) : IKapPayload;
 
 /// <summary>One statement version of one period, with its source-taxonomy lines.</summary>

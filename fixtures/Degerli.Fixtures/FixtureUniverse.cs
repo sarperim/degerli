@@ -583,6 +583,25 @@ public static class FixtureUniverse
         return dividends;
     }
 
+    /// <summary>
+    /// FU §7 (v1.4) — the statement-FX reference rates. These are the period-end rates the
+    /// statement ETL uses to normalize a non-TRY reporter (02 §3.1/§5.9; e.g. the on-demand
+    /// USDX fixture, TC-MDF-055): <c>USD_TRY</c> at 2025-12-31 = 42.00. They are seeded into
+    /// <c>macro_values</c> so the normalization precondition holds, but they are <em>not</em>
+    /// macro-source publication values — the macro source payload carries only the series a
+    /// source publishes (FU §10: the macro reshape keeps the macro jobs' asserted DB
+    /// outcomes unchanged), so these rows are deliberately excluded from <see cref="FixtureSet.MacroValues"/>
+    /// and the canned macro payload.
+    /// </summary>
+    public static IReadOnlyList<FixtureMacroValue> StatementFxReferenceValues { get; } =
+    [
+        new(
+            "USD_TRY",
+            new DateOnly(2025, 12, 31),
+            42.00m,
+            new DateTimeOffset(new DateOnly(2026, 1, 2).ToDateTime(new TimeOnly(21, 30)), TimeSpan.Zero)),
+    ];
+
     private static List<FixtureMacroValue> BuildMacroValues(FixtureAnchor anchor)
     {
         var dailyRecorded = new DateTimeOffset(anchor.T.ToDateTime(new TimeOnly(21, 30)), TimeSpan.Zero);

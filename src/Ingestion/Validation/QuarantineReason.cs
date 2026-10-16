@@ -27,6 +27,11 @@ public static class QuarantineReason
     /// (Q1, 2026-10-06); the stored fact is kept, never overwritten.</summary>
     public const string ConflictingValue = "CONFLICTING_VALUE";
 
+    /// <summary>A statement reported in a non-TRY currency has no period-end FX rate in
+    /// <c>macro_values</c>; it is quarantined rather than converted at a guessed rate
+    /// (FU §2 v1.4; 02 §3.1/§5.9).</summary>
+    public const string MissingFxRate = "MISSING_FX_RATE";
+
     /// <summary>Every reason code, in catalog order (FU §2).</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -36,5 +41,6 @@ public static class QuarantineReason
         UnparseablePayload,
         MissingClassification,
         ConflictingValue,
+        MissingFxRate,
     ];
 }
