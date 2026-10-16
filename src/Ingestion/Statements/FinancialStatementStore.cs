@@ -14,7 +14,9 @@ namespace Degerli.Ingestion.Statements;
 /// restated repeatedly (e.g. successive TMS 29 re-basings) — BR-MDF-011. A restatement
 /// is identified by its <see cref="StatementFact.RestatementDate"/>, so re-ingesting an
 /// identical payload is an idempotent no-op and a genuinely new restatement becomes the
-/// next version. Line items are stored mapped to the canonical chart of accounts
+/// next version; a <c>restated</c> fact without a publication date is refused
+/// (<c>SCHEMA_MISMATCH</c>) because 02 §3.1 reserves a NULL date for version 0. Line
+/// items are stored mapped to the canonical chart of accounts
 /// (<see cref="StatementMapper"/>).
 /// </summary>
 public sealed class FinancialStatementStore
@@ -86,6 +88,16 @@ public sealed class FinancialStatementStore
             }
             else if (string.Equals(fact.Version, Restated, StringComparison.Ordinal))
             {
+                // A restatement carries its restating report's publication date (02 §3.1;
+                // a NULL date is reserved for the as-reported version 0). Without a date
+                // the restatement cannot be identified, so the fact is refused rather than
+                // silently collapsing every later date-less restatement into a no-op.
+                if (fact.RestatementDate is null)
+                {
+                    rejected.Add("SCHEMA_MISMATCH");
+                    continue;
+                }
+
                 // A restatement is identified by its publication date.
                 if (Stored(restatementDates, key).Contains(fact.RestatementDate))
                 {
@@ -93,7 +105,9 @@ public sealed class FinancialStatementStore
                     continue;
                 }
 
-                version = Stored(versions, key).DefaultIfEmpty(-1).Max() + 1;
+                // Restatements occupy 1, 2, … — never the as-reported slot 0 — even when
+                // no prior version exists or the fact precedes its as-reported sibling.
+                version = Math.Max(1, Stored(versions, key).DefaultIfEmpty(0).Max() + 1);
             }
             else
             {
@@ -138,7 +152,9 @@ public sealed class FinancialStatementStore
             inserted++;
         }
 
-        return new StatementWriteResult(payload.Symbol, inserted, unchanged, rejected);
+        // One quarantine row per payload per reason code — a payload is the unit of
+        // inspection, so repeated refusals of the same class collapse to one entry.
+        return new StatementWriteResult(payload.Symbol, inserted, unchanged, rejected.Distinct().ToList());
     }
 
     private static HashSet<T> Stored<T>(Dictionary<string, HashSet<T>> map, string key)

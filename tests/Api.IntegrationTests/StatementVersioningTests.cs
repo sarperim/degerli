@@ -4,6 +4,7 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -109,6 +110,88 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
         {
             Assert.Equal(9, await db.FinancialStatements.CountAsync(s => s.InstrumentId == restId && s.PeriodType == "FY"));
         }
+    }
+
+    /// <summary>
+    /// TC-MDF-054 — a restatement arriving with no prior version, and before its
+    /// as-reported sibling, still takes sequence 1, never the as-reported slot 0:
+    /// payload order must not change the stored sequence (02 §3.1, BR-MDF-011).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_054_restated_before_as_reported_takes_sequence_one_not_the_as_reported_slot()
+    {
+        long restId = await ResetAsync();
+        var periodEnd = new DateOnly(2025, 12, 31);
+        await using var db = _postgres.CreateContext();
+        var store = new FinancialStatementStore(db);
+
+        var restatedPayload = new StatementsPayload(
+            "kap://statements/REST/restated-first",
+            "REST",
+            [
+                new StatementFact(
+                    "FY", periodEnd, 2025, "IS", "restated", new DateOnly(2026, 9, 15), periodEnd,
+                    new Dictionary<string, decimal> { ["NI"] = 80m }),
+            ]);
+        var first = await store.UpsertAsync(
+            "kap://statements/REST/restated-first", DateTimeOffset.UnixEpoch, restatedPayload);
+
+        Assert.Equal(1, first.Inserted);
+        Assert.Equal(0, first.Unchanged);
+        Assert.Empty(first.RejectedReasonCodes);
+
+        var onlyRestated = await db.FinancialStatements
+            .SingleAsync(s => s.InstrumentId == restId && s.PeriodEndDate == periodEnd && s.StatementType == "IS");
+        Assert.Equal(1, onlyRestated.Version);
+        Assert.Equal(new DateOnly(2026, 9, 15), onlyRestated.RestatementDate);
+
+        // The as-reported statement then takes slot 0 and is retained alongside the restatement.
+        var asReportedPayload = new StatementsPayload(
+            "kap://statements/REST/as-reported",
+            "REST",
+            [
+                new StatementFact(
+                    "FY", periodEnd, 2025, "IS", "as_reported", null, periodEnd,
+                    new Dictionary<string, decimal> { ["NI"] = 60m }),
+            ]);
+        var second = await store.UpsertAsync(
+            "kap://statements/REST/as-reported", DateTimeOffset.UnixEpoch, asReportedPayload);
+        Assert.Equal(1, second.Inserted);
+
+        var versions = await db.FinancialStatements
+            .Where(s => s.InstrumentId == restId && s.PeriodEndDate == periodEnd && s.StatementType == "IS")
+            .Select(s => s.Version)
+            .ToListAsync();
+        Assert.Equal(new[] { 0, 1 }, versions.OrderBy(v => v).ToList());
+    }
+
+    /// <summary>
+    /// TC-MDF-054 — a <c>restated</c> fact without a publication date is refused
+    /// (<c>SCHEMA_MISMATCH</c>) rather than stored as a restatement no later restatement
+    /// can follow (02 §3.1 — a NULL <c>restatement_date</c> is reserved for version 0).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_054_restated_without_publication_date_is_refused()
+    {
+        long restId = await ResetAsync();
+        var periodEnd = new DateOnly(2025, 12, 31);
+        await using var db = _postgres.CreateContext();
+        var store = new FinancialStatementStore(db);
+
+        var payload = new StatementsPayload(
+            "kap://statements/REST/no-date",
+            "REST",
+            [
+                new StatementFact(
+                    "FY", periodEnd, 2025, "IS", "restated", null, periodEnd,
+                    new Dictionary<string, decimal> { ["NI"] = 80m }),
+            ]);
+
+        var result = await store.UpsertAsync("kap://statements/REST/no-date", DateTimeOffset.UnixEpoch, payload);
+
+        Assert.Equal(0, result.Inserted);
+        Assert.Equal(new[] { "SCHEMA_MISMATCH" }, result.RejectedReasonCodes);
+        Assert.Equal(0, await db.FinancialStatements.CountAsync(s => s.InstrumentId == restId));
     }
 
     // ---------------------------------------------------------------------------------
