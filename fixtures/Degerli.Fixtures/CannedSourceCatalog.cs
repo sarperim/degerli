@@ -144,8 +144,8 @@ public static class CannedSourceCatalog
             [UniverseAddRemove] = Payload(UniverseAddRemove, "kap", BuildUniverseChangeSetBody(set)),
             [UniverseMissingSector] = Payload(UniverseMissingSector, "kap", BuildUniverseBody(set)),
             [IndexLevelsOk] = Payload(IndexLevelsOk, "isyatirim", BuildIndexLevelsBody(set)),
-            [MacroOk] = Payload(MacroOk, "macro", BuildMacroBody(set, includeIndependentCpi: true)),
-            [MacroIndepCpiAbsent] = Payload(MacroIndepCpiAbsent, "macro", BuildMacroBody(set, includeIndependentCpi: false)),
+            [MacroOk] = Payload(MacroOk, "macro", BuildMacroBody(set)),
+            [MacroIndepCpiAbsent] = Payload(MacroIndepCpiAbsent, "macro", BuildMacroBody(set)),
             [TefasTef0001] = Payload(TefasTef0001, "tefas", BuildFundBody(set, "TEF0001")),
             [TefasTef0002] = Payload(TefasTef0002, "tefas", BuildFundBody(set, "TEF0002")),
             [TefasTef0003] = Payload(TefasTef0003, "tefas", BuildFundBody(set, "TEF0003")),
@@ -575,21 +575,47 @@ public static class CannedSourceCatalog
     private static readonly Dictionary<string, string> MacroUnits = new(StringComparer.Ordinal)
     {
         ["TUIK_CPI"] = "% YoY",
-        ["INDEP_CPI"] = "% YoY",
         ["CBRT_REPO"] = "%",
         ["USD_TRY"] = "TRY",
         ["EUR_TRY"] = "TRY",
         ["GOLD"] = "USD/oz",
     };
 
-    private static string BuildMacroBody(FixtureSet set, bool includeIndependentCpi)
+    /// <summary>The canonical macro code → EVDS series identifier (OQ-MOV-005). The
+    /// independent measure has no EVDS source (it arrives through the admin endpoint,
+    /// TC-MOV-027), so its <c>seriesCode</c> is omitted.</summary>
+    private static readonly Dictionary<string, string> EvdsSeriesCodes = new(StringComparer.Ordinal)
+    {
+        ["TUIK_CPI"] = "TP.TUKFIY2025.GENEL",
+        ["CBRT_REPO"] = "TP.APIFON1",
+        ["USD_TRY"] = "TP.DK.USD.A.YTL",
+        ["EUR_TRY"] = "TP.DK.EUR.A.YTL",
+        ["GOLD"] = "TP.MK.ALTIN",
+    };
+
+    /// <summary>
+    /// The TCMB EVDS envelope (OQ-MOV-005, FU §10 v1.4). One request carries the five official
+    /// series' published observations; each names its EVDS <c>seriesCode</c> and the canonical
+    /// <c>code</c> the adapter maps to. GOLD is the deliberately-stale fixture (FU §7).
+    /// <c>INDEP_CPI</c> is <em>not</em> sourced from the macro adapter (FU v1.4 §7/§10,
+    /// TC-MOV-027) — it is entered through the admin endpoint — so the payload covers the five
+    /// official series only; <c>macro-indep-cpi-absent</c> therefore carries the same five
+    /// series and models "no manual entry yet" at the store, not on the wire.
+    /// </summary>
+    private static string BuildMacroBody(FixtureSet set)
     {
         var series = set.MacroValues
-            .Where(v => includeIndependentCpi || v.SeriesCode != "INDEP_CPI")
-            .Select(v => new MacroItem(v.SeriesCode, v.ValueDate, v.Value, MacroUnits[v.SeriesCode], v.RecordedAt))
+            .Where(v => !string.Equals(v.SeriesCode, "INDEP_CPI", StringComparison.Ordinal))
+            .Select(v => new MacroItem(
+                EvdsSeriesCodes.TryGetValue(v.SeriesCode, out var evdsCode) ? evdsCode : null,
+                v.SeriesCode,
+                v.ValueDate,
+                v.Value,
+                MacroUnits[v.SeriesCode],
+                v.RecordedAt))
             .ToList();
 
-        return Serialize(new { sourceRef = "macro://series", series });
+        return Serialize(new { sourceRef = "evds://tcmb", totalCount = series.Count, series });
     }
 
     private static string BuildFundBody(FixtureSet set, string fundCode)
@@ -699,6 +725,7 @@ public static class CannedSourceCatalog
     private sealed record IndexLevelItem(string IndexCode, DateOnly Date, decimal Close);
 
     private sealed record MacroItem(
+        string? SeriesCode,
         string Code,
         DateOnly ValueDate,
         decimal Value,

@@ -75,7 +75,9 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
             var usd = rows.Single(r => r.SeriesCode == "USD_TRY");
             Assert.Equal(47.10m, usd.Value);
             Assert.Equal(T, usd.ValueDate);
-            Assert.Equal("macro://series", usd.SourceRef);
+            // TKT-mov-008: the value now arrives through the single TCMB EVDS adapter, so
+            // its provenance is the EVDS source (OQ-MOV-005).
+            Assert.Equal("evds://tcmb", usd.SourceRef);
             Assert.NotEqual(default, usd.RecordedAt);
 
             var eur = rows.Single(r => r.SeriesCode == "EUR_TRY");
@@ -356,6 +358,109 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MOV-026 — consolidated macro ingest via the TCMB EVDS adapter
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>TC-MOV-026 — the five official series are ingested from the one EVDS
+    /// adapter (both cadence jobs read the same EVDS envelope) and each row records the
+    /// EVDS provenance.</summary>
+    [Fact]
+    public async Task TC_MOV_026_Consolidated_evds_adapter_ingests_the_five_official_series()
+    {
+        await ResetAsync(clearMacroValues: true);
+        StubMacro(CannedSourceCatalog.MacroOk);
+        await using var host = BuildIngestion();
+
+        var daily = await RunAsync(host, MacroDailyJob.Code);
+        Assert.Equal("succeeded", daily.Status);
+
+        var cpi = await RunAsync(host, MacroCpiJob.Code);
+        Assert.NotEqual("failed", cpi.Status);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var official = await db.MacroValues
+                .Where(v => v.SeriesCode == "TUIK_CPI" || v.SeriesCode == "CBRT_REPO" || v.SeriesCode == "USD_TRY"
+                    || v.SeriesCode == "EUR_TRY" || v.SeriesCode == "GOLD")
+                .ToListAsync();
+
+            // All five official series arrived through the single adapter, each bearing the
+            // consolidated EVDS provenance (OQ-MOV-005).
+            Assert.Equal(new[] { "CBRT_REPO", "EUR_TRY", "GOLD", "TUIK_CPI", "USD_TRY" },
+                official.Select(v => v.SeriesCode).Distinct().OrderBy(c => c, StringComparer.Ordinal).ToArray());
+            Assert.All(official, row => Assert.Equal("evds://tcmb", row.SourceRef));
+
+            Assert.Equal(47.10m, official.Single(v => v.SeriesCode == "USD_TRY" && v.ValueDate == T).Value);
+            Assert.Equal(42.50m, official.Single(v => v.SeriesCode == "CBRT_REPO").Value);
+        }
+    }
+
+    /// <summary>TC-MOV-026 — a re-published (revised) EVDS value appends a new recorded_at
+    /// row for the same value date; the canonical value is the latest and nothing is
+    /// overwritten.</summary>
+    [Fact]
+    public async Task TC_MOV_026_Revised_evds_value_appends_a_row_canonical_latest()
+    {
+        await ResetAsync(clearMacroValues: true);
+        StubMacro(CannedSourceCatalog.MacroOk);
+        await using var host = BuildIngestion();
+
+        await RunAsync(host, MacroCpiJob.Code);
+
+        // TÜİK re-publishes the prior-month CPI again, later and at a corrected value.
+        var revisedDate = new DateOnly(2026, 8, 1);
+        var republishedAt = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.Zero);
+        _wireMock.Server.ResetMappings();
+        StubMacroBody(AppendCpiRevision(CannedSourceCatalog.MacroOk, revisedDate, 45.50m, republishedAt));
+
+        await RunAsync(host, MacroCpiJob.Code);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var rows = await db.MacroValues
+                .Where(v => v.SeriesCode == "TUIK_CPI" && v.ValueDate == revisedDate)
+                .OrderBy(v => v.RecordedAt)
+                .ToListAsync();
+
+            Assert.Equal(3, rows.Count);
+            Assert.Equal(new[] { 44.80m, 45.00m, 45.50m }, rows.Select(r => r.Value).ToArray());
+            Assert.Equal(republishedAt, rows[^1].RecordedAt);
+        }
+
+        using var scope = host.Provider.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<MacroStore>();
+        var canonical = await store.GetCanonicalAsync("TUIK_CPI", revisedDate);
+        Assert.NotNull(canonical);
+        Assert.Equal(45.50m, canonical!.Value);
+    }
+
+    /// <summary>TC-MOV-026 — an EVDS source failure keeps the last-known-good value, marks
+    /// it stale and alerts the builder (the existing MOV freshness behavior is unchanged).</summary>
+    [Fact]
+    public async Task TC_MOV_026_Evds_failure_keeps_last_known_stale_and_alerts()
+    {
+        await ResetAsync(clearMacroValues: false);
+        await using var host = BuildIngestion();
+
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(MacroPath, """{"error":"evds unavailable"}""", statusCode: 500);
+
+        var failed = await RunAsync(host, MacroDailyJob.Code);
+        Assert.Equal("failed", failed.Status);
+
+        using (var after = host.Provider.CreateScope())
+        {
+            var freshness = after.ServiceProvider.GetRequiredService<MacroFreshnessService>();
+            var state = await freshness.GetStateAsync("USD_TRY");
+            Assert.Equal(47.10m, state.Value);
+            Assert.True(state.Stale);
+        }
+
+        Assert.Contains(host.Mail.Sent, m => m.Subject.Contains("USD_TRY", StringComparison.Ordinal));
+        Assert.True(host.Logs.Contains(evt => evt.RenderMessage().Contains("USD_TRY", StringComparison.Ordinal)));
+    }
+
+    // ---------------------------------------------------------------------------------
     // TC-MDF-035 — facts never overwritten; canonical = latest; as-of retrieval works
     // ---------------------------------------------------------------------------------
 
@@ -404,6 +509,7 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Macro:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Macro:Path"] = MacroPath,
+                ["Ingestion:Macro:EvdsApiKey"] = "test-evds-key",
             })
             .Build();
 
@@ -481,11 +587,31 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
         var series = root["series"]!.AsArray();
         series.Add(new JsonObject
         {
-            ["code"] = "CBRT_REPO",
+            ["seriesCode"] = "TP.APIFON1",
             ["valueDate"] = valueDate.ToString("yyyy-MM-dd"),
             ["value"] = value,
             ["unit"] = "%",
             ["recordedAt"] = new DateTimeOffset(valueDate.ToDateTime(new TimeOnly(14, 0)), TimeSpan.Zero).ToString("o"),
+        });
+
+        return root.ToJsonString();
+    }
+
+    /// <summary>Appends one re-published TÜİK CPI observation (same value date, later
+    /// recorded_at) to the EVDS macro-ok payload.</summary>
+    private static string AppendCpiRevision(string cannedName, DateOnly valueDate, decimal value, DateTimeOffset recordedAt)
+    {
+        var body = CannedSourceCatalog.Get(L2, cannedName).Body;
+        var root = JsonNode.Parse(body)!;
+        var series = root["series"]!.AsArray();
+        series.Add(new JsonObject
+        {
+            ["seriesCode"] = "TP.TUKFIY2025.GENEL",
+            ["code"] = "TUIK_CPI",
+            ["valueDate"] = valueDate.ToString("yyyy-MM-dd"),
+            ["value"] = value,
+            ["unit"] = "% YoY",
+            ["recordedAt"] = recordedAt.ToString("o"),
         });
 
         return root.ToJsonString();

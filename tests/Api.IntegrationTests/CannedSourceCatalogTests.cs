@@ -289,7 +289,10 @@ public sealed class CannedSourceCatalogTests : IClassFixture<PostgresFixture>
         {
             var series = doc.RootElement.GetProperty("series").EnumerateArray().ToList();
             var codes = series.Select(s => s.GetProperty("code").GetString()).Distinct(StringComparer.Ordinal).ToList();
-            Assert.Equal(new[] { "TUIK_CPI", "INDEP_CPI", "CBRT_REPO", "USD_TRY", "EUR_TRY", "GOLD" }, codes);
+            // FU v1.4 §7/§10: the EVDS payload covers the five official series only —
+            // INDEP_CPI is entered through the admin endpoint, never sourced from the adapter
+            // (TC-MOV-027).
+            Assert.Equal(new[] { "TUIK_CPI", "CBRT_REPO", "USD_TRY", "EUR_TRY", "GOLD" }, codes);
 
             // TUIK_CPI's revision case is carried (two rows for the same prior-month value).
             var priorMonth = new DateOnly(2026, 8, 1);
