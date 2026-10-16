@@ -41,7 +41,7 @@ public static class StockFundamentalsEndpoints
     private const string Ebitda = "EBITDA";
     private const string Ni = "NI";
     private const string Capex = "CAPEX";
-    private const string Dwc = "ΔWC";
+    private const string Ocf = "OCF";
     private const string Cash = "CASH";
     private const string StDebt = "ST_DEBT";
     private const string LtDebt = "LT_DEBT";
@@ -86,7 +86,8 @@ public static class StockFundamentalsEndpoints
     /// version serves per statement type — the restated row when one exists — and each
     /// figure carries its own <c>restated</c> flag (FR-RES-014, BR-MDF-011). Derivations
     /// use the canonical definitions (02 §6.1/§6.2): EBITDA = EBIT + D&amp;A when not
-    /// reported; FCF = NI + D&amp;A − ΔWC − CAPEX (indirect method).
+    /// reported; FCF = OCF − |CAPEX| (the KAP-reported operating cash flow less the
+    /// absolute capital expenditure — the same definition the metrics engine serves).
     /// </summary>
     private static async Task<IResult> FinancialsAsync(
         string symbol,
@@ -121,7 +122,7 @@ public static class StockFundamentalsEndpoints
             var depr = Line(is0, DeprAmort, lines);
             var ebitda = Line(is0, Ebitda, lines) ?? Sum(ebit, depr);
             var ni = Line(is0, Ni, lines);
-            var fcf = CanonicalMetrics.FreeCashFlow(ni, depr, Line(cf0, Dwc, lines), Line(cf0, Capex, lines));
+            var fcf = CanonicalMetrics.FreeCashFlow(Line(cf0, Ocf, lines), Line(cf0, Capex, lines));
 
             periods.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -234,7 +235,22 @@ public static class StockFundamentalsEndpoints
             metrics[family] = windows;
         }
 
-        return Results.Ok(new { asOf, stale, metrics });
+        // The per-metric basis flags (03 §4, v1.4): the TMS 29 regime-break marker
+        // (FR-MDF-013/014), the actual CAGR window, and the adjusted/restated basis
+        // markers — keyed by the window-suffixed code so the Growth-section markers
+        // (UXR-RES-026/027) read the server's answer rather than recomputing it.
+        var metricFlags = rows.ToDictionary(
+            pair => pair.Key,
+            pair => (object)new
+            {
+                windowYears = pair.Value.WindowYears,
+                regimeBreak = pair.Value.RegimeBreak,
+                isAdjusted = pair.Value.IsAdjusted,
+                isRestated = pair.Value.IsRested,
+            },
+            StringComparer.Ordinal);
+
+        return Results.Ok(new { asOf, stale, metrics, metricFlags });
     }
 
     // ── Balance sheet (FR-RES-011/027) ───────────────────────────────────────

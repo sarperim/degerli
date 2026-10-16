@@ -55,6 +55,7 @@ public sealed class DerivedMetricStore
                     row.WindowYears = metric.WindowYears;
                     row.IsAdjusted = metric.IsAdjusted;
                     row.IsRested = metric.IsRested;
+                    row.RegimeBreak = metric.RegimeBreak;
                     row.ComputedAt = computedAt;
                     unchanged++;
                     continue;
@@ -69,6 +70,7 @@ public sealed class DerivedMetricStore
                     WindowYears = metric.WindowYears,
                     IsAdjusted = metric.IsAdjusted,
                     IsRested = metric.IsRested,
+                    RegimeBreak = metric.RegimeBreak,
                     ComputedAt = computedAt,
                 });
                 written++;

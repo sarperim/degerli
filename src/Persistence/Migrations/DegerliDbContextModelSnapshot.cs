@@ -497,6 +497,10 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_rested");
 
+                    b.Property<bool?>("RegimeBreak")
+                        .HasColumnType("boolean")
+                        .HasColumnName("regime_break");
+
                     b.Property<decimal?>("Value")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)")

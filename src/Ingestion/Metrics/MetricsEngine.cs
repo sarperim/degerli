@@ -239,7 +239,7 @@ public sealed class MetricsEngine
             var rev = Line(isY, Rev);
             if (rev is not null)
             {
-                revenue.Add(new FiscalValue(period.Year, rev));
+                revenue.Add(new FiscalValue(period.Year, rev, period));
             }
 
             var ni = Line(isY, Ni);
@@ -250,7 +250,7 @@ public sealed class MetricsEngine
                 // share basis by Π over the actions after its fiscal period end.
                 var factor = PriceAdjustment.FactorAfter(period, actions);
                 perShareAdjusted |= factor != AdjustmentFactors.None;
-                eps.Add(new FiscalValue(period.Year, ni.Value / shares.Value * factor));
+                eps.Add(new FiscalValue(period.Year, ni.Value / shares.Value * factor, period));
             }
 
             var freeCash = CanonicalMetrics.FreeCashFlow(
@@ -258,7 +258,7 @@ public sealed class MetricsEngine
                 Line(cfY, Capex));
             if (freeCash is not null)
             {
-                fcf.Add(new FiscalValue(period.Year, freeCash));
+                fcf.Add(new FiscalValue(period.Year, freeCash, period));
             }
         }
 
@@ -280,7 +280,9 @@ public sealed class MetricsEngine
 
         foreach (var (year, amount) in byFiscalYear)
         {
-            dps.Add(new FiscalValue(year, amount));
+            // The DPS series is grouped by ex-date fiscal year; its period end is the
+            // fiscal-year end used for the TMS 29 regime-break check (02 §6.2).
+            dps.Add(new FiscalValue(year, amount, new DateOnly(year, 12, 31)));
         }
 
         // TTM dividend per share: dividends with an ex-date inside the trailing year,
@@ -323,7 +325,9 @@ public sealed class MetricsEngine
     {
         if (metric.WindowYears is int used && used < NominalWindow(metric.Code))
         {
-            return metric with { Value = null, WindowYears = null, IsAdjusted = true };
+            // The window is discarded as an honest no-value, so its regime-break marker
+            // goes with it — a flag never rides a metric that serves no value.
+            return metric with { Value = null, WindowYears = null, IsAdjusted = true, RegimeBreak = null };
         }
 
         return metric with { IsAdjusted = true };

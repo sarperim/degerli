@@ -45,7 +45,23 @@ public sealed record CanonicalMetricsInput(
     bool IsAdjusted);
 
 /// <summary>One computed metric row: the value and, for CAGRs, the actual window used.</summary>
-public sealed record ComputedMetric(string Code, decimal? Value, int? WindowYears, bool IsAdjusted, bool IsRested);
+/// <param name="Code">Window-suffixed metric code (02 §6.2, Q5).</param>
+/// <param name="Value">The value; NULL = not meaningful, never <c>0</c>-for-missing.</param>
+/// <param name="WindowYears">The actual compounding window used by a CAGR, else NULL.</param>
+/// <param name="IsAdjusted">Corporate-action-adjusted basis marker (FR-MDF-018).</param>
+/// <param name="IsRested">Computed from <c>version &gt; 0</c> statement rows (FR-MDF-019).</param>
+/// <param name="RegimeBreak">
+/// TMS 29 regime-break marker (FR-MDF-013/014, 02 §3.1/§6.2): CAGRs only, TRUE when the
+/// window spans the 2023-12-31 transition; NULL for non-CAGRs and for CAGRs with no
+/// computed window.
+/// </param>
+public sealed record ComputedMetric(
+    string Code,
+    decimal? Value,
+    int? WindowYears,
+    bool IsAdjusted,
+    bool IsRested,
+    bool? RegimeBreak = null);
 
 /// <summary>
 /// The single canonical implementation of the 18 screener metric concepts / 26
@@ -133,23 +149,6 @@ public static class CanonicalMetrics
         return ocf.Value - Math.Abs(capex.Value);
     }
 
-    /// <summary>
-    /// The legacy indirect reconstruction <c>NI + D&amp;A − ΔWC − CAPEX</c> (<c>02</c>
-    /// §6.2 — superseded and retained only for the record). Still consumed by the stocks
-    /// financials read, which is owned by a separate ticket and has not yet been moved onto
-    /// the canonical OCF basis; the canonical metrics engine and DCF baseline derivation use
-    /// <see cref="FreeCashFlow(decimal?, decimal?)"/>.
-    /// </summary>
-    public static decimal? FreeCashFlow(decimal? ni, decimal? depr, decimal? dwc, decimal? capex)
-    {
-        if (ni is null || depr is null || dwc is null || capex is null)
-        {
-            return null;
-        }
-
-        return ni.Value + depr.Value - dwc.Value - capex.Value;
-    }
-
     private static void AddCagr(
         List<ComputedMetric> metrics,
         string code,
@@ -159,14 +158,51 @@ public static class CanonicalMetrics
         CanonicalMetricsInput input)
     {
         var outcome = MetricMath.Cagr(series, window, nullOnSignChange);
-        metrics.Add(Add(code, outcome.Value, outcome.WindowYears, input));
+        metrics.Add(Add(code, outcome.Value, outcome.WindowYears, input, RegimeBreak(series, outcome)));
     }
+
+    /// <summary>
+    /// The TMS 29 regime-break marker for one CAGR (02 §6.2): TRUE when the compounding
+    /// window actually used spans the 2023-12-31 inflation-accounting transition, i.e.
+    /// min FY <c>period_end_date</c> &lt; 2023-12-31 ≤ max FY <c>period_end_date</c>. NULL
+    /// when no window was computed (fewer than two FYs) or the period ends are unknown —
+    /// never fabricated. A window entirely before or entirely after the boundary is FALSE.
+    /// </summary>
+    private static bool? RegimeBreak(IReadOnlyList<FiscalValue> series, CagrOutcome outcome)
+    {
+        if (outcome.WindowYears is not int intervals || series.Count == 0)
+        {
+            return null;
+        }
+
+        var endYear = series.Max(point => point.FiscalYear);
+        var startYear = endYear - intervals;
+        var start = series.FirstOrDefault(point => point.FiscalYear == startYear)?.PeriodEnd;
+        var end = series.FirstOrDefault(point => point.FiscalYear == endYear)?.PeriodEnd;
+        if (start is null || end is null)
+        {
+            return null;
+        }
+
+        return start.Value < RegimeBoundary && RegimeBoundary <= end.Value;
+    }
+
+    /// <summary>The TMS 29 inflation-accounting transition date (02 §6.2).</summary>
+    private static readonly DateOnly RegimeBoundary = new(2023, 12, 31);
 
     private static ComputedMetric Add(string code, decimal? value, CanonicalMetricsInput input) =>
         Add(code, value, null, input);
 
     private static ComputedMetric Add(string code, decimal? value, int? windowYears, CanonicalMetricsInput input) =>
-        new(code, value, windowYears, input.IsAdjusted, input.IsRested);
+        Add(code, value, windowYears, input, null);
+
+    private static ComputedMetric Add(
+        string code,
+        decimal? value,
+        int? windowYears,
+        CanonicalMetricsInput input,
+        bool? regimeBreak) =>
+        new(code, value, windowYears, input.IsAdjusted, input.IsRested, regimeBreak);
 
     private static bool Positive(decimal? value) => value is > 0m;
 

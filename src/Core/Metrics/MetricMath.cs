@@ -3,8 +3,11 @@ namespace Degerli.Core.Metrics;
 /// <summary>
 /// One observation in a fiscal-year series (02 §6.2 growth metrics). <see cref="Value"/>
 /// is NULL when the fact is honestly missing (e.g. no CF statement → no FCF).
+/// <see cref="PeriodEnd"/> is the fiscal period end the observation belongs to, used for
+/// the TMS 29 regime-break check (02 §6.2); it is optional so pure-math callers that only
+/// exercise the CAGR arithmetic need not supply it.
 /// </summary>
-public sealed record FiscalValue(int FiscalYear, decimal? Value);
+public sealed record FiscalValue(int FiscalYear, decimal? Value, DateOnly? PeriodEnd = null);
 
 /// <summary>
 /// The result of a CAGR computation (FR-MDF-014): the value and the number of
