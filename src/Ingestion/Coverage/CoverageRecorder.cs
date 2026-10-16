@@ -22,9 +22,61 @@ public sealed class CoverageRecorder
 {
     internal const string InstrumentScope = "instrument";
 
+    /// <summary>The universe scope: coverage that describes the covered universe as a whole (FR-MDF-011).</summary>
+    internal const string UniverseScope = "universe";
+
     private readonly DegerliDbContext _db;
 
     public CoverageRecorder(DegerliDbContext db) => _db = db;
+
+    /// <summary>
+    /// Records the accepted pre-launch constituent-history gap at <c>universe</c> scope
+    /// (FR-MDF-007/011, BR-MDF-007): no free structured 10-year constituent history
+    /// exists, so the universe membership is available only from the launch date forward.
+    /// The absent history is written as an explicit gap (`available_from` = launch), never
+    /// silently omitted. Idempotent on (scope, data_type).
+    /// </summary>
+    public async Task<int> RecordUniverseSeedGapAsync(
+        DateOnly launchDate,
+        CancellationToken cancellationToken = default)
+    {
+        const string note =
+            "No free structured pre-launch constituent history exists; universe membership is " +
+            "recorded from the launch date forward. Pre-launch constituency is an accepted " +
+            "coverage gap (FR-MDF-007 assumption, BR-MDF-007).";
+
+        var existing = await _db.CoverageMetadata
+            .FirstOrDefaultAsync(
+                c => c.Scope == UniverseScope
+                    && c.DataType == CoverageDataTypes.Constituents
+                    && c.InstrumentId == null
+                    && c.FundId == null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            _db.CoverageMetadata.Add(new CoverageMetadata
+            {
+                Scope = UniverseScope,
+                InstrumentId = null,
+                FundId = null,
+                DataType = CoverageDataTypes.Constituents,
+                AvailableFrom = launchDate,
+                AvailableTo = null,
+                Notes = note,
+            });
+        }
+        else
+        {
+            existing.AvailableFrom = launchDate;
+            existing.AvailableTo = null;
+            existing.Notes = note;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return 1;
+    }
 
     /// <summary>
     /// Records the achieved backfill depth per instrument for <c>prices</c>. When the

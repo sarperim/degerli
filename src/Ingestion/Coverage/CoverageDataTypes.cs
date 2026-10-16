@@ -17,6 +17,14 @@ public static class CoverageDataTypes
     public const string CorporateActions = "corporate_actions";
     public const string Disclosures = "disclosures";
 
+    /// <summary>
+    /// Index-constituent membership history (FR-MDF-007, BR-MDF-005) — recorded at
+    /// <c>universe</c> scope (one record for the whole covered universe, not per
+    /// instrument). Free structured pre-launch constituent history does not exist, so the
+    /// unavailable period is recorded as an explicit accepted gap (BR-MDF-007).
+    /// </summary>
+    public const string Constituents = "constituents";
+
     /// <summary>Dated NAV history (FR-FDF-001) — the fund's historical time series.</summary>
     public const string Nav = "nav";
 
