@@ -220,6 +220,8 @@ public sealed class TefasFundStore
     /// Upserts a holdings snapshot keyed <c>(fund_id, as_of_date, line_no)</c>. A line with
     /// a published symbol is matched to the MDF instrument (the future look-through link);
     /// an unmatched line keeps its <c>name_raw</c> with a NULL instrument id (FR-FDF-003).
+    /// The TEFAS ingest is descoped to a coverage gap (TC-FDF-013), so this path is not
+    /// called by the fund jobs — it is retained for future look-through phases.
     /// </summary>
     public async Task<FundFactWriteResult> UpsertHoldingsAsync(
         string fundId,

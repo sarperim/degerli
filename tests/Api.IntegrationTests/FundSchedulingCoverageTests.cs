@@ -70,13 +70,17 @@ public sealed class FundSchedulingCoverageTests : IClassFixture<PostgresFixture>
 
         await using var db = _postgres.CreateContext();
 
-        // TEF0001 — all three data types present, NAV depth from T−6 to T.
+        // TEF0001 — NAV + performance present; holdings descoped to a recorded gap (TC-FDF-013).
         var tef1 = await FundCoverageAsync(db, "TEF0001");
         var tef1Nav = CoverageRow(tef1, CoverageDataTypes.Nav);
         Assert.Equal(NavEarliest, tef1Nav.AvailableFrom);
         Assert.Equal(T, tef1Nav.AvailableTo);
         Assert.Equal(T, CoverageRow(tef1, CoverageDataTypes.Performance).AvailableFrom);
-        Assert.Equal(T, CoverageRow(tef1, CoverageDataTypes.Holdings).AvailableFrom);
+        var tef1Holdings = CoverageRow(tef1, CoverageDataTypes.Holdings);
+        Assert.Null(tef1Holdings.AvailableFrom);
+        Assert.False(
+            string.IsNullOrWhiteSpace(tef1Holdings.Notes),
+            "the descoped holdings gap must be recorded, never silent");
 
         // TEF0002 — NAV + performance present; holdings absent recorded as a gap.
         var tef2 = await FundCoverageAsync(db, "TEF0002");
@@ -86,10 +90,10 @@ public sealed class FundSchedulingCoverageTests : IClassFixture<PostgresFixture>
         Assert.Null(tef2Holdings.AvailableFrom);
         Assert.False(string.IsNullOrWhiteSpace(tef2Holdings.Notes), "the holdings gap must be recorded, never silent");
 
-        // TEF0003 — NAV + partial holdings; the absent performance is a recorded gap.
+        // TEF0003 — NAV present; the absent performance and the descoped holdings are recorded gaps.
         var tef3 = await FundCoverageAsync(db, "TEF0003");
         Assert.Equal(NavEarliest, CoverageRow(tef3, CoverageDataTypes.Nav).AvailableFrom);
-        Assert.Equal(T, CoverageRow(tef3, CoverageDataTypes.Holdings).AvailableFrom);
+        Assert.Null(CoverageRow(tef3, CoverageDataTypes.Holdings).AvailableFrom);
         var tef3Performance = CoverageRow(tef3, CoverageDataTypes.Performance);
         Assert.Null(tef3Performance.AvailableFrom);
         Assert.False(string.IsNullOrWhiteSpace(tef3Performance.Notes));
@@ -174,10 +178,12 @@ public sealed class FundSchedulingCoverageTests : IClassFixture<PostgresFixture>
             Assert.Equal("incremental", stats.RootElement.GetProperty("mode").GetString());
         });
 
-        // The unattended cycle wrote the day's fund facts at each job's cadence.
+        // The unattended cycle wrote the day's fund facts at each job's cadence. Holdings are
+        // descoped (TC-FDF-013): the fund-holdings job runs on schedule but writes no
+        // ticker-level rows — the per-fund gap is recorded in coverage_metadata instead.
         Assert.Equal(15, await db.FundNavs.CountAsync());
         Assert.Equal(5, await db.FundPerformances.CountAsync());
-        Assert.Equal(4, await db.FundHoldings.CountAsync());
+        Assert.Equal(0, await db.FundHoldings.CountAsync());
     }
 
     // ---------------------------------------------------------------------------------
@@ -217,7 +223,8 @@ public sealed class FundSchedulingCoverageTests : IClassFixture<PostgresFixture>
             Assert.Equal(15, await db.FundNavs.CountAsync());
             Assert.Equal(0, await db.FundNavs.CountAsync(n => n.NavDate < NavEarliest));
             Assert.Equal(5, await db.FundPerformances.CountAsync());
-            Assert.Equal(4, await db.FundHoldings.CountAsync());
+            // Holdings are descoped (TC-FDF-013): no ticker-level rows, only the recorded gap.
+            Assert.Equal(0, await db.FundHoldings.CountAsync());
 
             var nav = await CoverageRowAsync(db, "TEF0001", CoverageDataTypes.Nav);
             Assert.Equal(NavEarliest, nav.AvailableFrom);

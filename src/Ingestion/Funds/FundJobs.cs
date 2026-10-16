@@ -208,8 +208,12 @@ public sealed class FundPerformanceJob : FundJobBase
 }
 
 /// <summary>
-/// The <c>fund-holdings</c> job (FR-FDF-003): holdings snapshots as of the run date, with
-/// symbol matching to MDF instruments (the future look-through link).
+/// The <c>fund-holdings</c> job. TEFAS exposes NAV, performance and asset-class allocation
+/// only — not ticker-level holdings — so this job no longer attempts a ticker-level snapshot
+/// (v1.4 post-board correctness, FR-FDF-003/004, TC-FDF-013). It stays in the TEFAS cadence
+/// and, like every fund job, reconciles the fund coverage: the per-fund holdings gap lands in
+/// <c>coverage_metadata</c> as an accepted gap, never as a data-quality failure. The
+/// <c>fund_holdings</c> schema/columns remain for future look-through phases.
 /// </summary>
 public sealed class FundHoldingsJob : FundJobBase
 {
@@ -231,17 +235,15 @@ public sealed class FundHoldingsJob : FundJobBase
     public override string JobCode => Code;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// No ticker-level holdings are written: the source does not expose them. The base run
+    /// still reconciles coverage, recording the per-fund holdings gap in <c>coverage_metadata</c>.
+    /// </remarks>
     protected override Task<FundFactWriteResult> ProcessFundAsync(
         TefasFund fund,
         DateOnly requestDate,
         string sourceRef,
         DateTimeOffset recordedAt,
         CancellationToken cancellationToken) =>
-        Store.UpsertHoldingsAsync(
-            fund.Fund!.Code,
-            requestDate,
-            sourceRef,
-            recordedAt,
-            fund.Holdings ?? [],
-            cancellationToken);
+        Task.FromResult(FundFactWriteResult.Empty);
 }
