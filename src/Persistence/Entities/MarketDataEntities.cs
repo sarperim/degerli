@@ -88,7 +88,12 @@ public class IndexLevel
     public DateTimeOffset RecordedAt { get; set; }
 }
 
-/// <summary>Financial statement, versioned as_reported / restated (FR-MDF-002, BR-MDF-011).</summary>
+/// <summary>
+/// Financial statement, versioned as an integer restatement sequence (FR-MDF-002,
+/// BR-MDF-011; 02 §1 principle 5 / §3.1): <c>0</c> = as-reported, <c>1, 2, …</c> =
+/// successive restatements in publication order. Serving selects the highest version;
+/// <c>is_rested</c> = <c>version &gt; 0</c>.
+/// </summary>
 public class FinancialStatement
 {
     public long Id { get; set; }
@@ -103,8 +108,8 @@ public class FinancialStatement
     /// <summary>IS / BS / CF.</summary>
     public string StatementType { get; set; } = null!;
 
-    /// <summary>as_reported or restated.</summary>
-    public string Version { get; set; } = null!;
+    /// <summary>0 = as-reported; 1, 2, … = restatement sequence in publication order.</summary>
+    public int Version { get; set; }
 
     public DateOnly? RestatementDate { get; set; }
     public DateOnly? PublishedAt { get; set; }

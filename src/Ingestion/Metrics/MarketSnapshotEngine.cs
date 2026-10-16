@@ -114,8 +114,10 @@ public sealed class MarketSnapshotEngine
                 return null;
             }
 
-            var chosen = versions.FirstOrDefault(s => s.StatementType == statementType && s.Version == "restated")
-                ?? versions.FirstOrDefault(s => s.StatementType == statementType && s.Version == "as_reported");
+            var chosen = versions
+                .Where(s => s.StatementType == statementType)
+                .OrderByDescending(s => s.Version)
+                .FirstOrDefault();
             if (chosen is null
                 || !linesByStatement.TryGetValue(chosen.Id, out var map)
                 || !map.TryGetValue(itemCode, out var value))

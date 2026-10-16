@@ -51,7 +51,7 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
         {
             restId = await db.Instruments.Where(i => i.Symbol == "REST").Select(i => i.Id).SingleAsync();
             var restatedIds = await db.FinancialStatements
-                .Where(s => s.InstrumentId == restId && s.Version == "restated")
+                .Where(s => s.InstrumentId == restId && s.Version > 0)
                 .Select(s => s.Id)
                 .ToListAsync();
             Assert.NotEmpty(restatedIds);
@@ -102,8 +102,8 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
                 .Where(s => s.InstrumentId == restId && s.PeriodType == "FY")
                 .ToListAsync();
 
-            var restated = restatements.Where(s => s.Version == "restated").ToList();
-            var asReported = restatements.Where(s => s.Version == "as_reported").ToList();
+            var restated = restatements.Where(s => s.Version > 0).ToList();
+            var asReported = restatements.Where(s => s.Version == 0).ToList();
             Assert.Equal(3, restated.Count);   // IS / BS / CF
             Assert.Equal(3, asReported.Count); // IS / BS / CF
 

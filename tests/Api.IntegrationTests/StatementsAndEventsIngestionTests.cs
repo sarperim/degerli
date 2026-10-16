@@ -50,9 +50,9 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
 
         var statements = await db.FinancialStatements.Where(s => s.InstrumentId == alfa).ToListAsync();
 
-        // FY2025 FY + Q1..Q4, each IS/BS/CF, version as_reported.
+        // FY2025 FY + Q1..Q4, each IS/BS/CF, version 0 (as-reported).
         Assert.Equal(15, statements.Count);
-        Assert.All(statements, s => Assert.Equal("as_reported", s.Version));
+        Assert.All(statements, s => Assert.Equal(0, s.Version));
         Assert.Equal(3, statements.Count(s => s.PeriodType == "FY"));
         Assert.Equal(4, statements.Count(s => s.PeriodType == "Q" && s.StatementType == "IS"));
         Assert.Equal(4, statements.Count(s => s.PeriodType == "Q" && s.StatementType == "BS"));

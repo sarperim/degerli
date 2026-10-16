@@ -42,6 +42,7 @@ public static class CannedSourceCatalog
     public const string PricesVariantThreshold = "prices-variant-threshold";
     public const string StatementsOkAlfaFy2025 = "statements-ok-alfa-fy2025";
     public const string StatementsRestatedRest = "statements-restated-rest";
+    public const string StatementsRestatedRestV2 = "statements-restated-rest-v2";
     public const string StatementsNoCfPart = "statements-no-cf-part";
     public const string DividendsOk = "dividends-ok";
     public const string CorporateActionsOk = "corporate-actions-ok";
@@ -84,6 +85,7 @@ public static class CannedSourceCatalog
         PricesVariantThreshold,
         StatementsOkAlfaFy2025,
         StatementsRestatedRest,
+        StatementsRestatedRestV2,
         StatementsNoCfPart,
         DividendsOk,
         CorporateActionsOk,
@@ -122,6 +124,7 @@ public static class CannedSourceCatalog
             [PricesBackfillSourceLimited] = Payload(PricesBackfillSourceLimited, "isbank", BuildBackfillHistoryBody(set)),
             [StatementsOkAlfaFy2025] = Payload(StatementsOkAlfaFy2025, "kap", BuildStatementsBody(set, "ALFA")),
             [StatementsRestatedRest] = Payload(StatementsRestatedRest, "kap", BuildStatementsBody(set, "REST")),
+            [StatementsRestatedRestV2] = Payload(StatementsRestatedRestV2, "kap", BuildRestatedRestV2Body(set)),
             [StatementsNoCfPart] = Payload(StatementsNoCfPart, "kap", BuildStatementsBody(set, "PART")),
             [DividendsOk] = Payload(DividendsOk, "kap", BuildDividendsBody(set)),
             [CorporateActionsOk] = Payload(CorporateActionsOk, "kap", BuildCorporateActionsBody(set)),
@@ -278,21 +281,58 @@ public static class CannedSourceCatalog
         var latestFiscalYear = instrumentStatements.Max(s => s.FiscalYear);
         var statements = instrumentStatements
             .Where(s => s.FiscalYear == latestFiscalYear)
-            .Select(s => new StatementItem(
-                s.PeriodType,
-                s.PeriodEndDate,
-                s.FiscalYear,
-                s.StatementType,
-                s.Version,
-                s.RestatementDate,
-                s.PublishedAt,
-                new SortedDictionary<string, decimal>(
-                    s.Lines.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
-                    StringComparer.Ordinal)))
+            .Select(ToStatementItem)
             .ToList();
 
         return Serialize(new { sourceRef = $"kap://statements/{symbol}", symbol, statements });
     }
+
+    /// <summary>
+    /// The REST2 on-demand fixture (FU §3b): REST's FY2025 as-reported (NI 60) and first
+    /// restatement (NI 75, 2026-06-20) plus a <em>second</em> restatement (NI 80,
+    /// published later). Both restatements declare <c>restated</c>; the store assigns the
+    /// integer sequence (0, 1, 2) from the restatement dates (TC-MDF-054, 02 §3.1).
+    /// </summary>
+    private static string BuildRestatedRestV2Body(FixtureSet set)
+    {
+        var rest = set.Statements.Where(s => s.Symbol == "REST").ToList();
+        var items = rest.Select(ToStatementItem).ToList();
+
+        var secondRestatementDate = new DateOnly(rest[0].PeriodEndDate.Year + 1, 9, 15);
+        foreach (var source in rest.Where(s => string.Equals(s.Version, "restated", StringComparison.Ordinal)))
+        {
+            var lines = new SortedDictionary<string, decimal>(StringComparer.Ordinal);
+            foreach (var (code, value) in source.Lines)
+            {
+                lines[code] = string.Equals(code, FinItemCodes.Ni, StringComparison.Ordinal) ? 80m : value;
+            }
+
+            items.Add(new StatementItem(
+                source.PeriodType,
+                source.PeriodEndDate,
+                source.FiscalYear,
+                source.StatementType,
+                "restated",
+                secondRestatementDate,
+                source.PublishedAt,
+                lines));
+        }
+
+        return Serialize(new { sourceRef = "kap://statements/REST/v2", symbol = "REST", statements = items });
+    }
+
+    private static StatementItem ToStatementItem(FixtureStatement s) =>
+        new(
+            s.PeriodType,
+            s.PeriodEndDate,
+            s.FiscalYear,
+            s.StatementType,
+            s.Version,
+            s.RestatementDate,
+            s.PublishedAt,
+            new SortedDictionary<string, decimal>(
+                s.Lines.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                StringComparer.Ordinal));
 
     private static string BuildDividendsBody(FixtureSet set) =>
         Serialize(new
