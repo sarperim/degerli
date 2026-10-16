@@ -14,11 +14,12 @@ scope:
   - tests/Api.IntegrationTests/MetricsEngineTests.cs
   - tests/Api.IntegrationTests/ScreenerRunEndpointTests.cs
   - tests/Api.IntegrationTests/StockFundamentalsEndpointsTests.cs
+  - fixtures/Degerli.Fixtures/FixtureUniverse.cs
 ---
 
 # TKT-mdf-018: TMS 29 regime-break flag on spanning CAGRs
 
-- Status: todo
+- Status: in-review — PR [#84](https://github.com/sarperim/degerli/pull/84) (TKT-mdf-018). TC-MDF-060 L2; targeted suite green (Core.UnitTests 50/0, Api.IntegrationTests 305/0, ContentPipeline.IntegrationTests 2/0). Flagged scope exception: `fixtures/Degerli.Fixtures/FixtureUniverse.cs` (quarterly `OCF` line) — see the PR body; requires sanction.
 - Size: M
 - Scope: the CAGR regime-break marker — add `derived_metrics.regime_break` (nullable bool) and compute it (window spans 2023-12-31), write it from the metrics engine, and serve it in the metric-flags object of the screener and stock-page payloads. Server-side only; the UI warning rendering is a deferred alignment ticket. Must NOT touch the deflation follow-up (TKT-mdf-019) or the DCF.
 - Traces to: FR-MDF-013, FR-MDF-014; UC-MDF-005

@@ -208,6 +208,15 @@ public class DerivedMetric
 
     public bool IsAdjusted { get; set; }
     public bool IsRested { get; set; }
+
+    /// <summary>
+    /// TMS 29 regime-break marker (v1.3, <c>02</c> §3.1/§6.2): CAGR metrics only, TRUE
+    /// when the compounding window spans the 2023-12-31 inflation-accounting transition
+    /// (min FY <c>period_end_date</c> &lt; 2023-12-31 ≤ max FY <c>period_end_date</c>);
+    /// NULL for non-CAGR metrics and for CAGRs with no computed window.
+    /// </summary>
+    public bool? RegimeBreak { get; set; }
+
     public DateTimeOffset ComputedAt { get; set; }
 }
 

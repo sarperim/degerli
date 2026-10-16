@@ -334,14 +334,26 @@ public static class ScreenerEndpoints
         var instrumentIds = universe.Select(row => row.Id).ToArray();
         var metricRows = await db.DerivedMetrics
             .Where(metric => metric.AsOfDate == asOf && instrumentIds.Contains(metric.InstrumentId))
-            .Select(metric => new { metric.InstrumentId, metric.MetricCode, metric.Value })
+            .Select(metric => new
+            {
+                metric.InstrumentId,
+                metric.MetricCode,
+                metric.Value,
+                metric.WindowYears,
+                metric.RegimeBreak,
+                metric.IsAdjusted,
+                metric.IsRested,
+            })
             .ToListAsync(cancellationToken);
 
         var valuesByInstrument = metricRows
             .GroupBy(row => row.InstrumentId)
             .ToDictionary(
                 group => group.Key,
-                group => group.ToDictionary(row => row.MetricCode, row => row.Value, StringComparer.Ordinal));
+                group => group.ToDictionary(
+                    row => row.MetricCode,
+                    row => new MetricValue(row.Value, row.WindowYears, row.RegimeBreak, row.IsAdjusted, row.IsRested),
+                    StringComparer.Ordinal));
 
         var matchCount = 0;
         var excludedCount = 0;
@@ -353,25 +365,36 @@ public static class ScreenerEndpoints
             var matched = true;
             var excluded = false;
             var rowValues = new Dictionary<string, decimal?>(StringComparer.Ordinal);
+            var rowFlags = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var criterion in criteria)
             {
                 if (values is null
-                    || !values.TryGetValue(criterion.StoredCode, out var value)
-                    || value is null)
+                    || !values.TryGetValue(criterion.StoredCode, out var metric)
+                    || metric.Value is null)
                 {
                     // Missing data → excluded and counted; never a passing value (BR-SCR-009).
                     excluded = true;
                     break;
                 }
 
-                if (!WithinBound(value.Value, criterion))
+                if (!WithinBound(metric.Value.Value, criterion))
                 {
                     // Data is present but the stock simply does not match.
                     matched = false;
                     break;
                 }
 
-                rowValues[criterion.ConceptCode] = value;
+                rowValues[criterion.ConceptCode] = metric.Value;
+                // The per-metric basis flags (03 §4, v1.4) ride every matched value:
+                // the TMS 29 regime-break marker (FR-MDF-013/014) plus window/adjusted/
+                // restated markers.
+                rowFlags[criterion.ConceptCode] = new
+                {
+                    windowYears = metric.WindowYears,
+                    regimeBreak = metric.RegimeBreak,
+                    isAdjusted = metric.IsAdjusted,
+                    isRestated = metric.IsRested,
+                };
             }
 
             if (excluded)
@@ -381,7 +404,7 @@ public static class ScreenerEndpoints
             else if (matched)
             {
                 matchCount++;
-                rows.Add(new RunRow(instrument.Symbol, instrument.Name, instrument.Sector, rowValues));
+                rows.Add(new RunRow(instrument.Symbol, instrument.Name, instrument.Sector, rowValues, rowFlags));
             }
         }
 
@@ -479,7 +502,16 @@ public static class ScreenerEndpoints
         string Symbol,
         string Name,
         string? Sector,
-        IReadOnlyDictionary<string, decimal?> Values);
+        IReadOnlyDictionary<string, decimal?> Values,
+        IReadOnlyDictionary<string, object?> MetricFlags);
+
+    /// <summary>One current canonical metric row with its basis flags (03 §4).</summary>
+    private sealed record MetricValue(
+        decimal? Value,
+        int? WindowYears,
+        bool? RegimeBreak,
+        bool IsAdjusted,
+        bool IsRested);
 
     private readonly record struct ValidationField(string Field, string Code);
 }

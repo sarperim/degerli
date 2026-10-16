@@ -548,6 +548,11 @@ public static class FixtureUniverse
                 {
                     [FinItemCodes.Capex] = capex,
                     [FinItemCodes.Dwc] = dwc,
+                    // The quarterly CF statement carries the reported operating cash flow
+                    // too (v1.4, mirroring the FY/deep re-baseline): authored as
+                    // NI + D&A − ΔWC so the canonical FCF = OCF − |CAPEX| preserves the
+                    // per-quarter FCF the section has always served.
+                    [FinItemCodes.Ocf] = ni + depr - dwc,
                 }));
             statements.Add(new FixtureStatement(
                 symbol, "Q", end, year, "BS", "as_reported", null, null,
