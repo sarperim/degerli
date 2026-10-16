@@ -43,7 +43,7 @@ public sealed class FixtureUniverseSeedTests : IClassFixture<PostgresFixture>
         Assert.Equal(16L, first["instruments"]);
         Assert.Equal(3L, first["sectors"]);
         Assert.Equal(163L, first["daily_prices"]);
-        Assert.Equal(107L, first["financial_statements"]);
+        Assert.Equal(113L, first["financial_statements"]);
     }
 
     [Fact]

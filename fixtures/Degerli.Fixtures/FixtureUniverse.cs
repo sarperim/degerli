@@ -373,6 +373,21 @@ public static class FixtureUniverse
             }
         }
 
+        void AddPerShareHistory(string symbol, int year, long shares, decimal ni)
+        {
+            var end = new DateOnly(year, 12, 31);
+            statements.Add(new FixtureStatement(
+                symbol, "FY", end, year, "IS", "as_reported", null, null,
+                new Dictionary<string, decimal> { [FinItemCodes.Ni] = ni }));
+            statements.Add(new FixtureStatement(
+                symbol, "FY", end, year, "BS", "as_reported", null, null,
+                new Dictionary<string, decimal>
+                {
+                    [FinItemCodes.SharesDiluted] = shares,
+                    [FinItemCodes.SharesOut] = shares,
+                }));
+        }
+
         void AddDeep(
             string symbol,
             int year,
@@ -422,6 +437,14 @@ public static class FixtureUniverse
         AddFull("GAMA", fy, 60, new FyRow(250, 200, 50, -30, 25, -5, 5, -35, 0, -40, 15, 5, 30, 60, 90, 120, 150, 140), publishedAt: published);
         AddFull("DELTA", fy, 100, new FyRow(500, 350, 150, 60, 20, 80, 10, 50, 10, 50, 30, 10, 50, 60, 40, -200, 180, 150), publishedAt: published);
         AddFull("EPSL", fy, 400, new FyRow(1200, 800, 400, 360, 90, 450, 60, 300, 60, 300, 180, 40, 300, 200, 500, 1600, 900, 500), publishedAt: published);
+
+        // FU §5.3 — EPSL deep per-share history (FY2022…FY2024), as-reported: 80 M shares
+        // (pre-split; 400 ÷ 5) and the per-share CAGR fixture NI. Only NI and the share
+        // count are specified, so no REV/DEPR/CF lines are seeded — the revenue and FCF
+        // series stay short (NULL CAGRs), and only the adjusted EPS/DPS CAGRs compute.
+        AddPerShareHistory("EPSL", fy - 3, 80, 250); // FY2022
+        AddPerShareHistory("EPSL", fy - 2, 80, 264); // FY2023
+        AddPerShareHistory("EPSL", fy - 1, 80, 280); // FY2024
         AddFull("ZETA", fy, 50, new FyRow(100, 70, 30, 25, 8, 33, 4, 21, 5, 60, 15, 3, 40, 30, 50, 200, 120, 90), publishedAt: published);
         AddFull("ETA", fy, 90, new FyRow(450, 315, 135, 90, 30, 120, 15, 75, 15, 90, 45, 10, 100, 80, 120, 600, 350, 200), publishedAt: published);
         AddFull("THETA", fy, 70, new FyRow(380, 270, 110, 70, 20, 90, 12, 58, 12, 70, 35, 8, 60, 90, 150, 500, 280, 160), publishedAt: published);
@@ -568,7 +591,6 @@ public static class FixtureUniverse
         {
             ("DELTA", 0.20m),
             ("REST", 0.60m),
-            ("EPSL", 0.30m),
             ("THETA", 0.4286m),
             ("IOTA", 0.05m),
             ("KAPPA", 0.1333m),
@@ -577,6 +599,23 @@ public static class FixtureUniverse
         foreach (var (symbol, amount) in perShare)
         {
             dividends.Add(new FixtureDividend(symbol, ttmEx, ttmEx.AddDays(20), amount, "TRY"));
+        }
+
+        // FU §5.3 — EPSL's FY DPS series (ex-dates at each FY end, the corporate-action
+        // basis date). The FY2025 0.30 is also the DIV_TTM source (120 M TRY = 0.30 ×
+        // 400 M, FU §6) — no other EPSL dividend rows exist, so the TTM window catches
+        // only the 2025-12-31 ex-date (a fixed structural date, like ALFA's FY rows).
+        var epslDps = new (int Year, decimal Amount)[]
+        {
+            (2022, 1.25m),
+            (2023, 1.30m),
+            (2024, 1.375m),
+            (2025, 0.30m),
+        };
+        foreach (var (year, amount) in epslDps)
+        {
+            var ex = new DateOnly(year, 12, 31);
+            dividends.Add(new FixtureDividend("EPSL", ex, ex.AddDays(20), amount, "TRY"));
         }
 
         // LAMDA deliberately has no dividend rows (FU §6).

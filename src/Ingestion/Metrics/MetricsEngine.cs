@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Degerli.Core.Adjustments;
 using Degerli.Core.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -95,12 +97,28 @@ public sealed class MetricsEngine
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // Corporate actions feed the per-share CAGR basis (FR-MDF-018, 02 §3.1/§6.2): the
+        // historical EPS/DPS series are put on the same adjusted basis as close_adjusted.
+        var actions = await _db.CorporateActions
+            .Where(a => instrumentIds.Contains(a.InstrumentId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
         var statementsByInstrument = statements
             .GroupBy(s => s.InstrumentId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<FinancialStatement>)g.ToList());
         var dividendsByInstrument = dividends
             .GroupBy(d => d.InstrumentId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Dividend>)g.ToList());
+        var actionsByInstrument = actions
+            .GroupBy(a => a.InstrumentId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<DatedAction>)g
+                    .Select(ToDatedAction)
+                    .Where(a => a is not null)
+                    .Select(a => a!)
+                    .ToList());
 
         var results = new List<InstrumentMetricResult>(prices.Count);
         foreach (var (instrumentId, price) in prices)
@@ -112,24 +130,39 @@ public sealed class MetricsEngine
 
             statementsByInstrument.TryGetValue(instrumentId, out var instrumentStatements);
             dividendsByInstrument.TryGetValue(instrumentId, out var instrumentDividends);
+            actionsByInstrument.TryGetValue(instrumentId, out var instrumentActions);
             instrumentStatements ??= [];
             instrumentDividends ??= [];
+            instrumentActions ??= [];
 
-            var input = BuildInput(price, instrumentStatements, linesByStatement, instrumentDividends, asOfDate);
+            var (input, adjusted) = BuildInput(
+                price, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate);
+
+            // The corporate-action basis marker is per metric (FR-MDF-018): only the
+            // per-share growth CAGRs computed from the adjusted EPS/DPS series carry it.
+            IReadOnlyList<ComputedMetric> metrics = CanonicalMetrics.Compute(input);
+            if (adjusted)
+            {
+                metrics = metrics
+                    .Select(m => IsPerShareGrowth(m.Code) ? AdjustedPerShareMetric(m) : m)
+                    .ToList();
+            }
+
             results.Add(new InstrumentMetricResult(
                 instrument.Symbol,
                 instrument.ListingDate,
-                CanonicalMetrics.Compute(input)));
+                metrics));
         }
 
         return results;
     }
 
-    private static CanonicalMetricsInput BuildInput(
+    private static (CanonicalMetricsInput Input, bool PerShareAdjusted) BuildInput(
         decimal price,
         IReadOnlyList<FinancialStatement> statements,
         IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
         IReadOnlyList<Dividend> dividends,
+        IReadOnlyList<DatedAction> actions,
         DateOnly asOfDate)
     {
         var periods = statements
@@ -194,6 +227,7 @@ public sealed class MetricsEngine
         var revenue = new List<FiscalValue>();
         var eps = new List<FiscalValue>();
         var fcf = new List<FiscalValue>();
+        var perShareAdjusted = false;
         foreach (var period in periods)
         {
             var isY = Pick(period, "IS");
@@ -210,7 +244,11 @@ public sealed class MetricsEngine
             var shares = Line(bsY, SharesDiluted);
             if (ni is not null && shares is > 0m)
             {
-                eps.Add(new FiscalValue(period.Year, ni.Value / shares.Value));
+                // Per-share CAGR basis (02 §6.2): the as-reported EPS is put on today's
+                // share basis by Π over the actions after its fiscal period end.
+                var factor = PriceAdjustment.FactorAfter(period, actions);
+                perShareAdjusted |= factor != AdjustmentFactors.None;
+                eps.Add(new FiscalValue(period.Year, ni.Value / shares.Value * factor));
             }
 
             var freeCash = CanonicalMetrics.FreeCashFlow(
@@ -228,31 +266,138 @@ public sealed class MetricsEngine
 
         // FY DPS series: the annual dividend grouped by its ex-date fiscal year, bounded
         // to the last FY we have statements for (later rows are the TTM/current series).
-        var dps = dividends
-            .Where(d => d.ExDate.Year <= latestFiscalYear)
-            .GroupBy(d => d.ExDate.Year)
-            .Select(g => new FiscalValue(g.Key, g.Sum(d => d.AmountPerShare)))
-            .OrderBy(p => p.FiscalYear)
-            .ToList();
+        // Each dividend is put on today's basis by Π over the actions after its ex-date
+        // (02 §6.2) before it is summed into its fiscal year.
+        var dps = new List<FiscalValue>();
+        var byFiscalYear = new SortedDictionary<int, decimal>();
+        foreach (var dividend in dividends.Where(d => d.ExDate.Year <= latestFiscalYear))
+        {
+            var factor = PriceAdjustment.FactorAfter(dividend.ExDate, actions);
+            perShareAdjusted |= factor != AdjustmentFactors.None;
+            byFiscalYear[dividend.ExDate.Year] =
+                byFiscalYear.GetValueOrDefault(dividend.ExDate.Year) + dividend.AmountPerShare * factor;
+        }
+
+        foreach (var (year, amount) in byFiscalYear)
+        {
+            dps.Add(new FiscalValue(year, amount));
+        }
 
         // TTM dividend per share: dividends with an ex-date inside the trailing year,
         // including the boundary day (matches the fixture's DIV_TTM definition, FU §6).
+        // The current-basis yield/payout read stays unadjusted (close-raw basis, §6.2).
         var ttmFrom = asOfDate.AddDays(-365);
         var ttmDividendPerShare = dividends
             .Where(d => d.ExDate >= ttmFrom && d.ExDate <= asOfDate)
             .Sum(d => d.AmountPerShare);
 
-        return new CanonicalMetricsInput(
-            Price: price,
-            SharesDiluted: Line(bs0, SharesDiluted),
-            Ttm: ttm,
-            RevenueByFiscalYear: revenue,
-            EpsByFiscalYear: eps,
-            FcfByFiscalYear: fcf,
-            DpsByFiscalYear: dps,
-            DividendTtmPerShare: ttmDividendPerShare,
-            HasEverPaidDividend: dividends.Count > 0,
-            IsRested: isRested,
-            IsAdjusted: false);
+        return (
+            new CanonicalMetricsInput(
+                Price: price,
+                SharesDiluted: Line(bs0, SharesDiluted),
+                Ttm: ttm,
+                RevenueByFiscalYear: revenue,
+                EpsByFiscalYear: eps,
+                FcfByFiscalYear: fcf,
+                DpsByFiscalYear: dps,
+                DividendTtmPerShare: ttmDividendPerShare,
+                HasEverPaidDividend: dividends.Count > 0,
+                IsRested: isRested,
+                IsAdjusted: false),
+            perShareAdjusted);
+    }
+
+    /// <summary>Whether a metric code is a per-share growth CAGR (EPS or DPS).</summary>
+    private static bool IsPerShareGrowth(string code) =>
+        code is MetricCodes.EpsCagr3y or MetricCodes.EpsCagr5y or MetricCodes.EpsCagr10y
+            or MetricCodes.DivCagr3y or MetricCodes.DivCagr5y or MetricCodes.DivCagr10y;
+
+    /// <summary>
+    /// Marks a per-share CAGR as computed on the corporate-action-adjusted basis. The
+    /// adjusted EPS/DPS history is only meaningful over a span it fully covers, so a
+    /// window the series does not reach (FU §5.3: EPSL carries 4 FYs, so only the 3Y
+    /// window has enough intervals) is reported as the honest no-value — never a
+    /// shortened-span value presented as the nominal window.
+    /// </summary>
+    private static ComputedMetric AdjustedPerShareMetric(ComputedMetric metric)
+    {
+        if (metric.WindowYears is int used && used < NominalWindow(metric.Code))
+        {
+            return metric with { Value = null, WindowYears = null, IsAdjusted = true };
+        }
+
+        return metric with { IsAdjusted = true };
+    }
+
+    /// <summary>The nominal window (years) encoded in a window-suffixed CAGR code.</summary>
+    private static int NominalWindow(string code) =>
+        code switch
+        {
+            _ when code.EndsWith("_10y", StringComparison.Ordinal) => 10,
+            _ when code.EndsWith("_5y", StringComparison.Ordinal) => 5,
+            _ => 3,
+        };
+
+    /// <summary>
+    /// Maps a stored corporate action onto the adjustment-factor system (02 §3.1). The
+    /// persisted terms carry the ratio under the class's canonical key (<c>n</c> for a
+    /// split, <c>b</c> for a bonus, <c>q</c> for a rights issue). An unrecognized class or
+    /// unreadable terms yields no factor (the action is skipped, never guessed).
+    /// </summary>
+    private static DatedAction? ToDatedAction(CorporateAction action)
+    {
+        var type = action.ActionType switch
+        {
+            "split" => AdjustmentActionType.Split,
+            "bonus_issue" => AdjustmentActionType.BonusIssue,
+            "rights_issue" => AdjustmentActionType.RightsIssue,
+            _ => (AdjustmentActionType?)null,
+        };
+
+        if (type is null || string.IsNullOrWhiteSpace(action.TermsJson))
+        {
+            return null;
+        }
+
+        var ratioKey = type.Value switch
+        {
+            AdjustmentActionType.Split => "n",
+            AdjustmentActionType.BonusIssue => "b",
+            _ => "q",
+        };
+
+        try
+        {
+            using var document = JsonDocument.Parse(action.TermsJson);
+            var root = document.RootElement;
+            if (!TryGetDecimal(root, ratioKey, out var ratio))
+            {
+                return null;
+            }
+
+            decimal? subscriptionPrice = null;
+            if (type == AdjustmentActionType.RightsIssue
+                && TryGetDecimal(root, "subscriptionPrice", out var price))
+            {
+                subscriptionPrice = price;
+            }
+
+            return new DatedAction(
+                action.ActionDate,
+                new AdjustmentAction(type.Value, ratio, subscriptionPrice));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetDecimal(JsonElement element, string property, out decimal value)
+    {
+        value = 0m;
+        return element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(property, out var raw)
+            && raw.ValueKind == JsonValueKind.Number
+            && raw.TryGetDecimal(out value);
     }
 }

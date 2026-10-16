@@ -240,6 +240,45 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
         Assert.All(priorSnapshot, pair => Assert.Equal(pair.Value, afterSnapshot[pair.Key]));
     }
 
+    /// <summary>TC-MDF-058 — corporate-action-adjusted per-share CAGRs.</summary>
+    [Fact]
+    public async Task TC_MDF_058_corporate_action_adjusted_per_share_cagrs()
+    {
+        await ResetAsync();
+        await using var host = BuildHost();
+
+        var result = await RunMetricsAsync(host, T);
+        Assert.Equal("succeeded", result.Status);
+
+        await using var db = _postgres.CreateContext();
+        var metrics = await LoadMetricsAsync(db);
+        var epsl = metrics["EPSL"];
+
+        // FU §5.3 — eps_cagr_3y / div_cagr_3y on the corporate-action-adjusted series.
+        AssertValue(epsl, MetricCodes.EpsCagr3y, 0.062659m, window: 3);
+        AssertValue(epsl, MetricCodes.DivCagr3y, 0.062659m, window: 3);
+
+        // 4 FYs → only the 3Y window has enough compounding intervals.
+        AssertNull(metrics, "EPSL", MetricCodes.EpsCagr5y);
+        AssertNull(metrics, "EPSL", MetricCodes.EpsCagr10y);
+        AssertNull(metrics, "EPSL", MetricCodes.DivCagr5y);
+        AssertNull(metrics, "EPSL", MetricCodes.DivCagr10y);
+
+        // Both computed CAGRs carry the corporate-action basis marker (FR-MDF-018).
+        Assert.True(epsl[MetricCodes.EpsCagr3y].IsAdjusted);
+        Assert.True(epsl[MetricCodes.DivCagr3y].IsAdjusted);
+
+        // Negative guard: the unadjusted (0.75/3.125)^(1/3) − 1 = −0.378553 must not appear.
+        Assert.True(
+            Math.Abs(epsl[MetricCodes.EpsCagr3y].Value!.Value - (-0.378553m)) > 0.00001m,
+            "the split-contaminated unadjusted CAGR was served");
+
+        // The basis marker is per metric: non-per-share metrics stay unadjusted.
+        Assert.False(epsl[MetricCodes.Pe].IsAdjusted);
+        Assert.False(epsl[MetricCodes.RevCagr3y].IsAdjusted);
+        Assert.False(epsl[MetricCodes.FcfCagr3y].IsAdjusted);
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
