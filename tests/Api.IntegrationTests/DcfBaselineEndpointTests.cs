@@ -217,6 +217,35 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
         Assert.Equal(HttpStatusCode.OK, computed.StatusCode);
     }
 
+    // -- TC-MDF-059 — OCF-based base FCF and the KAP sign convention -----------------
+
+    [Fact]
+    public async Task TC_MDF_059_baseline_base_fcf_is_ocf_minus_absolute_capex()
+    {
+        await SeedAsync();
+
+        // The sign-convention payload (FU §5): ALFA's FY2025 CF statement as reported, with
+        // the CAPEX investing outflow negative (−150) alongside OCF 250.
+        await using (var db = _postgres.CreateContext())
+        {
+            await SetFyCapexAsync(db, "ALFA", -150m);
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        await RunBaselineJobAsync(factory, BuildDate);
+        using var client = CreateClient(factory);
+
+        using var response = await GetDcfAsync(client, "ALFA");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var parameters = document.RootElement.GetProperty("baseline").GetProperty("params");
+
+        // base_fcf = OCF 250 − |−150| = 100. The rejected indirect reconstruction would
+        // instead compute NI 200 + D&A 100 − ΔWC 50 − CAPEX(−150) = 400.
+        Assert.Equal(100m, parameters.GetProperty("base_fcf").GetDecimal());
+        Assert.NotEqual(400m, parameters.GetProperty("base_fcf").GetDecimal());
+    }
+
     // ---------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------
@@ -230,6 +259,22 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
         // versions on every run (`02` §5.8); start each test from a baseline-free slate
         // so the asserted version is deterministic rather than execution-order dependent.
         await db.DcfBaselines.ExecuteDeleteAsync();
+    }
+
+    /// <summary>Applies the KAP sign convention to ALFA's serving FY CAPEX line (as-reported negative).</summary>
+    private static async Task SetFyCapexAsync(DegerliDbContext db, string symbol, decimal capex)
+    {
+        var statementId = await (
+            from s in db.FinancialStatements
+            join i in db.Instruments on s.InstrumentId equals i.Id
+            where i.Symbol == symbol && s.PeriodType == "FY" && s.StatementType == "CF"
+            orderby s.PeriodEndDate descending, s.Version descending
+            select s.Id)
+            .FirstAsync();
+        var line = await db.FinLineItems
+            .SingleAsync(l => l.StatementId == statementId && l.ItemCode == "CAPEX");
+        line.Value = capex;
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Runs the real C3b baseline-generation job through the registered runner.</summary>

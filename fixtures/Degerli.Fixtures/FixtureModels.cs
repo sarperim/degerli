@@ -207,6 +207,7 @@ public static class FinItemCodes
     public const string Ni = "NI";
     public const string Capex = "CAPEX";
     public const string Dwc = "ΔWC";
+    public const string Ocf = "OCF";
     public const string Cash = "CASH";
     public const string StDebt = "ST_DEBT";
     public const string LtDebt = "LT_DEBT";

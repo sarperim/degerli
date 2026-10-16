@@ -45,6 +45,7 @@ public static class CannedSourceCatalog
     public const string StatementsRestatedRest = "statements-restated-rest";
     public const string StatementsRestatedRestV2 = "statements-restated-rest-v2";
     public const string StatementsNoCfPart = "statements-no-cf-part";
+    public const string StatementsKapSignConvention = "statements-kap-sign-convention";
     public const string StatementsUsdReporter = "statements-usd-reporter";
     public const string StatementsBankBanka = "statements-bank-banka";
     public const string StatementsInsuranceSigorta = "statements-insurance-sigorta";
@@ -92,6 +93,7 @@ public static class CannedSourceCatalog
         StatementsRestatedRest,
         StatementsRestatedRestV2,
         StatementsNoCfPart,
+        StatementsKapSignConvention,
         StatementsUsdReporter,
         StatementsBankBanka,
         StatementsInsuranceSigorta,
@@ -135,6 +137,7 @@ public static class CannedSourceCatalog
             [StatementsRestatedRest] = Payload(StatementsRestatedRest, "kap", BuildStatementsBody(set, "REST")),
             [StatementsRestatedRestV2] = Payload(StatementsRestatedRestV2, "kap", BuildRestatedRestV2Body(set)),
             [StatementsNoCfPart] = Payload(StatementsNoCfPart, "kap", BuildStatementsBody(set, "PART")),
+            [StatementsKapSignConvention] = Payload(StatementsKapSignConvention, "kap", BuildKapSignConventionBody(set)),
             [StatementsUsdReporter] = Payload(StatementsUsdReporter, "kap", BuildUsdReporterBody()),
             [StatementsBankBanka] = Payload(StatementsBankBanka, "kap", BuildBankBankaBody()),
             [StatementsInsuranceSigorta] = Payload(StatementsInsuranceSigorta, "kap", BuildInsuranceSigortaBody()),
@@ -337,6 +340,56 @@ public static class CannedSourceCatalog
             .ToList();
 
         return Serialize(new { sourceRef = $"kap://statements/{symbol}", symbol, unitScale = "units", currency = "TRY", statements });
+    }
+
+    /// <summary>
+    /// The KAP sign-convention payload (FU §5, TC-MDF-059): ALFA's FY2025 statements
+    /// exactly as the source reports them — the cash-flow statement's <c>CAPEX</c> investing
+    /// outflow is <em>negative</em> (−150) alongside the reported <c>OCF</c> 250. The
+    /// canonical <c>FCF = OCF − |CAPEX|</c> makes a reported −150 deductible *subtract*
+    /// (FCF 100), not add; the payload therefore traps a naive <c>OCF + CAPEX</c> or
+    /// <c>OCF − CAPEX</c> implementation (which would yield 400).
+    /// </summary>
+    private static string BuildKapSignConventionBody(FixtureSet set)
+    {
+        var alfaStatements = set.Statements
+            .Where(s => s.Symbol == "ALFA" && s.PeriodType == "FY")
+            .ToList();
+        var latestFiscalYear = alfaStatements.Max(s => s.FiscalYear);
+        var alfaFy = alfaStatements.Where(s => s.FiscalYear == latestFiscalYear).ToList();
+
+        var items = new List<StatementItem>();
+        foreach (var source in alfaFy)
+        {
+            var lines = new SortedDictionary<string, decimal>(StringComparer.Ordinal);
+            foreach (var (code, value) in source.Lines)
+            {
+                // KAP reports investing outflows as negative: flip the stored CAPEX
+                // magnitude to its as-reported sign, leaving every other line (incl. OCF).
+                lines[code] = string.Equals(code, FinItemCodes.Capex, StringComparison.Ordinal)
+                    ? -value
+                    : value;
+            }
+
+            items.Add(new StatementItem(
+                source.PeriodType,
+                source.PeriodEndDate,
+                source.FiscalYear,
+                source.StatementType,
+                source.Version,
+                source.RestatementDate,
+                source.PublishedAt,
+                lines));
+        }
+
+        return Serialize(new
+        {
+            sourceRef = "kap://statements/ALFA/sign-convention",
+            symbol = "ALFA",
+            unitScale = "units",
+            currency = "TRY",
+            statements = items,
+        });
     }
 
     /// <summary>

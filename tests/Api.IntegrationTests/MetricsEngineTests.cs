@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Core.Metrics;
 using Degerli.Fixtures;
@@ -279,6 +280,71 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
         Assert.False(epsl[MetricCodes.FcfCagr3y].IsAdjusted);
     }
 
+    /// <summary>TC-MDF-059 — OCF-based FCF and the KAP sign convention.</summary>
+    [Fact]
+    public async Task TC_MDF_059_ocf_based_fcf_and_the_kap_sign_convention()
+    {
+        await ResetAsync();
+        await using var host = BuildHost();
+
+        // (a) ALFA FY2025 with the reported OCF 250 and CAPEX 150 (FU §5): FCF = 250 − |150|
+        // = 100, so the EV/FCF-dependent §11.1 goldens are unchanged (ev_fcf 2200/100 = 22,
+        // fcf_yield 100/2000 = 0.05).
+        var first = await RunMetricsAsync(host, T);
+        Assert.Equal("succeeded", first.Status);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var metrics = await LoadMetricsAsync(db);
+            AssertValue(metrics, "ALFA", MetricCodes.EvFcf, 22.0m);
+            AssertValue(metrics, "ALFA", MetricCodes.FcfYield, 0.05m);
+
+            // The seeded CF statement carries the authored OCF line (OCF = FCF + CAPEX).
+            var fyLines = await FyCashFlowLinesAsync(db, "ALFA");
+            Assert.Equal(250m, fyLines["OCF"]);
+            Assert.Equal(150m, fyLines["CAPEX"]);
+        }
+
+        // (b) The sign-convention payload (FU §5): the same facts as the source reports
+        // them — CAPEX −150 alongside OCF 250. |−150| is subtracted, so FCF stays 100.
+        CannedSourcePayload signConvention = CannedSourceCatalog.Get(L2, CannedSourceCatalog.StatementsKapSignConvention);
+        using (var document = JsonDocument.Parse(signConvention.Body))
+        {
+            var cf = document.RootElement.GetProperty("statements").EnumerateArray()
+                .Single(s => s.GetProperty("statementType").GetString() == "CF"
+                    && s.GetProperty("periodType").GetString() == "FY");
+            Assert.Equal(-150m, cf.GetProperty("lines").GetProperty("CAPEX").GetDecimal());
+            Assert.Equal(250m, cf.GetProperty("lines").GetProperty("OCF").GetDecimal());
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            await SetFyCapexAsync(db, "ALFA", -150m);
+        }
+
+        var second = await RunMetricsAsync(host, T);
+        Assert.Equal("succeeded", second.Status);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var metrics = await LoadMetricsAsync(db);
+            // A naive OCF − CAPEX would give 400 (ev_fcf 5.5, fcf_yield 0.2); the canonical
+            // absolute-value rule keeps the goldens at 22 and 0.05.
+            AssertValue(metrics, "ALFA", MetricCodes.EvFcf, 22.0m);
+            AssertValue(metrics, "ALFA", MetricCodes.FcfYield, 0.05m);
+            Assert.True(
+                Math.Abs(metrics["ALFA"][MetricCodes.EvFcf].Value!.Value - 5.5m) > 0.00001m,
+                "the sign-unaware FCF (OCF − CAPEX = 400) was served");
+
+            // (c) PART has no CF statement → no OCF → every FCF metric is honestly NULL.
+            AssertNull(metrics, "PART", MetricCodes.EvFcf);
+            AssertNull(metrics, "PART", MetricCodes.FcfYield);
+            AssertNull(metrics, "PART", MetricCodes.FcfCagr3y);
+            AssertNull(metrics, "PART", MetricCodes.FcfCagr5y);
+            AssertNull(metrics, "PART", MetricCodes.FcfCagr10y);
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -317,6 +383,34 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
         await db.Database.ExecuteSqlRawAsync("DELETE FROM derived_metrics");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
     }
+
+    /// <summary>The serving FY cash-flow statement's lines for one instrument.</summary>
+    private static async Task<Dictionary<string, decimal>> FyCashFlowLinesAsync(DegerliDbContext db, string symbol)
+    {
+        var statementId = await FyCashFlowStatementIdAsync(db, symbol);
+        return await db.FinLineItems
+            .Where(l => l.StatementId == statementId)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value, StringComparer.Ordinal);
+    }
+
+    /// <summary>Applies the KAP sign convention to the serving FY CAPEX line (as-reported negative).</summary>
+    private static async Task SetFyCapexAsync(DegerliDbContext db, string symbol, decimal capex)
+    {
+        var statementId = await FyCashFlowStatementIdAsync(db, symbol);
+        var line = await db.FinLineItems
+            .SingleAsync(l => l.StatementId == statementId && l.ItemCode == "CAPEX");
+        line.Value = capex;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<long> FyCashFlowStatementIdAsync(DegerliDbContext db, string symbol) =>
+        await (
+            from s in db.FinancialStatements
+            join i in db.Instruments on s.InstrumentId equals i.Id
+            where i.Symbol == symbol && s.PeriodType == "FY" && s.StatementType == "CF"
+            orderby s.PeriodEndDate descending, s.Version descending
+            select s.Id)
+        .FirstAsync();
 
     private static async Task<Dictionary<string, Dictionary<string, DerivedMetric>>> LoadMetricsAsync(DegerliDbContext db)
     {

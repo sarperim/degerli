@@ -310,6 +310,7 @@ public static class FixtureUniverse
         decimal Ni,
         decimal? Capex,
         decimal? Dwc,
+        decimal? Ocf,
         decimal Cash,
         decimal StDebt,
         decimal LtDebt,
@@ -361,7 +362,7 @@ public static class FixtureUniverse
                     [FinItemCodes.SharesDiluted] = shares,
                     [FinItemCodes.SharesOut] = shares,
                 }));
-            if (row.Capex is not null && row.Dwc is not null)
+            if (row.Capex is not null && row.Dwc is not null && row.Ocf is not null)
             {
                 statements.Add(new FixtureStatement(
                     symbol, "FY", end, year, "CF", version, restatement, publishedAt,
@@ -369,6 +370,7 @@ public static class FixtureUniverse
                     {
                         [FinItemCodes.Capex] = row.Capex.Value,
                         [FinItemCodes.Dwc] = row.Dwc.Value,
+                        [FinItemCodes.Ocf] = row.Ocf.Value,
                     }));
             }
         }
@@ -427,16 +429,20 @@ public static class FixtureUniverse
                 {
                     [FinItemCodes.Capex] = ni + depr - dwc - fcf,
                     [FinItemCodes.Dwc] = dwc,
+                    // FU §5/§5.1 (v1.4): the deep-history CF statement also carries the
+                    // reported operating cash flow, authored as FCF + CAPEX so the
+                    // canonical FCF = OCF − |CAPEX| preserves the §5.1 FCF series.
+                    [FinItemCodes.Ocf] = ni + depr - dwc,
                 }));
         }
 
         // FU §5 — FY2025 full rows (the tabulated statement row per instrument).
         // Shares are in millions; monetary values are TRY M (FU §2 units).
-        AddFull("ALFA", fy, 100, new FyRow(1000, 600, 400, 300, 100, 400, 50, 250, 50, 200, 150, 50, 200, 100, 300, 1000, 600, 300), publishedAt: published);
-        AddFull("BETA", fy, 80, new FyRow(300, 240, 60, -20, 30, 10, 10, -30, 0, -50, 20, 10, 50, 80, 120, 150, 200, 180), publishedAt: published);
-        AddFull("GAMA", fy, 60, new FyRow(250, 200, 50, -30, 25, -5, 5, -35, 0, -40, 15, 5, 30, 60, 90, 120, 150, 140), publishedAt: published);
-        AddFull("DELTA", fy, 100, new FyRow(500, 350, 150, 60, 20, 80, 10, 50, 10, 50, 30, 10, 50, 60, 40, -200, 180, 150), publishedAt: published);
-        AddFull("EPSL", fy, 400, new FyRow(1200, 800, 400, 360, 90, 450, 60, 300, 60, 300, 180, 40, 300, 200, 500, 1600, 900, 500), publishedAt: published);
+        AddFull("ALFA", fy, 100, new FyRow(1000, 600, 400, 300, 100, 400, 50, 250, 50, 200, 150, 50, 250, 200, 100, 300, 1000, 600, 300), publishedAt: published);
+        AddFull("BETA", fy, 80, new FyRow(300, 240, 60, -20, 30, 10, 10, -30, 0, -50, 20, 10, -50, 50, 80, 120, 150, 200, 180), publishedAt: published);
+        AddFull("GAMA", fy, 60, new FyRow(250, 200, 50, -30, 25, -5, 5, -35, 0, -40, 15, 5, -50, 30, 60, 90, 120, 150, 140), publishedAt: published);
+        AddFull("DELTA", fy, 100, new FyRow(500, 350, 150, 60, 20, 80, 10, 50, 10, 50, 30, 10, 60, 50, 60, 40, -200, 180, 150), publishedAt: published);
+        AddFull("EPSL", fy, 400, new FyRow(1200, 800, 400, 360, 90, 450, 60, 300, 60, 300, 180, 40, 350, 300, 200, 500, 1600, 900, 500), publishedAt: published);
 
         // FU §5.3 — EPSL deep per-share history (FY2022…FY2024), as-reported: 80 M shares
         // (pre-split; 400 ÷ 5) and the per-share CAGR fixture NI. Only NI and the share
@@ -445,26 +451,26 @@ public static class FixtureUniverse
         AddPerShareHistory("EPSL", fy - 3, 80, 250); // FY2022
         AddPerShareHistory("EPSL", fy - 2, 80, 264); // FY2023
         AddPerShareHistory("EPSL", fy - 1, 80, 280); // FY2024
-        AddFull("ZETA", fy, 50, new FyRow(100, 70, 30, 25, 8, 33, 4, 21, 5, 60, 15, 3, 40, 30, 50, 200, 120, 90), publishedAt: published);
-        AddFull("ETA", fy, 90, new FyRow(450, 315, 135, 90, 30, 120, 15, 75, 15, 90, 45, 10, 100, 80, 120, 600, 350, 200), publishedAt: published);
-        AddFull("THETA", fy, 70, new FyRow(380, 270, 110, 70, 20, 90, 12, 58, 12, 70, 35, 8, 60, 90, 150, 500, 280, 160), publishedAt: published);
-        AddFull("PART", fy, 120, new FyRow(600, 420, 180, 90, 30, 120, 20, 70, 15, 120, null, null, 150, 100, 250, 800, 400, 240), publishedAt: published);
-        AddFull("NEWP", fy, 30, new FyRow(50, 35, 15, 12, 4, 16, 2, 10, 2, 30, 8, 2, 20, 15, 25, 90, 55, 35), publishedAt: published);
-        AddFull("IOTA", fy, 200, new FyRow(280, 210, 70, -15, 25, -20, 8, -23, 0, 20, 20, 5, 40, 70, 110, 180, 160, 130), publishedAt: published);
-        AddFull("KAPPA", fy, 150, new FyRow(520, 370, 150, 80, 25, 105, 14, 66, 14, 60, 70, 20, 90, 120, 190, 550, 300, 190), publishedAt: published);
-        AddFull("LAMDA", fy, 110, new FyRow(200, 140, 60, 35, 12, 47, 6, 29, 6, 30, 18, 4, 35, 45, 75, 220, 130, 85), publishedAt: published);
-        AddFull("NU", fy, 90, new FyRow(320, 230, 90, 45, 15, 60, 9, 36, 7, 40, 20, 5, 45, 60, 95, 260, 150, 100), publishedAt: published);
-        AddFull("UNSEC", fy, 70, new FyRow(260, 185, 75, 40, 12, 52, 7, 33, 7, 45, 22, 5, 40, 55, 90, 210, 120, 80), publishedAt: published);
+        AddFull("ZETA", fy, 50, new FyRow(100, 70, 30, 25, 8, 33, 4, 21, 5, 60, 15, 3, 27, 40, 30, 50, 200, 120, 90), publishedAt: published);
+        AddFull("ETA", fy, 90, new FyRow(450, 315, 135, 90, 30, 120, 15, 75, 15, 90, 45, 10, 110, 100, 80, 120, 600, 350, 200), publishedAt: published);
+        AddFull("THETA", fy, 70, new FyRow(380, 270, 110, 70, 20, 90, 12, 58, 12, 70, 35, 8, 80, 60, 90, 150, 500, 280, 160), publishedAt: published);
+        AddFull("PART", fy, 120, new FyRow(600, 420, 180, 90, 30, 120, 20, 70, 15, 120, null, null, null, 150, 100, 250, 800, 400, 240), publishedAt: published);
+        AddFull("NEWP", fy, 30, new FyRow(50, 35, 15, 12, 4, 16, 2, 10, 2, 30, 8, 2, 14, 20, 15, 25, 90, 55, 35), publishedAt: published);
+        AddFull("IOTA", fy, 200, new FyRow(280, 210, 70, -15, 25, -20, 8, -23, 0, 20, 20, 5, 10, 40, 70, 110, 180, 160, 130), publishedAt: published);
+        AddFull("KAPPA", fy, 150, new FyRow(520, 370, 150, 80, 25, 105, 14, 66, 14, 60, 70, 20, 40, 90, 120, 190, 550, 300, 190), publishedAt: published);
+        AddFull("LAMDA", fy, 110, new FyRow(200, 140, 60, 35, 12, 47, 6, 29, 6, 30, 18, 4, 38, 35, 45, 75, 220, 130, 85), publishedAt: published);
+        AddFull("NU", fy, 90, new FyRow(320, 230, 90, 45, 15, 60, 9, 36, 7, 40, 20, 5, 47, 45, 60, 95, 260, 150, 100), publishedAt: published);
+        AddFull("UNSEC", fy, 70, new FyRow(260, 185, 75, 40, 12, 52, 7, 33, 7, 45, 22, 5, 50, 40, 55, 90, 210, 120, 80), publishedAt: published);
 
         // REST — the as-reported version (NI 60) is retained alongside the restated
         // version (NI 75, the tabulated row) — FU §5 footnote / 02 §5.7.
         AddFull(
             "REST", fy, 50,
-            new FyRow(400, 280, 120, 110, 30, 140, 15, 95, 20, 60, 40, 5, 80, 50, 70, 500, 250, 160),
+            new FyRow(400, 280, 120, 110, 30, 140, 15, 95, 20, 60, 40, 5, 100, 80, 50, 70, 500, 250, 160),
             publishedAt: published);
         AddFull(
             "REST", fy, 50,
-            new FyRow(400, 280, 120, 110, 30, 140, 15, 95, 20, 75, 40, 5, 80, 50, 70, 500, 250, 160),
+            new FyRow(400, 280, 120, 110, 30, 140, 15, 95, 20, 75, 40, 5, 100, 80, 50, 70, 500, 250, 160),
             version: "restated",
             restatement: new DateOnly(fy + 1, 6, 20),
             publishedAt: published);

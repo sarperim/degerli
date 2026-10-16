@@ -26,6 +26,7 @@ public static class StatementMapper
         "MINORITY_INT",
         "CAPEX",
         "ΔWC",
+        "OCF",
         "CASH",
         "ST_DEBT",
         "LT_DEBT",
