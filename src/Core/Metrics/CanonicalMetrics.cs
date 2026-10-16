@@ -19,6 +19,7 @@ public sealed record CanonicalStatement(
     decimal? Ni,
     decimal? Capex,
     decimal? Dwc,
+    decimal? Ocf,
     decimal? Cash,
     decimal? StDebt,
     decimal? LtDebt,
@@ -71,7 +72,7 @@ public static class CanonicalMetrics
         var depr = t.DeprAmort;
         var ebitda = t.Ebitda ?? Sum(ebit, depr);
         var grossProfit = t.GrossProfit ?? Difference(rev, t.Cogs);
-        var fcf = FreeCashFlow(ni, depr, t.Dwc, t.Capex);
+        var fcf = FreeCashFlow(t.Ocf, t.Capex);
         var debt = Sum(t.StDebt, t.LtDebt);
         var ev = Sum3(mcap, debt, Negate(t.Cash));
         var investedCapital = Sum3(debt, equity, Negate(t.Cash));
@@ -114,7 +115,31 @@ public static class CanonicalMetrics
         return metrics;
     }
 
-    /// <summary>FCF via the canonical indirect method: NI + D&amp;A − ΔWC − CAPEX (02 §6.2).</summary>
+    /// <summary>
+    /// Canonical FCF (<c>02</c> §6.2, v1.3): <c>OCF − |CAPEX|</c>. Operating cash flow is
+    /// taken as the KAP cash-flow statement reports it (already reflecting the TMS 29
+    /// non-cash items the rejected indirect reconstruction missed); the absolute CAPEX
+    /// guards the KAP sign convention where investing outflows are negative — a reported
+    /// −150 deductible is <em>subtracted</em>, not added. NULL when <c>OCF</c> or
+    /// <c>CAPEX</c> is missing (no CF statement → no FCF, never zero-for-missing).
+    /// </summary>
+    public static decimal? FreeCashFlow(decimal? ocf, decimal? capex)
+    {
+        if (ocf is null || capex is null)
+        {
+            return null;
+        }
+
+        return ocf.Value - Math.Abs(capex.Value);
+    }
+
+    /// <summary>
+    /// The legacy indirect reconstruction <c>NI + D&amp;A − ΔWC − CAPEX</c> (<c>02</c>
+    /// §6.2 — superseded and retained only for the record). Still consumed by the stocks
+    /// financials read, which is owned by a separate ticket and has not yet been moved onto
+    /// the canonical OCF basis; the canonical metrics engine and DCF baseline derivation use
+    /// <see cref="FreeCashFlow(decimal?, decimal?)"/>.
+    /// </summary>
     public static decimal? FreeCashFlow(decimal? ni, decimal? depr, decimal? dwc, decimal? capex)
     {
         if (ni is null || depr is null || dwc is null || capex is null)

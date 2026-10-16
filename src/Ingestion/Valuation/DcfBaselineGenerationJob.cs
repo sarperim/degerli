@@ -38,10 +38,8 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
     private const string StatementIncome = "IS";
     private const string StatementBalanceSheet = "BS";
     private const string StatementCashFlow = "CF";
-    private const string Ni = "NI";
-    private const string DeprAmort = "DEPR_AMORT";
     private const string Capex = "CAPEX";
-    private const string Dwc = "ΔWC";
+    private const string Ocf = "OCF";
     private const string Cash = "CASH";
     private const string StDebt = "ST_DEBT";
     private const string LtDebt = "LT_DEBT";
@@ -205,9 +203,7 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
         }
 
         var baseFcf = CanonicalMetrics.FreeCashFlow(
-            Line(income, Ni),
-            Line(income, DeprAmort),
-            Line(cashFlow, Dwc),
+            Line(cashFlow, Ocf),
             Line(cashFlow, Capex));
         var cash = Line(balance, Cash);
         var shortTermDebt = Line(balance, StDebt);

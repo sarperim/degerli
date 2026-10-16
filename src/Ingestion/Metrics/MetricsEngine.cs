@@ -40,6 +40,7 @@ public sealed class MetricsEngine
     private const string Ni = "NI";
     private const string Capex = "CAPEX";
     private const string Dwc = "ΔWC";
+    private const string Ocf = "OCF";
     private const string Cash = "CASH";
     private const string StDebt = "ST_DEBT";
     private const string LtDebt = "LT_DEBT";
@@ -193,7 +194,7 @@ public sealed class MetricsEngine
         FinancialStatement? is0 = null;
         FinancialStatement? bs0 = null;
         FinancialStatement? cf0 = null;
-        CanonicalStatement ttm = new(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        CanonicalStatement ttm = new(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         var isRested = false;
 
         if (periods.Count > 0)
@@ -216,6 +217,7 @@ public sealed class MetricsEngine
                 Ni: Line(is0, Ni),
                 Capex: Line(cf0, Capex),
                 Dwc: Line(cf0, Dwc),
+                Ocf: Line(cf0, Ocf),
                 Cash: Line(bs0, Cash),
                 StDebt: Line(bs0, StDebt),
                 LtDebt: Line(bs0, LtDebt),
@@ -252,9 +254,7 @@ public sealed class MetricsEngine
             }
 
             var freeCash = CanonicalMetrics.FreeCashFlow(
-                ni,
-                Line(isY, DeprAmort),
-                Line(cfY, Dwc),
+                Line(cfY, Ocf),
                 Line(cfY, Capex));
             if (freeCash is not null)
             {
