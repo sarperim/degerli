@@ -127,27 +127,20 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     }
 
     /// <summary>
-    /// Maps one EVDS observation to a canonical macro item. The EVDS identifier wins when it
-    /// is one of the five official series; otherwise the observation's canonical code is used
-    /// (the fixture-only independent measure). An observation naming neither is dropped — it
-    /// is not a known V1 series and could not be stored.
+    /// Maps one EVDS observation to a canonical macro item, resolving the canonical code
+    /// <em>only</em> from the EVDS identifier. Only the five official series resolve (FU v1.4
+    /// §7/§10, TC-MOV-027): the independent CPI measure is entered through the admin endpoint
+    /// and never arrives from the macro adapter, so an observation that names no official
+    /// series is dropped — it is not a V1 series the adapter may store.
     /// </summary>
     private static MacroItem? ToMacroItem(EvdsObservation observation)
     {
-        var code = ResolveCode(observation);
-        return code is null
-            ? null
-            : new MacroItem(code, observation.ValueDate, observation.Value, observation.Unit, observation.RecordedAt);
-    }
-
-    private static string? ResolveCode(EvdsObservation observation)
-    {
-        if (!string.IsNullOrWhiteSpace(observation.SeriesCode)
-            && EvdsSeries.CanonicalByEvdsCode.TryGetValue(observation.SeriesCode, out var canonical))
+        if (string.IsNullOrWhiteSpace(observation.SeriesCode)
+            || !EvdsSeries.CanonicalByEvdsCode.TryGetValue(observation.SeriesCode, out var canonical))
         {
-            return canonical;
+            return null;
         }
 
-        return string.IsNullOrWhiteSpace(observation.Code) ? null : observation.Code;
+        return new MacroItem(canonical, observation.ValueDate, observation.Value, observation.Unit, observation.RecordedAt);
     }
 }

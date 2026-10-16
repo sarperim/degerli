@@ -587,7 +587,7 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
         var series = root["series"]!.AsArray();
         series.Add(new JsonObject
         {
-            ["code"] = "CBRT_REPO",
+            ["seriesCode"] = "TP.APIFON1",
             ["valueDate"] = valueDate.ToString("yyyy-MM-dd"),
             ["value"] = value,
             ["unit"] = "%",
