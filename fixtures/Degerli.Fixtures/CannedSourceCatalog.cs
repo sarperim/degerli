@@ -40,6 +40,7 @@ public static class CannedSourceCatalog
     public const string PricesSourceSlow = "prices-source-slow";
     public const string PricesBackfillSourceLimited = "prices-backfill-source-limited";
     public const string PricesVariantThreshold = "prices-variant-threshold";
+    public const string PricesYahooContingency = "prices-yahoo-contingency";
     public const string StatementsOkAlfaFy2025 = "statements-ok-alfa-fy2025";
     public const string StatementsRestatedRest = "statements-restated-rest";
     public const string StatementsRestatedRestV2 = "statements-restated-rest-v2";
@@ -83,6 +84,7 @@ public static class CannedSourceCatalog
         PricesSourceSlow,
         PricesBackfillSourceLimited,
         PricesVariantThreshold,
+        PricesYahooContingency,
         StatementsOkAlfaFy2025,
         StatementsRestatedRest,
         StatementsRestatedRestV2,
@@ -108,20 +110,21 @@ public static class CannedSourceCatalog
 
         var byName = new Dictionary<string, CannedSourcePayload>(StringComparer.Ordinal)
         {
-            [PricesOk] = Payload(PricesOk, "isbank", BuildPricesBody(set, set.Anchor.T)),
-            [PricesOkTminus1] = Payload(PricesOkTminus1, "isbank", BuildPricesBody(set, set.Anchor.TradingDay(-1))),
+            [PricesOk] = Payload(PricesOk, "isyatirim", BuildPricesBody(set, set.Anchor.T)),
+            [PricesOkTminus1] = Payload(PricesOkTminus1, "isyatirim", BuildPricesBody(set, set.Anchor.TradingDay(-1))),
             [PricesInvalidNegativeClose] = Payload(
                 PricesInvalidNegativeClose,
-                "isbank",
+                "isyatirim",
                 BuildPricesBody(set, set.Anchor.T, closeOverrides: new Dictionary<string, decimal>(StringComparer.Ordinal) { ["ALFA"] = -5m })),
-            [PricesMissingProvenance] = Payload(PricesMissingProvenance, "isbank", BuildPricesBody(set, set.Anchor.T, includeProvenance: false)),
+            [PricesMissingProvenance] = Payload(PricesMissingProvenance, "isyatirim", BuildPricesBody(set, set.Anchor.T, includeProvenance: false)),
             [PricesConflictingValue] = Payload(
                 PricesConflictingValue,
-                "isbank",
+                "isyatirim",
                 BuildPricesBody(set, set.Anchor.T, closeOverrides: new Dictionary<string, decimal>(StringComparer.Ordinal) { ["ALFA"] = 21.00m })),
-            [PricesSourceDown] = Payload(PricesSourceDown, "isbank", Serialize(new { error = "source unavailable" }), statusCode: 500),
-            [PricesSourceSlow] = Payload(PricesSourceSlow, "isbank", BuildPricesBody(set, set.Anchor.T), delayMs: 5_000),
-            [PricesBackfillSourceLimited] = Payload(PricesBackfillSourceLimited, "isbank", BuildBackfillHistoryBody(set)),
+            [PricesSourceDown] = Payload(PricesSourceDown, "isyatirim", Serialize(new { error = "source unavailable" }), statusCode: 500),
+            [PricesSourceSlow] = Payload(PricesSourceSlow, "isyatirim", BuildPricesBody(set, set.Anchor.T), delayMs: 5_000),
+            [PricesBackfillSourceLimited] = Payload(PricesBackfillSourceLimited, "isyatirim", BuildBackfillHistoryBody(set)),
+            [PricesYahooContingency] = Payload(PricesYahooContingency, "yahoo", BuildYahooContingencyBody(set)),
             [StatementsOkAlfaFy2025] = Payload(StatementsOkAlfaFy2025, "kap", BuildStatementsBody(set, "ALFA")),
             [StatementsRestatedRest] = Payload(StatementsRestatedRest, "kap", BuildStatementsBody(set, "REST")),
             [StatementsRestatedRestV2] = Payload(StatementsRestatedRestV2, "kap", BuildRestatedRestV2Body(set)),
@@ -131,7 +134,7 @@ public static class CannedSourceCatalog
             [DisclosuresOk] = Payload(DisclosuresOk, "kap", BuildDisclosuresBody(set)),
             [UniverseAddRemove] = Payload(UniverseAddRemove, "kap", BuildUniverseChangeSetBody(set)),
             [UniverseMissingSector] = Payload(UniverseMissingSector, "kap", BuildUniverseBody(set)),
-            [IndexLevelsOk] = Payload(IndexLevelsOk, "kap", BuildIndexLevelsBody(set)),
+            [IndexLevelsOk] = Payload(IndexLevelsOk, "isyatirim", BuildIndexLevelsBody(set)),
             [MacroOk] = Payload(MacroOk, "macro", BuildMacroBody(set, includeIndependentCpi: true)),
             [MacroIndepCpiAbsent] = Payload(MacroIndepCpiAbsent, "macro", BuildMacroBody(set, includeIndependentCpi: false)),
             [TefasTef0001] = Payload(TefasTef0001, "tefas", BuildFundBody(set, "TEF0001")),
@@ -144,13 +147,13 @@ public static class CannedSourceCatalog
         var okBody = byName[PricesOk].Body;
         byName[PricesUnparseable] = Payload(
             PricesUnparseable,
-            "isbank",
+            "isyatirim",
             okBody[..Math.Min(okBody.Length, 200)]);
 
         // prices-variant-threshold is derived from the universe with overridden volumes: it
         // presents 12 eligible gainers, exactly one sitting on the 1,000,000 boundary, with
         // LAMDA retained as the illiquid big gainer that the threshold must exclude.
-        byName[PricesVariantThreshold] = Payload(PricesVariantThreshold, "isbank", BuildVariantThresholdBody(set));
+        byName[PricesVariantThreshold] = Payload(PricesVariantThreshold, "isyatirim", BuildVariantThresholdBody(set));
 
         return Names.Select(name => byName[name]).ToList();
     }
@@ -209,7 +212,7 @@ public static class CannedSourceCatalog
             .ToList();
 
         return includeProvenance
-            ? Serialize(new { sourceRef = $"isbank://eod/{date:yyyy-MM-dd}", date, items })
+            ? Serialize(new { sourceRef = "isyatirim", date, items })
             : Serialize(new { date, items });
     }
 
@@ -245,7 +248,7 @@ public static class CannedSourceCatalog
             rows.Add(new HistoryItem(price.Symbol, set.Anchor.T, price.Open, price.High, price.Low, price.CloseRaw, price.Volume));
         }
 
-        return Serialize(new { sourceRef = "isbank://eod/history", rows });
+        return Serialize(new { sourceRef = "isyatirim", rows });
     }
 
     private static string BuildVariantThresholdBody(FixtureSet set)
@@ -270,7 +273,47 @@ public static class CannedSourceCatalog
             })
             .ToList();
 
-        return Serialize(new { sourceRef = $"isbank://eod/{set.Anchor.T:yyyy-MM-dd}/variant-threshold", date = set.Anchor.T, items });
+        return Serialize(new { sourceRef = "isyatirim", date = set.Anchor.T, items });
+    }
+
+    /// <summary>
+    /// The Yahoo Finance <c>.IS</c> contingency envelope (FR-MDF-001, 03 §1.2): the
+    /// documented fallback source. It models Yahoo's real chart shape — per-symbol
+    /// results with parallel <c>timestamp</c>/<c>quote</c> arrays and the Turkish-market
+    /// <c>.IS</c> ticker suffix — so the same adapter parses either source and records
+    /// the concrete per-row <c>source_ref</c> (<c>yahoo</c>). A real Yahoo payload carries
+    /// no provenance field; the adapter stamps the source name itself.
+    /// </summary>
+    private static string BuildYahooContingencyBody(FixtureSet set)
+    {
+        var date = set.Anchor.T;
+        var timestamp = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+        var results = set.Prices
+            .Where(p => p.Date == date)
+            .OrderBy(p => p.Symbol, StringComparer.Ordinal)
+            .Select(p => new
+            {
+                meta = new { symbol = $"{p.Symbol}.IS", currency = "TRY" },
+                timestamp = new[] { timestamp },
+                indicators = new
+                {
+                    quote = new object[]
+                    {
+                        new
+                        {
+                            open = new decimal?[] { p.Open },
+                            high = new decimal?[] { p.High },
+                            low = new decimal?[] { p.Low },
+                            close = new decimal?[] { p.CloseRaw },
+                            volume = new long?[] { p.Volume },
+                        },
+                    },
+                },
+            })
+            .ToList();
+
+        return Serialize(new { chart = new { result = results, error = (string?)null } });
     }
 
     private static string BuildStatementsBody(FixtureSet set, string symbol)
@@ -403,7 +446,7 @@ public static class CannedSourceCatalog
     private static string BuildIndexLevelsBody(FixtureSet set) =>
         Serialize(new
         {
-            sourceRef = "kap://index-levels",
+            sourceRef = "isyatirim",
             levels = set.IndexLevels
                 .Where(l => l.Date == set.Anchor.T)
                 .OrderBy(l => l.IndexCode, StringComparer.Ordinal)

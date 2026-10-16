@@ -6,8 +6,11 @@ namespace Degerli.Ingestion.Prices;
 
 /// <summary>
 /// Source wiring for the <c>prices</c> job (config section <c>Ingestion:Prices</c>).
-/// The base address points at İşbank in production and at the WireMock source double in
-/// L2 tests; the path lets a test select a named canned payload (FU §10).
+/// <see cref="BaseUrl"/> points at İş Yatırım in production and at the WireMock source
+/// double in L2 tests; the paths let a test select a named canned payload (FU §10).
+/// The documented contingency is Yahoo Finance (<c>.IS</c> tickers) — repointing
+/// <see cref="BaseUrl"/> at it is enough, because the same client and adapter parse
+/// either source's envelope.
 /// </summary>
 public sealed class PricesSourceOptions
 {
@@ -24,13 +27,24 @@ public sealed class PricesSourceOptions
 }
 
 /// <summary>
-/// The İşbank EOD price adapter (FR-MDF-001). Fetches the raw payload through the shared
-/// <see cref="ISourceClient"/> and parses it; persistence and validation are the job's.
-/// It is also the backfill adapter (FR-MDF-010): the same client reads the historical
-/// resource, which returns as far back as the source allows.
+/// The price adapter (FR-MDF-001) for the İş Yatırım public endpoints (primary) with the
+/// documented Yahoo Finance <c>.IS</c> contingency (03 §1.2). It fetches the raw payload
+/// through the shared <see cref="ISourceClient"/>, detects which source's envelope it is
+/// (İş Yatırım's batch <c>items</c>/<c>rows</c> shape vs. Yahoo's <c>chart</c> shape) and
+/// parses it into the canonical payload; persistence and validation are the job's. Every
+/// parsed payload carries the concrete source name (<c>isyatirim</c> / <c>yahoo</c>) so
+/// each stored row records its provenance (FR-MDF-008). It is also the backfill adapter
+/// (FR-MDF-010): the same client reads the historical resource, which returns as far back
+/// as the source allows.
 /// </summary>
 public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfillSourceAdapter<PricesHistoryPayload>
 {
+    /// <summary>Concrete source name of the primary EOD/index-level source (03 §1.2).</summary>
+    public const string IsYatirimSource = "isyatirim";
+
+    /// <summary>Concrete source name of the documented contingency (Yahoo `.IS`).</summary>
+    public const string YahooSource = "yahoo";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ISourceClient _client;
@@ -43,7 +57,7 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
     }
 
     /// <inheritdoc />
-    public string SourceName => "isbank";
+    public string SourceName => IsYatirimSource;
 
     /// <inheritdoc />
     public async Task<SourcePayload<PricesPayload>> FetchAsync(
@@ -51,17 +65,23 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
         CancellationToken cancellationToken = default)
     {
         var raw = await _client.GetStringAsync(_options.Path, cancellationToken).ConfigureAwait(false);
+        using var document = ParseDocument(raw);
 
-        PricesPayload? payload;
-        try
+        if (IsYahooEnvelope(document))
         {
-            payload = JsonSerializer.Deserialize<PricesPayload>(raw, JsonOptions);
-        }
-        catch (JsonException exception)
-        {
-            throw new SourcePayloadException(raw, exception);
+            // Yahoo is range-shaped and carries no provenance field; the adapter stamps
+            // the concrete source and keeps only the requested day's rows.
+            var items = ParseYahooRows(raw)
+                .Where(row => row.Date == date)
+                .Select(ToPriceFact)
+                .ToList();
+            return new SourcePayload<PricesPayload>(
+                YahooSource,
+                new PricesPayload(YahooSource, date, items),
+                raw);
         }
 
+        var payload = Deserialize<PricesPayload>(raw);
         if (payload is null)
         {
             throw new SourceFetchException("Price payload deserialized to null.");
@@ -79,22 +99,104 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
         // returns whatever history it holds — the job records the achieved depth.
         var path = $"{_options.BackfillPath}?from={from:yyyy-MM-dd}";
         var raw = await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
+        using var document = ParseDocument(raw);
 
-        PricesHistoryPayload? payload;
-        try
+        if (IsYahooEnvelope(document))
         {
-            payload = JsonSerializer.Deserialize<PricesHistoryPayload>(raw, JsonOptions);
-        }
-        catch (JsonException exception)
-        {
-            throw new SourcePayloadException(raw, exception);
+            var rows = ParseYahooRows(raw).ToList();
+            return new SourcePayload<PricesHistoryPayload>(
+                YahooSource,
+                new PricesHistoryPayload(YahooSource, rows),
+                raw);
         }
 
+        var payload = Deserialize<PricesHistoryPayload>(raw);
         if (payload is null)
         {
             throw new SourceFetchException("Price history payload deserialized to null.");
         }
 
         return new SourcePayload<PricesHistoryPayload>(payload.SourceRef, payload, raw);
+    }
+
+    /// <summary>True when the body is a Yahoo chart envelope rather than the İş Yatırım one.</summary>
+    private static bool IsYahooEnvelope(JsonDocument document) =>
+        document.RootElement.ValueKind == JsonValueKind.Object
+        && document.RootElement.TryGetProperty("chart", out _);
+
+    private static IEnumerable<DatedPriceFact> ParseYahooRows(string raw)
+    {
+        var payload = Deserialize<YahooPricesPayload>(raw)
+            ?? throw new SourceFetchException("Yahoo price payload deserialized to null.");
+
+        foreach (var result in payload.Chart?.Result ?? [])
+        {
+            var symbol = NormalizeYahooSymbol(result.Meta?.Symbol);
+            if (string.IsNullOrWhiteSpace(symbol))
+            {
+                continue;
+            }
+
+            var timestamps = result.Timestamp ?? [];
+            var quote = result.Indicators?.Quote?.FirstOrDefault();
+            for (var index = 0; index < timestamps.Count; index++)
+            {
+                yield return new DatedPriceFact(
+                    symbol,
+                    DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(timestamps[index]).UtcDateTime),
+                    At(quote?.Open, index),
+                    At(quote?.High, index),
+                    At(quote?.Low, index),
+                    At(quote?.Close, index),
+                    At(quote?.Volume, index));
+            }
+        }
+    }
+
+    /// <summary>Strips Yahoo's Istanbul-exchange <c>.IS</c> suffix to the BIST ticker.</summary>
+    private static string NormalizeYahooSymbol(string? symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = symbol.Trim();
+        return trimmed.EndsWith(".IS", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[..^3]
+            : trimmed;
+    }
+
+    private static PriceFact ToPriceFact(DatedPriceFact row) =>
+        new(row.Symbol, null, row.Open, row.High, row.Low, row.Close, row.Volume);
+
+    private static decimal? At(IReadOnlyList<decimal?>? values, int index) =>
+        values is not null && index >= 0 && index < values.Count ? values[index] : null;
+
+    private static long? At(IReadOnlyList<long?>? values, int index) =>
+        values is not null && index >= 0 && index < values.Count ? values[index] : null;
+
+    private static JsonDocument ParseDocument(string raw)
+    {
+        try
+        {
+            return JsonDocument.Parse(raw);
+        }
+        catch (JsonException exception)
+        {
+            throw new SourcePayloadException(raw, exception);
+        }
+    }
+
+    private static T? Deserialize<T>(string raw)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<T>(raw, JsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            throw new SourcePayloadException(raw, exception);
+        }
     }
 }
