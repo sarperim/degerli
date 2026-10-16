@@ -1,5 +1,6 @@
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Degerli.Persistence.Seed;
 using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Ingestion.Universe;
@@ -102,6 +103,9 @@ public sealed class UniverseSyncStore
                     changed = true;
                 }
 
+                // The accounting profile is a builder-curated classification, not a source
+                // fact: a source sync never sets or overwrites it (02 §3.1, TC-MDF-056).
+
                 if (changed)
                 {
                     existing.SourceRef = sourceRef;
@@ -120,6 +124,9 @@ public sealed class UniverseSyncStore
                     Symbol = item.Symbol,
                     Name = string.IsNullOrWhiteSpace(item.Name) ? item.Symbol : item.Name!,
                     SectorId = sectorId,
+                    // Classify a newly-created instrument from the checked-in, builder-curated
+                    // list (02 §3.1); a symbol outside it keeps the `industrial` default.
+                    AccountingProfile = AccountingProfiles.GetOrDefault(item.Symbol),
                     ListingDate = item.ListingDate,
                     Status = "active",
                     SourceRef = sourceRef,

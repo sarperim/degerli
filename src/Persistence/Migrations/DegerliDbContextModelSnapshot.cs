@@ -926,6 +926,13 @@ namespace Degerli.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AccountingProfile")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("industrial")
+                        .HasColumnName("accounting_profile");
+
                     b.Property<DateOnly?>("DelistingDate")
                         .HasColumnType("date")
                         .HasColumnName("delisting_date");

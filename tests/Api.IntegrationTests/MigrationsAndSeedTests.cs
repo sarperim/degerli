@@ -76,6 +76,35 @@ public sealed class MigrationsAndSeedTests : IClassFixture<PostgresFixture>
         Assert.True((bool)account[2]!);
     }
 
+    [Fact]
+    public async Task Accounting_profile_column_defaults_to_industrial_and_the_seed_is_checked_in()
+    {
+        await using var db = _fixture.CreateContext();
+
+        // 02 §3.1 — the instruments.accounting_profile column defaults to `industrial`.
+        var columnDefault = await ScalarStringAsync(db, """
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name = 'instruments' AND column_name = 'accounting_profile'
+            """);
+        Assert.NotNull(columnDefault);
+        Assert.Contains("industrial", columnDefault!);
+
+        // The checked-in builder-curated classification resolves BIST financial members and
+        // falls back to `industrial` for everything else (02 §3.1).
+        Assert.Equal(AccountingProfiles.Bank, AccountingProfiles.GetOrDefault("GARAN"));
+        Assert.Equal(AccountingProfiles.Insurance, AccountingProfiles.GetOrDefault("ANSGR"));
+        Assert.Equal(AccountingProfiles.Reit, AccountingProfiles.GetOrDefault("EKGYO"));
+        Assert.Equal(AccountingProfiles.Industrial, AccountingProfiles.GetOrDefault("ALFA"));
+        Assert.Equal(AccountingProfiles.Industrial, AccountingProfiles.GetOrDefault(null));
+    }
+
+    private static async Task<string?> ScalarStringAsync(DegerliDbContext db, string sql)
+    {
+        await using var command = await CommandAsync(db, sql);
+        return (string?)(await command.ExecuteScalarAsync());
+    }
+
     private static async Task<int> CountAsync(DegerliDbContext db, string table) =>
         await ScalarIntAsync(db, $"SELECT count(*)::int FROM {table}");
 

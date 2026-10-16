@@ -137,6 +137,7 @@ public static class FixtureSeeder
                 SectorId = instrument.SectorCode is not null && sectors.TryGetValue(instrument.SectorCode, out var sectorId)
                     ? sectorId
                     : null,
+                AccountingProfile = instrument.AccountingProfile,
                 ListingDate = instrument.ListingDate,
                 Status = "active",
                 SourceRef = $"{SourceRef}:instruments",
