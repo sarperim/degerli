@@ -68,4 +68,39 @@ public static class PriceAdjustment
 
         return result;
     }
+
+    /// <summary>
+    /// The cumulative adjustment factor Π applied to a value on
+    /// <paramref name="basisDate"/>: the product of the factors of every action dated
+    /// strictly after it (the same "actions after the fact" rule as the adjusted close).
+    /// Reused for the per-share CAGR basis (FR-MDF-018, 02 §6.2) — a fiscal period end for
+    /// EPS, the ex-date for DPS. A rights action needs its cum price via
+    /// <paramref name="cumPrice"/> (the last raw close on/before the action); without it a
+    /// rights action contributes no factor (never a guess). An empty action set is the
+    /// no-adjustment factor <c>1</c>.
+    /// </summary>
+    public static decimal FactorAfter(
+        DateOnly basisDate,
+        IReadOnlyList<DatedAction> actions,
+        Func<DatedAction, decimal?>? cumPrice = null)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+
+        var product = AdjustmentFactors.None;
+        foreach (var action in actions)
+        {
+            if (action.ActionDate <= basisDate)
+            {
+                continue;
+            }
+
+            var factor = AdjustmentFactors.Factor(action.Action, cumPrice?.Invoke(action));
+            if (factor is not null)
+            {
+                product *= factor.Value;
+            }
+        }
+
+        return product;
+    }
 }
