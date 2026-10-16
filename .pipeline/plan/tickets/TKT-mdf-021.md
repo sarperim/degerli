@@ -15,7 +15,8 @@ scope:
 
 # TKT-mdf-021: Price source replacement — İş Yatırım (primary) with per-row provenance
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/77
 - Size: M
 - Scope: the daily-price/index-level source — replace the way the prices adapter is wired and parsed for the İş Yatırım public endpoints (10Y historical EOD + index levels), keep Yahoo Finance `.IS` as a documented contingency source, and ensure each stored `daily_prices`/`index_levels` row records its concrete `source_ref` (`isyatirim` / `yahoo`). Resolves OQ-MDF-001. Must NOT touch the statement, macro, or fund adapters.
 - Traces to: FR-MDF-001, FR-MDF-006, FR-MDF-008, FR-MDF-018; UC-MDF-001, UC-MDF-002; BR-MDF-001
