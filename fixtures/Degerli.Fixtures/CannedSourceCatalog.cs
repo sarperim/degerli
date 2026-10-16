@@ -464,14 +464,37 @@ public static class CannedSourceCatalog
         ["GOLD"] = "USD/oz",
     };
 
+    /// <summary>The canonical macro code → EVDS series identifier (OQ-MOV-005). The
+    /// independent measure has no EVDS source (it arrives through the admin endpoint,
+    /// TC-MOV-027), so its <c>seriesCode</c> is omitted.</summary>
+    private static readonly Dictionary<string, string> EvdsSeriesCodes = new(StringComparer.Ordinal)
+    {
+        ["TUIK_CPI"] = "TP.TUKFIY2025.GENEL",
+        ["CBRT_REPO"] = "TP.APIFON1",
+        ["USD_TRY"] = "TP.DK.USD.A.YTL",
+        ["EUR_TRY"] = "TP.DK.EUR.A.YTL",
+        ["GOLD"] = "TP.MK.ALTIN",
+    };
+
+    /// <summary>
+    /// The TCMB EVDS envelope (OQ-MOV-005, FU §10 v1.4). One request carries every series'
+    /// published observations; each names its EVDS <c>seriesCode</c> and the canonical
+    /// <c>code</c> the adapter maps to. GOLD is the deliberately-stale fixture (FU §7).
+    /// </summary>
     private static string BuildMacroBody(FixtureSet set, bool includeIndependentCpi)
     {
         var series = set.MacroValues
             .Where(v => includeIndependentCpi || v.SeriesCode != "INDEP_CPI")
-            .Select(v => new MacroItem(v.SeriesCode, v.ValueDate, v.Value, MacroUnits[v.SeriesCode], v.RecordedAt))
+            .Select(v => new MacroItem(
+                EvdsSeriesCodes.TryGetValue(v.SeriesCode, out var evdsCode) ? evdsCode : null,
+                v.SeriesCode,
+                v.ValueDate,
+                v.Value,
+                MacroUnits[v.SeriesCode],
+                v.RecordedAt))
             .ToList();
 
-        return Serialize(new { sourceRef = "macro://series", series });
+        return Serialize(new { sourceRef = "evds://tcmb", totalCount = series.Count, series });
     }
 
     private static string BuildFundBody(FixtureSet set, string fundCode)
@@ -581,6 +604,7 @@ public static class CannedSourceCatalog
     private sealed record IndexLevelItem(string IndexCode, DateOnly Date, decimal Close);
 
     private sealed record MacroItem(
+        string? SeriesCode,
         string Code,
         DateOnly ValueDate,
         decimal Value,
