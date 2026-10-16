@@ -7,11 +7,13 @@ scope:
   - fixtures/Degerli.Fixtures/CannedSourceCatalog.cs
   - tests/Api.IntegrationTests/MacroIngestionTests.cs
   - tests/Api.IntegrationTests/MacroEvdsAdapterTests.cs
+  - tests/Api.IntegrationTests/CannedSourceCatalogTests.cs
 ---
 
 # TKT-mov-008: Consolidated macro ingestion via TCMB EVDS
 
-- Status: in-review
+- Status: todo — unblocked 2026-10-16 by user-sanctioned scope amendment resolving review finding DR-1. Re-dispatch: drop `INDEP_CPI` from the EVDS payload (`macro-ok`) and the adapter's code fallback, update the `CannedSourceCatalogTests.cs` six-code pin (now in scope) to the five-official-series contract per FU v1.4 §7/§10 and TC-MOV-027.
+- Scope amendment (2026-10-16, user-sanctioned): added `tests/Api.IntegrationTests/CannedSourceCatalogTests.cs` so the six-code pin can be reconciled with FU v1.4 (INDEP_CPI owned by TKT-mov-009).
 - PR: https://github.com/sarperim/degerli/pull/78
 - Size: M
 - Scope: the macro source adapter — fetch the five official series (`TUIK_CPI`, `CBRT_REPO`, `USD_TRY`, `EUR_TRY`, `GOLD`) from a single TCMB EVDS API adapter (free API key, config), replacing the scattered per-source plan. Resolves OQ-MOV-005. Keeps the existing revision/staleness behavior. `INDEP_CPI` is out of scope (TKT-mov-009). Must NOT touch the statement FX reader (TKT-mdf-014) or the fund adapter.
