@@ -36,6 +36,17 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
 
     private const string StatementsPath = "/canned-sources/statements";
 
+    /// <summary>
+    /// The <c>industrial</c> control instrument for the DR-1 falsifiability check. It carries
+    /// the <em>identical</em> complete line set injected onto BANKA, so BANKA's gated NULLs can
+    /// only be caused by the profile gate — never by absent inputs.
+    /// </summary>
+    private const string ControlSymbol = "INDCTL";
+
+    /// <summary>The FY ends of the injected stray statement (the canned BANKA FY, plus the prior FY).</summary>
+    private static readonly DateOnly StrayFyEnd = new(2025, 12, 31);
+    private static readonly DateOnly StrayPriorFyEnd = new(2024, 12, 31);
+
     /// <summary>The twelve profile-gated codes (ten industrial concepts, fcf_cagr ×3).</summary>
     private static readonly string[] GatedCodes =
     [
@@ -94,6 +105,16 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
         Assert.NotNull(alfa[MetricCodes.EvEbitda].Value);
         Assert.NotNull(alfa[MetricCodes.GrossMargin].Value);
         Assert.NotNull(alfa[MetricCodes.CurrentRatio].Value);
+
+        // DR-1 control: the identical complete line set injected onto BANKA, held under the
+        // `industrial` profile, computes every one of the twelve gated codes. This is what makes
+        // the BANKA NULLs falsifiable: without the profile gate BANKA would compute them too, so
+        // the test fails if the engine drops `instrument.AccountingProfile` from the input.
+        var control = bySymbol[ControlSymbol];
+        foreach (var code in GatedCodes)
+        {
+            Assert.NotNull(control[code].Value);
+        }
     }
 
     /// <summary>
@@ -185,8 +206,75 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
         Assert.Equal(IngestResult.Succeeded, sigortaResult.Status);
         Assert.Equal(0, sigortaResult.Quarantined);
 
+        // DR-1 falsifiability (TC-MDF-057): the canned BANKA payload carries almost no
+        // industrial lines, so under the natural not-meaningful rules every gated metric is
+        // already NULL and the L2 assertions below would pass with the profile gate reverted.
+        // Inject a COMPLETE stray industrial statement for BANKA directly into fin_line_items
+        // (COGS/EBIT/FIN_EXP + CUR_ASSETS/CUR_LIAB + FY CF OCF/CAPEX, plus the prior FY CF so
+        // the fcf_cagr windows have inputs), then mirror the exact same lines onto an
+        // `industrial` control. BANKA's gated codes must stay NULL while the control proves
+        // those very lines compute once the gate is off.
+        var strayLines = StrayIndustrialLines();
+        foreach (var (type, periodEnd, lines) in strayLines)
+        {
+            await builder.UpsertStatementLinesAsync(banka.Id, type, periodEnd, lines);
+        }
+
+        var control = await EnsureInstrumentAsync(builder, ControlSymbol, AccountingProfiles.Industrial);
+        await EnsurePriceAsync(builder, control.Id, 30.00m);
+        foreach (var (type, periodEnd, lines) in strayLines)
+        {
+            await builder.UpsertStatementLinesAsync(control.Id, type, periodEnd, lines);
+        }
+
         var metrics = await RunAsync(host, MetricsRecomputeJob.Code);
         Assert.Equal(IngestResult.Succeeded, metrics.Status);
+    }
+
+    /// <summary>
+    /// The complete stray industrial line set the gate must override (DR-1). BANKA's ingested
+    /// FY2025 NI/REV/DEPR_AMORT and BS are re-stated here so the identical set can be applied
+    /// verbatim to the industrial control.
+    /// </summary>
+    private static IReadOnlyList<(string Type, DateOnly PeriodEnd, IReadOnlyDictionary<string, decimal> Lines)> StrayIndustrialLines()
+    {
+        var isLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ni] = 300m,
+            [FinItemCodes.Rev] = 500m,
+            [FinItemCodes.DeprAmort] = 50m,
+            [FinItemCodes.Cogs] = 600m,
+            [FinItemCodes.Ebit] = 200m,
+            [FinItemCodes.FinExp] = 25m,
+        };
+        var bsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.TotalEquity] = 3000m,
+            [FinItemCodes.SharesDiluted] = 300m,
+            [FinItemCodes.Cash] = 500m,
+            [FinItemCodes.StDebt] = 2000m,
+            [FinItemCodes.LtDebt] = 1000m,
+            [FinItemCodes.CurAssets] = 800m,
+            [FinItemCodes.CurLiab] = 400m,
+        };
+        var cfLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ocf] = 250m,
+            [FinItemCodes.Capex] = 100m,
+        };
+        var priorCfLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ocf] = 200m,
+            [FinItemCodes.Capex] = 80m,
+        };
+
+        return
+        [
+            ("IS", StrayFyEnd, isLines),
+            ("BS", StrayFyEnd, bsLines),
+            ("CF", StrayFyEnd, cfLines),
+            ("CF", StrayPriorFyEnd, priorCfLines),
+        ];
     }
 
     private async Task<Instrument> EnsureInstrumentAsync(FixtureBuilder builder, string symbol, string profile)

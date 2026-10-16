@@ -135,6 +135,71 @@ public sealed class FixtureBuilder
         return membership;
     }
 
+    /// <summary>
+    /// Upserts canonical line items onto one instrument's FY statement of the given type,
+    /// creating the statement when it is absent. A test-local write for facts the canned
+    /// payloads do not carry (TKT-mdf-020 DR-1: a complete stray industrial statement
+    /// behind a financial profile) — the shared fixture catalog stays untouched.
+    /// </summary>
+    public async Task<FinancialStatement> UpsertStatementLinesAsync(
+        long instrumentId,
+        string statementType,
+        DateOnly periodEndDate,
+        IReadOnlyDictionary<string, decimal> lines)
+    {
+        var statement = await _db.FinancialStatements
+            .Where(s => s.InstrumentId == instrumentId
+                && s.PeriodType == "FY"
+                && s.StatementType == statementType
+                && s.PeriodEndDate == periodEndDate)
+            .OrderByDescending(s => s.Version)
+            .FirstOrDefaultAsync();
+
+        if (statement is null)
+        {
+            statement = new FinancialStatement
+            {
+                InstrumentId = instrumentId,
+                PeriodType = "FY",
+                PeriodEndDate = periodEndDate,
+                FiscalYear = periodEndDate.Year,
+                StatementType = statementType,
+                Version = 0,
+                PublishedAt = periodEndDate,
+                SourceUnitScale = "units",
+                SourceCurrency = "TRY",
+                SourceRef = $"fixture:{instrumentId}:{statementType}:{periodEndDate:yyyyMMdd}",
+                RecordedAt = Epoch,
+            };
+            _db.FinancialStatements.Add(statement);
+            await _db.SaveChangesAsync();
+        }
+
+        var existing = await _db.FinLineItems
+            .Where(l => l.StatementId == statement.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l, StringComparer.Ordinal);
+
+        foreach (var (code, value) in lines)
+        {
+            if (existing.TryGetValue(code, out var line))
+            {
+                line.Value = value;
+            }
+            else
+            {
+                _db.FinLineItems.Add(new FinLineItem
+                {
+                    StatementId = statement.Id,
+                    ItemCode = code,
+                    Value = value,
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return statement;
+    }
+
     public async Task<SavedScreen> CreateScreenAsync(
         long userId,
         string name,
