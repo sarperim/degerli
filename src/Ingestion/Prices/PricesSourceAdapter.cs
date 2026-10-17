@@ -29,13 +29,15 @@ public sealed class PricesSourceOptions
 /// <summary>
 /// The price adapter (FR-MDF-001) for the İş Yatırım public endpoints (primary) with the
 /// documented Yahoo Finance <c>.IS</c> contingency (03 §1.2). It fetches the raw payload
-/// through the shared <see cref="ISourceClient"/>, detects which source's envelope it is
-/// (İş Yatırım's batch <c>items</c>/<c>rows</c> shape vs. Yahoo's <c>chart</c> shape) and
-/// parses it into the canonical payload; persistence and validation are the job's. Every
-/// parsed payload carries the concrete source name (<c>isyatirim</c> / <c>yahoo</c>) so
-/// each stored row records its provenance (FR-MDF-008). It is also the backfill adapter
-/// (FR-MDF-010): the same client reads the historical resource, which returns as far back
-/// as the source allows.
+/// through the shared <see cref="ISourceClient"/>, detects which source's envelope it is —
+/// all three first-class per 01 v1.5 §10.9.1: the <b>real</b> İş Yatırım <c>value</c> +
+/// <c>HGDG_*</c> body (production primary, decoded by <see cref="IsYatirimPriceDecoder"/>),
+/// Yahoo's <c>chart</c> shape (contingency), and the canonical <c>sourceRef</c>/<c>items</c>
+/// double envelope (the L2 golden contract, §10.9.7) — and parses it into the canonical
+/// payload; persistence and validation are the job's. Every parsed payload carries the
+/// concrete source name (<c>isyatirim</c> / <c>yahoo</c>) so each stored row records its
+/// provenance (FR-MDF-008). It is also the backfill adapter (FR-MDF-010): the same client
+/// reads the historical resource, which returns as far back as the source allows.
 /// </summary>
 public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfillSourceAdapter<PricesHistoryPayload>
 {
@@ -81,6 +83,22 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
                 raw);
         }
 
+        if (IsYatirimPriceDecoder.IsEnvelope(document))
+        {
+            // The real İş Yatırım envelope (01 v1.5 §10.9.1): a per-ticker range body.
+            // Transport fields are checked first (ok:false / errorCode → source failure),
+            // then the requested day's rows are mapped onto the canonical payload.
+            IsYatirimPriceDecoder.EnsureSourceOk(document);
+            var items = IsYatirimPriceDecoder.DecodeRows(document)
+                .Where(row => row.Date == date)
+                .Select(ToPriceFact)
+                .ToList();
+            return new SourcePayload<PricesPayload>(
+                IsYatirimSource,
+                new PricesPayload(IsYatirimSource, date, items),
+                raw);
+        }
+
         var payload = Deserialize<PricesPayload>(raw);
         if (payload is null)
         {
@@ -107,6 +125,19 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
             return new SourcePayload<PricesHistoryPayload>(
                 YahooSource,
                 new PricesHistoryPayload(YahooSource, rows),
+                raw);
+        }
+
+        if (IsYatirimPriceDecoder.IsEnvelope(document))
+        {
+            // The same real-envelope field map as the fetch path (01 v1.5 §10.9.1): the
+            // source returns whatever history it holds, so the achieved depth is what it
+            // returned — never fabricated beyond the source limit (BR-MDF-006).
+            IsYatirimPriceDecoder.EnsureSourceOk(document);
+            var rows = IsYatirimPriceDecoder.DecodeRows(document);
+            return new SourcePayload<PricesHistoryPayload>(
+                IsYatirimSource,
+                new PricesHistoryPayload(IsYatirimSource, rows),
                 raw);
         }
 
@@ -148,7 +179,11 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
                     At(quote?.High, index),
                     At(quote?.Low, index),
                     At(quote?.Close, index),
-                    At(quote?.Volume, index));
+                    // Volume is deliberately dropped: Yahoo's field is share count, a
+                    // different unit from the stored ₺ turnover semantic (FLG-09(b),
+                    // 01 v1.5 §10.9.1). Deriving ₺ from shares × close was rejected as
+                    // computing — the same honest-gap posture as `open`. Stored NULL.
+                    Volume: null);
             }
         }
     }
@@ -171,9 +206,6 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
         new(row.Symbol, null, row.Open, row.High, row.Low, row.Close, row.Volume);
 
     private static decimal? At(IReadOnlyList<decimal?>? values, int index) =>
-        values is not null && index >= 0 && index < values.Count ? values[index] : null;
-
-    private static long? At(IReadOnlyList<long?>? values, int index) =>
         values is not null && index >= 0 && index < values.Count ? values[index] : null;
 
     private static JsonDocument ParseDocument(string raw)

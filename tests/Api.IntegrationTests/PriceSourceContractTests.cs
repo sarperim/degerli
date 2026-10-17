@@ -6,6 +6,7 @@ using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Prices;
+using Degerli.Ingestion.Sources;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -103,7 +104,10 @@ public sealed class PriceSourceContractTests : IClassFixture<PostgresFixture>, I
             Assert.Equal(PricesSourceAdapter.YahooSource, row.SourceRef);
             var fact = expected[symbols[row.InstrumentId]];
             Assert.Equal(fact.CloseRaw, row.CloseRaw);
-            Assert.Equal(fact.Volume, row.Volume);
+            // TC-MDF-061 (amended v1.5) — FLG-09(b) (architecture v1.5 §10.9.1): Yahoo's chart
+            // volume is share count, a different unit from the stored ₺ turnover — it is stored
+            // NULL (honest gap).
+            Assert.Null(row.Volume);
         });
     }
 
@@ -198,6 +202,27 @@ public sealed class PriceSourceContractTests : IClassFixture<PostgresFixture>, I
             c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == CoverageDataTypes.Prices);
         Assert.Equal(sourceLimit, coverage.AvailableFrom);
         Assert.Equal(T, coverage.AvailableTo);
+    }
+
+    /// <summary>TC-MDF-070 — a real-shaped envelope reporting a transport failure
+    /// (<c>ok:false</c>) is a source failure, not a parse event: the job run fails, nothing
+    /// is stored and nothing is quarantined (quarantine applies to parse/validation events).</summary>
+    [Fact]
+    public async Task TC_MDF_070_Transport_failure_job_side_is_a_failed_run_not_a_quarantine()
+    {
+        await ResetPricesAsync();
+        _wireMock.StubRealSource(RealSourceCatalog.PricesOkFalse, path: PricesPath);
+        await using var host = BuildIngestion(pricePath: PricesPath);
+
+        await Assert.ThrowsAsync<SourceFetchException>(
+            () => RunAsync(host, "prices", new IngestionRequest(T)));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(0, await db.DailyPrices.CountAsync());
+
+        var run = await db.IngestRuns.SingleAsync();
+        Assert.Equal(IngestResult.Failed, run.Status);
     }
 
     // ---------------------------------------------------------------------------------
