@@ -91,11 +91,17 @@ public static class RealSourceCatalog
     public const string StatementsDuplicateEqual = "kap-statements-duplicate-equal";
     public const string StatementsDuplicateUnequal = "kap-statements-duplicate-unequal";
 
+    // EVDS macro (column-oriented real envelope) — the macro-side lane (TKT-foundation-019).
+    public const string MacroEvds = "evds-macro";
+
     /// <summary>Concrete source name of the captured EOD price payloads.</summary>
     public const string IsYatirimSource = "isyatirim";
 
     /// <summary>Concrete source name of the KAP financial-statement payloads.</summary>
     public const string KapSource = "kap";
+
+    /// <summary>Concrete source name of the EVDS macro payloads (03 §1).</summary>
+    public const string EvdsSource = "evds";
 
     /// <summary>The five tickers captured into the real-source catalog (TKT-foundation-015).</summary>
     public static IReadOnlyList<string> Tickers { get; } = ["ASELS", "THYAO", "GARAN", "FROTO", "EBEBK"];
@@ -119,6 +125,7 @@ public static class RealSourceCatalog
         StatementsToleranceEdges,
         StatementsDuplicateEqual,
         StatementsDuplicateUnequal,
+        MacroEvds,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -153,6 +160,16 @@ public static class RealSourceCatalog
     private const string KapStatementsLabel =
         "Constructed by hand for KAP XBRL parsing-fidelity coverage (IFRS/TR/KAP tag variance, " +
         "Turkish-locale numbers) — a shape-faithful body, not a live capture.";
+
+    // TKT-foundation-019. The live EVDS endpoint is unavailable from this environment (the
+    // documented service route now serves the EVDS SPA shell, not JSON), so the entry is an
+    // honestly-labeled constructed body of the real column-oriented shape rather than a
+    // fabricated capture; the bounded live capture remains an explicit ticket criterion
+    // (recorded as a gap, never invented). No API key is present in the body — the key never
+    // travels in a response, and it is redacted before any capture would land here.
+    private const string EvdsMacroLabel =
+        "Constructed by hand for EVDS real-envelope parsing-fidelity coverage (the column-oriented " +
+        "items/Tarih shape, five official series) — a shape-faithful body, not a live capture.";
 
     // ---- verbatim captured bodies (bounded; see CaptureNote) ----
     private const string PricesAselsJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_AOF":371.181,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":7.6454,"ENDEKS_BAZLI_FIYAT":0.0304,"DOLAR_HACIM":269201762.3352,"SERMAYE":4.56E9,"HG_KAPANIS":376.0,"HG_AOF":371.181,"HG_MIN":364.25,"HG_MAX":379.0,"PD":1714560000000.00000,"PD_USD":34862810643.30767,"HAO_PD":442013568000.000000,"HAO_PD_USD":8987632583.844717,"HG_HACIM":1.3239396512E10,"DOLAR_BAZLI_MIN":7.4064,"DOLAR_BAZLI_MAX":7.7064,"DOLAR_BAZLI_AOF":7.5474},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":356.437,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":7.0888,"ENDEKS_BAZLI_FIYAT":0.0288,"DOLAR_HACIM":346838924.8866,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":356.437,"HG_MIN":346.75,"HG_MAX":377.25,"PD":1590300000000.00000,"PD_USD":32324747548.66091,"HAO_PD":409979340000.000000,"HAO_PD_USD":8333319918.044783,"HG_HACIM":1.7063642691E10,"DOLAR_BAZLI_MIN":7.0481,"DOLAR_BAZLI_MAX":7.6681,"DOLAR_BAZLI_AOF":7.2450},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":345.473,"HGDG_MIN":340.25,"HGDG_MAX":354.0,"HGDG_HACIM":12941100644.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":7.0862,"ENDEKS_BAZLI_FIYAT":0.0286,"DOLAR_HACIM":262949264.5362,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":345.473,"HG_MIN":340.25,"HG_MAX":354.0,"PD":1590300000000.00000,"PD_USD":32313187795.64037,"HAO_PD":409979340000.000000,"HAO_PD_USD":8330339813.716087,"HG_HACIM":1.2941100644E10,"DOLAR_BAZLI_MIN":6.9135,"DOLAR_BAZLI_MAX":7.1929,"DOLAR_BAZLI_AOF":7.0196}]}""";
@@ -197,6 +214,16 @@ public static class RealSourceCatalog
     // BS group is a non-conflicting sibling that must still ingest (partial batch).
     private const string StatementsDuplicateUnequalJson = """{"companyCode":"ALFA","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"1.234.567,89"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"tr:Hasilat","value":"9.999,99"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"5.000.000,00"}]}""";
 
+    // ---- constructed, shape-faithful EVDS macro body (TKT-foundation-019; honestly labeled
+    //      — the bounded live capture is an explicit ticket criterion, recorded as a gap,
+    //      never fabricated). The real EVDS envelope is column-oriented: one `items` row per
+    //      observation date (`Tarih`, dd-MM-yyyy) with one column per requested series code;
+    //      a series with no observation that date is `null`. A value may arrive as a JSON
+    //      number or a locale-free numeric string (TP.APIFON1 below). `YEARWEEK` is an
+    //      unrelated EVDS export column the decoder must ignore. Dates sit inside the
+    //      bounded 90-day lookback ending 2026-10-06 (2026-07-08..2026-10-06).
+    private const string MacroEvdsJson = """{"totalCount":4,"items":[{"Tarih":"01-09-2026","YEARWEEK":"2026-36","TP.TUKFIY2025.GENEL":46.30,"TP.APIFON1":null,"TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":null},{"Tarih":"15-09-2026","YEARWEEK":"2026-38","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":"43.00","TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":null},{"Tarih":"26-09-2026","YEARWEEK":"2026-39","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":null,"TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":5325.50},{"Tarih":"06-10-2026","YEARWEEK":"2026-41","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":null,"TP.DK.USD.A.YTL":47.15,"TP.DK.EUR.A.YTL":51.55,"TP.MK.ALTIN":null}]}""";
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -216,6 +243,7 @@ public static class RealSourceCatalog
         KapStatements(StatementsToleranceEdges, StatementsToleranceEdgesJson),
         KapStatements(StatementsDuplicateEqual, StatementsDuplicateEqualJson),
         KapStatements(StatementsDuplicateUnequal, StatementsDuplicateUnequalJson),
+        EvdsMacro(MacroEvds, MacroEvdsJson),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -256,6 +284,9 @@ public static class RealSourceCatalog
 
     private static RealSourcePayload KapStatements(string name, string json) =>
         Payload(name, KapStatementsLabel, RealSourceProvenance.Constructed, json, KapSource);
+
+    private static RealSourcePayload EvdsMacro(string name, string json) =>
+        Payload(name, EvdsMacroLabel, RealSourceProvenance.Constructed, json, EvdsSource);
 
     private static RealSourcePayload Payload(
         string name,

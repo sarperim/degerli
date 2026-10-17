@@ -9,11 +9,15 @@ namespace Degerli.Ingestion.Macro;
 /// The consolidated macro source adapter (FR-MOV-014, OQ-MOV-005): one TCMB EVDS request
 /// carries the five official series (TÜİK CPI, CBRT repo, USD/TRY, EUR/TRY, GOLD), replacing
 /// the earlier scattered per-source plan. It fetches the EVDS envelope through the
-/// macro-bound <see cref="ISourceClient"/> and maps each observation's EVDS
-/// <c>seriesCode</c> back to its canonical macro code so the jobs, the store and the strip
-/// are unchanged. Persistence, validation and alerting stay in the jobs. A non-success
-/// response surfaces as <see cref="SourceFetchException"/> (the unreachable class) and a
-/// malformed body as <see cref="SourcePayloadException"/> (the invalid class).
+/// macro-bound <see cref="ISourceClient"/> and maps each observation's EVDS identifier back
+/// to its canonical macro code so the jobs, the store and the strip are unchanged. Both
+/// first-class shapes parse through this one adapter (01 v1.5 §10.9.6): the <b>real</b> EVDS
+/// column envelope (<c>items</c>/<c>Tarih</c>, decoded by <see cref="EvdsMacroDecoder"/>)
+/// and the canonical <c>sourceRef</c>/<c>series</c> source-double envelope (the L2 golden
+/// contract, §10.9.7) — detection is by shape, never by config. Persistence, validation and
+/// alerting stay in the jobs. A non-success response surfaces as
+/// <see cref="SourceFetchException"/> (the unreachable class) and a malformed body as
+/// <see cref="SourcePayloadException"/> (the invalid class).
 /// </summary>
 public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
 {
@@ -50,6 +54,18 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     {
         var raw = await FetchStringAsync(BuildRequestPath(date), cancellationToken).ConfigureAwait(false);
 
+        // Both shapes parse through this one production adapter (01 v1.5 §10.9.6): the
+        // real EVDS column envelope (items/Tarih) and the canonical sourceRef/series double
+        // (the L2 golden shape, §10.9.7). Detection is by shape, never by config.
+        using var document = ParseDocument(raw);
+        if (EvdsMacroDecoder.IsEnvelope(document))
+        {
+            // The real envelope carries no provenance field; the adapter stamps the
+            // concrete EVDS source (03 §1) and keeps only the bounded value-date window.
+            var realItems = EvdsMacroDecoder.DecodeRows(document, date.AddDays(-LookbackDays), date);
+            return new SourcePayload<MacroPayload>(EvdsSource, new MacroPayload(EvdsSource, realItems), raw);
+        }
+
         EvdsMacroPayload? envelope;
         try
         {
@@ -73,6 +89,22 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
 
         var sourceRef = string.IsNullOrWhiteSpace(envelope.SourceRef) ? EvdsSource : envelope.SourceRef;
         return new SourcePayload<MacroPayload>(sourceRef, new MacroPayload(sourceRef, items), raw);
+    }
+
+    /// <summary>
+    /// Parses the raw body to a <see cref="JsonDocument"/>, surfacing a malformed body as
+    /// an invalid (payload) failure so the job quarantines it (<c>UNPARSEABLE_PAYLOAD</c>).
+    /// </summary>
+    private static JsonDocument ParseDocument(string raw)
+    {
+        try
+        {
+            return JsonDocument.Parse(raw);
+        }
+        catch (JsonException exception)
+        {
+            throw new SourcePayloadException(raw, exception);
+        }
     }
 
     /// <summary>
