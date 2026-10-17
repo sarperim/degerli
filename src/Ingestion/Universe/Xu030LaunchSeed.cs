@@ -72,6 +72,15 @@ public static class Xu030LaunchSeed
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(coverage);
 
+        // The seed records the XU030 index reference row its memberships attach to. On cold
+        // start no caller creates this exact code — the universe snapshot publishes XU30 and
+        // the FU seed creates XU100 (FLG-08) — so gating the seed on an externally-created
+        // row would make it inert and let the prices loop silently no-op on its production
+        // default. The seed materialises its own reference row, idempotently.
+        await store
+            .EnsureIndexAsync(IndexCode, "BIST 30", "BIST 30", cancellationToken)
+            .ConfigureAwait(false);
+
         var result = await store
             .SeedLaunchConstituentsAsync(
                 SourceRef,
@@ -83,8 +92,14 @@ public static class Xu030LaunchSeed
             .ConfigureAwait(false);
 
         // The accepted pre-launch constituent-history gap (FR-MDF-007/011, BR-MDF-007):
-        // recorded explicitly, never silently omitted. The recorder upsert is idempotent.
-        await coverage.RecordUniverseSeedGapAsync(AsOfDate, cancellationToken).ConfigureAwait(false);
+        // recorded explicitly, never silently omitted. The gap row is universe-scoped and
+        // shared with the universe launch seed, so it is recorded once — guarded on existence
+        // exactly as the universe job does, so the XU030 seed never rewrites an already
+        // recorded launch date. The recorder upsert itself is idempotent.
+        if (!await coverage.HasUniverseSeedGapAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await coverage.RecordUniverseSeedGapAsync(AsOfDate, cancellationToken).ConfigureAwait(false);
+        }
 
         return result;
     }

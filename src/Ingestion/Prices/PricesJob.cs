@@ -93,7 +93,7 @@ public sealed class PricesJob : IIngestJob
                 "prices: index {IndexCode} has no current constituents; nothing to fetch for {Date}",
                 _options.UniverseIndex,
                 request.Date);
-            return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+            return EmptyBoundResult();
         }
 
         var written = 0;
@@ -197,7 +197,7 @@ public sealed class PricesJob : IIngestJob
                 "prices: index {IndexCode} has no current constituents; nothing to backfill from {From}",
                 _options.UniverseIndex,
                 requestedFrom);
-            return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+            return EmptyBoundResult();
         }
 
         var written = 0;
@@ -353,18 +353,32 @@ public sealed class PricesJob : IIngestJob
     }
 
     /// <summary>
+    /// The result of a run whose configured bound resolved to no current constituents. A bound
+    /// naming an unpublished index degrades to an empty set (never throws). Under the
+    /// production launch default <see cref="Xu030LaunchSeed.IndexCode"/> however, an empty
+    /// bound is a real cold-start/misconfiguration gap — the launch-seed materialised no
+    /// members — so it is reported as a failure rather than a silent success that would look
+    /// healthy in the run ledger while fetching nothing (01 v1.5 §10.9.2).
+    /// </summary>
+    private IngestResult EmptyBoundResult() =>
+        string.Equals(_options.UniverseIndex, Xu030LaunchSeed.IndexCode, StringComparison.Ordinal)
+            ? new IngestResult(Code, 0, 0, 0, IngestResult.Failed)
+            : new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+
+    /// <summary>
     /// The fetch bound: the current constituents of the configured index (01 v1.5 §10.9.2).
-    /// On cold start — the bound is <see cref="Xu030LaunchSeed.IndexCode"/>, the index is
-    /// stored and carries no open membership row yet — the checked-in XU030 launch-seed is
-    /// applied once (01 v1.5 §10.9.3). A bound naming an unpublished index resolves to an
-    /// empty set (degrade, never throw — the instruments the bound needs may not exist yet).
+    /// On cold start — the bound is <see cref="Xu030LaunchSeed.IndexCode"/> and the index
+    /// carries no open membership row yet — the checked-in XU030 launch-seed is applied once
+    /// (01 v1.5 §10.9.3). The seed creates its own index reference row, so the cold-start
+    /// path does not depend on the universe snapshot having published that exact code
+    /// (FLG-08). A bound naming an unpublished index resolves to an empty set (degrade, never
+    /// throw — the instruments the bound needs may not exist yet).
     /// </summary>
     private async Task<IReadOnlyList<string>> ResolveConstituentsAsync(CancellationToken cancellationToken)
     {
         var indexCode = _options.UniverseIndex;
 
         if (string.Equals(indexCode, Xu030LaunchSeed.IndexCode, StringComparison.Ordinal)
-            && await _universe.IndexExistsAsync(indexCode, cancellationToken).ConfigureAwait(false)
             && !await _universe.HasOpenConstituentsAsync(indexCode, cancellationToken).ConfigureAwait(false))
         {
             var seed = await Xu030LaunchSeed
