@@ -2,6 +2,7 @@
 scope:
   - src/Ingestion/Prices/
   - src/Ingestion/Universe/
+  - src/Ingestion/Jobs/
   - src/Api/appsettings.json
   - fixtures/Degerli.Fixtures/FixtureUniverse.cs
   - fixtures/Degerli.Fixtures/FixtureSeeder.cs
