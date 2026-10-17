@@ -1,6 +1,6 @@
 # Market Overview & Macro Indicators Test Plan
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** approved v1.1 (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.2 — §8 real-source EVDS case added 2026-10-17 (architecture v1.5 §10.9.6; test-planner-applied at the delivery planner's request, builder-directed); §7 v1.4 post-board cases (delivery-planner-applied 2026-10-15; test-planner confirmation pending); v1.1 approved (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
 **Derives from:** `analysis/market-overview.md` (FR-MOV-001..021, UC-MOV-001..005, NFR-MOV-001..006) · `ux/market-overview.md` (SCR-001, UXR-MOV-001..012) · `architecture/` v1.2 (`02` §3.2/§6.3, `03` §3, `01` §8–§9) · strategy (approved) · fixture contract `01-fixture-universe.md` (FU).
 **TC ID convention:** `TC-MOV-NNN`, permanent. Levels: L1 unit · L2 integration · L3 web component · L4 e2e.
 
@@ -172,21 +172,21 @@
 | FR-MOV-002 | main | TC-001, 012, 016, 019 | planned |
 | FR-MOV-003 | main | TC-001, 012, 016 | planned |
 | FR-MOV-004 | main | TC-001, 002, 003, 012, 016, 019, 020 | planned |
-| FR-MOV-005 | main | TC-001, 012, 016 | planned |
+| FR-MOV-005 | main | TC-001, 012, 016; ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
 | FR-MOV-006 | main | TC-001, 004, 012, 016, 021 | planned |
 | FR-MOV-007 | main | TC-013, 016, 017 | planned |
-| FR-MOV-008 | main | TC-013, 017, 018 | planned |
+| FR-MOV-008 | main | TC-013, 017, 018, 027 | planned |
 | FR-MOV-009 | main | TC-013, 016, 017 | planned |
 | FR-MOV-010 | main | TC-012, 013, 016, 024 | planned |
 | FR-MOV-011 | main | TC-019 | planned |
 | FR-MOV-012 | main | TC-019 | planned |
 | FR-MOV-013 | main | TC-019 | planned |
-| FR-MOV-014 | main | TC-006, 007, 008 | planned |
+| FR-MOV-014 | main | TC-006, 007, 008, 026, 027, 028 | planned |
 | FR-MOV-015 | main | TC-009, 011 | planned |
 | FR-MOV-016 | main | TC-009, 013, 024 | planned |
 | FR-MOV-017 | Could | TC-015 (blocked-on-formula F-MOV-1) | flagged — accepted (2026-10-07) |
 | FR-MOV-020 | main | TC-016 (+ XC sweep) | planned |
-| FR-MOV-021 | main | TC-001, 020 | planned |
+| FR-MOV-021 | main | TC-001, 020; ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
 | UC-MOV-001 | main; alt a (macro stale); alt b (equity stale) | TC-016; TC-009, 013, 018; TC-014, 024 | planned |
 | UC-MOV-002 | main; alt a (indep unreachable); alt b (revision) | TC-006, 007, 008; TC-009; TC-007 | planned |
 | UC-MOV-003 | main; alt a (independent unavailable) | TC-017; TC-018, 013 | planned |
@@ -229,4 +229,18 @@
 - Expected: first post appends a `macro_values` row (series `INDEP_CPI`, `recorded_at` = entry time); the correction appends a second row → canonical = latest; a non-builder session gets `403`. Before any entry, the strip degrades to official-only with the "independent measure unavailable" note (UXR-MOV-008). No `INDEP_CPI` value ever arrives from the macro adapter.
 - Traces: FR-MOV-008/014, UC-MOV-003, `03` §8 · Level: L2 · Design: mutation + revision + authorization
 
-*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved.*
+---
+
+## 8. Real-source parsing-fidelity case — v1.5 (builder-directed via the delivery planner, 2026-10-17; architecture v1.5 §10.9.6 authority)
+
+**Home decision:** the EVDS real-envelope case lives **here**, not in the MDF plan's parsing-fidelity lane — FR-MOV-014 is MOV-owned (macro adapters are the MOV domain's ingestion scope) and TC-MOV-026 is its canonical-envelope sibling; the lane itself (catalog, posture, product-adapter rule) is shared via FU §10b. Serves **TKT-foundation-019**. Per the lane's product-path rule (MDF §8 preamble / DR-01): the captured **raw bytes** are served through the WireMock harness with the correct `Content-Type; charset=` header and decoded by the **production** adapter — never a fixture-owned decoder; the case asserts parse shape/fidelity (capture-recorded pins), never derived numbers.
+
+**TC-MOV-028 — Real EVDS envelope parses through the hardened macro adapter**
+- Preconditions: a bounded real EVDS capture in the real-source catalog (raw body + declared charset, honestly labeled — produced by TKT-foundation-019's live capture); WireMock serves the raw bytes at the macro route with the correct `Content-Type; charset=` header; the production `MacroSourceAdapter` hardened to parse the real shape (§10.9.6); TCMB EVDS API key configured (test value).
+- Steps: run the macro job against the real-envelope stub; read `macro_values` and the run ledger; re-run against the canonical EVDS envelope (TC-MOV-026's payload).
+- Expected: the five official series (`TUIK_CPI`, `CBRT_REPO`, `USD_TRY`, `EUR_TRY`, `GOLD`) parse from the real shape into `macro_values` with `source_ref` = `evds`; the bounded 90-day value-date lookback is respected (no values outside it); capture-pinned series values flow through unchanged (fidelity pins — no strip/snapshot golden derives from them); the API-key redaction posture is unchanged (the key appears only in the adapter's outbound request — never in stored payloads, quarantine records, or logs, asserted via the Serilog test sink); the canonical envelope remains the L2 golden shape (TC-MOV-026 goldens unchanged — both shapes parse through the same production adapter); `INDEP_CPI` never arrives from the adapter (five-series set).
+- Explicit (non-TC) criterion for TKT-foundation-019: the bounded live capture itself — date-window bounded, honestly labeled, redaction-checked — a live-pull observation recorded on the ticket, not a TC.
+- Traces: FR-MOV-014, UC-MOV-002 main, `01` v1.5 §10.9.6, FU §10b · Level: L2 · Design: EP — real-envelope valid class; fidelity pins capture-recorded (never derived numbers)
+- Dependencies: TC-MOV-026.
+
+*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged.*

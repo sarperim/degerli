@@ -28,7 +28,7 @@ scope:
 
 # TKT-mdf-013: Statement `version` → integer restatement sequence (end-to-end)
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-17 (PR [#75](https://github.com/sarperim/degerli/pull/75), merge commit `3fd00e0`).
 - PR: https://github.com/sarperim/degerli/pull/75
 - Size: L
 - Scope: the statement versioning path — the `financial_statements.version` column type change and its one-time value migration, the store's sequence assignment, and every serving/serving-reader of the version (metrics, snapshot, DCF baselines, stock fundamentals). Payload wire format keeps declaring `as_reported`/`restated`; the store assigns the sequence. Must NOT touch the metric formulas, the normalization of values, or unrelated admin endpoints.

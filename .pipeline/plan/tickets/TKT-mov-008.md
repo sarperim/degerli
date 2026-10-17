@@ -12,7 +12,7 @@ scope:
 
 # TKT-mov-008: Consolidated macro ingestion via TCMB EVDS
 
-- Status: in-review — DR-1 resolved (re-dispatch 2026-10-16): `INDEP_CPI` dropped from the EVDS `macro-ok` payload and the adapter's `observation.Code` fallback removed so only the five official series resolve; the six-code pin in `CannedSourceCatalogTests.cs` reconciled to the five-official-series contract per FU v1.4 §7/§10 and TC-MOV-027. Targeted suite green (macro adapter/ingestion + CannedSourceCatalog + market-strip consumers: 27 + 14 pass).
+- Status: done — merged to `dev` 2026-10-17 (PR [#78](https://github.com/sarperim/degerli/pull/78), merge commit `0ae16cc`).
 - Scope amendment (2026-10-16, user-sanctioned): added `tests/Api.IntegrationTests/CannedSourceCatalogTests.cs` so the six-code pin can be reconciled with FU v1.4 (INDEP_CPI owned by TKT-mov-009).
 - PR: https://github.com/sarperim/degerli/pull/78
 - Size: M

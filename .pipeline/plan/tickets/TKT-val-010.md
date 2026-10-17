@@ -10,7 +10,7 @@ scope:
 
 # TKT-val-010: Financial-sector DCF verdict (`DCF_NOT_COMPUTABLE` reason `financial_sector`)
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-17 (PR [#86](https://github.com/sarperim/degerli/pull/86), merge commit `cfee51f`).
 - PR: https://github.com/sarperim/degerli/pull/86
 - Size: S/M
 - Scope: the DCF path for financial profiles — the baseline job records `accounting_profile ∈ {bank, insurance}` instruments with a `sector_not_applicable` state (no FCF-derived baseline), and the compute endpoint returns `422 DCF_NOT_COMPUTABLE` with `params.reason = "financial_sector"` + an honest explanation, distinct from the missing-inputs state. Must NOT touch the base-FCF formula (TKT-mdf-017) or the metric gating (TKT-mdf-020).

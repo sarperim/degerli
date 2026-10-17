@@ -1,8 +1,8 @@
 # Consolidated Coverage Matrix
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.2 — approved v1.1 (builder final review 2026-10-07); v1.2 (2026-10-15) adds the post-board correctness cases (13 new TCs) — the closing document of the test-planning package
-**Consolidates:** every FR, UC flow, NFR, UXR, and SC from the approved brief / analysis / UX / architecture (v1.2) package against the test cases of the eight domain plans.
-**Test case universe:** 251 cases (**+13 in v1.4** — TC-MDF 53→62 · TC-MOV 25→27 · TC-VAL 27→28 · TC-FDF 12→13). By plan: TC-MDF (62) · TC-MOV (27) · TC-SCR (32) · TC-RES (36) · TC-VAL (28) · TC-ACC (32) · TC-FDF (13) · TC-XC (21). Methods: `unit | integration | component | e2e | script | manual | operational` (strategy §9.4).
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — v1.2 (2026-10-15) added the post-board correctness cases; **v1.3 (2026-10-17) adds the real-source parsing-fidelity & live-activation cases (+15 TCs — architecture v1.5 §10.9 mirror)** — the closing document of the test-planning package
+**Consolidates:** every FR, UC flow, NFR, UXR, and SC from the approved brief / analysis / UX / architecture (v1.2 + v1.5 §10.9) package against the test cases of the eight domain plans.
+**Test case universe:** 266 cases (**+13 in v1.4, +15 in v1.5** — TC-MDF 62→76 · TC-MOV 27→28 · TC-VAL 27→28 · TC-FDF 12→13). By plan: TC-MDF (76) · TC-MOV (28) · TC-SCR (32) · TC-RES (36) · TC-VAL (28) · TC-ACC (32) · TC-FDF (13) · TC-XC (21). Methods: `unit | integration | component | e2e | script | manual | operational` (strategy §9.4).
 
 **How to read:** each row points to test case IDs; full case specifications live in the domain plans. `cross-ref` = owned by another plan's case; `manual`/`operational` = recorded verification ledger entry (owner: builder). Detailed per-domain flow breakdowns are in each plan's §5.
 
@@ -26,15 +26,15 @@
 
 | FR | TCs | | FR | TCs |
 |---|---|---|---|---|
-| FR-MDF-001 | MDF-001, 002 | | FR-MDF-011 | MDF-017, 018; public side RES-015/016 |
-| FR-MDF-002 | MDF-003 | | FR-MDF-012 | MDF-019, 020, 021, 025, 052 |
+| FR-MDF-001 | MDF-001, 002, 064, 068, 069, 070, 072, 073, 074, 075 | | FR-MDF-011 | MDF-017, 018, 076; public side RES-015/016 |
+| FR-MDF-002 | MDF-003, 065, 067, 071 | | FR-MDF-012 | MDF-019, 020, 021, 025, 052, 071, 073 |
 | FR-MDF-003 | MDF-004 | | FR-MDF-013 | MDF-026, 031, 034 |
 | FR-MDF-004 | MDF-005 | | FR-MDF-014 | MDF-027, 033 |
 | FR-MDF-005 | MDF-006 | | FR-MDF-015 | MDF-035, 052 |
-| FR-MDF-006 | MDF-007, 038 | | FR-MDF-016 | MDF-013, 014, 040, 046 |
-| FR-MDF-007 | MDF-037 | | FR-MDF-018 | MDF-029, 030, 053 |
-| FR-MDF-008 | MDF-008, 009 | | FR-MDF-019 | MDF-032 |
-| FR-MDF-009 | MDF-010, 011 | | FR-MDF-010 | MDF-015, 016, 043 |
+| FR-MDF-006 | MDF-007, 038, 075 | | FR-MDF-016 | MDF-013, 014, 040, 046 |
+| FR-MDF-007 | MDF-037, 075, 076 | | FR-MDF-018 | MDF-029, 030, 053 |
+| FR-MDF-008 | MDF-008, 009, 063 | | FR-MDF-019 | MDF-032 |
+| FR-MDF-009 | MDF-010, 011 | | FR-MDF-010 | MDF-015, 016, 043, 068 |
 
 ### MOV (19)
 
@@ -43,12 +43,12 @@
 | FR-MOV-001 | MOV-001, 012, 016 | | FR-MOV-011 | MOV-019 |
 | FR-MOV-002 | MOV-001, 012, 016, 019 | | FR-MOV-012 | MOV-019 |
 | FR-MOV-003 | MOV-001, 012, 016 | | FR-MOV-013 | MOV-019 |
-| FR-MOV-004 | MOV-001, 002, 003, 012, 016, 019, 020 | | FR-MOV-014 | MOV-006, 007, 008 |
-| FR-MOV-005 | MOV-001, 012, 016 | | FR-MOV-015 | MOV-009, 011 |
+| FR-MOV-004 | MOV-001, 002, 003, 012, 016, 019, 020 | | FR-MOV-014 | MOV-006, 007, 008, 026, 027, 028 |
+| FR-MOV-005 | MOV-001, 012, 016; ₺ pin MDF-064/069 (v1.5) | | FR-MOV-015 | MOV-009, 011 |
 | FR-MOV-006 | MOV-001, 004, 012, 016, 021 | | FR-MOV-016 | MOV-009, 013, 024 |
 | FR-MOV-007 | MOV-013, 016, 017 | | FR-MOV-017 | MOV-015 (golden flagged — F-MOV-1) |
 | FR-MOV-008 | MOV-013, 017, 018 | | FR-MOV-020 | MOV-016, XC-006 |
-| FR-MOV-009 | MOV-013, 016, 017 | | FR-MOV-021 | MOV-001, 020 |
+| FR-MOV-009 | MOV-013, 016, 017 | | FR-MOV-021 | MOV-001, 020; ₺ pin MDF-064/069 (v1.5) |
 | FR-MOV-010 | MOV-012, 013, 016, 024 | | | |
 
 ### SCR (17)
@@ -134,15 +134,43 @@ New TCs (all in the domain plans' §7 "post-board correctness" sections; fixture
 | TC-VAL-028 | FR-VAL-001, FR-VAL-003 | financial-sector DCF verdict |
 | TC-FDF-013 | FR-FDF-003, FR-FDF-004 | ticker-level holdings descoped to coverage gap |
 
+### v1.5 additions (2026-10-17) — real-source parsing-fidelity & live-activation cases
+
+New TCs (MDF plan §8; MOV plan §8) tracing architecture v1.5 §10.9 (AD-14 — the builder's real-source ingestion decision; **no new FRs**). TC-MDF-063..068 re-author the IDs that were burned in test source on the closed PR #82 branch to assert the **product path** (raw captured bytes + declared charsets through the WireMock harness into the production `src/Ingestion` adapters — DR-01); TC-MDF-069..076 and TC-MOV-028 are new. Added rather than merged into the rows above so the delta stays legible (the §2/§3 rows above are also updated):
+
+| TC | Traces | Covers |
+|---|---|---|
+| TC-MDF-063 | FR-MDF-008, `01` §10.9.7 | real-source catalog contract — honest labels (DR-03), charset-faithful bytes, harness serving |
+| TC-MDF-064 | FR-MDF-001, FR-MDF-010 | real İş Yatırım HGDG envelope decode (fidelity pins; open NULL; ₺ volume bigint) |
+| TC-MDF-065 | FR-MDF-002 | TR-locale numbers, culture-free parse (en-dash, parentheses, %, NBSP edges) |
+| TC-MDF-066 | FR-MDF-001/002, `01` §10.9.4 | `ISourceClient` declared-charset honoring (windows-1254/ISO-8859-9; UTF-8 default) |
+| TC-MDF-067 | FR-MDF-002 | KAP XBRL concept map + fact grouping + `OTHER_*` passthrough |
+| TC-MDF-068 | FR-MDF-010, BR-MDF-006 | real payload end-to-end on the adapter backfill path |
+| TC-MDF-069 | FR-MDF-001 | three-envelope detection (real / Yahoo / canonical); Yahoo volume NULL (FLG-09) |
+| TC-MDF-070 | FR-MDF-001, UC-MDF-001 alt a | real-envelope transport failure = source failure, not a parse event |
+| TC-MDF-071 | FR-MDF-002, FR-MDF-012, UC-MDF-001 alt b | duplicate-concept equal-collapse / unequal-quarantine (DR-05 overturn) |
+| TC-MDF-072 | FR-MDF-001, FR-MDF-006/007 | per-ticker loop over the configured index's current constituents |
+| TC-MDF-073 | FR-MDF-001, FR-MDF-012 | per-symbol failure isolation within the loop |
+| TC-MDF-074 | FR-MDF-001, `01` §10.9.2 | sequential pacing (`RequestDelayMs`) |
+| TC-MDF-075 | FR-MDF-006/007 | universe bound follows the configured index; `XU030` default (config-only flip) |
+| TC-MDF-076 | FR-MDF-007, FR-MDF-011 | XU030 membership launch-seed (TC-MDF-062 machinery) |
+| TC-MOV-028 | FR-MOV-014, UC-MOV-002 | real EVDS envelope through the hardened macro adapter (home: MOV plan §8) |
+
+**Volume-semantic pin (FLG-09, builder 2026-10-17 — architecture §10.9.1):** stored `volume` = **TRY turnover (₺)** — İş Yatırım rows store `HGDG_HACIM` as-is; Yahoo-contingency rows store NULL (different unit; deriving ₺ rejected as computing); FU values unchanged (**no golden re-derivation** — LAMDA stays excluded under the 1,000,000 test threshold). Pinned by TC-MDF-061 (amended v1.5), 064, 069; serves FR-MOV-005 / FR-MOV-021 display semantics and BR-MOV-011.
+
+**Explicit (non-TC) live-pull criteria — recorded so ticket acceptance is explicit, not TC-passing:**
+- **TKT-foundation-018 (live activation):** (a) BR-MOV-011 movers-threshold recalibration from the observed BIST 30 volume distribution (`Ingestion:MarketSnapshot:VolumeEligibilityThreshold` — one config value; the FU test threshold 1,000,000 is unchanged); (b) bounded live capture replacing constructed catalog bodies where honest (labels re-validated by TC-MDF-063 after replacement); (c) real-world correctness of the checked-in XU030 membership list (date-stamped observation); (d) first live pull completes within the NFR-MDF-001 operational budget (run-ledger observation).
+- **TKT-foundation-019 (EVDS):** the bounded real EVDS capture itself (date-window bounded, honestly labeled, API-key redaction checked).
+
 **Won't FRs (16 — out of scope by BA decision, not defects):** FR-MDF-017 · FR-MOV-018/019 · FR-SCR-018/019 · FR-RES-023/024/025 · FR-VAL-011/012/013 · FR-ACC-011/012 · FR-FDF-007/008/009. Negative/boundary tests exist only where the architecture defines rejection behavior (unknown metric → METRIC_NOT_AVAILABLE; no public fund routes → FDF-010).
 
 ## 3. UC coverage (30 UCs, main + alternate/error flows)
 
 | UC | Flows → TCs |
 |---|---|
-| UC-MDF-001 | main MDF-010 · alt a (unreachable/retry/stale) MDF-012, 013, 014 · alt b (quarantine) MDF-019, 020, 024, 052 |
-| UC-MDF-002 | main MDF-015, 043 · alt a (source-limited) MDF-016 |
-| UC-MDF-003 | main MDF-037, 038 · alt a (unclassified) MDF-025 |
+| UC-MDF-001 | main MDF-010 · alt a (unreachable/retry/stale) MDF-012, 013, 014, 070 · alt b (quarantine) MDF-019, 020, 024, 052, 071, 073 |
+| UC-MDF-002 | main MDF-015, 043, 068 · alt a (source-limited) MDF-016 |
+| UC-MDF-003 | main MDF-037, 038, 076 · alt a (unclassified) MDF-025 |
 | UC-MDF-004 | report MDF-017, 018, 040, 051 · go/no-go decisions — manual ledger |
 | UC-MDF-005 | main MDF-026, 036 · short-window MDF-033 · alt a (no data + boundary) MDF-036, RES-015/016 |
 | UC-MOV-001 | main MOV-016 · alt a (macro stale) MOV-009, 013, 018 · alt b (equity stale) MOV-014, 024 |
@@ -253,7 +281,7 @@ New TCs (all in the domain plans' §7 "post-board correctness" sections; fixture
 ## 7. Orphan check (both directions)
 
 - **Requirement → test:** complete — §1's inventory shows every item lands in ≥1 TC or a recorded method; the single flagged golden (FR-MOV-017, Could) has its contract tested and the formula gap accepted for deferral to promotion (F-MOV-1, 2026-10-07).
-- **Test → requirement:** complete by construction — every TC in every plan carries a `Traces` line to FR/UC/NFR/UXR/SC IDs; no TC exists without a requirement (the plans contain no intuition-only cases; §3 of each plan names each case's technique).
+- **Test → requirement:** complete by construction — every TC in every plan carries a `Traces` line to FR/UC/NFR/UXR/SC IDs; no TC exists without a requirement (the plans contain no intuition-only cases; §3 of each plan names each case's technique). **v1.5:** the real-source lane adds no new requirements (AD-14 — no new FRs); the live-pull items (threshold recalibration, live captures, XU030 list correctness) are recorded as explicit ticket criteria in the v1.5 additions block — not silent gaps.
 - **Known deferred/blocked items (explicit, not silent):** F-MOV-1 (period-aggregate formula — TC-MOV-015 golden deferred to promotion, accepted by the builder 2026-10-07); Q6 (membership-removal mechanism — confirmed deferred 2026-10-07; TC-MDF-037 asserts the observable contract). **Resolved at the builder's final review (2026-10-07):** F-VAL-1 (total-debt reading, goldens verified, corner corrected); Q3 (rights factor defined in FU §2/§11.6 → TC-MDF-053); Q5 (window-suffixed metric codes, plain upsert key → TC-MDF-034). **Upstream-doc gaps flagged (not silent, 2026-10-07):** `02` §6.4's parameter name should read `debt`/`total_debt`; `02` corporate-action and §6 metric-storage sections should mirror the Q3 factor and the Q5 code shape — the architect's dispatch repeatedly timed out, so the fixture contract (FU) and domain plans are authoritative for implementation until those patches land.
 
 ## 8. Decisions ledger (all flags across the package, for the final review)
@@ -278,4 +306,4 @@ New TCs (all in the domain plans' §7 "post-board correctness" sections; fixture
 **The contract:** the coder agent implements against these plans; a unit of work is done when its tests pass. Once approved, test cases may not be weakened to make an implementation pass — only the builder can change a test case, via the change-propagation rule (strategy §14): every TC change lists the affected requirement IDs and tickets for re-validation. Expected values derive from the approved documents and the fixture universe — never from an implementation.
 
 ---
-*Change record: v1.0 2026-10-06 — initial consolidated coverage matrix, submitted for final review. v1.1 2026-10-07 — builder final review applied: F-VAL-1 ruled (reading (a), goldens verified, corner corrected to 8.99623); F-MOV-1 accepted (golden deferred to promotion); Q3 resolved → TC-MDF-053 (+1 case, total 238, FR-MDF-018 row); Q5 resolved (window-suffixed codes, plain upsert key); Q6 confirmed deferred; all §6 interpretations and the manual ledger acknowledged; upstream `02` mirror-update gaps flagged; modified TCs: TC-VAL-002 (golden), TC-MDF-034 (key made definitive, wording only) — none implemented yet, re-validation by construction.* **v1.2 2026-10-15 — post-board correctness cases added (13 new TCs: TC-MDF-054..062, TC-MOV-026/027, TC-VAL-028, TC-FDF-013; §2 "v1.4 additions" block; universe 238→251), tracing the builder's verified post-board feedback against `02` v1.3 / `03` v1.4 / FU v1.4. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.**
+*Change record: v1.0 2026-10-06 — initial consolidated coverage matrix, submitted for final review. v1.1 2026-10-07 — builder final review applied: F-VAL-1 ruled (reading (a), goldens verified, corner corrected to 8.99623); F-MOV-1 accepted (golden deferred to promotion); Q3 resolved → TC-MDF-053 (+1 case, total 238, FR-MDF-018 row); Q5 resolved (window-suffixed codes, plain upsert key); Q6 confirmed deferred; all §6 interpretations and the manual ledger acknowledged; upstream `02` mirror-update gaps flagged; modified TCs: TC-VAL-002 (golden), TC-MDF-034 (key made definitive, wording only) — none implemented yet, re-validation by construction.* **v1.2 2026-10-15 — post-board correctness cases added (13 new TCs: TC-MDF-054..062, TC-MOV-026/027, TC-VAL-028, TC-FDF-013; §2 "v1.4 additions" block; universe 238→251), tracing the builder's verified post-board feedback against `02` v1.3 / `03` v1.4 / FU v1.4. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.** **v1.3 2026-10-17 — real-source parsing-fidelity & live-activation cases added (15 TCs: TC-MDF-063..076 — 063..068 re-authored IDs burned in test source on the closed PR #82 branch — and TC-MOV-028; §2 "v1.5 additions" block + amended §2 MDF/MOV FR rows and §3 UC rows; universe 251→266), mirroring architecture v1.5 §10.9 (AD-14, builder instruction 2026-10-17 via the delivery planner; closes the PR #82 escalation DR-01..03). TC-MDF-061 amended (FLG-09: Yahoo-contingency volume NULL). Volume-semantic pin (FR-MOV-005/021, BR-MOV-011) and the TKT-foundation-018/019 live-pull criteria recorded explicitly. Goldens untouched — no re-derivation. Applied by the test-planner at the delivery planner's request, builder-directed; the v1.2 pending-confirmation note is unchanged by this entry.**

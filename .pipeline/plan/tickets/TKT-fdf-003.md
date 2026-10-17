@@ -9,7 +9,7 @@ scope:
 
 # TKT-fdf-003: Ticker-level fund holdings descoped to a recorded coverage gap
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-17 (PR [#74](https://github.com/sarperim/degerli/pull/74), merge commit `38e404c`).
 - PR: https://github.com/sarperim/degerli/pull/74
 - Size: S
 - Scope: the fund ingest — stop attempting ticker-level holdings from TEFAS (the source exposes NAV/performance/asset-class allocation only), keep `fund_navs`/`fund_performances`, and record the per-fund holdings gap in `coverage_metadata` (BR-FDF-004). The `fund_holdings` schema/columns stay for future look-through phases. Must NOT touch the equity statements/dividends adapters.

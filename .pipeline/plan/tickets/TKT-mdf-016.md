@@ -13,7 +13,7 @@ scope:
 
 # TKT-mdf-016: Corporate-action-adjusted EPS/DPS series for CAGRs
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-17 (PR [#81](https://github.com/sarperim/degerli/pull/81), merge commit `2585fed`).
 - PR: https://github.com/sarperim/degerli/pull/81
 - Size: M
 - Scope amendment (user-approved, 2026-10-16): added `fixtures/Degerli.Fixtures/FixtureUniverse.cs` and `tests/Api.IntegrationTests/FixtureUniverseSeedTests.cs`. TC-MDF-058's golden requires EPSL's FY2022–FY2024 per-share history and FY DPS series; `FixtureUniverse.cs` is the fixture data's only home ("there is no second data path"), so the original scope's `FixtureModels.cs`/`FixtureSeeder.cs` (model/persistence layer) could not carry it. The count assertion change is forced by the 6 new statement rows.

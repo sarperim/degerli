@@ -56,7 +56,7 @@
 
 **`sectors`** — *Sector/Industry*: `id`, `code`, `name_tr`, `name_en` (bilingual labels, brief §7), `parent_sector_id` FK self (2-level sector→industry hierarchy). Cardinality: 1 sector → * instruments.
 
-**`indices`** — *Index*: `id`, `code` (`XU100`, `XU30`), `name_tr`, `name_en`.
+**`indices`** — *Index*: `id`, `code` (`XU100`, `XU030`), `name_tr`, `name_en`.
 
 **`index_constituents`** — *Constituent membership* (FR-MDF-007, BR-MDF-005): `id`, `index_id` FK, `instrument_id` FK, `effective_from` date, `effective_to` date NULL, `source_ref`. Append-only — no row is ever updated; universe changes add new rows. Current universe = view `v_current_universe` (membership where `effective_to IS NULL` and index = XU100). Instrument * ↔ * Index via membership.
 

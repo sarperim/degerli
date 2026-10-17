@@ -1,19 +1,22 @@
 ---
 scope:
+  - src/Ingestion/Prices/
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - fixtures/Degerli.Fixtures/Program.cs
   - fixtures/Degerli.Fixtures/Degerli.Fixtures.csproj
-  - tests/Api.IntegrationTests/RealSourcePayloadTests.cs
+  - tests/Api.IntegrationTests/Harness/
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
+  - tests/Api.IntegrationTests/PriceSourceContractTests.cs
 ---
 
-# TKT-foundation-015: Real-source payload catalog & parsing fidelity
+# TKT-foundation-015: Real İş Yatırım price-envelope decoding in the product
 
-- Status: todo
-- Size: L
-- Scope: a **second, real-shape** WireMock payload catalog — capture the actual raw HTTP payloads for five test tickers (`ASELS`, `THYAO`, `GARAN`, `FROTO`, and one recent IPO chosen at capture time) from the live İş Yatırım / KAP / EVDS endpoints into a real-source catalog (separate from the synthetic FU catalog), and add parsing tests exercising real-world shapes: Turkish locale numeric formatting (`1.234.567,89`), `ISO-8859-9`/`windows-1254` encodings, and inconsistent KAP XBRL tags. The FU golden values are untouched — this catalog tests *parsing shape*, not goldens. Capture is bounded (5 tickers, limited history); redistribution terms recorded per RISK-MDF-001. Must NOT alter the synthetic FU catalog or the golden contract.
-- Traces to: FR-MDF-001, FR-MDF-002, FR-MOV-014; UC-MDF-001, UC-MDF-002; NFR-MDF-004
-- Acceptance: explicit criteria (this is test-harness hardening, not a formula) — (1) the real-source catalog loads through the same helper seam as the FU catalog; (2) each of the five tickers' prices/statements parse into the canonical models with locale-formatted numbers decoded correctly; (3) the ISO-8859-9/windows-1254 bodies decode without mojibake; (4) at least one real KAP XBRL tag variance is exercised; (5) a parsing test consumes one real payload end-to-end through the harness. Plus the new parsing cases recorded in `.pipeline/testing/market-data-foundation.md`.
-- Architecture refs: `00-test-strategy.md` §7 (source doubles); `01-fixture-universe.md` §10 (catalog pattern), §1 (synthetic-everywhere principle — this catalog is the recorded exception)
+- Status: todo — regenerated 2026-10-17 (re-plan of the escalated PR #82 wave; builder decisions: real data from now on, BIST-30-first live activation). The architecture v1.5 §10.9.1 is the design authority; escalation findings DR-01 (prices half), DR-02, DR-03 are resolved by that amendment plus test-plan v1.5. PR #82 was closed unmerged — branch `TKT-foundation-015` is raw material (captured HGDG bodies and working decode logic to lift, not contract).
+- Size: M
+- Scope: lift the `HGDG_*` decoding from the PR #82 fixture catalog into `src/Ingestion/Prices/` and teach `PricesSourceAdapter` its third envelope: the real İş Yatırım body (`{"ok":true,…,"value":[{HGDG_*}]}`) parsed into the canonical `PricesPayload`/`PricesHistoryPayload` on both the fetch and backfill paths, per the §10.9.1 field map (`HGDG_HS_KODU`→symbol, `HGDG_TARIH` dd-MM-yyyy→date, `HGDG_KAPANIS`→close with `HG_KAPANIS` fallback, `HGDG_MIN`/`HGDG_MAX`→low/high, `HGDG_HACIM`→volume as ₺ turnover stored bigint, open = NULL honest gap — never invented from AOF; `ok:false`/non-null `errorCode` = source failure, not a parse event). Envelope detection covers all three shapes (real / Yahoo / canonical-double) so the existing L2 golden path keeps working unchanged. The real-source catalog (`RealSourceCatalog.cs`) is created in the fixtures project with honest captured-vs-constructed provenance labels (§10.9.7 labeling rule — never "captured verbatim" on constructed bodies) and is served through the WireMock harness as **raw bytes** with correct `Content-Type; charset=` headers. TC-MDF-061's Yahoo-contingency leg is updated to the amended v1.5 expectation (volume NULL — FLG-09). Must NOT alter the synthetic FU catalog, the golden contract, storage, metrics, or the API.
+- Traces to: FR-MDF-001, FR-MDF-008, FR-MDF-010; UC-MDF-001, UC-MDF-002
+- Acceptance: TC-MDF-061 (amended v1.5), TC-MDF-063, TC-MDF-064, TC-MDF-068, TC-MDF-069, TC-MDF-070
+- Architecture refs: `01-system-architecture.md` §10.9.1 (field map + volume semantics note), §10.9.7 (test-double posture), AD-14; `03-api-design.md` §1 principle 2 (per-row provenance — unchanged)
 - UX refs: —
-- Dependencies: TKT-mdf-021, TKT-mov-008
-- Parallel group: P-25
+- Dependencies: TKT-mdf-021, TKT-mov-008 (both done)
+- Parallel group: none (first ticket of the real-source wave)

@@ -9,7 +9,7 @@ scope:
 
 # TKT-mdf-022: Constituents — launch seed + forward logging + recorded pre-launch gap
 
-- Status: in-review
+- Status: done — merged to `dev` 2026-10-17 (PR [#76](https://github.com/sarperim/degerli/pull/76), merge commit `7be1100`).
 - PR: https://github.com/sarperim/degerli/pull/76
 - Size: S/M
 - Scope: the universe-membership strategy — seed the current BIST 100 constituents at launch (effective_from = launch, effective_to NULL), keep logging subsequent quarterly changes append-only via the daily sync, and record the absent pre-launch constituent history as an explicit `coverage_metadata` (`universe` scope) gap. No free structured 10Y history exists (resolves the FR-MDF-007 assumption). Must NOT touch the daily-sync change-detection logic beyond the seed + coverage record.

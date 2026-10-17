@@ -1,14 +1,14 @@
 # Market Data Foundation Test Plan
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — §14 change-propagation 2026-10-13 (TC-MDF-047/048/049 re-leveled L4→L3, builder-approved; test-planner confirmation pending — see change record) · v1.2 approved (Gate 2 + builder final review 2026-10-07)
-**Derives from:** `analysis/market-data-foundation.md` (FR-MDF-001..019, UC-MDF-001..005, NFR-MDF-001..006) · `ux/market-data-foundation.md` (SCR-012, UXR-MDF-001..028 — shared admin surface only) · `architecture/` v1.2 (`01` C3/C5, `02` §3.1/§6, `03` §8–§9) · strategy `00-test-strategy.md` (approved) · fixture contract `01-fixture-universe.md` (submitted with this plan).
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.5 — §8 real-source parsing-fidelity & live-activation cases added 2026-10-17 (builder-directed via the delivery planner; architecture v1.5 §10.9 authority; applied by the test-planner — see change record) · v1.4 §7 post-board correctness cases 2026-10-15 (delivery-planner-applied; test-planner confirmation pending) · v1.3 §14 change-propagation 2026-10-13 (TC-MDF-047/048/049 re-leveled L4→L3, builder-approved; confirmation pending) · v1.2 approved (Gate 2 + builder final review 2026-10-07)
+**Derives from:** `analysis/market-data-foundation.md` (FR-MDF-001..019, UC-MDF-001..005, NFR-MDF-001..006) · `ux/market-data-foundation.md` (SCR-012, UXR-MDF-001..028 — shared admin surface only) · `architecture/` v1.2 (`01` C3/C5, `02` §3.1/§6, `03` §8–§9) · `01` **v1.5 §10.9** (real-source envelope contracts → §8) · strategy `00-test-strategy.md` (approved) · fixture contract `01-fixture-universe.md` (submitted with this plan).
 **TC ID convention:** `TC-MDF-NNN`, permanent. Levels: L1 unit · L2 integration (Testcontainers Postgres + WireMock sources + fake TimeProvider + mail/Serilog doubles) · L3 web component (Vitest + Testing Library + MSW) · L4 e2e (compose stack + MailPit + Playwright). All fixtures referenced as `FU §n`.
 
 ## 1. Scope
 
 **Tested here:** FR-MDF-001..016, 018, 019 (18 non-Won't); UC-MDF-001..005 including every alternate/error flow; NFR-MDF-001..006 (005 partially via the XC reproducibility case, 006 via the manual ledger); SCR-012 shared admin infrastructure: UXR-MDF-001..011, 013..017, 026..028 (19 of the 28 admin UXRs).
 
-**Not tested here (and why):** FR-MDF-017 (backtesting — Won't); the admin description queue/editor/publish UXRs (018..022 → RES plan), metric-visibility UXRs (023/024 → SCR plan), baseline regeneration (025 → VAL plan), fund coverage rows (012 → FDF plan); real-source behavior, cost NFRs, and the 23:59 real-data completion budget (operational — §4); reproducibility quickstart (TC-XC, cross-referenced).
+**Not tested here (and why):** FR-MDF-017 (backtesting — Won't); the admin description queue/editor/publish UXRs (018..022 → RES plan), metric-visibility UXRs (023/024 → SCR plan), baseline regeneration (025 → VAL plan), fund coverage rows (012 → FDF plan); **live network pulls against production source endpoints** (operational — the real envelopes' *parsing* IS tested here, via captured raw bytes served through the WireMock doubles: §8; the live-pull observations are explicit ticket criteria, §8 preamble), cost NFRs, and the 23:59 real-data completion budget (operational — §4); reproducibility quickstart (TC-XC, cross-referenced).
 
 ## 2. Test Case Specification
 
@@ -370,27 +370,27 @@
 
 | Requirement | Flows covered | Test Cases | Status |
 |---|---|---|---|
-| FR-MDF-001 | main | TC-001, 002 | planned |
-| FR-MDF-002 | main | TC-003 | planned |
+| FR-MDF-001 | main | TC-001, 002, 064, 068, 069, 070, 072, 073, 074, 075 | planned |
+| FR-MDF-002 | main | TC-003, 065, 067, 071 | planned |
 | FR-MDF-003 | main | TC-004 | planned |
 | FR-MDF-004 | main | TC-005 | planned |
 | FR-MDF-005 | main | TC-006 | planned |
-| FR-MDF-006 | main | TC-007, 038 | planned |
-| FR-MDF-007 | main | TC-037 | planned |
-| FR-MDF-008 | main | TC-008, 009 | planned |
+| FR-MDF-006 | main | TC-007, 038, 075 | planned |
+| FR-MDF-007 | main | TC-037, 075, 076 | planned |
+| FR-MDF-008 | main | TC-008, 009, 063 | planned |
 | FR-MDF-009 | main | TC-010, 011 | planned |
-| FR-MDF-010 | main | TC-015, 016, 043 | planned |
-| FR-MDF-011 | main | TC-017, 018 (public side → RES plan) | planned |
-| FR-MDF-012 | main | TC-019, 020, 021, 025, 052 | planned |
+| FR-MDF-010 | main | TC-015, 016, 043, 068 | planned |
+| FR-MDF-011 | main | TC-017, 018, 076 (public side → RES plan) | planned |
+| FR-MDF-012 | main | TC-019, 020, 021, 025, 052, 071, 073 | planned |
 | FR-MDF-013 | main | TC-026, 031, 034 | planned |
 | FR-MDF-014 | main, short-history | TC-027, 033 | planned |
 | FR-MDF-015 | main | TC-035, 052 (backstop 009, 034) | planned |
 | FR-MDF-016 | main | TC-013, 014, 040, 046 | planned |
 | FR-MDF-018 | main | TC-029, 030, 053 | planned |
 | FR-MDF-019 | main | TC-032 | planned |
-| UC-MDF-001 | main; alt a; alt b | TC-010; TC-012, 013; TC-019, 020, 024, 052 | planned |
-| UC-MDF-002 | main; alt a | TC-015, 043; TC-016 | planned |
-| UC-MDF-003 | main; alt a | TC-037, 038; TC-025 | planned |
+| UC-MDF-001 | main; alt a; alt b | TC-010; TC-012, 013, 070; TC-019, 020, 024, 052, 071, 073 | planned |
+| UC-MDF-002 | main; alt a | TC-015, 043, 068; TC-016 | planned |
+| UC-MDF-003 | main; alt a | TC-037, 038, 076; TC-025 | planned |
 | UC-MDF-004 | main (report); decisions manual | TC-017, 018, 040, 051; ledger entry | planned |
 | UC-MDF-005 | main; short-window; alt a | TC-026, 036; TC-033; TC-036 | planned |
 | NFR-MDF-001 | fixture-scale timing; real-scale operational | TC-010, 012, 013; ledger entry | planned |
@@ -420,6 +420,7 @@
 - **Q4 — CAGR short-history reading → CONFIRMED:** compute from available history whenever ≥2 FYs, `window_years` = intervals actually used; the UX "no-data/shorter-history state" is the actual-window indication. TC-033 final.
 - **Q5 — Windowed CAGR storage → RESOLVED (recorded 2026-10-07):** **window-suffixed metric codes** (e.g. `rev_cagr_3y`, matching FU §11.1's code names) — the metric model stays flat; the idempotency/upsert key is plainly `(instrument, metric, as_of_date)` (TC-034; no window dimension). Flagged for the `02` §6 metric-storage section to mirror (upstream-doc gap, 2026-10-07).
 - **Q6 — Membership removal mechanism → DEFERRED (builder, 2026-10-06; confirmed 2026-10-07):** TC-037 asserts the observable history/current-universe contract; `effective_to`-close vs. new-row remains the implementation's choice.
+- **Volume semantics (FLG-09) — pinned by builder 2026-10-17 (architecture v1.5 §10.9.1):** the stored `volume` semantic is **TRY turnover (₺)** — İş Yatırım rows store `HGDG_HACIM` as-is; Yahoo-contingency rows store **NULL** (share-count volume is a different unit; deriving ₺ from shares × close rejected as computing); FU volumes reinterpret as ₺ **with unchanged numeric values — no golden re-derivation** (LAMDA stays movers-excluded under the 1,000,000 test threshold; FU §11.3 goldens stand). The movers threshold (`Ingestion:MarketSnapshot:VolumeEligibilityThreshold`, BR-MOV-011) is recalibrated from the observed BIST 30 distribution during live activation — an explicit TKT-foundation-018 criterion, not a TC. Mirrored in FU §2/§4/§10b; pinned by TC-MDF-061 (amended v1.5), 064, 069.
 - **Recorded interpretations (no decision needed):** unknown job code → 404 (TC-042); Mon–Fri trading days in fixtures, holiday calendar config-only; quarantine reason-code catalog defined by FU §2; median even-count = mean of middles; TTM = FY with ALFA's ΣQ consistency fixture; a rights action with q ≤ 0 or P_C ≤ 0 is invalid (rejected by validation, never a factor) — TC-053 column (e), plan-specified.
 
 ---
@@ -472,7 +473,7 @@ These cases pin the fixes from the builder's post-board feedback (`02` v1.3, `03
 **TC-MDF-061 — Price source contract (İş Yatırım) and per-row provenance**
 - Preconditions: İş Yatırım-shaped price payload (`03` §1.2) + the Yahoo contingency payload (FU §10).
 - Steps: run the prices job against each; read `daily_prices.source_ref`.
-- Expected: rows stored with `source_ref` = `isyatirim` (primary) / `yahoo` (contingency) respectively — each row records its concrete source; asserted close/volume outcomes unchanged (FU §4); `index_levels` rows likewise provenance-stamped; backfill depth recorded.
+- Expected: rows stored with `source_ref` = `isyatirim` (primary) / `yahoo` (contingency) respectively — each row records its concrete source; asserted close/volume outcomes unchanged (FU §4); `index_levels` rows likewise provenance-stamped; backfill depth recorded. *(v1.5 amendment, 2026-10-17 — FLG-09 volume pin, architecture §10.9.1): the İş Yatırım/canonical legs are unchanged — asserted close/volume outcomes per FU §4, volumes ₺-reinterpreted with unchanged values; the Yahoo-contingency leg now expects **volume NULL** (share-count volume is a different unit; deriving ₺ from shares × close rejected as computing) and may carry `open`. Cross-pinned by TC-MDF-069.*
 - Traces: FR-MDF-001, FR-MDF-008, FR-MDF-018 · Level: L2 · Design: contract + provenance assertion
 
 **TC-MDF-062 — Constituents launch-seed & pre-launch coverage gap**
@@ -481,4 +482,125 @@ These cases pin the fixes from the builder's post-board feedback (`02` v1.3, `03
 - Expected: seed writes current membership (`effective_to` NULL) append-only; the change set adds new rows without mutating existing ones; `coverage_metadata` records a `universe`-scope gap for pre-launch constituent history (`available_from` = launch date) — an explicit accepted gap, not a silent absence.
 - Traces: FR-MDF-007, FR-MDF-011, BR-MDF-005/007 · Level: L2 · Design: state transition + recorded-gap check
 
-*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated. v1.3 2026-10-13 — **§14 change-propagation (builder-approved via the TKT-mdf-012 review round-1 escalation, routing item 1, option A): TC-MDF-047, TC-MDF-048, TC-MDF-049 re-leveled L4 → L3 (Vitest + MSW).** Reason — recorded harness limitation (review-lead-verified): compose.ci seeds no open quarantined fact; the admin trigger endpoint is synchronous, so no non-terminal ingest run is observable in the browser; no slow source is wired into the compose stack. Steps, expected results and traces unchanged; only the level and the per-case justification were added. Affected ticket recorded for re-validation: **TKT-mdf-012** (its C1/C2 findings resolve against this record; the L3 tests on PR #55 become the canonical level). Strategy §5.4 lists admin critical flows 1–8 under e2e coverage — flows 2/3/4 (these three TCs) are now covered at L3; flagged for the test-planner's next strategy pass. **This v1.3 record was applied by the delivery planner on the builder's explicit instruction and requires test-planner confirmation** (strategy §13/§14 — the test-planner owns this document and its change-propagation log).* **v1.4 2026-10-15 — post-board correctness cases (§7) added: TC-MDF-054..062, tracing the builder's verified feedback (statement versioning, unit/currency normalization, financial-profile posture, adjusted per-share CAGRs, `OCF`-based FCF, TMS 29 regime flag, price-source provenance, constituents seed) against `02` v1.3 / `03` v1.4 / FU v1.4. Affected tickets: TKT-mdf-013..022, TKT-mov-008/009, TKT-val-010, TKT-fdf-003, TKT-foundation-015. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.*
+## 8. Real-source parsing-fidelity & live-activation cases — v1.5 (builder-directed via the delivery planner, 2026-10-17; architecture v1.5 §10.9 authority)
+
+**Authority and posture.** Architecture v1.5 §10.9 (AD-14; builder instruction 2026-10-17 — "main functionality requires real data"): the production adapters parse the real source envelopes — İş Yatırım EOD `HGDG_*` prices (§10.9.1), KAP XBRL fact statements (§10.9.5), TCMB EVDS macro (§10.9.6) — alongside the canonical source-double envelope. This section is the test-side mirror, closing the PR #82 escalation (`.pipeline/plan/reviews/TKT-foundation-015-round-1.md`, DR-01..03):
+
+- **Product-path rule (DR-01 overturned):** every parsing-fidelity case serves the catalog's **raw captured bytes** through the WireMock harness with the correct `Content-Type; charset=` header and decodes them with the **production adapters in `src/Ingestion`** — never with fixture-owned decoders. The decoders, the XBRL concept map and the code-pages provider registration are lifted from the fixtures project into `src/` (AD-14); the real-source catalog itself stays test-side (checked-in fixtures module, FU §10b) and ships no decoders of its own.
+- **Goldens untouched (§10.9.7):** the FU canonical envelope stays the L2 golden contract. FU volumes **reinterpret as TRY turnover (₺) with unchanged numeric values** (FLG-09) — **no golden re-derivation anywhere in this section**; LAMDA stays movers-excluded under the 1,000,000 test threshold; §11.3 goldens stand. Real-envelope cases assert **parse shape/fidelity** — capture-recorded pins, i.e. values present in the captured body flow through unchanged — and **never derived numbers**: no metric, snapshot or median golden is ever computed from a real capture. If a capture is refreshed, its pins update via §14 change record (they always equal the captured body's values).
+- **Honest labeling (DR-03):** every catalog entry carries a captured-vs-constructed provenance label; a hand-constructed body is never labeled "captured verbatim" — enforced mechanically by TC-MDF-063.
+- **Duplicate concepts (DR-05 overturned by §10.9.5):** equal values collapse; unequal values quarantine `CONFLICTING_VALUE` with both values retained — never silent latest-wins (TC-MDF-071).
+- **L2 harness seam:** the doubles keep serving the canonical envelope through the symbol-scoped seam (§10.9.7); the L2 test config binds `Ingestion:Prices:UniverseIndex` to the seeded FU **XU100** so all existing price-path goldens are unchanged (16 per-ticker fetches → 16 rows, TC-MDF-001/002/015/061 canonical legs untouched). The production default `XU030` is asserted as a config value (TC-MDF-075); the bound switch is exercised against the FU XU30 subset.
+- **CI-verifiable vs live-pull (TKT-foundation-018):** loop mechanics, universe bound, pacing, launch-seed and config are CI-verifiable against doubles (TC-MDF-072..076). The **volume-threshold recalibration** (BR-MOV-011, from the observed BIST 30 distribution), the **bounded live capture** (replacing constructed catalog bodies where honest) and the **real-world correctness of the XU030 membership list** are live-pull observations — explicit ticket acceptance criteria recorded in the consolidated matrix's v1.5 block, not TCs.
+
+**Ticket mapping (this wave):** TKT-foundation-015 → TC-MDF-061 (amended), 063, 064, 068, 069, 070 · TKT-foundation-016 → TC-MDF-066 (063 supplies the bytes) · TKT-foundation-017 → TC-MDF-065, 067, 071 · TKT-foundation-018 → TC-MDF-072..076 + the explicit live-pull criteria above · TKT-foundation-019 → **TC-MOV-028** (MOV plan §8 — macro is MOV-owned, FR-MOV-014; the lane itself is shared via FU §10b).
+
+**TC-MDF-063 — Real-source catalog contract: honest labels, charset-faithful bytes, harness serving** (re-authored v1.5; was "catalog loads through the same helper seam" — now asserts the product path per DR-01)
+- Preconditions: the real-source catalog checked in under the fixtures module (FU §10b); WireMock harness; production `ISourceClient`.
+- Steps: (a) load the catalog through the same `Names`/`Build`/`Get`/`TryGet` seam as the FU §10 catalog and inspect every entry; (b) serve each entry's **raw bytes** at its default route with its declared `Content-Type; charset=` header and fetch through the production `ISourceClient`; (c) look up a non-existent name.
+- Expected: catalog count equals `Names` count; every entry carries non-empty raw bytes, a declared charset, and a provenance label (`captured` or `constructed`); every entry labeled `captured` decodes under its declared charset with no U+FFFD and its label asserts verbatim capture; **no entry whose body is hand-constructed is labeled captured-verbatim** (the DR-03 rule, mechanically enforced); redistribution terms recorded with the catalog (RISK-MDF-001 — bounded, non-commercial, parsing-fidelity only); each harness-served entry decodes through the product client to the entry's canonical decoded body; unknown name → `TryGet` false, `Get` throws.
+- Traces: FR-MDF-008 (provenance discipline, test-data mirror), `01` v1.5 §10.9.7, FU §10b, RISK-MDF-001 · Level: L2 · Design: EP — catalog entry classes (captured/constructed) × label honesty; the labeling rule as an invariant
+- Dependencies: —
+
+**TC-MDF-064 — Real İş Yatırım HGDG envelope decodes through the production prices adapter** (re-authored v1.5; was fixture-decoder assertions)
+- Preconditions: WireMock serves each captured İş Yatırım EOD body's **raw bytes** at its per-ticker route with `Content-Type: application/json; charset=utf-8`; production `PricesSourceAdapter` + `ISourceClient` from `src/Ingestion` (HGDG decoder lifted per AD-14).
+- Steps: fetch each ticker's bounded window through the symbol-scoped adapter fetch; separately fetch a catalog variant body (honestly labeled `constructed`) that uses the alternate `HG_*` field spellings.
+- Expected (fidelity pins — capture record 2026-10-16, window 2026-10-06..2026-10-08):
+
+| ticker | date | close | high | low | volume (₺ turnover, bigint) |
+|---|---|---|---|---|---|
+| ASELS | 2026-10-08 | 348.75 | 354.00 | 340.25 | 12,941,100,644 |
+| THYAO | 2026-10-08 | 284.25 | 287.50 | 282.00 | 5,829,586,658 |
+| GARAN | 2026-10-08 | 128.50 | 129.80 | 127.00 | 2,001,849,137 |
+| FROTO | 2026-10-08 | 74.40 | 74.70 | 73.70 | 837,500,049 |
+| EBEBK | 2026-10-08 | 80.0176 | 80.56323 | 74.95755 | 39,335,497 |
+
+  Field map per §10.9.1: `HGDG_HS_KODU` → symbol as-is; `HGDG_TARIH` (`dd-MM-yyyy`) → ISO date; `HGDG_KAPANIS`/`HGDG_MAX`/`HGDG_HACIM` primary with `HG_KAPANIS`/`HG_MAX`/`HG_HACIM` fallback (primary asserted on the captured bodies; the fallback spellings asserted on the constructed variant); scientific-notation volume (E-notation JSON numbers) parses to exact bigint, round half-away-from-zero; **`open` NULL on every İş Yatırım row** (honest gap — never derived from `HGDG_AOF`); `source_ref` = `isyatirim`. No metric or golden is derived from these rows.
+- Traces: FR-MDF-001, FR-MDF-010, `01` v1.5 §10.9.1 · Level: L2 · Design: EP — valid real-envelope class over the five captured tickers + BVA edges (dd-MM-yyyy date, E-notation volume, NULL open, `HG_*` fallback spellings)
+- Dependencies: TC-MDF-063 (catalog contract).
+
+**TC-MDF-065 — Turkish-locale KAP numbers parse culture-free through the production statement decoder** (re-authored v1.5; was `ParseTurkishNumber` fixture assertions)
+- Preconditions: WireMock serves the KAP XBRL fact bodies (shape-faithful; current entries honestly labeled `constructed` per DR-03 — a bounded live capture may replace them via TKT-foundation-018, pins then update by change record) plus one constructed variant body carrying the tolerance edges; production statement decoder in `src/Ingestion/Statements/`.
+- Steps: decode the five tickers' fact bodies and the tolerance-edge variant through the production decoder.
+- Expected: capture-pinned revenues — ASELS FY2025 `REV` = 1,234,567.89; THYAO 2,345,678,901.23; GARAN 3,456,789,012.34; FROTO 4,567,890,123.45; EBEBK 5,678,901,234.56. The parser is culture-free (host runs under `InvariantGlobalization`; `.` thousands / `,` decimal regardless of host culture): `-1.234,50` and `–1.234,50` (en-dash) → −1234.50; `(1.234,50)` (accounting parentheses) → −1234.50; `456.000.000` → 456,000,000; trailing `%` tolerated (numeric part parsed); NBSP thousand-groupings parse. Exact decimal equality — no tolerance.
+- Traces: FR-MDF-002, `01` v1.5 §10.9.5, `02` §1.8 · Level: L2 · Design: EP — TR-locale number classes + BVA tolerance edges (en-dash minus, accounting parentheses, trailing %, NBSP grouping)
+- Dependencies: TC-MDF-063.
+
+**TC-MDF-066 — `ISourceClient` honors the declared response charset** (re-authored v1.5; was fixture-side `DecodeRawText` assertions — TKT-foundation-016)
+- Preconditions: WireMock serves the legacy-artifact raw bytes (constructed but genuinely windows-1254-encoded, honestly labeled) under four headers — `charset=windows-1254`, `charset=iso-8859-9`, no charset parameter, `charset=x-unknown` — plus a UTF-8 body with and without a charset declaration; production `ISourceClient` with the code-pages provider registered at product startup (AD-14).
+- Steps: fetch each stub through the production `ISourceClient`.
+- Expected: windows-1254 → Turkish text decodes without mojibake ("ığüşöçİĞÜŞÖÇ" present, no U+FFFD); ISO-8859-9 → identical decoded text (the two code pages agree on the Turkish letters); utf-8 / no declaration / unknown charset → the UTF-8 default, the current behavior (for the 1254 bytes served without a charset the decode contains replacement characters — the honored header is the fix; charset sniffing is deliberately not added, §10.9.4); a successful windows-1254 decode also proves the code-pages provider registration at product startup (without it the encoding is unsupported and the fetch fails).
+- Traces: FR-MDF-001, FR-MDF-002 (every adapter reads through the client), `01` v1.5 §10.9.4 · Level: L2 · Design: decision table — declared charset ∈ {windows-1254, ISO-8859-9, utf-8, absent, unknown} × decode outcome
+- Dependencies: TC-MDF-063.
+
+**TC-MDF-067 — KAP XBRL concept map, fact grouping, and `OTHER_*` passthrough through the production decoder** (re-authored v1.5; was `XbrlConceptMap` fixture assertions)
+- Preconditions: as TC-MDF-065 (KAP fact bodies via WireMock; production decoder in `src/Ingestion/Statements/` — the concept map lifted per AD-14).
+- Steps: decode; read the grouped statements and line items.
+- Expected: `ifrs-full:Revenue` (FY2025) and `tr:Hasilat` (FY2024) collapse onto the same canonical item code `REV` (capture pins: ASELS FY2025 1,234,567.89 / FY2024 1,100,000.00); `kap:NetSatisTutari` likewise → `REV`; `ifrs-full:CostOfSales` → `COGS`; `GROSS_PROFIT` derived when not reported (pinned ASELS FY2025: REV − COGS = 246,913.57); facts group by (periodType, periodEndDate, statementType, version) with the grouping coordinates intact for the store's integer version sequencing (TC-MDF-054 mechanics downstream); unmapped concepts (e.g. `kap:OzkaynakDegisimTablosu` 42,000.00) pass through as `OTHER_*` lines — recorded, ignored by metrics (honest gap, `02` §6.1); envelope-level `unitScale`/`currency` coordinates are carried through decode so the v1.4 normalization path (TC-MDF-055) consumes them; `source_ref` = `kap`.
+- Traces: FR-MDF-002, `02` §6.1, `01` v1.5 §10.9.5 · Level: L2 · Design: EP — tag-variance classes (IFRS spelling / TR spelling / KAP spelling / unmapped) × canonical outcome
+- Dependencies: TC-MDF-065.
+
+**TC-MDF-068 — One real captured HGDG payload end-to-end through the adapter backfill path** (re-authored v1.5 — the DR-01 fix in miniature: raw bytes served, never a re-serialized canonical envelope)
+- Preconditions: WireMock serves the captured ASELS **raw bytes** at the per-ticker backfill route with the correct charset header; production adapter + client.
+- Steps: call the symbol-scoped backfill fetch for a historical range covering the capture window.
+- Expected: canonical payload with `source_ref` `isyatirim`; exactly the 3 captured rows (2026-10-06..2026-10-08), the ASELS 2026-10-08 row pinned per TC-MDF-064; `open` NULL; exactly one HTTP request to the per-ticker route (WireMock request log); rows outside the source-returned window are absent — the achieved depth is what the source returned, never fabricated (BR-MDF-006; job-side depth recording cross-referenced by TC-MDF-015/016).
+- Traces: FR-MDF-010, FR-MDF-001, BR-MDF-006, `01` v1.5 §10.9.1 · Level: L2 · Design: EP — real-envelope backfill class + negative guard (the served body is the raw capture, not a canonical re-serialization)
+- Dependencies: TC-MDF-064.
+
+**TC-MDF-069 — Prices adapter envelope detection: real, Yahoo, canonical-double** (new v1.5)
+- Preconditions: three per-ticker stubs: the captured real HGDG body (TC-MDF-064), `prices-yahoo-contingency.json` (FU §10), and the canonical double envelope `prices-ok.json` (FU §10) served through the symbol-scoped seam.
+- Steps: fetch each through the same production adapter.
+- Expected: real → `source_ref` `isyatirim`, HGDG mapping, `open` NULL (pins per TC-MDF-064); Yahoo → `source_ref` `yahoo`, rows may carry `open` (a mixed NULL/open history across sources is accepted and honest), **volume NULL** (FLG-09(b): Yahoo's share-count volume is a different unit; deriving ₺ from shares × close rejected as computing); canonical double → the L2 golden shape, rows equal the FU §4 outcomes with volume stored (₺-reinterpreted, values unchanged); all three parse through the same production adapter with no envelope rejection and no cross-attribution of rows to the wrong source.
+- Traces: FR-MDF-001, `03` §1.2, `01` v1.5 §10.9.1 · Level: L2 · Design: decision table — envelope shape ∈ {real HGDG, Yahoo chart, canonical double} × parse outcome / `source_ref`
+- Dependencies: TC-MDF-064.
+
+**TC-MDF-070 — Real-envelope transport failure is a source failure, not a parse event** (new v1.5)
+- Preconditions: WireMock per-ticker stubs returning a real-shaped body with `ok:false`, and one with a non-null `errorCode`.
+- Steps: fetch each through the production adapter; observe job-side handling.
+- Expected: the adapter surfaces a source failure (the fetch-exception class TC-MDF-012's retry ladder consumes); **zero** rows emitted; **zero** `quarantined_facts` rows (not an `UNPARSEABLE_PAYLOAD` event); job-side, the symbol is marked failed per TC-MDF-073's isolation semantics and the retry ladder applies.
+- Traces: FR-MDF-001, UC-MDF-001 alternate a, NFR-MDF-001, `01` v1.5 §10.9.1 (transport fields) · Level: L2 · Design: EP — invalid-transport class (`ok:false` / `errorCode` non-null) vs valid-payload class
+- Dependencies: —
+
+**TC-MDF-071 — KAP duplicate-concept rule: equal collapses, unequal quarantines** (new v1.5 — DR-05 overturned by §10.9.5)
+- Preconditions: two constructed KAP fact bodies (honestly labeled): one statement group carrying the same canonical item code twice with **equal** values; one with **unequal** values.
+- Steps: run the statements job against each through the harness.
+- Expected: equal → collapses to a single line item (re-ingesting the identical payload is an idempotent no-op; no quarantine); unequal → `quarantined_facts` row with reason `CONFLICTING_VALUE` and **both values retained** in the payload; no silent latest-wins in either case; each group's other facts ingest normally (partial-batch behavior per TC-MDF-019).
+- Traces: FR-MDF-002, FR-MDF-012, UC-MDF-001 alternate b, `01` v1.5 §10.9.5 · Level: L2 · Design: decision table — duplicate canonical concept × equal/unequal value → collapse / quarantine
+- Dependencies: TC-MDF-067.
+
+**TC-MDF-072 — The per-ticker loop resolves the configured index's current constituents** (new v1.5)
+- Preconditions: migrated container, seeded FU universe; `Ingestion:Prices:UniverseIndex` bound to the FU `XU30` (5 members); WireMock serves the canonical double envelope through the symbol-scoped seam (the L2 golden seam — real-envelope decode is separately pinned by TC-MDF-064; the two compose via TC-MDF-069's detection).
+- Steps: run the prices job for T; read the WireMock request log, `daily_prices`, and the run ledger.
+- Expected: exactly one fetch per current XU30 member (5 requests at symbol-scoped routes); `daily_prices` rows for exactly those 5 instruments at T; the other 11 seeded instruments receive no rows from this run and no requests; requests are strictly sequential (no overlapping in-flight requests); the run-ledger row carries per-symbol stats; a constituent with a closed `effective_to` (per the FU `universe-add-remove.json` state) is not fetched.
+- Traces: FR-MDF-001, FR-MDF-006, FR-MDF-007, `01` v1.5 §10.9.2 · Level: L2 · Design: EP — loop bound = current constituents (`effective_to IS NULL`); boundary — closed-interval member excluded
+- Dependencies: —
+
+**TC-MDF-073 — Per-symbol failure isolation within the loop** (new v1.5)
+- Preconditions: as TC-MDF-072, with one member's per-ticker route returning 500 for the whole run.
+- Steps: run the prices job for T.
+- Expected: the failed symbol's rows absent; an alert is raised (mail double + Serilog test sink) naming the symbol; the run does **not** abort — the other 4 members' rows ingest; the run ledger reaches a terminal status with per-symbol stats recording the failure; no quarantine rows for a transport-level failure (the TC-MDF-070 class) — quarantine applies to parse/validation events, not source failures.
+- Traces: FR-MDF-001, FR-MDF-012, UC-MDF-001 alternates a/b, `01` v1.5 §10.9.2 (per-symbol failure isolation) · Level: L2 · Design: EP — single-symbol failure class inside a multi-symbol loop
+- Dependencies: TC-MDF-072.
+
+**TC-MDF-074 — Sequential pacing honors `RequestDelayMs`** (new v1.5)
+- Preconditions: as TC-MDF-072; `Ingestion:Prices:RequestDelayMs` = 40 ms (test value).
+- Steps: run the prices job; read consecutive WireMock request timestamps; repeat with `RequestDelayMs` = 0.
+- Expected: every consecutive inter-request gap ≥ `RequestDelayMs`; total elapsed ≥ (N−1) × `RequestDelayMs` (N = 5 → ≥ 160 ms); zero overlapping in-flight requests. With `RequestDelayMs` = 0 the run completes with no enforced wait (no gap assertion). Assertions are lower bounds only — deterministic by construction (a slower machine can only increase gaps); the explicit tolerance is "gap ≥ configured delay" with no upper bound.
+- Traces: FR-MDF-001, `01` §10.4 / v1.5 §10.9.2 (politeness posture — sequential, no parallelism) · Level: L2 · Design: BVA — delay boundary (0 = no wait required; configured delay = enforced lower bound)
+- Dependencies: TC-MDF-072.
+
+**TC-MDF-075 — The fetch bound follows the configured index (config-only flip)** (new v1.5)
+- Preconditions: seeded FU universe; two runs with `Ingestion:Prices:UniverseIndex` = `XU30`, then `XU100`.
+- Steps: run the prices job under each binding; separately assert the options default with no override configured.
+- Expected: XU30 → 5 per-ticker fetches, 5 instruments' rows; XU100 → 16 fetches, 16 rows (this is the L2 harness binding that keeps the existing price-path goldens intact — §8 preamble); with no override the bound resolves to the production default **`XU030`** (config assertion, the PBKDF2-config precedent TC-XC-011); flipping the bound is observable as the request-set difference with no code-path change.
+- Traces: FR-MDF-006, FR-MDF-007, `01` §10.4 / v1.5 §10.9.2 · Level: L2 · Design: decision table — configured index × constituent set; config-default assertion
+- Dependencies: TC-MDF-072.
+
+**TC-MDF-076 — XU030 membership launch-seed** (new v1.5; reuses the TC-MDF-062 machinery)
+- Preconditions: fresh migrated container; the checked-in XU030 launch-seed (real membership observed at launch — the seed content is live-observed data; CI asserts structure, not real-world list correctness).
+- Steps: apply the launch seed; re-apply it; resolve the loop bound with `UniverseIndex` = `XU030`.
+- Expected: `index_constituents` rows for the XU030 members — append-only, effective-dated, `effective_to` NULL for current members, `source_ref` recorded; re-application is idempotent (no duplicate rows, no mutations — the TC-MDF-062 posture); the per-ticker loop resolves exactly the seeded current members (composes with TC-MDF-072); pre-launch constituent history remains an explicit recorded coverage gap (`available_from` = launch date, TC-MDF-062). *Real-world correctness of the checked-in membership list (matching BIST's actual XU030 at launch) is a live-pull observation — an explicit TKT-foundation-018 criterion, not a TC.*
+- Traces: FR-MDF-007, FR-MDF-011, BR-MDF-005/007, `01` v1.5 §10.9.3 · Level: L2 · Design: state transition — empty → seeded → re-seeded (idempotent) + recorded-gap check
+- Dependencies: TC-MDF-072.
+
+*Change record: v1.0 2026-10-06 — initial MDF test plan + shared fixture universe (`01-fixture-universe.md`), submitted at Gate 2. v1.1 2026-10-06 — builder decisions applied (Q1 quarantine rule → TC-MDF-052; Q2 formula locked; Q3/Q6 deferred; Q4 confirmed; Q5 noted); coverage matrix updated. v1.2 2026-10-07 — builder final review: Q3 rights-issue factor defined → **TC-MDF-053** (FU §2/§11.6); Q5 storage settled (window-suffixed codes; plain (instrument, metric, as_of_date) key → TC-034); upstream `02` mirror-update gaps flagged; recorded interpretation for degenerate rights inputs; coverage matrix updated. v1.3 2026-10-13 — **§14 change-propagation (builder-approved via the TKT-mdf-012 review round-1 escalation, routing item 1, option A): TC-MDF-047, TC-MDF-048, TC-MDF-049 re-leveled L4 → L3 (Vitest + MSW).** Reason — recorded harness limitation (review-lead-verified): compose.ci seeds no open quarantined fact; the admin trigger endpoint is synchronous, so no non-terminal ingest run is observable in the browser; no slow source is wired into the compose stack. Steps, expected results and traces unchanged; only the level and the per-case justification were added. Affected ticket recorded for re-validation: **TKT-mdf-012** (its C1/C2 findings resolve against this record; the L3 tests on PR #55 become the canonical level). Strategy §5.4 lists admin critical flows 1–8 under e2e coverage — flows 2/3/4 (these three TCs) are now covered at L3; flagged for the test-planner's next strategy pass. **This v1.3 record was applied by the delivery planner on the builder's explicit instruction and requires test-planner confirmation** (strategy §13/§14 — the test-planner owns this document and its change-propagation log).* **v1.4 2026-10-15 — post-board correctness cases (§7) added: TC-MDF-054..062, tracing the builder's verified feedback (statement versioning, unit/currency normalization, financial-profile posture, adjusted per-share CAGRs, `OCF`-based FCF, TMS 29 regime flag, price-source provenance, constituents seed) against `02` v1.3 / `03` v1.4 / FU v1.4. Affected tickets: TKT-mdf-013..022, TKT-mov-008/009, TKT-val-010, TKT-fdf-003, TKT-foundation-015. Applied by the delivery planner on the builder's explicit instruction; test-planner confirmation pending.* **v1.5 2026-10-17 — real-source parsing-fidelity & live-activation cases (§8) added, mirroring architecture v1.5 §10.9 (AD-14; builder instruction 2026-10-17 via the delivery planner — closes the PR #82 / TKT-foundation-015 round-1 escalation findings DR-01..03: product-path assertion rule, honest catalog labeling, duplicate-concept quarantine overturning latest-wins). TC-MDF-063..068 re-authored (IDs kept — they were burned in test source on the closed branch; content now asserts raw captured bytes through the WireMock harness into the production `src/Ingestion` adapters); TC-MDF-069..076 new (envelope detection, transport-failure class, duplicate-concept rule, per-ticker loop, failure isolation, pacing, universe bound, XU030 launch-seed). TC-MDF-061 amended (FLG-09: Yahoo-contingency volume NULL). §1 scope, §5 matrix, §6 volume-semantics entry updated. FU mirrors: §1 exception, §2/§4 ₺ reinterpretation, §10b real-source catalog lane (FU v1.5); MOV mirror: TC-MOV-028 (MOV plan §8, FU §10b lane). Goldens untouched — no re-derivation (§10.9.7). Affected tickets: the new wave **TKT-foundation-015..019** (TC mapping in §8); TC-MDF-061's amendment flags the v1.4 price-source ticket among TKT-mdf-013..022 for planner re-validation. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.3/v1.4 pending-confirmation notes above are unchanged by this entry.**
