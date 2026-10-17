@@ -137,7 +137,7 @@ public sealed class MetricsEngine
             instrumentActions ??= [];
 
             var (input, adjusted) = BuildInput(
-                price, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate);
+                price, instrument.AccountingProfile, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate);
 
             // The corporate-action basis marker is per metric (FR-MDF-018): only the
             // per-share growth CAGRs computed from the adjusted EPS/DPS series carry it.
@@ -160,6 +160,7 @@ public sealed class MetricsEngine
 
     private static (CanonicalMetricsInput Input, bool PerShareAdjusted) BuildInput(
         decimal price,
+        string accountingProfile,
         IReadOnlyList<FinancialStatement> statements,
         IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
         IReadOnlyList<Dividend> dividends,
@@ -305,7 +306,8 @@ public sealed class MetricsEngine
                 DividendTtmPerShare: ttmDividendPerShare,
                 HasEverPaidDividend: dividends.Count > 0,
                 IsRested: isRested,
-                IsAdjusted: false),
+                IsAdjusted: false,
+                AccountingProfile: accountingProfile),
             perShareAdjusted);
     }
 

@@ -10,7 +10,7 @@ scope:
 
 # TKT-mdf-020: Financial-profile metric NULL matrix
 
-- Status: todo
+- Status: in-review — PR [#85](https://github.com/sarperim/degerli/pull/85) (TKT-mdf-020). TC-MDF-057 L1+L2; targeted suite green (Core.UnitTests 54/0, Api.IntegrationTests 307/0 full; 39/0 targeted subset).
 - Size: M
 - Scope: the canonical metrics' profile gating — for `accounting_profile ∈ {bank, insurance}`, force the ten industrial metrics (`ev_ebitda`, `ev_fcf`, `fcf_yield`, `roic`, `gross_margin`, `operating_margin`, `fcf_cagr_*`, `net_debt_ebitda`, `interest_coverage`, `current_ratio`) to NULL even when stray lines exist, while `pe`/`pb`/`roe`/`eps_cagr_*`/`div_*`/`payout_ratio` compute normally. Must NOT touch the DCF sector handling (TKT-val-010).
 - Traces to: FR-MDF-013; UC-MDF-005; BR-MDF-009
