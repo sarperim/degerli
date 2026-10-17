@@ -53,7 +53,11 @@ public sealed class RealSourcePricesTests : IClassFixture<WireMockFixture>
             Assert.False(string.IsNullOrWhiteSpace(payload.EncodingName));
             Assert.False(string.IsNullOrWhiteSpace(payload.ProvenanceLabel));
             Assert.StartsWith("/real-sources/", payload.DefaultPath, StringComparison.Ordinal);
-            Assert.Equal(RealSourceCatalog.IsYatirimSource, payload.Source);
+            // The real-source catalog is multi-source — İş Yatırım EOD prices (TKT-foundation-015)
+            // plus KAP XBRL statements (TKT-foundation-017); every entry records its concrete
+            // source (01 v1.5 §10.9.7). The assertions of TC-MDF-063 (raw bytes, declared
+            // charset, honest provenance label) are below.
+            Assert.Contains(payload.Source, new[] { RealSourceCatalog.IsYatirimSource, RealSourceCatalog.KapSource });
 
             switch (payload.Provenance)
             {

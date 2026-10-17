@@ -81,8 +81,21 @@ public static class RealSourceCatalog
     public const string PricesOkFalse = "isyatirim-prices-ok-false";
     public const string PricesErrorCode = "isyatirim-prices-error-code";
 
+    // KAP financial-statement (XBRL fact) payloads — the statements-side lane (TKT-foundation-017).
+    public const string StatementsAsels = "kap-statements-ASELS";
+    public const string StatementsThyao = "kap-statements-THYAO";
+    public const string StatementsGaran = "kap-statements-GARAN";
+    public const string StatementsFroto = "kap-statements-FROTO";
+    public const string StatementsEbebk = "kap-statements-EBEBK";
+    public const string StatementsToleranceEdges = "kap-statements-tolerance-edges";
+    public const string StatementsDuplicateEqual = "kap-statements-duplicate-equal";
+    public const string StatementsDuplicateUnequal = "kap-statements-duplicate-unequal";
+
     /// <summary>Concrete source name of the captured EOD price payloads.</summary>
     public const string IsYatirimSource = "isyatirim";
+
+    /// <summary>Concrete source name of the KAP financial-statement payloads.</summary>
+    public const string KapSource = "kap";
 
     /// <summary>The five tickers captured into the real-source catalog (TKT-foundation-015).</summary>
     public static IReadOnlyList<string> Tickers { get; } = ["ASELS", "THYAO", "GARAN", "FROTO", "EBEBK"];
@@ -98,6 +111,14 @@ public static class RealSourceCatalog
         PricesHgFallback,
         PricesOkFalse,
         PricesErrorCode,
+        StatementsAsels,
+        StatementsThyao,
+        StatementsGaran,
+        StatementsFroto,
+        StatementsEbebk,
+        StatementsToleranceEdges,
+        StatementsDuplicateEqual,
+        StatementsDuplicateUnequal,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -129,6 +150,10 @@ public static class RealSourceCatalog
     private const string ConstructedLabel =
         "Constructed by hand for parsing-fidelity coverage — a shape-faithful body, not a live capture.";
 
+    private const string KapStatementsLabel =
+        "Constructed by hand for KAP XBRL parsing-fidelity coverage (IFRS/TR/KAP tag variance, " +
+        "Turkish-locale numbers) — a shape-faithful body, not a live capture.";
+
     // ---- verbatim captured bodies (bounded; see CaptureNote) ----
     private const string PricesAselsJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_AOF":371.181,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":7.6454,"ENDEKS_BAZLI_FIYAT":0.0304,"DOLAR_HACIM":269201762.3352,"SERMAYE":4.56E9,"HG_KAPANIS":376.0,"HG_AOF":371.181,"HG_MIN":364.25,"HG_MAX":379.0,"PD":1714560000000.00000,"PD_USD":34862810643.30767,"HAO_PD":442013568000.000000,"HAO_PD_USD":8987632583.844717,"HG_HACIM":1.3239396512E10,"DOLAR_BAZLI_MIN":7.4064,"DOLAR_BAZLI_MAX":7.7064,"DOLAR_BAZLI_AOF":7.5474},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":356.437,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":7.0888,"ENDEKS_BAZLI_FIYAT":0.0288,"DOLAR_HACIM":346838924.8866,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":356.437,"HG_MIN":346.75,"HG_MAX":377.25,"PD":1590300000000.00000,"PD_USD":32324747548.66091,"HAO_PD":409979340000.000000,"HAO_PD_USD":8333319918.044783,"HG_HACIM":1.7063642691E10,"DOLAR_BAZLI_MIN":7.0481,"DOLAR_BAZLI_MAX":7.6681,"DOLAR_BAZLI_AOF":7.2450},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":345.473,"HGDG_MIN":340.25,"HGDG_MAX":354.0,"HGDG_HACIM":12941100644.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":7.0862,"ENDEKS_BAZLI_FIYAT":0.0286,"DOLAR_HACIM":262949264.5362,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":345.473,"HG_MIN":340.25,"HG_MAX":354.0,"PD":1590300000000.00000,"PD_USD":32313187795.64037,"HAO_PD":409979340000.000000,"HAO_PD_USD":8330339813.716087,"HG_HACIM":1.2941100644E10,"DOLAR_BAZLI_MIN":6.9135,"DOLAR_BAZLI_MAX":7.1929,"DOLAR_BAZLI_AOF":7.0196}]}""";
     private const string PricesThyaoJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"def507b11493419d9812dcee5ec7daca","value":[{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":290.5000,"HGDG_AOF":292.381,"HGDG_MIN":290.5,"HGDG_MAX":294.25,"HGDG_HACIM":7982835728.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":5.9068,"ENDEKS_BAZLI_FIYAT":0.0235,"DOLAR_HACIM":162318081.8297,"SERMAYE":1.38E9,"HG_KAPANIS":290.5,"HG_AOF":292.381,"HG_MIN":290.5,"HG_MAX":294.25,"PD":400890000000.00000,"PD_USD":8151451193.77310,"HAO_PD":196957257000.000000,"HAO_PD_USD":4004807971.500724,"HG_HACIM":7.982835728E9,"DOLAR_BAZLI_MIN":5.9068,"DOLAR_BAZLI_MAX":5.9831,"DOLAR_BAZLI_AOF":5.9451},{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":286.2500,"HGDG_AOF":286.776,"HGDG_MIN":283.75,"HGDG_MAX":290.5,"HGDG_HACIM":7765288779.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":5.8184,"ENDEKS_BAZLI_FIYAT":0.0236,"DOLAR_HACIM":157838772.1962,"SERMAYE":1.38E9,"HG_KAPANIS":286.25,"HG_AOF":286.776,"HG_MIN":283.75,"HG_MAX":290.5,"PD":395025000000.00000,"PD_USD":8029355090.49222,"HAO_PD":194115285000.000000,"HAO_PD_USD":3945625091.467877,"HG_HACIM":7.765288779E9,"DOLAR_BAZLI_MIN":5.7676,"DOLAR_BAZLI_MAX":5.9048,"DOLAR_BAZLI_AOF":5.8291},{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":284.2500,"HGDG_AOF":284.492,"HGDG_MIN":282.0,"HGDG_MAX":287.5,"HGDG_HACIM":5829586658.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":5.7757,"ENDEKS_BAZLI_FIYAT":0.0233,"DOLAR_HACIM":118450939.1001,"SERMAYE":1.38E9,"HG_KAPANIS":284.25,"HG_AOF":284.492,"HG_MIN":282.0,"HG_MAX":287.5,"PD":392265000000.00000,"PD_USD":7970403452.59188,"HAO_PD":192759021000.000000,"HAO_PD_USD":3916656256.603650,"HG_HACIM":5.829586658E9,"DOLAR_BAZLI_MIN":5.7299,"DOLAR_BAZLI_MAX":5.8417,"DOLAR_BAZLI_AOF":5.7806}]}""";
@@ -145,6 +170,33 @@ public static class RealSourceCatalog
     private const string PricesOkFalseJson = """{"ok":false,"errorCode":null,"errorDescription":"geçersiz istek","transactionId":"0000000000000000000000000000000a","value":null}""";
     private const string PricesErrorCodeJson = """{"ok":true,"errorCode":"ERR_NO_DATA","errorDescription":"veri bulunamadı","transactionId":"0000000000000000000000000000000b","value":[]}""";
 
+    // ---- constructed, shape-faithful KAP XBRL fact bodies (TKT-foundation-017; honestly
+    //      labeled — a bounded live capture may replace them via TKT-foundation-018) ----
+
+    // ASELS: IFRS spelling for FY2025, the Turkish-taxonomy `tr:Hasilat` for FY2024 — both
+    // collapse onto the canonical `REV`. An unmapped KAP tag passes through as `OTHER_*`.
+    private const string StatementsAselsJson = """{"companyCode":"ASELS","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"1.234.567,89"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:CostOfSales","value":"987.654,32"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:ProfitLoss","value":"123.456,78"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"5.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:NumberOfShares","value":"456.000.000"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"kap:OzkaynakDegisimTablosu","value":"42.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"tr:Hasilat","value":"1.100.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:ProfitLoss","value":"100.000,00"}]}""";
+    private const string StatementsThyaoJson = """{"companyCode":"THYAO","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"2.345.678.901,23"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:CostOfSales","value":"1.900.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:ProfitLoss","value":"250.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"900.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:NumberOfShares","value":"1.380.000.000"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:Revenue","value":"2.000.000.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:ProfitLoss","value":"200.000.000,00"}]}""";
+    // GARAN FY2024 carries the KAP spelling `kap:NetSatisTutari` — the third tag variant
+    // that collapses onto `REV` (TC-MDF-067).
+    private const string StatementsGaranJson = """{"companyCode":"GARAN","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"3.456.789.012,34"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:ProfitLoss","value":"456.789.012,34"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"4.200.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:NumberOfShares","value":"4.200.000.000"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"kap:NetSatisTutari","value":"3.000.000.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:ProfitLoss","value":"400.000.000,00"}]}""";
+    private const string StatementsFrotoJson = """{"companyCode":"FROTO","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"4.567.890.123,45"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:ProfitLoss","value":"567.890.123,45"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"3.509.100.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:NumberOfShares","value":"350.910.000"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:Revenue","value":"4.000.000.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:ProfitLoss","value":"500.000.000,00"}]}""";
+    private const string StatementsEbebkJson = """{"companyCode":"EBEBK","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"5.678.901.234,56"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:ProfitLoss","value":"67.890.123,45"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"160.000.000,00"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:NumberOfShares","value":"160.000.000"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:Revenue","value":"5.000.000.000,00"},{"fiscalYear":2024,"periodType":"FY","periodEndDate":"2024-12-31","statementType":"IS","version":"as_reported","publishedAt":"2025-03-10","concept":"ifrs-full:ProfitLoss","value":"50.000.000,00"}]}""";
+
+    // The tolerance-edge variant (TC-MDF-065): one FY2025 income-statement group carrying a
+    // distinct concept per edge so no two collapse — accounting parentheses, en-dash minus,
+    // hyphen minus, NBSP thousand-groupings, a trailing `%` and a plain integer.
+    private const string StatementsToleranceEdgesJson = """{"companyCode":"ASELS","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgeParentheses","value":"(1.234,50)"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgeEnDash","value":"–1.234,50"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgeHyphen","value":"-1.234,50"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgeNbsp","value":"1\u00A0234\u00A0567,89"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgePercent","value":"12,5%"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","concept":"kap:EdgePlain","value":"456.000.000"}]}""";
+
+    // Duplicate-concept bodies for TC-MDF-071 (constructed, honestly labeled). Both use the
+    // seeded ALFA ticker so the full statements job resolves the instrument.
+    // Equal duplicates collapse idempotently (both `ifrs-full:Revenue` and
+    // `kap:NetSatisTutari` → REV 1.234.567,89).
+    private const string StatementsDuplicateEqualJson = """{"companyCode":"ALFA","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"1.234.567,89"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"kap:NetSatisTutari","value":"1.234.567,89"}]}""";
+    // Unequal duplicates (REV 1.234.567,89 vs 9.999,99) are a `CONFLICTING_VALUE` event; the
+    // BS group is a non-conflicting sibling that must still ingest (partial batch).
+    private const string StatementsDuplicateUnequalJson = """{"companyCode":"ALFA","unitScale":"units","currency":"TRY","facts":[{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Revenue","value":"1.234.567,89"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"IS","version":"as_reported","publishedAt":"2026-03-10","concept":"tr:Hasilat","value":"9.999,99"},{"fiscalYear":2025,"periodType":"FY","periodEndDate":"2025-12-31","statementType":"BS","version":"as_reported","publishedAt":"2026-03-10","concept":"ifrs-full:Equity","value":"5.000.000,00"}]}""";
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -156,6 +208,14 @@ public static class RealSourceCatalog
         Constructed(PricesHgFallback, PricesHgFallbackJson),
         Constructed(PricesOkFalse, PricesOkFalseJson),
         Constructed(PricesErrorCode, PricesErrorCodeJson),
+        KapStatements(StatementsAsels, StatementsAselsJson),
+        KapStatements(StatementsThyao, StatementsThyaoJson),
+        KapStatements(StatementsGaran, StatementsGaranJson),
+        KapStatements(StatementsFroto, StatementsFrotoJson),
+        KapStatements(StatementsEbebk, StatementsEbebkJson),
+        KapStatements(StatementsToleranceEdges, StatementsToleranceEdgesJson),
+        KapStatements(StatementsDuplicateEqual, StatementsDuplicateEqualJson),
+        KapStatements(StatementsDuplicateUnequal, StatementsDuplicateUnequalJson),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -194,14 +254,18 @@ public static class RealSourceCatalog
     private static RealSourcePayload Constructed(string name, string json) =>
         Payload(name, ConstructedLabel, RealSourceProvenance.Constructed, json);
 
+    private static RealSourcePayload KapStatements(string name, string json) =>
+        Payload(name, KapStatementsLabel, RealSourceProvenance.Constructed, json, KapSource);
+
     private static RealSourcePayload Payload(
         string name,
         string label,
         RealSourceProvenance provenance,
-        string json) =>
+        string json,
+        string source = IsYatirimSource) =>
         new(
             name,
-            IsYatirimSource,
+            source,
             "GET",
             $"/real-sources/{name}",
             200,

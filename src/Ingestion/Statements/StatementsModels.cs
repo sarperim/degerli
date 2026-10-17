@@ -17,6 +17,12 @@ public sealed record StatementsPayload(
     [property: JsonPropertyName("statements")] IReadOnlyList<StatementFact> Statements) : IKapPayload;
 
 /// <summary>One statement version of one period, with its source-taxonomy lines.</summary>
+/// <param name="ConflictingItemCodes">Canonical item codes whose source concept appeared
+/// more than once with <b>unequal</b> values within this one group (§10.9.5, DR-05
+/// overturned): the fact is a validation event the store quarantines as
+/// <c>CONFLICTING_VALUE</c>, both values retained — never a silent latest-wins. Null/empty
+/// when no such conflict exists. Not part of the wire contract (the canonical envelopes
+/// carry no conflict flag).</param>
 public sealed record StatementFact(
     [property: JsonPropertyName("periodType")] string PeriodType,
     [property: JsonPropertyName("periodEndDate")] DateOnly PeriodEndDate,
@@ -25,7 +31,8 @@ public sealed record StatementFact(
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("restatementDate")] DateOnly? RestatementDate,
     [property: JsonPropertyName("publishedAt")] DateOnly? PublishedAt,
-    [property: JsonPropertyName("lines")] IReadOnlyDictionary<string, decimal> Lines);
+    [property: JsonPropertyName("lines")] IReadOnlyDictionary<string, decimal> Lines,
+    [property: JsonIgnore] IReadOnlyList<string>? ConflictingItemCodes = null);
 
 /// <summary>Result of one statement batch: statements written, idempotent no-ops, and
 /// refusals (unknown instrument or an invalid period).</summary>

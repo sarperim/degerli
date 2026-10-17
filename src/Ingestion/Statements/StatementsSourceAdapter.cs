@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Sources;
 using Microsoft.Extensions.Options;
@@ -14,8 +15,13 @@ public sealed class StatementsSourceOptions
 
 /// <summary>
 /// KAP statements adapter (FR-MDF-002): fetches and parses the financial-statement
-/// payload. The ETL mapping to the canonical chart of accounts lives in
-/// <see cref="StatementMapper"/> and persistence in <see cref="FinancialStatementStore"/>.
+/// payload. Two first-class shapes are accepted (01 v1.5 §10.9.5): the <b>real</b> KAP
+/// XBRL fact envelope (<c>facts</c> array + <c>companyCode</c>, decoded by
+/// <see cref="KapXbrlStatementDecoder"/>) and the canonical <c>statements</c> double
+/// envelope (the L2 contract). The ETL mapping to the canonical chart of accounts lives in
+/// <see cref="StatementMapper"/> (applied by the decoder) and persistence in
+/// <see cref="FinancialStatementStore"/>. Every parsed payload carries provenance
+/// <c>kap</c>.
 /// </summary>
 public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
 {
@@ -29,7 +35,7 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
     }
 
     /// <inheritdoc />
-    public string SourceName => "kap";
+    public string SourceName => KapXbrlStatementDecoder.SourceRef;
 
     /// <inheritdoc />
     public async Task<SourcePayload<StatementsPayload>> FetchAsync(
@@ -37,6 +43,29 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
         CancellationToken cancellationToken = default)
     {
         var raw = await _client.GetStringAsync(_options.Path, cancellationToken).ConfigureAwait(false);
+
+        using var document = ParseDocument(raw);
+        if (KapXbrlStatementDecoder.IsEnvelope(document))
+        {
+            // The real KAP XBRL fact envelope (01 v1.5 §10.9.5): collapse the tag variance
+            // onto the canonical chart of accounts and carry the provenance `kap`.
+            var payload = KapXbrlStatementDecoder.Decode(document);
+            return new SourcePayload<StatementsPayload>(payload.SourceRef, payload, raw);
+        }
+
+        // The canonical source-double envelope (the L2 golden contract, §10.9.7).
         return KapPayload.Parse<StatementsPayload>(raw);
+    }
+
+    private static JsonDocument ParseDocument(string raw)
+    {
+        try
+        {
+            return JsonDocument.Parse(raw);
+        }
+        catch (JsonException exception)
+        {
+            throw new SourcePayloadException(raw, exception);
+        }
     }
 }
