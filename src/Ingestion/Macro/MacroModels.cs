@@ -48,11 +48,14 @@ public sealed record MacroItem(
     [property: JsonPropertyName("recordedAt")] DateTimeOffset? RecordedAt);
 
 /// <summary>
-/// The TCMB EVDS envelope (OQ-MOV-005): one fetch carries every requested series'
-/// published observations. Each observation names its EVDS <see cref="EvdsObservation.SeriesCode"/>
-/// and (for the synthetic fixture) the canonical <see cref="EvdsObservation.Code"/>; the
-/// adapter maps the EVDS identifier to the canonical code. Revisions arrive as additional
+/// The canonical TCMB EVDS envelope (OQ-MOV-005) — the L2 golden source-double shape
+/// (01 v1.5 §10.9.7): one fetch carries every requested series' published observations in a
+/// row list. Each observation names its EVDS <see cref="EvdsObservation.SeriesCode"/> and
+/// (for the synthetic fixture) the canonical <see cref="EvdsObservation.Code"/>; the adapter
+/// maps the EVDS identifier to the canonical code. Revisions arrive as additional
 /// observations for the same value date with a later <see cref="EvdsObservation.RecordedAt"/>.
+/// The <b>real</b> EVDS envelope is the column-oriented <c>items</c>/<c>Tarih</c> shape
+/// decoded by <see cref="EvdsMacroDecoder"/>; both parse through the one production adapter.
 /// </summary>
 public sealed record EvdsMacroPayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
