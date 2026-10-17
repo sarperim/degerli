@@ -33,13 +33,7 @@ public sealed class WireMockFixture : IAsyncLifetime
     /// <summary>Stub a route returning a raw JSON body.</summary>
     public void StubJson(string path, string json, int statusCode = 200, string method = "GET")
     {
-        var request = method.ToUpperInvariant() switch
-        {
-            "POST" => Request.Create().WithPath(path).UsingPost(),
-            "PUT" => Request.Create().WithPath(path).UsingPut(),
-            "DELETE" => Request.Create().WithPath(path).UsingDelete(),
-            _ => Request.Create().WithPath(path).UsingGet(),
-        };
+        var request = RequestFor(path, method);
 
         Server
             .Given(request)
@@ -49,6 +43,38 @@ public sealed class WireMockFixture : IAsyncLifetime
                     .WithHeader("Content-Type", "application/json")
                     .WithBody(json));
     }
+
+    /// <summary>
+    /// Stub a route returning raw <b>bytes</b> with an explicit <c>Content-Type</c> (including
+    /// any <c>charset=</c> parameter). Used by the real-source catalog so a code-page body is
+    /// served byte-for-byte, exactly as the live source would (TKT-foundation-015).
+    /// </summary>
+    public void StubBytes(
+        string path,
+        byte[] body,
+        string contentType,
+        int statusCode = 200,
+        string method = "GET")
+    {
+        var request = RequestFor(path, method);
+
+        Server
+            .Given(request)
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(statusCode)
+                    .WithHeader("Content-Type", contentType)
+                    .WithBody(body));
+    }
+
+    private static IRequestBuilder RequestFor(string path, string method) =>
+        method.ToUpperInvariant() switch
+        {
+            "POST" => Request.Create().WithPath(path).UsingPost(),
+            "PUT" => Request.Create().WithPath(path).UsingPut(),
+            "DELETE" => Request.Create().WithPath(path).UsingDelete(),
+            _ => Request.Create().WithPath(path).UsingGet(),
+        };
 
     /// <summary>Number of matching requests seen so far (request-count assertions).</summary>
     public int RequestsFor(string path) =>
