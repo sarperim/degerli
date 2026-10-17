@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-019: EVDS real-envelope capture & macro adapter hardening
 
-- Status: in-review
+- Status: done — merged 2026-10-18 (PR https://github.com/sarperim/degerli/pull/91 @ 52f33f9). **Tracked gap (non-CI criterion):** bounded live EVDS capture NOT landed — `evds2.tcmb.gov.tr` 302-redirects to `evds3.tcmb.gov.tr` which serves an HTML SPA shell, no JSON service reachable; catalog carries an honestly-labeled `constructed` body of the real column shape, no API key. Review accepted it as a disclosed recorded gap (§10.9.7 posture). **Doc follow-ups (planner/test-planner):** DR-5.2 — the PR's "fallback clause" citation doesn't exist in the ticket text; DR-5.1 — FU §10b still says "an EVDS capture added by TKT-foundation-019", reconcile to "constructed, capture pending". **Non-blocking residue:** DR-1 medium (redaction test vacuous — `RedactClientFailure`/CWE-598 untested), DR-2..4 low, DR-6 low, nits. Artifacts: reviews/TKT-foundation-019-round-1.md
 - Size: M
 - Scope: capture a bounded real EVDS payload (the five official series over a bounded window; **API key redacted before the body lands in the catalog**) with honest provenance labels, verify the real response shape against `MacroSourceAdapter` — which today parses its own canonical `EvdsMacroPayload` envelope — and harden the adapter to parse the real shape per §10.9.6. The canonical envelope remains the L2 golden shape (TC-MOV-026 goldens unchanged); the five-official-series set, the bounded 90-day value-date lookback and the key-redaction posture are unchanged. `source_ref` stays `evds`.
 - Traces to: FR-MOV-014
