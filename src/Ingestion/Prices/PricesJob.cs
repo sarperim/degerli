@@ -100,6 +100,7 @@ public sealed class PricesJob : IIngestJob
         var unchanged = 0;
         var quarantined = 0;
         var failedSymbols = new List<string>();
+        var symbolStats = new List<SymbolRunStat>(constituents.Count);
 
         for (var index = 0; index < constituents.Count; index++)
         {
@@ -122,6 +123,7 @@ public sealed class PricesJob : IIngestJob
                     await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
                         .ConfigureAwait(false);
                     quarantined++;
+                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
                     continue;
                 }
 
@@ -136,13 +138,9 @@ public sealed class PricesJob : IIngestJob
                 unchanged += outcome.Unchanged;
                 quarantined += symbolQuarantined;
 
-                _logger.LogInformation(
-                    "prices: symbol {Symbol} on {Date} — written {Written}, unchanged {Unchanged}, quarantined {Quarantined}",
-                    symbol,
-                    request.Date,
-                    outcome.Inserted,
-                    outcome.Unchanged,
-                    symbolQuarantined);
+                // The per-symbol counts ride the run-ledger row (TC-MDF-072); they are no
+                // longer emitted only as structured logs.
+                symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false));
             }
             catch (SourcePayloadException exception)
             {
@@ -154,6 +152,7 @@ public sealed class PricesJob : IIngestJob
                 await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
                     .ConfigureAwait(false);
                 quarantined++;
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
             }
             catch (SourceFetchException exception)
             {
@@ -165,6 +164,7 @@ public sealed class PricesJob : IIngestJob
                     symbol,
                     request.Date);
                 failedSymbols.Add(symbol);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true));
             }
         }
 
@@ -175,6 +175,7 @@ public sealed class PricesJob : IIngestJob
             unchanged,
             quarantined,
             failedSymbols,
+            symbolStats,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -204,6 +205,7 @@ public sealed class PricesJob : IIngestJob
         var unchanged = 0;
         var quarantined = 0;
         var failedSymbols = new List<string>();
+        var symbolStats = new List<SymbolRunStat>(constituents.Count);
         var coveredSymbols = new HashSet<string>(StringComparer.Ordinal);
         DateOnly? achievedFrom = null;
 
@@ -227,6 +229,7 @@ public sealed class PricesJob : IIngestJob
                     await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
                         .ConfigureAwait(false);
                     quarantined++;
+                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
                     continue;
                 }
 
@@ -237,6 +240,7 @@ public sealed class PricesJob : IIngestJob
                         "prices: symbol {Symbol} backfill from {From} returned no history",
                         symbol,
                         requestedFrom);
+                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false));
                     continue;
                 }
 
@@ -255,14 +259,7 @@ public sealed class PricesJob : IIngestJob
                 achievedFrom = achievedFrom is null || symbolFrom < achievedFrom ? symbolFrom : achievedFrom;
                 coveredSymbols.UnionWith(rows.Select(row => row.Symbol));
 
-                _logger.LogInformation(
-                    "prices: symbol {Symbol} backfill from {From} — written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, achieved {Achieved}",
-                    symbol,
-                    requestedFrom,
-                    outcome.Inserted,
-                    outcome.Unchanged,
-                    symbolQuarantined,
-                    symbolFrom);
+                symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false));
             }
             catch (SourcePayloadException exception)
             {
@@ -273,6 +270,7 @@ public sealed class PricesJob : IIngestJob
                 await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
                     .ConfigureAwait(false);
                 quarantined++;
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
             }
             catch (SourceFetchException exception)
             {
@@ -282,6 +280,7 @@ public sealed class PricesJob : IIngestJob
                     symbol,
                     requestedFrom);
                 failedSymbols.Add(symbol);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true));
             }
         }
 
@@ -301,6 +300,7 @@ public sealed class PricesJob : IIngestJob
             unchanged,
             quarantined,
             failedSymbols,
+            symbolStats,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -318,6 +318,7 @@ public sealed class PricesJob : IIngestJob
         int unchanged,
         int quarantined,
         List<string> failedSymbols,
+        IReadOnlyList<SymbolRunStat> symbolStats,
         CancellationToken cancellationToken)
     {
         if (failedSymbols.Count > 0)
@@ -349,7 +350,7 @@ public sealed class PricesJob : IIngestJob
             failedSymbols.Count,
             status);
 
-        return new IngestResult(Code, written, unchanged, quarantined, status);
+        return new IngestResult(Code, written, unchanged, quarantined, status) { SymbolStats = symbolStats };
     }
 
     /// <summary>

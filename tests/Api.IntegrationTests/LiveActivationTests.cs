@@ -106,6 +106,19 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             Assert.Equal("succeeded", run.Status);
             using var stats = JsonDocument.Parse(run.StatsJson!);
             Assert.Equal(5, stats.RootElement.GetProperty("written").GetInt32());
+
+            // ...and the per-symbol breakdown: the run-ledger row carries one entry per current
+            // member, each recording that symbol's own written count (TC-MDF-072).
+            var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+                .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+            Assert.Equal(
+                Xu30Members.OrderBy(s => s, StringComparer.Ordinal).ToArray(),
+                perSymbol.Keys.OrderBy(s => s, StringComparer.Ordinal).ToArray());
+            foreach (var symbol in Xu30Members)
+            {
+                Assert.Equal(1, perSymbol[symbol].GetProperty("written").GetInt32());
+                Assert.False(perSymbol[symbol].GetProperty("failed").GetBoolean());
+            }
         }
 
         // Strictly sequential: each response completes (>= the server's in-flight time)
@@ -118,17 +131,6 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             Assert.True(
                 gap >= TimeSpan.FromMilliseconds(25),
                 $"requests {i - 1}->{i} overlapped (gap {gap.TotalMilliseconds:0} ms).");
-        }
-
-        // Per-symbol stats are emitted for every member. (TKT-foundation-018 scope note: the
-        // run-ledger stats_json shape lives in the out-of-scope Jobs module, so the per-symbol
-        // breakdown is surfaced as structured logs — flagged in the PR.)
-        foreach (var symbol in Xu30Members)
-        {
-            Assert.True(
-                host.Logs.Contains(evt =>
-                    evt.RenderMessage().Contains($"symbol \"{symbol}\"", StringComparison.Ordinal)),
-                $"no per-symbol stat line for {symbol}");
         }
     }
 
@@ -167,8 +169,21 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             // No quarantine for a transport-level failure.
             Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "prices"));
 
+            // The run ledger reaches a terminal partial status and its per-symbol breakdown
+            // records the failure: ALFA is marked failed with no rows; the other four ingested
+            // (TC-MDF-073).
             var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "prices").ToListAsync());
             Assert.Equal("partial", run.Status);
+            using var stats = JsonDocument.Parse(run.StatsJson!);
+            var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+                .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+            Assert.True(perSymbol["ALFA"].GetProperty("failed").GetBoolean());
+            Assert.Equal(0, perSymbol["ALFA"].GetProperty("written").GetInt32());
+            foreach (var symbol in new[] { "EPSL", "ETA", "KAPPA", "REST" })
+            {
+                Assert.False(perSymbol[symbol].GetProperty("failed").GetBoolean());
+                Assert.Equal(1, perSymbol[symbol].GetProperty("written").GetInt32());
+            }
         }
 
         // All five members were attempted — the loop continued past the failure.
@@ -351,13 +366,11 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             Assert.Equal("succeeded", result.Status);
             Assert.Equal(Xu030LaunchSeed.Symbols.Count, _wireMock.RequestsFor(PricesPath));
 
-            foreach (var symbol in Xu030LaunchSeed.Symbols)
-            {
-                Assert.True(
-                    loopHost.Logs.Contains(evt =>
-                        evt.RenderMessage().Contains($"symbol \"{symbol}\"", StringComparison.Ordinal)),
-                    $"the loop did not resolve seeded member {symbol}");
-            }
+            // The loop resolved exactly the seeded current members — the run's per-symbol
+            // breakdown names each one (composes with TC-MDF-072).
+            Assert.Equal(
+                Xu030LaunchSeed.Symbols.OrderBy(s => s, StringComparer.Ordinal).ToArray(),
+                result.SymbolStats.Select(s => s.Symbol).OrderBy(s => s, StringComparer.Ordinal).ToArray());
         }
     }
 
