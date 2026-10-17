@@ -72,6 +72,10 @@ public sealed class ValidationQuarantineTests : IClassFixture<PostgresFixture>, 
 
         // --- UNPARSEABLE_PAYLOAD: the body cannot be parsed at all.
         await ResetAsync(clearPrices: true);
+        // The per-ticker loop (§10.9.2) would quarantine once per symbol for a body that is
+        // unparseable for every symbol; pin a single XU100 member so the outcome is the TC's
+        // single UNPARSEABLE_PAYLOAD quarantine row.
+        await RestrictUniverseToSingleMemberAsync("ALFA");
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.PricesUnparseable);
         await using (var provider = BuildIngestion("/canned-sources/prices-unparseable"))
         {
@@ -174,6 +178,10 @@ public sealed class ValidationQuarantineTests : IClassFixture<PostgresFixture>, 
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Prices:Path"] = pricesPath,
+                // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and
+                // disables pacing, so the existing goldens survive the per-ticker loop.
+                ["Ingestion:Prices:UniverseIndex"] = "XU100",
+                ["Ingestion:Prices:RequestDelayMs"] = "0",
             })
             .Build();
 
@@ -205,6 +213,21 @@ public sealed class ValidationQuarantineTests : IClassFixture<PostgresFixture>, 
         {
             await db.Database.ExecuteSqlRawAsync("DELETE FROM daily_prices");
         }
+    }
+
+    /// <summary>
+    /// Restricts the XU100 fetch bound to a single current member. The unparseable-payload
+    /// class is a whole-body failure, so under the per-ticker loop (§10.9.2) it would
+    /// quarantine once per symbol; pinning one member keeps the TC's single quarantine row.
+    /// </summary>
+    private async Task RestrictUniverseToSingleMemberAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM index_constituents " +
+            "WHERE index_id = (SELECT id FROM indices WHERE code = 'XU100') " +
+            "AND instrument_id <> (SELECT id FROM instruments WHERE symbol = {0})",
+            symbol);
     }
 
     private sealed class IngestionHost : IAsyncDisposable

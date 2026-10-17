@@ -360,6 +360,41 @@ public sealed class UniverseSyncStore
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The current constituents of one index — the symbols carrying an open membership row
+    /// (<c>effective_to IS NULL</c>), ordered by symbol (01 v1.5 §10.9.2, FR-MDF-006/007). The
+    /// per-ticker prices loop resolves its fetch bound from this. An unknown index code (no
+    /// stored reference row) resolves to an empty set rather than throwing, so a bound that
+    /// names an index the universe sync has not yet published degrades to "no constituents".
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetCurrentConstituentSymbolsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (indexId is null)
+        {
+            return [];
+        }
+
+        return await _db.IndexConstituents
+            .Where(c => c.IndexId == indexId.Value && c.EffectiveTo == null)
+            .Join(
+                _db.Instruments,
+                constituent => constituent.InstrumentId,
+                instrument => instrument.Id,
+                (_, instrument) => instrument.Symbol)
+            .OrderBy(symbol => symbol)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(
         string sourceRef,
         DateTimeOffset recordedAt,

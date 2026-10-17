@@ -193,6 +193,10 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
             ["ConnectionStrings:Default"] = _postgres.ConnectionString,
             ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Prices:Path"] = PricesPath,
+            // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and disables
+            // pacing, so the scheduler's price goldens survive the per-ticker loop.
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
             ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
             ["Ingestion:Scheduler:JobCodes:0"] = "prices",

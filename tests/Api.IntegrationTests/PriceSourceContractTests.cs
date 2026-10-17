@@ -214,8 +214,12 @@ public sealed class PriceSourceContractTests : IClassFixture<PostgresFixture>, I
         _wireMock.StubRealSource(RealSourceCatalog.PricesOkFalse, path: PricesPath);
         await using var host = BuildIngestion(pricePath: PricesPath);
 
-        await Assert.ThrowsAsync<SourceFetchException>(
-            () => RunAsync(host, "prices", new IngestionRequest(T)));
+        var result = await RunAsync(host, "prices", new IngestionRequest(T));
+
+        // Per-symbol failure isolation (01 v1.5 §10.9.2, TC-MDF-073): a transport-level
+        // failure no longer throws and aborts the run. Every symbol is marked failed and the
+        // run reaches a failed terminal status — the signal the retry ladder consumes.
+        Assert.Equal(IngestResult.Failed, result.Status);
 
         await using var db = _postgres.CreateContext();
         Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
@@ -250,6 +254,10 @@ public sealed class PriceSourceContractTests : IClassFixture<PostgresFixture>, I
             ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Prices:Path"] = pricePath ?? PricesPath,
             ["Ingestion:Prices:BackfillPath"] = backfillPath ?? BackfillPath,
+            // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and disables
+            // pacing, so the existing price goldens survive the per-ticker loop.
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
         };
         if (universePath is not null)
         {

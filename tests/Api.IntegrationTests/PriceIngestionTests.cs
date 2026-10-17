@@ -109,6 +109,9 @@ public sealed class PriceIngestionTests : IClassFixture<PostgresFixture>, IClass
     public async Task TC_MDF_008_Facts_without_provenance_are_refused()
     {
         await ResetAsync(clearPrices: true);
+        // The loop is per-ticker (§10.9.2); isolate the missing-provenance class to a single
+        // XU100 member so the outcome is the TC's single quarantine row, not one per symbol.
+        await RestrictUniverseToSingleMemberAsync("ALFA");
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.PricesMissingProvenance);
         await using var provider = BuildIngestion("/canned-sources/prices-missing-provenance");
 
@@ -194,6 +197,11 @@ public sealed class PriceIngestionTests : IClassFixture<PostgresFixture>, IClass
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Prices:Path"] = pricesPath,
+                // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) so the
+                // existing price goldens survive the per-ticker loop (16 fetches → 16 rows),
+                // and disables pacing for determinism.
+                ["Ingestion:Prices:UniverseIndex"] = "XU100",
+                ["Ingestion:Prices:RequestDelayMs"] = "0",
             })
             .Build();
 
@@ -227,6 +235,22 @@ public sealed class PriceIngestionTests : IClassFixture<PostgresFixture>, IClass
         {
             await db.Database.ExecuteSqlRawAsync("DELETE FROM daily_prices");
         }
+    }
+
+    /// <summary>
+    /// Restricts the XU100 fetch bound to a single current member. The whole-payload failure
+    /// classes (missing provenance, unparseable) would otherwise quarantine once per symbol
+    /// under the per-ticker loop (§10.9.2) — these cases pin a single member so the asserted
+    /// outcome stays the TC's single quarantine row.
+    /// </summary>
+    private async Task RestrictUniverseToSingleMemberAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM index_constituents " +
+            "WHERE index_id = (SELECT id FROM indices WHERE code = 'XU100') " +
+            "AND instrument_id <> (SELECT id FROM instruments WHERE symbol = {0})",
+            symbol);
     }
 
     private async Task<Dictionary<string, decimal>> PriceSnapshotAsync()
