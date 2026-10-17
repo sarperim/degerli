@@ -3,6 +3,7 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -203,6 +204,47 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
             Assert.Equal("CONFLICTING_VALUE", quarantine.ReasonCode);
             Assert.Contains("1.234.567,89", quarantine.PayloadJson);
             Assert.Contains("9.999,99", quarantine.PayloadJson);
+        }
+    }
+
+    /// <summary>
+    /// DR-01 (FR-MDF-012) — a structurally malformed real KAP XBRL fact envelope is a
+    /// payload failure, never a crash. The body is <b>well-formed JSON</b> in the envelope
+    /// shape (a <c>facts</c> array), but a fact is missing its required <c>periodEndDate</c>,
+    /// so the <b>decode</b> (not the JSON parse) fails. The adapter surfaces it as
+    /// <see cref="SourcePayloadException"/> — matching the canonical-envelope path
+    /// (<c>KapPayload.Parse</c>) — and the job quarantines it as <c>UNPARSEABLE_PAYLOAD</c>
+    /// with the raw body retained, writing no statement. Before the guard, the decode ran
+    /// outside the try/catch, so the run aborted unhandled with no quarantine row.
+    /// </summary>
+    [Fact]
+    public async Task Malformed_kap_envelope_is_quarantined_unparseable_payload()
+    {
+        const string path = "/real-sources/kap-statements-malformed";
+        _wireMock.StubJson(path, """
+            {"companyCode":"ASELS","unitScale":"units","currency":"TRY","facts":[
+              {"fiscalYear":2025,"periodType":"FY","statementType":"IS","version":"as_reported",
+               "concept":"ifrs-full:Revenue","value":"1.234,56"}]}
+            """);
+
+        // The adapter surfaces a payload-class failure, not an unhandled exception.
+        await Assert.ThrowsAsync<SourcePayloadException>(() => BuildAdapter(path).FetchAsync(T));
+
+        // End-to-end: the job quarantines the malformed body and writes nothing.
+        await ResetAsync();
+        await using (var provider = BuildIngestion(path))
+        {
+            var result = await RunAsync(provider, "statements");
+            Assert.Equal(IngestResult.Failed, result.Status);
+            Assert.Equal(1, result.Quarantined);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.FinancialStatements.CountAsync());
+            var entry = await db.QuarantinedFacts.SingleAsync(q => q.JobCode == "statements");
+            Assert.Equal("UNPARSEABLE_PAYLOAD", entry.ReasonCode);
+            Assert.Contains("ASELS", entry.PayloadJson);
         }
     }
 

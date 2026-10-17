@@ -49,7 +49,7 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
         {
             // The real KAP XBRL fact envelope (01 v1.5 §10.9.5): collapse the tag variance
             // onto the canonical chart of accounts and carry the provenance `kap`.
-            var payload = KapXbrlStatementDecoder.Decode(document);
+            var payload = DecodeEnvelope(raw, document);
             return new SourcePayload<StatementsPayload>(payload.SourceRef, payload, raw);
         }
 
@@ -64,6 +64,29 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
             return JsonDocument.Parse(raw);
         }
         catch (JsonException exception)
+        {
+            throw new SourcePayloadException(raw, exception);
+        }
+    }
+
+    /// <summary>
+    /// Decodes the real KAP XBRL fact envelope, surfacing a structurally malformed body as
+    /// <see cref="SourcePayloadException"/> (the <c>UNPARSEABLE_PAYLOAD</c> class,
+    /// FR-MDF-012) exactly as <see cref="KapPayload.Parse{TPayload}"/> does for the canonical
+    /// envelope. The decode reads required coordinates, parses Turkish-locale numbers and
+    /// dates, so a missing field (<see cref="JsonException"/>), an unparseable number/date
+    /// (<see cref="FormatException"/>, <see cref="OverflowException"/>) or an empty argument
+    /// (<see cref="ArgumentException"/>) is a payload failure — never an unhandled crash that
+    /// aborts the run without a quarantine row.
+    /// </summary>
+    private static StatementsPayload DecodeEnvelope(string raw, JsonDocument document)
+    {
+        try
+        {
+            return KapXbrlStatementDecoder.Decode(document);
+        }
+        catch (Exception exception) when (
+            exception is JsonException or FormatException or ArgumentException or OverflowException)
         {
             throw new SourcePayloadException(raw, exception);
         }
