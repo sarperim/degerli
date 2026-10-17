@@ -130,6 +130,17 @@ public sealed class FinancialStatementStore
 
         foreach (var fact in payload.Statements)
         {
+            // Duplicate-concept rule (01 v1.5 §10.9.5, DR-05 overturned): a group whose
+            // canonical item code appeared more than once with unequal values is a
+            // validation event — quarantined with both values retained, never a silent
+            // latest-wins. The conflicting group is not stored; the payload's other groups
+            // ingest normally (partial batch).
+            if (fact.ConflictingItemCodes is { Count: > 0 })
+            {
+                rejected.Add(QuarantineReason.ConflictingValue);
+                continue;
+            }
+
             var key = Key(instrumentId.Value, fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
 
             int version;
