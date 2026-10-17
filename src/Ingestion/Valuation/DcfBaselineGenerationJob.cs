@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Degerli.Core.Metrics;
+using Degerli.Core.Valuation;
 using Degerli.Ingestion.Jobs;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -83,7 +84,7 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
 
         var instruments = await _db.Instruments
             .Where(i => i.Status == "active")
-            .Select(i => new { i.Id, i.Symbol })
+            .Select(i => new { i.Id, i.Symbol, i.AccountingProfile })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -125,7 +126,9 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
                 .Where(s => s.InstrumentId == instrument.Id)
                 .ToList();
 
-            var paramsJson = DeriveBaseline(instrumentStatements, linesByStatement, buildDate);
+            var paramsJson = DcfSectorApplicability.IsFinancialSector(instrument.AccountingProfile)
+                ? SectorNotApplicableEnvelope(instrument.AccountingProfile)
+                : DeriveBaseline(instrumentStatements, linesByStatement, buildDate);
 
             baselinesByInstrument.TryGetValue(instrument.Id, out var existing);
             var nextVersion = existing is { Count: > 0 }
@@ -262,6 +265,28 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             ["params"] = ordered,
             ["canonicalFactRefs"] = refs,
             ["missingInputs"] = missing,
+        };
+
+        return JsonSerializer.Serialize(envelope);
+    }
+
+    /// <summary>
+    /// The baseline envelope recorded for a financial-sector instrument (<c>02</c> §6.4):
+    /// a <c>sector_not_applicable</c> state with an honest reason and <b>no</b> FCF-derived
+    /// parameters. The instrument is still versioned/active like any other baseline (one
+    /// active per stock) so the calculator can explain the not-applicable verdict rather
+    /// than reporting a missing baseline.
+    /// </summary>
+    private static string SectorNotApplicableEnvelope(string accountingProfile)
+    {
+        var envelope = new Dictionary<string, object?>
+        {
+            ["state"] = DcfSectorApplicability.SectorNotApplicableState,
+            ["reason"] = DcfSectorApplicability.FinancialSectorReason,
+            ["profile"] = accountingProfile,
+            ["params"] = new Dictionary<string, object?>(StringComparer.Ordinal),
+            ["canonicalFactRefs"] = new Dictionary<string, object?>(StringComparer.Ordinal),
+            ["missingInputs"] = Array.Empty<string>(),
         };
 
         return JsonSerializer.Serialize(envelope);

@@ -104,17 +104,26 @@ public static class DcfComputeEndpoints
                 ShareCount: values["share_count"]);
 
             var normalized = symbol.ToUpperInvariant();
-            var instrumentId = await db.Instruments
+            var instrument = await db.Instruments
                 .Where(i => i.Symbol == normalized)
-                .Select(i => (long?)i.Id)
+                .Select(i => new { i.Id, i.AccountingProfile })
                 .FirstOrDefaultAsync(cancellationToken);
-            if (instrumentId is null)
+            if (instrument is null)
             {
                 return NotFound(normalized);
             }
 
+            // Financial-sector exclusion (02 §6.4, 03 §5 v1.4): a free-cash-flow-to-firm
+            // DCF does not apply to a bank/insurer regardless of the supplied parameters.
+            // The whole model is inapplicable — no field highlight (unlike the math-
+            // constraint path) — with an honest sector reason for the SPA to render.
+            if (DcfSectorApplicability.IsFinancialSector(instrument.AccountingProfile))
+            {
+                return FinancialSectorNotApplicable(instrument.AccountingProfile);
+            }
+
             var price = await db.DailyPrices
-                .Where(p => p.InstrumentId == instrumentId)
+                .Where(p => p.InstrumentId == instrument.Id)
                 .OrderByDescending(p => p.PriceDate)
                 .Select(p => new { p.CloseRaw, p.PriceDate })
                 .FirstOrDefaultAsync(cancellationToken);
@@ -234,6 +243,22 @@ public static class DcfComputeEndpoints
                 ["field"] = field,
             }));
     }
+
+    /// <summary>
+    /// Maps a financial-sector profile to `422 DCF_NOT_COMPUTABLE` with
+    /// <c>params.reason = "financial_sector"</c> and the offending profile named
+    /// (<c>03</c> §5/§7 v1.4). Distinct from the math path: the whole model does not
+    /// apply, so no field is highlighted and no point result is returned.
+    /// </summary>
+    private static IResult FinancialSectorNotApplicable(string accountingProfile)
+        => Results.Problem(ApiProblem.Create(
+            StatusCodes.Status422UnprocessableEntity,
+            ApiErrorCodes.DcfNotComputable,
+            new Dictionary<string, object?>
+            {
+                ["reason"] = DcfSectorApplicability.FinancialSectorReason,
+                ["profile"] = accountingProfile,
+            }));
 
     /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
     private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
+using Degerli.Core.Valuation;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,6 +65,30 @@ public static class DcfBaselineEndpoints
         using var document = JsonDocument.Parse(baseline.ParamsJson);
         var root = document.RootElement;
 
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+        var stale = price.PriceDate < LatestTradingDayOnOrBefore(today);
+
+        // Financial-sector exclusion (02 §6.4, 03 §5 v1.4): the generation job records a
+        // `sector_not_applicable` state instead of an FCF-derived baseline; serve that
+        // not-applicable verdict — distinct from the missing-inputs `200` state.
+        if (root.TryGetProperty("state", out var stateElement)
+            && stateElement.ValueKind == JsonValueKind.String
+            && stateElement.GetString() == DcfSectorApplicability.SectorNotApplicableState)
+        {
+            return Results.Ok(new Dictionary<string, object?>
+            {
+                ["symbol"] = normalized,
+                ["state"] = DcfSectorApplicability.SectorNotApplicableState,
+                ["reason"] = DcfSectorApplicability.FinancialSectorReason,
+                ["price"] = new
+                {
+                    value = price.CloseRaw,
+                    asOf = price.PriceDate,
+                    stale,
+                },
+            });
+        }
+
         var parameters = root.TryGetProperty("params", out var paramsElement)
             ? paramsElement.Clone()
             : EmptyObject();
@@ -74,9 +99,6 @@ public static class DcfBaselineEndpoints
             && missingElement.ValueKind == JsonValueKind.Array
                 ? missingElement.EnumerateArray().Select(e => e.GetString()!).ToArray()
                 : [];
-
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var stale = price.PriceDate < LatestTradingDayOnOrBefore(today);
 
         var response = new Dictionary<string, object?>
         {
