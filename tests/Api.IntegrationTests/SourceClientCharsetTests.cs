@@ -39,6 +39,25 @@ public sealed class SourceClientCharsetTests : IClassFixture<WireMockFixture>, I
 
     private static readonly byte[] Utf8ArtifactBytes = Encoding.UTF8.GetBytes(ExpectedBody);
 
+    // R2-01 (reviews/TKT-foundation-016-round-2.md): the charset-honoring rewrite of
+    // DecodeBody dropped the BOM handling HttpContent.ReadAsStringAsync provided — a UTF-8
+    // body carrying its EF BB BF preamble decoded with a leading U+FEFF, and a UTF-16 body
+    // with no declared charset was decoded as UTF-8 garbage. A real İş Yatırım body may
+    // carry a BOM (the first live pull is the lane that would surface it), so these two
+    // cases pin the restored behavior: strip the UTF-8 preamble on decode, and sniff a
+    // UTF-16 BOM when no charset is declared.
+    private static readonly byte[] Utf8BomArtifactBytes =
+    [
+        .. Encoding.UTF8.GetPreamble(),
+        .. Encoding.UTF8.GetBytes(ExpectedBody),
+    ];
+
+    private static readonly byte[] Utf16BomArtifactBytes =
+    [
+        .. Encoding.Unicode.GetPreamble(),
+        .. Encoding.Unicode.GetBytes(ExpectedBody),
+    ];
+
     private readonly WireMockFixture _wireMock;
     private readonly ServiceProvider _provider;
     private readonly ISourceClient _client;
@@ -139,6 +158,43 @@ public sealed class SourceClientCharsetTests : IClassFixture<WireMockFixture>, I
         var decoded = await _client.GetStringAsync(path);
 
         Assert.Equal(ExpectedBody, decoded);
+        Assert.DoesNotContain('\uFFFD', decoded);
+    }
+
+    /// <summary>
+    /// TC-MDF-066 (R2-01) — a UTF-8 body served with its EF BB BF preamble decodes to the
+    /// same text as the BOM-less body: the leading U+FEFF is stripped (the behavior
+    /// <c>ReadAsStringAsync</c> had). Without the strip the JSON envelope would open with a
+    /// stray U+FEFF and every downstream parse would fail.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_066_Utf8_bom_body_decodes_without_a_leading_bom()
+    {
+        var path = "/charset/utf8-bom";
+        _wireMock.StubBytes(path, Utf8BomArtifactBytes, "application/json; charset=utf-8");
+
+        var decoded = await _client.GetStringAsync(path);
+
+        Assert.Equal(ExpectedBody, decoded);
+        Assert.DoesNotContain('\uFEFF', decoded);
+        Assert.DoesNotContain('\uFFFD', decoded);
+    }
+
+    /// <summary>
+    /// TC-MDF-066 (R2-01) — a UTF-16 LE BOM'd body served with <b>no</b> declared charset is
+    /// sniffed from its BOM and decoded as UTF-16 (the behavior <c>ReadAsStringAsync</c> had).
+    /// The UTF-8 default would render it as garbage; the sniff recovers the Turkish text.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_066_Utf16_bom_no_charset_body_is_sniffed_and_decoded()
+    {
+        var path = "/charset/utf16-bom-nocs";
+        _wireMock.StubBytes(path, Utf16BomArtifactBytes, "application/json");
+
+        var decoded = await _client.GetStringAsync(path);
+
+        Assert.Equal(ExpectedBody, decoded);
+        Assert.Contains(Turkish, decoded, StringComparison.Ordinal);
         Assert.DoesNotContain('\uFFFD', decoded);
     }
 }
