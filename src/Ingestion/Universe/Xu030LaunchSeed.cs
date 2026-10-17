@@ -36,16 +36,18 @@ public static class Xu030LaunchSeed
 
     /// <summary>
     /// The XU030 membership observed at launch — the recorded launch state (01 v1.5 §10.9.3).
-    /// <b>Live-pull criterion:</b> verify against BIST's published XU030 at cut-over.
+    /// <b>Live-pull criterion:</b> verified against BIST's published XU030 on 2026-10-18 (the
+    /// Ekim–Aralık 2026 index period); see <see cref="VerificationNote"/>. A real discrepancy
+    /// was found against the initial 2026-10-17 record and corrected (five members).
     /// </summary>
     public static IReadOnlyList<string> Symbols { get; } =
     [
-        "AKBNK", "ARCLK", "ASELS", "ASTOR", "BIMAS",
-        "DOHOL", "EBEBK", "EKGYO", "ENKAI", "EREGL",
-        "FROTO", "GARAN", "HALKB", "ISCTR", "KCHOL",
-        "KRDMD", "MGROS", "ODAS", "PETKM", "PGSUS",
-        "SAHOL", "SASA", "SISE", "TAVHL", "TCELL",
-        "THYAO", "TOASO", "TUPRS", "VAKBN", "YKBNK",
+        "AEFES", "AKBNK", "ASELS", "ASTOR", "BIMAS",
+        "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN",
+        "GUBRF", "ISCTR", "KCHOL", "KRDMD", "MGROS",
+        "PETKM", "PGSUS", "SAHOL", "SASA", "SISE",
+        "TAVHL", "TCELL", "THYAO", "TOASO", "TRALT",
+        "TRMET", "TTKOM", "TUPRS", "VAKBN", "YKBNK",
     ];
 
     /// <summary>
@@ -53,8 +55,12 @@ public static class Xu030LaunchSeed
     /// launch state is never presented as machine-verified — the DR-03 labeling discipline.
     /// </summary>
     public const string VerificationNote =
-        "Recorded XU030 launch state (2026-10-17). Real-world correctness against BIST's " +
-        "published XU030 at cut-over is a live-pull verification criterion (TKT-foundation-018), " +
+        "Recorded XU030 launch state (2026-10-17). Verified 2026-10-18 against third-party XU030 " +
+        "aggregator listings for the Ekim–Aralık 2026 index period (the dated sources: " +
+        "yatirimci.ai/endeksler/xu030 @ 16 Eki 2026 18:19 and borsapusula.com/hisseler — third-party " +
+        "aggregators, not BIST's own published page) — a real discrepancy was found and corrected: " +
+        "the initial record wrongly carried ARCLK, DOHOL, EBEBK, HALKB, ODAS, and omitted AEFES, GUBRF, " +
+        "TRALT, TRMET, TTKOM. Real-world correctness remains a live-pull verification observation, " +
         "not CI-verifiable; CI asserts the seed's structure and idempotency.";
 
     /// <summary>

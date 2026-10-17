@@ -52,25 +52,67 @@ public sealed class HttpSourceClient : ISourceClient
     /// Turkish code pages (<c>windows-1254</c> / <c>ISO-8859-9</c>) decode without mojibake.
     /// No declared charset, or one the provider cannot resolve, falls back to UTF-8 — the
     /// pre-v1.5 behavior; per-adapter charset sniffing is deliberately not added (§10.9.4).
+    /// <para>
+    /// The Unicode byte-order mark is handled as <see cref="System.Net.Http.HttpContent.ReadAsStringAsync(CancellationToken)"/>
+    /// did before the charset-honoring rewrite (R2-01): a leading U+FEFF preamble left by the
+    /// decoder is stripped, and with no declared charset a UTF-16 BOM is sniffed (LE/BE) so a
+    /// UTF-16 body is not mis-decoded as UTF-8. A real İş Yatırım body may carry a BOM, and a
+    /// leading U+FEFF would otherwise corrupt every downstream JSON parse.
+    /// </para>
     /// </summary>
     internal static string DecodeBody(byte[] bytes, string? charset)
     {
         ArgumentNullException.ThrowIfNull(bytes);
 
+        Encoding encoding;
         if (string.IsNullOrWhiteSpace(charset))
         {
-            return Encoding.UTF8.GetString(bytes);
+            // No declared charset: sniff a UTF-16 BOM (ReadAsStringAsync's pre-rewrite
+            // behavior); otherwise UTF-8 (the §10.9.4 default).
+            encoding = SniffUnicodeBom(bytes) ?? Encoding.UTF8;
+        }
+        else
+        {
+            try
+            {
+                // The header value may arrive quoted (charset="windows-1254").
+                encoding = Encoding.GetEncoding(charset.Trim().Trim('"'));
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+            {
+                encoding = Encoding.UTF8;
+            }
         }
 
-        try
+        // Encoding.GetString does not consume the BOM the way ReadAsStringAsync did; strip a
+        // single leading U+FEFF so a BOM'd body decodes to its BOM-less text.
+        var text = encoding.GetString(bytes);
+        return text.Length > 0 && text[0] == '\uFEFF' ? text[1..] : text;
+    }
+
+    /// <summary>
+    /// Sniffs a UTF-16 byte-order mark at the head of <paramref name="bytes"/> (used only when
+    /// no charset is declared): FF FE → UTF-16 LE, FE FF → UTF-16 BE. Returns <c>null</c> when
+    /// there is no UTF-16 BOM (the caller then defaults to UTF-8).
+    /// </summary>
+    private static Encoding? SniffUnicodeBom(byte[] bytes)
+    {
+        if (bytes.Length < 2)
         {
-            // The header value may arrive quoted (charset="windows-1254").
-            return Encoding.GetEncoding(charset.Trim().Trim('"')).GetString(bytes);
+            return null;
         }
-        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+
+        if (bytes[0] == 0xFF && bytes[1] == 0xFE)
         {
-            return Encoding.UTF8.GetString(bytes);
+            return Encoding.Unicode; // UTF-16 LE
         }
+
+        if (bytes[0] == 0xFE && bytes[1] == 0xFF)
+        {
+            return Encoding.BigEndianUnicode; // UTF-16 BE
+        }
+
+        return null;
     }
 }
 
