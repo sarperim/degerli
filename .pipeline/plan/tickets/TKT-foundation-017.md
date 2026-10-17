@@ -3,6 +3,7 @@ scope:
   - src/Ingestion/Statements/
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - tests/Api.IntegrationTests/RealSourceStatementsTests.cs
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
 ---
 
 # TKT-foundation-017: KAP XBRL statement decoding in the product
