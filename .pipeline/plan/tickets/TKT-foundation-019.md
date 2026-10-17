@@ -3,6 +3,7 @@ scope:
   - src/Ingestion/Macro/
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - tests/Api.IntegrationTests/MacroEvdsAdapterTests.cs
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
 ---
 
 # TKT-foundation-019: EVDS real-envelope capture & macro adapter hardening
