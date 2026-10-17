@@ -55,9 +55,10 @@ public static class Xu030LaunchSeed
     /// launch state is never presented as machine-verified — the DR-03 labeling discipline.
     /// </summary>
     public const string VerificationNote =
-        "Recorded XU030 launch state (2026-10-17). Verified 2026-10-18 against BIST's published " +
-        "XU030 for the Ekim–Aralık 2026 index period (corroborated by yatirimci.ai/endeksler/xu030 @ " +
-        "16 Eki 2026 18:19 and borsapusula.com/hisseler) — a real discrepancy was found and corrected: " +
+        "Recorded XU030 launch state (2026-10-17). Verified 2026-10-18 against third-party XU030 " +
+        "aggregator listings for the Ekim–Aralık 2026 index period (the dated sources: " +
+        "yatirimci.ai/endeksler/xu030 @ 16 Eki 2026 18:19 and borsapusula.com/hisseler — third-party " +
+        "aggregators, not BIST's own published page) — a real discrepancy was found and corrected: " +
         "the initial record wrongly carried ARCLK, DOHOL, EBEBK, HALKB, ODAS, and omitted AEFES, GUBRF, " +
         "TRALT, TRMET, TTKOM. Real-world correctness remains a live-pull verification observation, " +
         "not CI-verifiable; CI asserts the seed's structure and idempotency.";
