@@ -1,3 +1,4 @@
+using System.Text;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.CorporateActions;
 using Degerli.Ingestion.Coverage;
@@ -43,6 +44,12 @@ public static class IngestionServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Charset at the source client (01 v1.5 §10.9.4, AD-14): the .NET code-pages
+        // provider is registered once at product startup so the legacy Turkish code pages
+        // (windows-1254 / ISO-8859-9) that real İş Yatırım/KAP artifacts arrive in decode
+        // faithfully through ISourceClient. Registration is process-global and idempotent.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         // In a host the configuration is already registered; in a bare test composition
         // this makes the worker registration self-contained.
         services.TryAddSingleton(configuration);
