@@ -64,10 +64,13 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
         Assert.All(failed, run => Assert.Equal("prices", run.JobCode));
         Assert.Equal(new[] { 1, 2, 3, 4 }, failed.Select(Attempt).ToArray());
 
-        // The builder is alerted by e-mail and by a structured Serilog alert event.
-        var alert = Assert.Single(host.Mail.Sent);
-        Assert.Contains("prices", alert.Subject);
-        Assert.Contains("failed after 4 attempts", alert.Subject);
+        // The builder is alerted by e-mail and by a structured Serilog alert event. The TC
+        // requires that an alert be dispatched; with per-symbol isolation (§10.9.2) each
+        // failed attempt also raises a per-run source-failure alert, so the retries-exhausted
+        // alert is asserted by presence rather than as the only message.
+        Assert.Contains(host.Mail.Sent, m =>
+            m.Subject.Contains("prices", StringComparison.Ordinal) &&
+            m.Subject.Contains("failed after 4 attempts", StringComparison.Ordinal));
         Assert.True(host.Logs.Contains(evt =>
             evt.RenderMessage().Contains("RETRIES_EXHAUSTED", StringComparison.Ordinal) &&
             evt.RenderMessage().Contains("prices", StringComparison.Ordinal)));
@@ -196,6 +199,10 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
             ["ConnectionStrings:Default"] = _postgres.ConnectionString,
             ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Prices:Path"] = PricesPath,
+            // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and disables
+            // pacing, so the existing price goldens survive the per-ticker loop.
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Statements:Path"] = StatementsPath,
             ["Ingestion:Dividends:Path"] = DividendsPath,

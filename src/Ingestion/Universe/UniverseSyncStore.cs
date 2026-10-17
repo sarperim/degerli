@@ -360,6 +360,74 @@ public sealed class UniverseSyncStore
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Ensures an index reference row exists by natural key (FR-MDF-006; 02 §3.1). The XU030
+    /// launch-seed records its own index reference so the cold-start seed can fire without
+    /// depending on the universe snapshot having published that exact code: the FU source
+    /// publishes <c>XU30</c> while the real BIST code is <c>XU030</c> (FLG-08), so on cold
+    /// start no caller creates the code the seed needs — the seed materialises it itself.
+    /// Idempotent: an existing row is left untouched (never rewritten).
+    /// </summary>
+    public async Task EnsureIndexAsync(
+        string code,
+        string nameTr,
+        string nameEn,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+
+        if (await _db.Indices
+                .AnyAsync(i => i.Code == code, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return;
+        }
+
+        _db.Indices.Add(new MarketIndex
+        {
+            Code = code,
+            NameTr = string.IsNullOrWhiteSpace(nameTr) ? code : nameTr,
+            NameEn = string.IsNullOrWhiteSpace(nameEn) ? code : nameEn,
+        });
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The current constituents of one index — the symbols carrying an open membership row
+    /// (<c>effective_to IS NULL</c>), ordered by symbol (01 v1.5 §10.9.2, FR-MDF-006/007). The
+    /// per-ticker prices loop resolves its fetch bound from this. An unknown index code (no
+    /// stored reference row) resolves to an empty set rather than throwing, so a bound that
+    /// names an index the universe sync has not yet published degrades to "no constituents".
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetCurrentConstituentSymbolsAsync(
+        string indexCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (indexId is null)
+        {
+            return [];
+        }
+
+        return await _db.IndexConstituents
+            .Where(c => c.IndexId == indexId.Value && c.EffectiveTo == null)
+            .Join(
+                _db.Instruments,
+                constituent => constituent.InstrumentId,
+                instrument => instrument.Id,
+                (_, instrument) => instrument.Symbol)
+            .OrderBy(symbol => symbol)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IndexLevelsSyncResult> SyncIndexLevelsAsync(
         string sourceRef,
         DateTimeOffset recordedAt,

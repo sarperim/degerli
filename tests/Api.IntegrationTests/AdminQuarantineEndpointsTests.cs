@@ -376,6 +376,10 @@ public sealed class AdminQuarantineEndpointsTests : IClassFixture<PostgresFixtur
                     options.BaseUrl = _wireMock.BaseUrl;
                     options.Path = PricesEodPath;
                     options.BackfillPath = PricesBackfillPath;
+                    // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and
+                    // disables pacing, so the admin-triggered run resolves 16 constituents.
+                    options.UniverseIndex = "XU100";
+                    options.RequestDelayMs = 0;
                 })));
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>

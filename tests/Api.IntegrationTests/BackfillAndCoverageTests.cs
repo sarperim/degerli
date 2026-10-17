@@ -191,6 +191,10 @@ public sealed class BackfillAndCoverageTests : IClassFixture<PostgresFixture>, I
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Prices:Path"] = "/prices/eod",
                 ["Ingestion:Prices:BackfillPath"] = backfillPath,
+                // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and
+                // disables pacing, so the existing backfill/coverage goldens survive.
+                ["Ingestion:Prices:UniverseIndex"] = "XU100",
+                ["Ingestion:Prices:RequestDelayMs"] = "0",
             })
             .Build();
 

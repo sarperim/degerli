@@ -151,6 +151,10 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
             ["ConnectionStrings:Default"] = _postgres.ConnectionString,
             ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Prices:Path"] = PricesPath,
+            // The L2 harness binds the loop to the seeded FU XU100 (§8 preamble) and disables
+            // pacing, so the EOD chain's 16-row price golden survives the per-ticker loop.
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Statements:Path"] = StatementsPath,
             ["Ingestion:Dividends:Path"] = DividendsPath,

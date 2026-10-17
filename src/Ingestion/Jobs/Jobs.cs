@@ -30,7 +30,22 @@ public sealed record IngestResult(string JobCode, int Written, int Unchanged, in
     public const string Succeeded = "succeeded";
     public const string Partial = "partial";
     public const string Failed = "failed";
+
+    /// <summary>
+    /// Per-symbol breakdown of the run (TC-MDF-072/073): what each fetched constituent of the
+    /// configured index contributed. Empty for jobs with no per-symbol loop. It rides the
+    /// ledger's <c>stats_json</c> alongside the aggregate counts, so the run-ledger row carries
+    /// the per-symbol stats rather than surfacing them only as structured logs.
+    /// </summary>
+    public IReadOnlyList<SymbolRunStat> SymbolStats { get; init; } = [];
 }
+
+/// <summary>
+/// One constituent's contribution to a run (TC-MDF-072/073). <see cref="Failed"/> marks a
+/// per-symbol transport failure — a source-down, not a parse/validation event: it quarantines
+/// nothing but is named in the run's aggregate alert.
+/// </summary>
+public sealed record SymbolRunStat(string Symbol, int Written, int Unchanged, int Quarantined, bool Failed);
 
 /// <summary>
 /// Retry-ladder context for a run-ledger row (C3c, NFR-MDF-001): which attempt this is
@@ -84,6 +99,10 @@ public interface IIngestionJobRunner
 /// </summary>
 public sealed class IngestionJobRunner : IIngestionJobRunner
 {
+    // Web defaults camelCase the stats keys; the existing keys are already lower-first, so
+    // this only governs the per-symbol breakdown's record properties.
+    private static readonly JsonSerializerOptions StatsJsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly IReadOnlyDictionary<string, IIngestJob> _jobs;
     private readonly IReadOnlyList<string> _jobCodes;
     private readonly DegerliDbContext _db;
@@ -169,13 +188,15 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
             unchanged = result?.Unchanged ?? 0,
             quarantined = result?.Quarantined ?? 0,
             skipped = result?.Skipped ?? 0,
+            // Per-symbol breakdown (TC-MDF-072/073): the run-ledger row carries per-symbol stats.
+            symbols = result?.SymbolStats ?? Array.Empty<SymbolRunStat>(),
             // Backfill mode is part of the run's identity (UC-MDF-002, TC-MDF-043).
             mode = request.IsBackfill ? "backfill" : "incremental",
             backfillFrom = request.BackfillFrom?.ToString("yyyy-MM-dd"),
             attempt = context?.Attempt,
             retries = context?.Retries,
             maxAttempts = context?.MaxAttempts,
-        });
+        }, StatsJsonOptions);
 
         _db.IngestRuns.Add(new IngestRun
         {

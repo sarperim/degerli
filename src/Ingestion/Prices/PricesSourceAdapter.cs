@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Degerli.Ingestion.Sources;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,21 @@ public sealed class PricesSourceOptions
 
     /// <summary>Path of the historical price resource used in backfill mode (TKT-mdf-007).</summary>
     public string BackfillPath { get; set; } = "/prices/history";
+
+    /// <summary>
+    /// The index whose current constituents (<c>index_constituents</c>, <c>effective_to IS NULL</c>)
+    /// the production per-ticker fetch loops over (01 v1.5 §10.9.2, FR-MDF-006/007). Launch
+    /// default <c>XU030</c>; flipping to <c>XU100</c> later is a config-only change — no code.
+    /// </summary>
+    public string UniverseIndex { get; set; } = "XU030";
+
+    /// <summary>
+    /// Inter-request delay (milliseconds) pacing the strictly sequential per-ticker loop
+    /// against the undocumented public endpoint (01 v1.5 §10.9.2 — the politeness posture:
+    /// sequential, no parallelism). <c>0</c> disables the wait; L2 harnesses bind it to
+    /// <c>0</c> so the loop is deterministic.
+    /// </summary>
+    public int RequestDelayMs { get; set; } = 500;
 }
 
 /// <summary>
@@ -148,6 +164,169 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
         }
 
         return new SourcePayload<PricesHistoryPayload>(payload.SourceRef, payload, raw);
+    }
+
+    /// <summary>
+    /// Symbol-scoped incremental fetch (01 v1.5 §10.9.2, FR-MDF-001): the per-ticker loop
+    /// resolves the configured index's current constituents and asks the adapter for one
+    /// symbol's payload for the requested day. Envelope detection stays inside the adapter
+    /// (real İş Yatırım HGDG / Yahoo chart / canonical double, §10.9.1); rows are filtered to
+    /// the requested <paramref name="symbol"/> so a range-shaped body is narrowed to that
+    /// instrument. Persistence, validation and quarantine stay in the job.
+    /// </summary>
+    public async Task<SourcePayload<PricesPayload>> FetchSymbolAsync(
+        string symbol,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+
+        var raw = await _client
+            .GetStringAsync(ResolveFetchPath(_options.Path, symbol, date), cancellationToken)
+            .ConfigureAwait(false);
+        using var document = ParseDocument(raw);
+
+        if (IsYahooEnvelope(document))
+        {
+            var items = ParseYahooRows(raw)
+                .Where(row => MatchesSymbol(row.Symbol, symbol) && row.Date == date)
+                .Select(ToPriceFact)
+                .ToList();
+            return new SourcePayload<PricesPayload>(
+                YahooSource,
+                new PricesPayload(YahooSource, date, items),
+                raw);
+        }
+
+        if (IsYatirimPriceDecoder.IsEnvelope(document))
+        {
+            IsYatirimPriceDecoder.EnsureSourceOk(document);
+            var items = IsYatirimPriceDecoder.DecodeRows(document)
+                .Where(row => MatchesSymbol(row.Symbol, symbol) && row.Date == date)
+                .Select(ToPriceFact)
+                .ToList();
+            return new SourcePayload<PricesPayload>(
+                IsYatirimSource,
+                new PricesPayload(IsYatirimSource, date, items),
+                raw);
+        }
+
+        var payload = Deserialize<PricesPayload>(raw);
+        if (payload is null)
+        {
+            throw new SourceFetchException("Price payload deserialized to null.");
+        }
+
+        var filtered = payload.Items
+            .Where(item => MatchesSymbol(item.Symbol, symbol))
+            .ToList();
+        return new SourcePayload<PricesPayload>(payload.SourceRef, payload with { Items = filtered }, raw);
+    }
+
+    /// <summary>
+    /// Symbol-scoped backfill fetch (01 v1.5 §10.9.2/§10.9.1, FR-MDF-010): the same
+    /// per-ticker loop asks for one symbol's historical range; the source returns whatever
+    /// history it holds, so the achieved depth is what it returned — never fabricated beyond
+    /// the source limit (BR-MDF-006). Rows are filtered to <paramref name="symbol"/>.
+    /// </summary>
+    public async Task<SourcePayload<PricesHistoryPayload>> FetchSymbolBackfillAsync(
+        string symbol,
+        DateOnly from,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+
+        var raw = await _client
+            .GetStringAsync(ResolveBackfillPath(_options.BackfillPath, symbol, from), cancellationToken)
+            .ConfigureAwait(false);
+        using var document = ParseDocument(raw);
+
+        if (IsYahooEnvelope(document))
+        {
+            var rows = ParseYahooRows(raw).Where(row => MatchesSymbol(row.Symbol, symbol)).ToList();
+            return new SourcePayload<PricesHistoryPayload>(
+                YahooSource,
+                new PricesHistoryPayload(YahooSource, rows),
+                raw);
+        }
+
+        if (IsYatirimPriceDecoder.IsEnvelope(document))
+        {
+            IsYatirimPriceDecoder.EnsureSourceOk(document);
+            var rows = IsYatirimPriceDecoder.DecodeRows(document)
+                .Where(row => MatchesSymbol(row.Symbol, symbol))
+                .ToList();
+            return new SourcePayload<PricesHistoryPayload>(
+                IsYatirimSource,
+                new PricesHistoryPayload(IsYatirimSource, rows),
+                raw);
+        }
+
+        var payload = Deserialize<PricesHistoryPayload>(raw);
+        if (payload is null)
+        {
+            throw new SourceFetchException("Price history payload deserialized to null.");
+        }
+
+        var filtered = payload.Rows
+            .Where(row => MatchesSymbol(row.Symbol, symbol))
+            .ToList();
+        return new SourcePayload<PricesHistoryPayload>(payload.SourceRef, payload with { Rows = filtered }, raw);
+    }
+
+    private static bool MatchesSymbol(string? candidate, string symbol) =>
+        string.Equals(candidate, symbol, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Resolves the incremental route for one symbol: a <c>{symbol}</c> template in the
+    /// configured path is substituted in place; a path without the token gets the symbol as
+    /// a query parameter instead (the FU §10 double route is fixed, so the loop still reaches
+    /// it). An optional <c>{date}</c> token is substituted with the source-locale
+    /// <c>dd-MM-yyyy</c> date (the real endpoint's date format, §10.9.1).
+    /// </summary>
+    private static string ResolveFetchPath(string template, string symbol, DateOnly date)
+    {
+        var hasSymbol = template.Contains("{symbol}", StringComparison.Ordinal);
+        var path = template.Replace("{symbol}", Uri.EscapeDataString(symbol), StringComparison.Ordinal);
+        path = path.Replace(
+            "{date}",
+            date.ToString(IsYatirimPriceDecoder.SourceDateFormat, CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+        return hasSymbol ? path : AppendQuery(path, "symbol", symbol);
+    }
+
+    /// <summary>
+    /// Resolves the backfill route for one symbol, mirroring <see cref="ResolveFetchPath"/>:
+    /// <c>{symbol}</c> and an optional <c>{from}</c> template are substituted; when the
+    /// template lacks the token the symbol and the ISO <c>from</c> date are appended as query
+    /// parameters (the pre-existing backfill hint), preserving the canonical double route.
+    /// </summary>
+    private static string ResolveBackfillPath(string template, string symbol, DateOnly from)
+    {
+        var hasSymbol = template.Contains("{symbol}", StringComparison.Ordinal);
+        var hasFrom = template.Contains("{from}", StringComparison.Ordinal);
+        var path = template.Replace("{symbol}", Uri.EscapeDataString(symbol), StringComparison.Ordinal);
+        path = path.Replace(
+            "{from}",
+            from.ToString(IsYatirimPriceDecoder.SourceDateFormat, CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+        if (!hasSymbol)
+        {
+            path = AppendQuery(path, "symbol", symbol);
+        }
+
+        if (!hasFrom)
+        {
+            path = AppendQuery(path, "from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
+        return path;
+    }
+
+    private static string AppendQuery(string path, string key, string value)
+    {
+        var separator = path.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{path}{separator}{key}={Uri.EscapeDataString(value)}";
     }
 
     /// <summary>True when the body is a Yahoo chart envelope rather than the İş Yatırım one.</summary>
