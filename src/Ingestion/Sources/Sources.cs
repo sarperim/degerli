@@ -1,14 +1,20 @@
+using System.Text;
+
 namespace Degerli.Ingestion.Sources;
 
 /// <summary>
 /// Minimal HTTP seam over an external source API (KAP, İşbank, TÜİK, TEFAS …). L2
 /// tests point it at the WireMock source double (test strategy §7); production resolves
 /// the base address from configuration. Every adapter reads through this one client so
-/// no job talks to the network directly.
+/// no job talks to the network directly. The client honors the response's declared
+/// <c>Content-Type; charset=</c> (01 v1.5 §10.9.4) so Turkish code pages decode faithfully.
 /// </summary>
 public interface ISourceClient
 {
-    /// <summary>Fetches a source resource as a raw string; throws on a non-success response.</summary>
+    /// <summary>
+    /// Fetches a source resource as a raw string, decoded under the response's declared
+    /// charset (01 v1.5 §10.9.4); throws on a non-success response.
+    /// </summary>
     Task<string> GetStringAsync(string path, CancellationToken cancellationToken = default);
 }
 
@@ -35,7 +41,36 @@ public sealed class HttpSourceClient : ISourceClient
                 $"Source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'.");
         }
 
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        return DecodeBody(bytes, response.Content.Headers.ContentType?.CharSet);
+    }
+
+    /// <summary>
+    /// Decodes a source body honoring the response's declared <c>Content-Type; charset=</c>
+    /// (01 v1.5 §10.9.4). A declared charset is decoded with <see cref="Encoding.GetEncoding(string)"/>
+    /// — the .NET code-pages provider is registered once at product startup (AD-14) so the
+    /// Turkish code pages (<c>windows-1254</c> / <c>ISO-8859-9</c>) decode without mojibake.
+    /// No declared charset, or one the provider cannot resolve, falls back to UTF-8 — the
+    /// pre-v1.5 behavior; per-adapter charset sniffing is deliberately not added (§10.9.4).
+    /// </summary>
+    internal static string DecodeBody(byte[] bytes, string? charset)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+
+        if (string.IsNullOrWhiteSpace(charset))
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        try
+        {
+            // The header value may arrive quoted (charset="windows-1254").
+            return Encoding.GetEncoding(charset.Trim().Trim('"')).GetString(bytes);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
     }
 }
 
