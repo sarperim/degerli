@@ -104,8 +104,9 @@ public sealed class PriceSourceContractTests : IClassFixture<PostgresFixture>, I
             Assert.Equal(PricesSourceAdapter.YahooSource, row.SourceRef);
             var fact = expected[symbols[row.InstrumentId]];
             Assert.Equal(fact.CloseRaw, row.CloseRaw);
-            // FLG-09(b) (architecture v1.5 §10.9.1): Yahoo's chart volume is share count, a
-            // different unit from the stored ₺ turnover — it is stored NULL (honest gap).
+            // TC-MDF-061 (amended v1.5) — FLG-09(b) (architecture v1.5 §10.9.1): Yahoo's chart
+            // volume is share count, a different unit from the stored ₺ turnover — it is stored
+            // NULL (honest gap).
             Assert.Null(row.Volume);
         });
     }
