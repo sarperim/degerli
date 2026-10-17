@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-017: KAP XBRL statement decoding in the product
 
-- Status: in-review — PR https://github.com/sarperim/degerli/pull/89
+- Status: done — merged 2026-10-17 (PR https://github.com/sarperim/degerli/pull/89 @ bb868bf). Round-1 escalation R1-01 resolved by user-sanctioned scope amendment (fd9166e). DR-01/DR-02 fixed-verified. See reviews/TKT-foundation-017-round-3.md
 - Size: M
 - Scope: lift the KAP XBRL concept map, Turkish-locale number parser and fact-grouping logic from the PR #82 fixture catalog into `src/Ingestion/Statements/`, and teach the statements path the real KAP fact envelope per §10.9.5: inconsistent IFRS vs Turkish-taxonomy tag spellings collapse onto **one** canonical chart-of-accounts item code (`02` §6.1; unmapped → `OTHER_*` honest passthrough); values parse **culture-free** (`1.234.567,89` — `.` thousands, `,` decimal; tolerates accounting parentheses, en-dash minus, trailing `%`, NBSP; the host builds under `InvariantGlobalization`); facts group by (periodType, periodEndDate, statementType, version) — the store assigns the integer version sequence (v1.4); **duplicate concepts within one group: equal values collapse idempotently, unequal values quarantine as `CONFLICTING_VALUE` with both values retained — never silent latest-wins** (this deliberately overturns the fixture accumulator, DR-05; the fixture code is raw material, not contract). The statements-side real bodies land in the catalog with honest provenance labels. Must NOT alter metric formulas, value normalization, or the FU goldens.
 - Traces to: FR-MDF-002, FR-MDF-012; UC-MDF-001
