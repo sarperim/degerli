@@ -94,6 +94,10 @@ public static class RealSourceCatalog
     // EVDS macro (column-oriented real envelope) — the macro-side lane (TKT-foundation-019).
     public const string MacroEvds = "evds-macro";
 
+    // Universe / index-levels real envelopes — the universe-sync lane (TKT-foundation-021).
+    public const string Universe = "isyatirim-universe";
+    public const string IndexLevels = "isyatirim-index-levels";
+
     /// <summary>Concrete source name of the captured EOD price payloads.</summary>
     public const string IsYatirimSource = "isyatirim";
 
@@ -126,6 +130,8 @@ public static class RealSourceCatalog
         StatementsDuplicateEqual,
         StatementsDuplicateUnequal,
         MacroEvds,
+        Universe,
+        IndexLevels,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -170,6 +176,20 @@ public static class RealSourceCatalog
     private const string EvdsMacroLabel =
         "Constructed by hand for EVDS real-envelope parsing-fidelity coverage (the column-oriented " +
         "items/Tarih shape, five official series) — a shape-faithful body, not a live capture.";
+
+    // TKT-foundation-021. Both bodies are bounded live captures from the real İş Yatırım
+    // endpoints verified live 2026-10-18 (01 v1.5 §10.9.8): the universe resource is a legacy
+    // ASP.NET AJAX POST handler, the index-levels resource a plain GET on the same host. The
+    // universe body is a compact re-serialization of the first five `Oran` rows — it keeps the
+    // source's trailing whitespace padding (exercising the decoder's trim) and is therefore not
+    // presented as a byte-for-byte verbatim capture. The index body carries nine daily closes.
+    private const string UniverseLabel =
+        "Captured live from the İş Yatırım GetHissePerformans POST handler on 2026-10-18 " +
+        "(bounded: the first five Ulusal-Tüm rows, compact re-serialization; source padding preserved).";
+
+    private const string IndexLevelsLabel =
+        "Captured live from the İş Yatırım IndexHistoricalAll chart handler on 2026-10-18 " +
+        "(bounded: nine daily index closes, 2026-10-06..2026-10-16, compact re-serialization).";
 
     // ---- verbatim captured bodies (bounded; see CaptureNote) ----
     private const string PricesAselsJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_AOF":371.181,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":7.6454,"ENDEKS_BAZLI_FIYAT":0.0304,"DOLAR_HACIM":269201762.3352,"SERMAYE":4.56E9,"HG_KAPANIS":376.0,"HG_AOF":371.181,"HG_MIN":364.25,"HG_MAX":379.0,"PD":1714560000000.00000,"PD_USD":34862810643.30767,"HAO_PD":442013568000.000000,"HAO_PD_USD":8987632583.844717,"HG_HACIM":1.3239396512E10,"DOLAR_BAZLI_MIN":7.4064,"DOLAR_BAZLI_MAX":7.7064,"DOLAR_BAZLI_AOF":7.5474},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":356.437,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":7.0888,"ENDEKS_BAZLI_FIYAT":0.0288,"DOLAR_HACIM":346838924.8866,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":356.437,"HG_MIN":346.75,"HG_MAX":377.25,"PD":1590300000000.00000,"PD_USD":32324747548.66091,"HAO_PD":409979340000.000000,"HAO_PD_USD":8333319918.044783,"HG_HACIM":1.7063642691E10,"DOLAR_BAZLI_MIN":7.0481,"DOLAR_BAZLI_MAX":7.6681,"DOLAR_BAZLI_AOF":7.2450},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":345.473,"HGDG_MIN":340.25,"HGDG_MAX":354.0,"HGDG_HACIM":12941100644.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":7.0862,"ENDEKS_BAZLI_FIYAT":0.0286,"DOLAR_HACIM":262949264.5362,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":345.473,"HG_MIN":340.25,"HG_MAX":354.0,"PD":1590300000000.00000,"PD_USD":32313187795.64037,"HAO_PD":409979340000.000000,"HAO_PD_USD":8330339813.716087,"HG_HACIM":1.2941100644E10,"DOLAR_BAZLI_MIN":6.9135,"DOLAR_BAZLI_MAX":7.1929,"DOLAR_BAZLI_AOF":7.0196}]}""";
@@ -224,6 +244,11 @@ public static class RealSourceCatalog
     //      bounded 90-day lookback ending 2026-10-06 (2026-07-08..2026-10-06).
     private const string MacroEvdsJson = """{"totalCount":4,"items":[{"Tarih":"01-09-2026","YEARWEEK":"2026-36","TP.TUKFIY2025.GENEL":46.30,"TP.APIFON1":null,"TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":null},{"Tarih":"15-09-2026","YEARWEEK":"2026-38","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":"43.00","TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":null},{"Tarih":"26-09-2026","YEARWEEK":"2026-39","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":null,"TP.DK.USD.A.YTL":null,"TP.DK.EUR.A.YTL":null,"TP.MK.ALTIN":5325.50},{"Tarih":"06-10-2026","YEARWEEK":"2026-41","TP.TUKFIY2025.GENEL":null,"TP.APIFON1":null,"TP.DK.USD.A.YTL":47.15,"TP.DK.EUR.A.YTL":51.55,"TP.MK.ALTIN":null}]}""";
 
+    // ---- bounded live captures: universe / index-levels (TKT-foundation-021) ----
+    private const string UniverseJson = """{"d":"{\"Sector\":null,\"Oran\":[{\"HISSE_KODU\":\"A1CAP\",\"PRICE_TL\":3.73,\"ONERI\":null,\"HEDEF_PD_YTL1\":null,\"HEDEF_FIYAT\":null,\"GETIRI_POT\":null,\"TARIH\":null,\"MARKET_CAP_TL\":2517750000.0,\"PAID_UP_CAP\":675000000.0,\"AS_ALT_SEKTOR_KODU\":null,\"AS_ALT_SEKTOR_TANIMI\":\"Aracı Kurumlar\",\"AS_ALT_SEKTOR_TANIMI_YD\":null,\"AS_SEKTOR_KODU\":null,\"HISSE_TANIM\":\"A1 Capital \",\"HISSE_TANIM_YD\":null,\"BHG_GRUP_KODU\":null,\"HSG_TANIMI\":null,\"HSG_TANIMI_YD\":null,\"PE\":1.48040337094977,\"MV_BV\":0.275777604698282,\"EV_NS\":-0.290713111577104,\"EV_EBITDA\":-1.75023754855589,\"BASLANGIC_TRH\":null,\"GUN_TRH\":null,\"END_GUN_GETIRI\":-3.74,\"DOV_GUN_GETIRI\":-6.58,\"GUN_GETIRI\":-6.52,\"HAFTA_TRH\":null,\"END_HF_GETIRI\":-15.7,\"DOV_HF_GETIRI\":-19.82,\"HAFTA_GETIRI\":-19.44,\"AY_TRH\":null,\"END_AY_GETIRI\":-35.26,\"DOV_AY_GETIRI\":-43.08,\"AY_GETIRI\":-42.17,\"YIL_TRH\":null,\"END_YIL_GETIRI\":-72.45,\"DOV_YIL_GETIRI\":-73.65,\"YIL_GETIRI\":-68.86,\"YTD_TRH\":null,\"END_YTD_GETIRI\":-69.63,\"DOV_YTD_GETIRI\":-72.56,\"YTD_GETIRI\":-68.39,\"FK_PRİM\":null,\"PDD_PRIM\":null,\"FDFAVOK_PRIM\":null,\"FK\":0.0,\"PDD\":null,\"FDFAVOK\":null,\"TARIH_0\":null,\"TARIH_1\":null,\"TARIH_2\":null,\"TARIH_3\":null,\"MARKET_CAP_DOV\":50.918876,\"FREE_FLOAT_RATE\":30.96,\"SON_DONEM\":\"6/2026\"},{\"HISSE_KODU\":\"A1YEN\",\"PRICE_TL\":1.56,\"ONERI\":null,\"HEDEF_PD_YTL1\":null,\"HEDEF_FIYAT\":null,\"GETIRI_POT\":null,\"TARIH\":null,\"MARKET_CAP_TL\":936000000.0,\"PAID_UP_CAP\":600000000.0,\"AS_ALT_SEKTOR_KODU\":null,\"AS_ALT_SEKTOR_TANIMI\":\"Elektrik Üretim\",\"AS_ALT_SEKTOR_TANIMI_YD\":null,\"AS_SEKTOR_KODU\":null,\"HISSE_TANIM\":\"Kartal Yenilenebili Enerji\",\"HISSE_TANIM_YD\":null,\"BHG_GRUP_KODU\":null,\"HSG_TANIMI\":null,\"HSG_TANIMI_YD\":null,\"PE\":7.29857147462194,\"MV_BV\":0.262637347337202,\"EV_NS\":2.1390573998773,\"EV_EBITDA\":3.52693012872535,\"BASLANGIC_TRH\":null,\"GUN_TRH\":null,\"END_GUN_GETIRI\":-0.23,\"DOV_GUN_GETIRI\":-3.17,\"GUN_GETIRI\":-3.11,\"HAFTA_TRH\":null,\"END_HF_GETIRI\":-7.24,\"DOV_HF_GETIRI\":-11.77,\"HAFTA_GETIRI\":-11.36,\"AY_TRH\":null,\"END_AY_GETIRI\":-27.23,\"DOV_AY_GETIRI\":-36.02,\"AY_GETIRI\":-35.0,\"YIL_TRH\":null,\"END_YIL_GETIRI\":-45.87,\"DOV_YIL_GETIRI\":-48.22,\"YIL_GETIRI\":-38.82,\"YTD_TRH\":null,\"END_YTD_GETIRI\":-43.44,\"DOV_YTD_GETIRI\":-48.9,\"YTD_GETIRI\":-41.13,\"FK_PRİM\":null,\"PDD_PRIM\":null,\"FDFAVOK_PRIM\":null,\"FK\":0.0,\"PDD\":null,\"FDFAVOK\":null,\"TARIH_0\":null,\"TARIH_1\":null,\"TARIH_2\":null,\"TARIH_3\":null,\"MARKET_CAP_DOV\":18.929626,\"FREE_FLOAT_RATE\":74.77,\"SON_DONEM\":\"6/2026\"},{\"HISSE_KODU\":\"AAGYO\",\"PRICE_TL\":8.05,\"ONERI\":null,\"HEDEF_PD_YTL1\":null,\"HEDEF_FIYAT\":null,\"GETIRI_POT\":null,\"TARIH\":null,\"MARKET_CAP_TL\":5643050000.0,\"PAID_UP_CAP\":701000000.0,\"AS_ALT_SEKTOR_KODU\":null,\"AS_ALT_SEKTOR_TANIMI\":\"GYO\",\"AS_ALT_SEKTOR_TANIMI_YD\":null,\"AS_SEKTOR_KODU\":null,\"HISSE_TANIM\":\"Ağaoğlu GYO\",\"HISSE_TANIM_YD\":null,\"BHG_GRUP_KODU\":null,\"HSG_TANIMI\":null,\"HSG_TANIMI_YD\":null,\"PE\":-133.319668365597,\"MV_BV\":0.340123745663634,\"EV_NS\":-100.0,\"EV_EBITDA\":-100.0,\"BASLANGIC_TRH\":null,\"GUN_TRH\":null,\"END_GUN_GETIRI\":-0.12,\"DOV_GUN_GETIRI\":-3.07,\"GUN_GETIRI\":-3.01,\"HAFTA_TRH\":null,\"END_HF_GETIRI\":-2.5,\"DOV_HF_GETIRI\":-7.27,\"HAFTA_GETIRI\":-6.83,\"AY_TRH\":null,\"END_AY_GETIRI\":-13.42,\"DOV_AY_GETIRI\":-23.89,\"AY_GETIRI\":-22.67,\"YIL_TRH\":null,\"END_YIL_GETIRI\":null,\"DOV_YIL_GETIRI\":0.0,\"YIL_GETIRI\":0.0,\"YTD_TRH\":null,\"END_YTD_GETIRI\":null,\"DOV_YTD_GETIRI\":null,\"YTD_GETIRI\":null,\"FK_PRİM\":null,\"PDD_PRIM\":null,\"FDFAVOK_PRIM\":null,\"FK\":0.0,\"PDD\":null,\"FDFAVOK\":null,\"TARIH_0\":null,\"TARIH_1\":null,\"TARIH_2\":null,\"TARIH_3\":null,\"MARKET_CAP_DOV\":114.124821,\"FREE_FLOAT_RATE\":24.01,\"SON_DONEM\":\"6/2026\"},{\"HISSE_KODU\":\"ACSEL\",\"PRICE_TL\":83.45,\"ONERI\":null,\"HEDEF_PD_YTL1\":null,\"HEDEF_FIYAT\":null,\"GETIRI_POT\":null,\"TARIH\":null,\"MARKET_CAP_TL\":894725865.0,\"PAID_UP_CAP\":10721700.0,\"AS_ALT_SEKTOR_KODU\":null,\"AS_ALT_SEKTOR_TANIMI\":\"Kimyasal Ürün\",\"AS_ALT_SEKTOR_TANIMI_YD\":null,\"AS_SEKTOR_KODU\":null,\"HISSE_TANIM\":\"Acıselsan Acıpayam Selüloz\",\"HISSE_TANIM_YD\":null,\"BHG_GRUP_KODU\":null,\"HSG_TANIMI\":null,\"HSG_TANIMI_YD\":null,\"PE\":-142.130434223168,\"MV_BV\":1.32493397896905,\"EV_NS\":1.13467894269292,\"EV_EBITDA\":9.94970243877881,\"BASLANGIC_TRH\":null,\"GUN_TRH\":null,\"END_GUN_GETIRI\":1.45,\"DOV_GUN_GETIRI\":-1.54,\"GUN_GETIRI\":-1.48,\"HAFTA_TRH\":null,\"END_HF_GETIRI\":-2.65,\"DOV_HF_GETIRI\":-7.41,\"HAFTA_GETIRI\":-6.97,\"AY_TRH\":null,\"END_AY_GETIRI\":-9.56,\"DOV_AY_GETIRI\":-20.49,\"AY_GETIRI\":-19.22,\"YIL_TRH\":null,\"END_YIL_GETIRI\":-35.24,\"DOV_YIL_GETIRI\":-38.05,\"YIL_GETIRI\":-26.8,\"YTD_TRH\":null,\"END_YTD_GETIRI\":-17.95,\"DOV_YTD_GETIRI\":-25.87,\"YTD_GETIRI\":-14.59,\"FK_PRİM\":null,\"PDD_PRIM\":null,\"FDFAVOK_PRIM\":null,\"FK\":0.0,\"PDD\":null,\"FDFAVOK\":null,\"TARIH_0\":null,\"TARIH_1\":null,\"TARIH_2\":null,\"TARIH_3\":null,\"MARKET_CAP_DOV\":18.0949,\"FREE_FLOAT_RATE\":47.91,\"SON_DONEM\":\"6/2026\"},{\"HISSE_KODU\":\"ADEL\",\"PRICE_TL\":24.44,\"ONERI\":null,\"HEDEF_PD_YTL1\":null,\"HEDEF_FIYAT\":null,\"GETIRI_POT\":null,\"TARIH\":null,\"MARKET_CAP_TL\":6351345000.0,\"PAID_UP_CAP\":259875000.0,\"AS_ALT_SEKTOR_KODU\":null,\"AS_ALT_SEKTOR_TANIMI\":\"Kırtasiye\",\"AS_ALT_SEKTOR_TANIMI_YD\":null,\"AS_SEKTOR_KODU\":null,\"HISSE_TANIM\":\"Adel Kalemcilik               \",\"HISSE_TANIM_YD\":null,\"BHG_GRUP_KODU\":null,\"HSG_TANIMI\":null,\"HSG_TANIMI_YD\":null,\"PE\":-14.8974922089773,\"MV_BV\":4.62284482758621,\"EV_NS\":2.92364039261732,\"EV_EBITDA\":46.6648638346784,\"BASLANGIC_TRH\":null,\"GUN_TRH\":null,\"END_GUN_GETIRI\":2.14,\"DOV_GUN_GETIRI\":-0.87,\"GUN_GETIRI\":-0.81,\"HAFTA_TRH\":null,\"END_HF_GETIRI\":-2.39,\"DOV_HF_GETIRI\":-7.16,\"HAFTA_GETIRI\":-6.72,\"AY_TRH\":null,\"END_AY_GETIRI\":-7.5,\"DOV_AY_GETIRI\":-18.68,\"AY_GETIRI\":-17.38,\"YIL_TRH\":null,\"END_YIL_GETIRI\":-27.44,\"DOV_YIL_GETIRI\":-30.59,\"YIL_GETIRI\":-17.99,\"YTD_TRH\":null,\"END_YTD_GETIRI\":-28.85,\"DOV_YTD_GETIRI\":-35.72,\"YTD_GETIRI\":-25.94,\"FK_PRİM\":null,\"PDD_PRIM\":null,\"FDFAVOK_PRIM\":null,\"FK\":0.0,\"PDD\":null,\"FDFAVOK\":null,\"TARIH_0\":null,\"TARIH_1\":null,\"TARIH_2\":null,\"TARIH_3\":null,\"MARKET_CAP_DOV\":128.449351,\"FREE_FLOAT_RATE\":27.59,\"SON_DONEM\":\"6/2026\"}]}"}""";
+
+    private const string IndexLevelsJson = """{"data":[[1791234000000,15381.69043],[1791320400000,15013.83008],[1791406800000,15137.57031],[1791493200000,15145.26953],[1791752400000,15001.28027],[1791838800000,15191.57031],[1791925200000,15047.87012],[1792011600000,14986.78027],[1792098000000,14558.42969]],"timestamp":"2026-10-18T02:45:43.0802138+03:00"}""";
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -244,6 +269,8 @@ public static class RealSourceCatalog
         KapStatements(StatementsDuplicateEqual, StatementsDuplicateEqualJson),
         KapStatements(StatementsDuplicateUnequal, StatementsDuplicateUnequalJson),
         EvdsMacro(MacroEvds, MacroEvdsJson),
+        CapturedUniverse(Universe, UniverseJson),
+        CapturedIndexLevels(IndexLevels, IndexLevelsJson),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -287,6 +314,12 @@ public static class RealSourceCatalog
 
     private static RealSourcePayload EvdsMacro(string name, string json) =>
         Payload(name, EvdsMacroLabel, RealSourceProvenance.Constructed, json, EvdsSource);
+
+    private static RealSourcePayload CapturedUniverse(string name, string json) =>
+        Payload(name, UniverseLabel, RealSourceProvenance.Captured, json);
+
+    private static RealSourcePayload CapturedIndexLevels(string name, string json) =>
+        Payload(name, IndexLevelsLabel, RealSourceProvenance.Captured, json);
 
     private static RealSourcePayload Payload(
         string name,
