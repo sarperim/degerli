@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 
-import { formatNumber } from '@/lib/format'
+import { formatAsOfDate, formatNumber } from '@/lib/format'
 import { catalogValue } from '@/test/i18n'
 import { renderWithProviders } from '@/test/render'
 import { server } from '@/test/msw/server'
@@ -16,7 +16,9 @@ import {
   VALUATION_FIXTURE,
 } from '@/screens/stock-page/testSupport'
 import {
+  ValuationHistoryChart,
   ValuationSection,
+  ValuationTooltipContent,
   VsSectorStrip,
 } from '@/screens/stock-page/ValuationSection'
 import { valuationHistoryPoints } from '@/screens/stock-page/valuation'
@@ -135,5 +137,89 @@ describe('TC-RES-032 — adjusted historical data', () => {
     expect(
       screen.queryByText(TR('honestData.adjustedNotice')),
     ).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * TKT-res-012 — the historical price chart exposes per-point values on hover.
+ *
+ * Explicit-criteria acceptance for the user-reported defect of 2026-10-18 (hover
+ * highlights a point but shows neither date nor price). No tooltip-specific TC
+ * exists in `.pipeline/testing/stock-research.md` yet — the test-planner follow-up
+ * is recorded on the ticket — so these specs are named for the ticket rather than
+ * an invented TC ID.
+ *
+ * Determinism: the tooltip content is rendered directly with synthetic Recharts
+ * props instead of simulating a mouse move (Recharts hover geometry is not
+ * reliably reproducible in jsdom), and every formatted figure is compared against
+ * the shared `@/lib/format` helpers in both locales.
+ */
+describe('TKT-res-012 — valuation history chart hover tooltip', () => {
+  it('mounts a Recharts tooltip inside the history chart', () => {
+    const { container } = renderWithProviders(
+      <ValuationHistoryChart historical={VALUATION_FIXTURE.historical} />,
+    )
+
+    expect(
+      container.querySelector('.recharts-tooltip-wrapper'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the hovered point’s date and plotted close in the TR locale', () => {
+    const point = valuationHistoryPoints(VALUATION_FIXTURE.historical)[0]
+    const { container } = renderWithProviders(
+      <ValuationTooltipContent
+        active
+        payload={[{ graphicalItemId: 'close', payload: point }]}
+      />,
+    )
+
+    expect(container.querySelector('[data-slot="tooltip-date"]')).toHaveTextContent(
+      formatAsOfDate('tr', point.date),
+    )
+    expect(container.querySelector('[data-slot="tooltip-close"]')).toHaveTextContent(
+      `${TR('stockPage.valuation.history.close')}: ${formatNumber('tr', point.close)}`,
+    )
+  })
+
+  it('renders the same figures in the EN locale (no hardcoded locale)', () => {
+    const point = valuationHistoryPoints(VALUATION_FIXTURE.historical)[1]
+    const { container } = renderWithProviders(
+      <ValuationTooltipContent
+        active
+        payload={[{ graphicalItemId: 'close', payload: point }]}
+      />,
+      { language: 'en' },
+    )
+
+    expect(container.querySelector('[data-slot="tooltip-date"]')).toHaveTextContent(
+      formatAsOfDate('en', point.date),
+    )
+    expect(container.querySelector('[data-slot="tooltip-close"]')).toHaveTextContent(
+      `${catalogValue('en', 'stockPage.valuation.history.close')}: ${formatNumber(
+        'en',
+        point.close,
+      )}`,
+    )
+  })
+
+  it('carries the plotted (adjusted) close, never the raw close behind a split', () => {
+    const point = valuationHistoryPoints(EPSL_VALUATION_FIXTURE.historical)[0]
+    const { container } = renderWithProviders(
+      <ValuationTooltipContent
+        active
+        payload={[{ graphicalItemId: 'close', payload: point }]}
+      />,
+    )
+
+    const close = container.querySelector('[data-slot="tooltip-close"]')
+    expect(close).toHaveTextContent(formatNumber('tr', 50))
+    expect(close).not.toHaveTextContent(formatNumber('tr', 100))
+  })
+
+  it('renders no content when no point is active', () => {
+    renderWithProviders(<ValuationTooltipContent active={false} payload={[]} />)
+
+    expect(screen.queryByTestId('valuation-tooltip')).not.toBeInTheDocument()
   })
 })
