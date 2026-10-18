@@ -161,7 +161,7 @@ public sealed class VykStatementsSourceTests : IClassFixture<PostgresFixture>, I
     /// consumes the <c>/members</c> shape, the company's FR disclosure list is fetched from the
     /// configured early index, and each new disclosure's detail decodes through the production
     /// adapter and the job's DB ingest path: the fiscal period/year map from the detail fields,
-    /// the <c>flatData</c> facts collapse onto <c>02</c> §6.1 item codes, and provenance stays
+    /// the <c>presentation</c> facts collapse onto <c>02</c> §6.1 item codes, and provenance stays
     /// <c>kap</c>.
     /// </summary>
     [Fact]
@@ -459,7 +459,9 @@ public sealed class VykStatementsSourceTests : IClassFixture<PostgresFixture>, I
     /// TKT-foundation-026 (criterion (v)) — a throttle fault (the Apinizer fault envelope, or an
     /// HTTP 429) is a <b>retryable transport failure</b>: it follows the §10.9.10 posture — no
     /// quarantine row, the company marked failed, one aggregate alert, loop continues (the
-    /// scheduler's retry ladder applies to the failed run).
+    /// scheduler's retry ladder applies to the failed run). Only the transport-failure half is
+    /// asserted here; the retry-with-backoff half of criterion (v) rides the existing scheduler
+    /// retry lane (no per-adapter backoff) and is covered there, not re-asserted per adapter.
     /// </summary>
     [Theory]
     [InlineData(200, """{"fault":{"faultCode":"OI002","faultString":"Authentication policy failed or rate limit exceeded"}}""")]
@@ -601,7 +603,7 @@ public sealed class VykStatementsSourceTests : IClassFixture<PostgresFixture>, I
             disclosureIndex,
             year = "2025",
             period = new { tr = "Yıllık", en = "Annual" },
-            consolidation = "consolidated",
+            consolidation = "NC",
             relatedStocks = new[] { new { code = "ALFA" } },
             presentation = presentations,
             attachmentUrls = Array.Empty<object>(),

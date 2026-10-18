@@ -749,8 +749,8 @@ persisted cursor and writes nothing new (idempotent). `GET /lastDisclosureIndex`
 anchor (secondary; its unavailability does not fail the directory).
 
 **Config (`Ingestion:Kap` / `Ingestion:Statements`, §10.4).** Shipped in `src/Api/appsettings.json`:
-`Ingestion:Kap = { BaseUrl = https://apigwdev.mkk.com.tr/api/vyk, ApiKey = "", Username = "",
-Password = "", MembersPath = /members, LastDisclosureIndexPath = /lastDisclosureIndex }`;
+`Ingestion:Kap = { BaseUrl = https://apigwdev.mkk.com.tr/api/vyk, ApiKey = "", ApiSecret = "",
+MembersPath = /members, LastDisclosureIndexPath = /lastDisclosureIndex }`;
 `Ingestion:Statements = { Path = /disclosures, DetailPath = /disclosureDetail/{disclosureIndex},
 DisclosureClass = FR, EarlyDisclosureIndex = 0, UniverseIndex = XU030, RequestDelayMs = 10000 }`.
 `compose.dev.yml` passes `Ingestion__Kap__ApiKey` through to the api service; `.env.example`
