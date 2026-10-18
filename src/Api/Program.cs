@@ -2,6 +2,7 @@ using Degerli.Api.Admin;
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
 using Degerli.Api.Market;
+using Degerli.Api.Metadata;
 using Degerli.Api.Screener;
 using Degerli.Api.Stocks;
 using Degerli.Api.Valuation;
@@ -117,6 +118,10 @@ api.MapDegerliSavedScreenEndpoints();
 // Market module (TKT-mov-004): the public dashboard reads (FR-MOV-001..010/021;
 // UC-MOV-001/003) — equity blocks and the macro strip as separate endpoints.
 api.MapDegerliMarketEndpoints();
+
+// Metadata module (TKT-foundation-029): the anonymous, static per-class data-source
+// provenance catalog behind the site-wide disclosure surface (FR-MDF-008/FR-MOV-020).
+api.MapDegerliDataSourcesEndpoints();
 
 var admin = api.MapDegerliAdminEndpoints();
 

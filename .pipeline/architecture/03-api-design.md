@@ -41,6 +41,7 @@
 | `GET /api/v1/stocks/{symbol}/balance-sheet` | SCR-005 §6: BS lines + book value + BVPS (FR-RES-027) | UC-RES-003 | |
 | `GET /api/v1/stocks/{symbol}/dividends` | SCR-005 §7: dividend history | UC-RES-003 | never-paid → explicit state (SCR-005 §7) |
 | `GET /api/v1/screener/metrics` | SCR-003 criteria builder: visible catalog (family, unit, labels, isCagr) | UC-SCR-001 | serves only `is_screenable = true` (UXR-SCR-011) |
+| `GET /api/v1/meta/data-sources` | site-wide data-source provenance catalog: per data class `{id, class, source, state: live\|unavailable, nature}` — the "where the data comes from" disclosure (FR-MDF-008 per-class provenance, FR-MOV-020 disclaimer family) | UC-MDF-005 | anonymous; small **static product-side catalog** (`src/Api/Metadata`), no DB, no migration; honesty is server-owned — `state` is liveness (`unavailable` for a class with no live values, never a claim of a live source); language-neutral (class codes + source name), the SPA renders TR/EN copy (`§1.1`, `01` §10.6); served under the global API rate limit (`§12`); not a data payload — no honest-data envelope |
 
 Stock-page sections are separate endpoints by design (M-5): sections render, load, fail, and retry independently (SCR-005 §5); one mega-endpoint would couple their failure domains.
 
@@ -347,6 +348,7 @@ No API keys/tiers in V1 (no third-party consumers; the public API is documented 
 | Surface | Policy | Rationale |
 |---|---|---|
 | `GET /market/*`, `GET /stocks*`, `GET /screener/metrics`, `GET /stocks/{s}/dcf` | `public, max-age=300` + ETag | daily data; 5-min freshness is far tighter than the EOD cadence; ETag revalidation keeps it cheap |
+| `GET /meta/data-sources` | no explicit cache header | a static product-side catalog, not a per-request data payload — it is not part of the daily-data cache class; served under the global rate limit |
 | `POST /screener/run`, `POST …/dcf/compute` | `no-store` | dynamic, user-specific inputs |
 | `/me/*`, `/auth/*`, `/admin` | `no-store` | personal / mutating surfaces |
 
