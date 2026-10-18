@@ -668,6 +668,102 @@ harness *binding* delta is the only permitted change to the existing statements-
 (TC-MDF-065/067/071 and the versioning/normalization/accounting-profile lanes re-run green
 unchanged). The new loop tests reuse the TC-MDF-072/073/074 lane shapes for companies.
 
+#### 10.9.11 The KAP VYK API source contract — company mapping, list/detail envelopes, cursor and pacing (TKT-foundation-026, FR-MDF-002/008/010/011/012)
+
+**Why (the defect this closes).** §10.9.10 wired the company-scoped statements loop but shipped a
+**discovered-but-unverified** `Ingestion:Statements:Path` against `www.kap.org.tr`: KAP's Next.js
+redesign had killed the former per-company route, every probe returned 500/404, and no real capture
+could be obtained — so the loop could never fetch real financial statements. **The blocker was
+resolved the proper way: MKK's official "KAP Data Dissemination Services" REST API (the "KAP VYK
+API", an Apinizer gateway), with a free-plan API key obtained by the user.** This subsection records
+the new source contract and **supersedes §10.9.10's blocked live-discovery block** (the loop, the
+per-company isolation and the keyed `IKapSourceClient` are reused unchanged; only the **source** is
+rewired).
+
+**Gateway and auth (live-verified 2026-10-18).** `Ingestion:Kap:BaseUrl` targets the VYK gateway.
+The **dev** gateway `https://apigwdev.mkk.com.tr/api/vyk` is spec-verified (live-reachable) and is
+what ships; the **production** host (`apigw.mkk.com.tr`) did not resolve from this environment, so
+pinning it is a **live-verification step recorded in the PR — never an assumed/verified guess** (the
+018–025 honesty posture; the candidate is blocked until a live run pins it). Auth was **pinned
+live**: an HTTP **Basic** credential, attached to the KAP `HttpClient` as a request header (never in
+the URL) **iff** `Ingestion:Kap:ApiKey` (env `Ingestion__Kap__ApiKey`) or its paired
+`Ingestion:Kap:ApiSecret` (env `Ingestion__Kap__ApiSecret`) is non-empty — the API **Key** is the
+Basic *username*, the API **Secret** the *password* (the gateway returns HTTP 200 only for the pair;
+a lone key, an `X-API-KEY` header and a raw `Authorization` value all 401). The key/secret are never
+committed (`appsettings.json` ships empty defaults, mirroring `Ingestion:Macro:EvdsApiKey`) and every
+configured secret is redacted from any message that could echo it (`KapSourceOptions.Redact`,
+`KapHttpSourceClient`).
+
+**Company mapping (structural pin).** The loop is company-scoped by BIST symbol; the gateway
+identifies companies by `companyId`. One paced `GET /members` (Şirket Listesi) per run builds an
+in-memory symbol→`companyId` map (`MemberInfo.stockCode` carries the ticker directly) reused for the
+whole run (`VykCompanyDirectory`, lazy + cached). A bound symbol with no mapping is **marked failed
+with the named reason `COMPANY_IDENTITY_UNRESOLVED`** — no rows written, no fabricated mapping,
+counted in the run-ledger per-company stats, loop continues (FR-MDF-008/012). A `/members` transport
+failure degrades honestly: the snapshot is `Failed`, every company is marked
+`SOURCE_FETCH_FAILED`, one aggregate alert, no fabricated mapping.
+
+**List + detail envelopes (live-verified 2026-10-18).** Statements are disclosures of class
+**`FR`** (Finansal Raporlar): `GET /disclosures?disclosureIndex={cursor}&disclosureClass=FR&companyId={id}`
+returns the `DisclosureInfoResponse` list; each new disclosure is fetched via
+`GET /disclosureDetail/{disclosureIndex}?fileType=data` → `DisclosureByIdResponse`. **The gateway
+does not return the OpenAPI's declared `flatData`** for `fileType=data` (live-verified: that member
+is absent, and `fileType=html` returns `htmlMessages` instead) — the structured payload is the
+XBRL-style **`presentation`** array, one entry per sub-report: `content.ContextList.Context[]` binds
+context ids to periods (`Period.instant`, or `Period.startDate`/`endDate`) under keys
+`CURR`/`PREV`/`CURR3`/`PREV3`, and `content.ReportItem` is a tree whose leaves carry a **bare IFRS
+taxonomy `name`** and a `Values.Value[]` list of `{contextId, currency, rounding, value}`. The
+`presentation` tree becomes a **first-class real envelope** alongside the §10.9.5 XBRL fact envelope
+and the canonical double (envelope detection in the adapter): fiscal `year`/`period` map to the group
+coordinates, each sub-report's root report-item name selects the statement type (`BalanceSheet`→`BS`,
+`ProfitOrLoss`→`IS`, `CashFlows`→`CF`, `ChangesInEquity`→`EQ`), each leaf's **`CURR`** value collapses
+onto `02` §6.1 through the shared `KapXbrlStatementDecoder.ConceptMap` (extended with the bare-name
+spellings)/`StatementMapper` path, and the grouping + duplicate-concept rule carry over verbatim;
+provenance stays `kap`. **The identity guard adapts:** a listed disclosure whose `companyId` does not
+match the requested company is **skipped before decode** (empty statement set, no detail fetch, never
+another company's facts quarantined). **Bounded live capture:** the shape is pinned by the
+`RealSourceCatalog` `kap-vyk-disclosure-detail` entry (disclosure 1226255, live 2026-10-18, trimmed to
+a representative real-report-item subset with real CURR/PREV values) — **no capture fabricated**; the
+CI member/list doubles are shape-faithful constructed bodies. **Honest scope notes:** `consolidation`
+(a detail field with no `02` §3.1 home) is **not persisted**; the attachment-file layer
+(`/downloadAttachment/{id}` PDF/XBRL) is a **separate follow-up ticket** — never silently scoped in
+(no PDF/XBRL-file parsing here).
+
+**Pacing + throttle (structural pin).** The free plan allows ~6 calls/min, so the VYK source is
+paced at ~10 s per call: the shipped `Ingestion:Statements:RequestDelayMs` flips **500 → 10000** and
+**every** gateway call in the run (members, anchor, list, detail) is paced by a scoped
+`KapRequestPacer` (on top of the loop's per-company pace, §10.9.10). An HTTP 429, or a
+`VykErrorResponse`/Apinizer throttle fault, is a **retryable transport failure** through the
+existing retry ladder with backoff — a source-down, not a parse event: no quarantine row, the
+company marked failed, one aggregate alert, loop continues; a parse failure of a real VYK body
+quarantines `UNPARSEABLE_PAYLOAD` and continues.
+
+**Incremental cursor (structural pin).** The per-company incremental cursor is the **last-processed
+`disclosureIndex`**, persisted in the **existing `coverage_metadata` table** (Scope `instrument`, a
+`kap-disclosure-cursor` data type, the value in `Notes`) — **no schema migration**. The data type is
+deliberately **outside `CoverageDataTypes.InstrumentScoped`**, so the no-silent-gaps reconcile never
+clobbers the cursor row. A cursor-less company starts from the configurable
+`Ingestion:Statements:EarlyDisclosureIndex` (the first live pass **is** the backfill — the achieved
+depth is what the source returned, recorded honestly per FR-MDF-010/011); a re-run resumes from the
+persisted cursor and writes nothing new (idempotent). `GET /lastDisclosureIndex` is the run's global
+anchor (secondary; its unavailability does not fail the directory).
+
+**Config (`Ingestion:Kap` / `Ingestion:Statements`, §10.4).** Shipped in `src/Api/appsettings.json`:
+`Ingestion:Kap = { BaseUrl = https://apigwdev.mkk.com.tr/api/vyk, ApiKey = "", ApiSecret = "",
+MembersPath = /members, LastDisclosureIndexPath = /lastDisclosureIndex }`;
+`Ingestion:Statements = { Path = /disclosures, DetailPath = /disclosureDetail/{disclosureIndex},
+DisclosureClass = FR, EarlyDisclosureIndex = 0, UniverseIndex = XU030, RequestDelayMs = 10000 }`.
+`compose.dev.yml` passes `Ingestion__Kap__ApiKey` through to the api service; `.env.example`
+documents the slot.
+
+**Test-double posture (§10.9.7).** No golden changed. The VYK seam is exercised through the L2
+harness's own stub routes (members/list/detail), with only the permitted deltas: the harness
+*bindings* for the new routes, the shipped config values above (the 024 config-wiring test's two
+shipped-value assertions amended), and new honestly-labeled `RealSourceCatalog` entries
+(`kap-vyk-members`/`kap-vyk-disclosures` constructed, `kap-vyk-disclosure-detail` a bounded live
+capture) for the TC-MDF-063 lane. Every existing statements-path golden (TC-MDF-065/067/071 + the
+versioning/normalization/accounting-profile lanes) re-runs green unchanged.
+
 ## 11. Architecture decision log (summary)
 
 | AD | Decision | One-line rationale (full text in sections above) |
@@ -718,3 +814,4 @@ Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets 
 | v1.5.2 | 2026-10-18 | **Real-only dev-stack data posture** (TKT-foundation-023, new §10.9.9): pins the dev data-world decision after the user-reported mixed 116-stock dev list (100 real + 16 FU fixture, a *data condition*, not a read-path defect). **Option A (recorded):** the real-only dev stack is a fresh database built by the real chain only — `down -v` → `up` → `run --rm migrate` → admin-trigger `universe-sync` → prices backfill — documented end to end in README "Dev-stack data"; the FU fixture seed stays the L2/L4 CI world and an opt-in dev/demo bootstrap. §10.9.3's deliberate FU/real coexistence in CI is the *reason* a reset path (not an exclusion switch) is the fix. Rejected: fixture-exclusion switch (a read-path filter existing only to undo a seed; `StockListEndpoints` is right — FR-RES-001) and "dev keeps both, only production is real" (leaves the reported mixed list as the dev default and lets T-anchored derived data pose as real). `FixtureSeedEntry.RunAsync` gains one honesty warning line on the seed path (log only — exit code, idempotency, L4 contract unchanged). | FR-RES-001 (dev browsing experience fixed by data posture, not read-path change); FR-MDF-006/007/011; FU §1 (fixture universe kept intact as the CI world); NFR-MDF-005 (reproducible documented bootstrap); `02` §8 (application seed the migrate step runs — unchanged) | No TCs needed (docs + one log line; foundation convention — explicit criteria). README + §10.9.9 + `FixtureSeedEntry` only; nothing under `src/Api`/`src/Ingestion`/`tests/` changes. Live criterion (018–022 honesty posture): the orchestrator runs the documented reset path on a fresh dev volume post-merge and verifies the stock list serves exactly the real covered universe |
 | v1.5.3 | 2026-10-18 | **KAP statements company-scoped wiring** (TKT-foundation-024, new §10.9.10): the `statements` job is wired to a real per-company KAP resource — the §10.9.5 envelope carries one `companyCode` per payload, so §10.9.2's seam doctrine applies verbatim to companies: company-scoped `StatementsSourceAdapter.FetchCompanyAsync` (`{symbol}`-templated path), the loop stays in the job over the bound index's current constituents, strictly sequential + paced (`Ingestion:Statements:RequestDelayMs`, default 500 ms), per-company failure isolation (a transport failure marks the company failed, writes **no** quarantine, raises one aggregate alert, continues the loop; a parse failure quarantines `UNPARSEABLE_PAYLOAD` and continues; terminal `Failed`/`Partial`/`Succeeded`). Its **own bound key `Ingestion:Statements:UniverseIndex`, default `XU030`, independent of `Ingestion:Prices:UniverseIndex`** (AD-14). Ships `Ingestion:Kap:BaseUrl = https://www.kap.org.tr` + an `Ingestion:Statements` section in `src/Api/appsettings.json`. **Live discovery honestly blocked** (2026-10-18): `www.kap.org.tr` is behind a Next.js front end, the former `kapsitebackend.mkk.com.tr` backend no longer resolves, and the candidate route returned 500/404 on every probe — **no capture fabricated**, no `RealSourceCatalog` entry; the shipped `Path` is a discovered-but-unverified candidate and live verification is the orchestrator's post-merge criterion. No golden churn: the company seam needed only an L2 harness *binding* delta (test-local `StatementBound` index `STMT`). | FR-MDF-002 (activated); FR-MDF-008 (per-company identity guard + provenance); FR-MDF-010/011 (backfill depth via existing `CoverageRecorder`); FR-MDF-012 (per-company isolation); unblocks FR-RES-006/008/009/010/011, FR-VAL-001, FR-MOV-006; AD-14 | Existing statements-path goldens (TC-MDF-065/067/071 + versioning/normalization/accounting-profile lanes) re-run green unchanged; new loop tests reuse TC-MDF-072/073/074 lane shapes for companies; statements-loop TC derivation remains a test-planner follow-up (flagged by 021) |
 | v1.5.4 | 2026-10-18 | **XU100 price coverage + index levels for both BIST indexes** (TKT-foundation-025): closes the two remaining gaps from the user's 2026-10-18 live check. (1) **Prices bound flipped** `XU030` → `XU100` in the shipped `src/Api/appsettings.json` (the §10.9.2 "XU100 later = a config flip, not new code"; valid now that the XU100 membership seed of §10.9.3 v1.5.1 supplies the rows) — the initial run backfills the ~70 newly-covered members through the existing per-ticker backfill path; pacing stays the pinned sequential `RequestDelayMs` 500 ms posture. (2) **Index levels for both BIST indexes** (FR-MDF-006 "including BIST 100 and BIST 30"): `Ingestion:Universe:IndexLevelsIndex` becomes the set **`IndexLevelsIndices`** (production default `[XU100, XU030]`; the pre-025 single-value key is removed — no shipped config used it), the sync loops the set sequentially through the templated route, and degradation is **per index** — a failing index quarantines `SOURCE_FETCH_FAILED` + alerts + `Partial` while the other index's levels still store (§10.9.8). (3) **`MarketSnapshotEngine` BIST 30 spelling fix**: the index-move lookup resolves both the real `XU030` and the FU `XU30` spellings, so a real-only DB never silently degrades the BIST 30 move to (0, 0) (FLG-08); the FU world has no `XU030` row, so every existing golden re-runs unchanged (§10.9.7). No new FRs. | FR-MDF-001/010 (prices coverage + backfill over the covered universe); FR-MDF-006 (both BIST indexes' levels); FR-MDF-008 (provenance on synced levels); FR-MOV-001 (both index moves non-degenerate); FR-RES-016/BR-RES-008 (price-less members' honest no-data posture deliberately unchanged — the fix is coverage, never a read-path change); BR-MDF-005 (covered universe = BIST 100); AD-14 | Test-plan delta: TC-MDF-075's "no override → production default" expectation amended `XU030` → `XU100` (planner-applied, test-planner confirmation pending; L2 harness bindings + goldens untouched); new universe-lane tests in `UniverseSyncTests`/`UniverseRealEnvelopeTests` (multi-index loop, per-index degradation) and a `MarketSnapshotTests` both-spellings test carry the `TKT_foundation_025` tag; TC-MDF-063 re-runs green with the new honestly-labeled XU100 capture; FU goldens (TC-MOV-001, EodChainTests, MarketEndpointsTests) re-run unchanged. Live criteria (orchestrator post-merge, the 021/023/024 precedent): a real prices run at `UniverseIndex=XU100` covers all current XU100 members + backfills; the index-levels sync stores real XU100 **and** XU030 levels; the snapshot recomputes over the real universe (market P/E / sector medians wait on 024's statements) |
+| v1.5.5 | 2026-10-18 | **KAP statements source rewired to MKK's official "KAP VYK API"** (TKT-foundation-026, new §10.9.11): supersedes 024's blocked website-proxy live criterion **by replacement** — the company-scoped `StatementsJob` loop, per-company isolation, envelope detection and keyed `IKapSourceClient` of v1.5.3 are reused unchanged; only the **source** is rewired to MKK's Apinizer gateway. The dev gateway **`https://apigwdev.mkk.com.tr/api/vyk`** is spec-verified and ships; the production host (`apigw.mkk.com.tr`) did not resolve from this environment and is **pinned by live verification, never assumed**. Auth = HTTP **Basic** on the KAP `HttpClient`, attached **iff** `Ingestion:Kap:ApiKey`/`ApiSecret` is present (env `Ingestion__Kap__ApiKey`/`Ingestion__Kap__ApiSecret`; `appsettings.json` ships empty defaults, the `EvdsApiKey` precedent; **live-verified**: the API Key is the Basic username, the API Secret the password), never in the URL, always redacted. Company mapping is a paced `GET /members` (`stockCode`→`companyId`, lazy+cached); a bound symbol with no mapping is marked failed with the named reason **`COMPANY_IDENTITY_UNRESOLVED`** (no rows, no fabricated mapping, counted in per-company stats, loop continues); a `/members` transport failure degrades honestly (snapshot `Failed`, every company `SOURCE_FETCH_FAILED`, one aggregate alert). Statements are class **`FR`** disclosures: `GET /disclosures?disclosureIndex={cursor}&disclosureClass=FR&companyId={id}` then `GET /disclosureDetail/{disclosureIndex}?fileType=data`; the detail's XBRL-style **`presentation`** tree (live-verified — the OpenAPI's declared `flatData` is **not** returned) joins the §10.9.5 decode doctrine (first-class real envelope, each sub-report's root name selects `BS`/`IS`/`CF`/`EQ`, each leaf's `CURR`-context value collapses onto `02` §6.1 via the shared concept map extended with the bare-name spellings, grouping + duplicate-concept rule verbatim, provenance `kap`), the identity guard skips a mismatched-`companyId` disclosure **before decode**. The per-company incremental cursor is the last-processed `disclosureIndex`, persisted in the existing `coverage_metadata` (`kap-disclosure-cursor`, outside `InstrumentScoped` — no migration, no reconcile clobber); a cursor-less company starts from `Ingestion:Statements:EarlyDisclosureIndex`. Pacing flips `Ingestion:Statements:RequestDelayMs` **500 → 10000** and every gateway call is paced by a scoped `KapRequestPacer`; an HTTP 429 / Apinizer throttle fault is a retryable transport failure (existing retry ladder, no quarantine), a real-body parse failure quarantines `UNPARSEABLE_PAYLOAD`. **Honest shape notes:** the `presentation` shape is pinned by a bounded **live capture** (`RealSourceCatalog` `kap-vyk-disclosure-detail`, disclosure 1226255, 2026-10-18, real CURR/PREV values — **no capture fabricated**); the member/list CI doubles are shape-faithful constructed bodies; `consolidation` (detail field with no `02` §3.1 home) is **not persisted** (flagged); the attachment-file layer (PDF/XBRL) is a **separate follow-up ticket**, never silently scoped in. | FR-MDF-002 (per-instrument per-period statement ingest activated live); FR-MDF-008 (provenance `kap` + company identity guard); FR-MDF-010 (backfill via `EarlyDisclosureIndex` + achieved depth recorded honestly); FR-MDF-011 (coverage metadata downstream); FR-MDF-012 (per-company isolation, unmapped-symbol named reason); unblocks FR-RES-006/008/009/010/011, FR-VAL-001, FR-MOV-006; BR-MDF-006; AD-14 | No statements-live TC exists (the 021/024 test-planner follow-up flags stand) — explicit CI criteria per the foundation convention: a 12-case suite in `tests/Api.IntegrationTests/VykStatementsSourceTests.cs` carrying the `TKT_foundation_026` tag (config wiring + Basic-auth iff credential + redaction; members mapping + real-shape detail decode/ingest; unmapped-symbol named reason; members transport failure; identity guard pre-decode skip; duplicate-concept rule; cursor persist/resume/idempotency; pacing across all VYK calls; throttle 200-fault + 429; the bounded capture through the production decoders). `RealSourceCatalog` gains two constructed VYK list entries + one bounded captured detail entry; canonical goldens untouched; the 024 config-wiring test's two shipped-value assertions updated minimally in place (BaseUrl + `/disclosures`). Live criteria (orchestrator post-merge): the credential pair now works against the dev gateway (HTTP 200 verified 2026-10-18) — a live run must pin the **production** BaseUrl (`apigw.mkk.com.tr` did not resolve at implementation time) before the statements-source live criterion closes; the dev-gateway list/detail decode is already capture-verified. Known consequence to flag: `DisclosuresSourceAdapter` shares `IKapSourceClient`, so the disclosures job now also targets the VYK gateway (out of scope; its live activation was already blocked). |

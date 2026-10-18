@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Degerli.Ingestion.Sources;
 
@@ -46,12 +47,20 @@ public interface IKapSourceClient
 
 /// <summary>Default <see cref="IKapSourceClient"/>. Mirrors <see cref="HttpSourceClient"/>:
 /// a non-success status surfaces as <see cref="SourceFetchException"/> so the job can treat
-/// it as a source failure.</summary>
+/// it as a source failure. The VYK gateway requires an HTTP <c>Basic</c> credential, which
+/// is attached to the <see cref="HttpClient"/> at construction (a header, never in the URL),
+/// so no secret ever travels in <paramref name="path"/>; <see cref="Redact"/> is the belt-and-
+/// braces guard for any message that would echo a configured secret.</summary>
 public sealed class KapHttpSourceClient : IKapSourceClient
 {
     private readonly HttpClient _http;
+    private readonly IReadOnlyList<string> _secrets;
 
-    public KapHttpSourceClient(HttpClient http) => _http = http;
+    public KapHttpSourceClient(HttpClient http, IEnumerable<string>? secrets = null)
+    {
+        _http = http;
+        _secrets = (secrets ?? []).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+    }
 
     /// <inheritdoc />
     public async Task<string> GetStringAsync(string path, CancellationToken cancellationToken = default)
@@ -62,18 +71,107 @@ public sealed class KapHttpSourceClient : IKapSourceClient
         if (!response.IsSuccessStatusCode)
         {
             throw new SourceFetchException(
-                $"KAP source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'.");
+                Redact($"KAP source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'."));
         }
 
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>Replaces every configured secret with <c>***</c> in a message that could echo it.</summary>
+    private string Redact(string message)
+    {
+        var redacted = message;
+        foreach (var secret in _secrets)
+        {
+            redacted = redacted
+                .Replace(secret, "***", StringComparison.Ordinal)
+                .Replace(Uri.EscapeDataString(secret), "***", StringComparison.Ordinal);
+        }
+
+        return redacted;
+    }
 }
 
-/// <summary>Shared KAP source configuration (the client's base address).</summary>
+/// <summary>
+/// Shared KAP source configuration (the VYK gateway base address and its credential). The
+/// production base address is the MKK "KAP Data Dissemination Services" (KAP VYK) Apinizer
+/// gateway (01 v1.5 §10.9.11); the credential is the free-plan <b>API Key / API Secret pair</b>,
+/// supplied through the environment (<c>Ingestion__Kap__ApiKey</c>/<c>Ingestion__Kap__ApiSecret</c>)
+/// and never committed. <see cref="MembersPath"/>
+/// enables the VYK company-scoped statements source: the adapter resolves a BIST symbol to
+/// the gateway's <c>companyId</c> through one paced <c>/members</c> fetch per run. When it is
+/// unset the adapter keeps the single-resource per-company behavior the canonical/XBRL L2
+/// doubles use (01 v1.5 §10.9.10), so no golden changes.
+/// </summary>
 public sealed class KapSourceOptions
 {
     public const string SectionName = "Ingestion:Kap";
 
     /// <summary>KAP (or source-double) base address.</summary>
     public string? BaseUrl { get; set; }
+
+    /// <summary>
+    /// The free-plan <b>API Key</b> (OQ-026) — the gateway's HTTP Basic <em>username</em>
+    /// (live-verified 2026-10-18). Empty in local/test wiring, where the WireMock double
+    /// ignores it. Never committed — supplied through <c>Ingestion__Kap__ApiKey</c>.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The free-plan <b>API Secret</b> — the gateway's HTTP Basic <em>password</em> paired with
+    /// <see cref="ApiKey"/> (live-verified 2026-10-18). Empty in local/test wiring. Never
+    /// committed — supplied through <c>Ingestion__Kap__ApiSecret</c>.
+    /// </summary>
+    public string ApiSecret { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The <c>/members</c> route (Şirket Listesi) that resolves symbol → <c>companyId</c>.
+    /// Empty disables the VYK company-scoped statements source (canonical/XBRL doubles only).
+    /// </summary>
+    public string MembersPath { get; set; } = string.Empty;
+
+    /// <summary>The <c>/lastDisclosureIndex</c> route — the run's global disclosure anchor.</summary>
+    public string LastDisclosureIndexPath { get; set; } = "/lastDisclosureIndex";
+
+    /// <summary>True when a Basic credential can be attached (an API key or secret is present).</summary>
+    public bool HasCredential => !string.IsNullOrWhiteSpace(ApiKey) || !string.IsNullOrWhiteSpace(ApiSecret);
+
+    /// <summary>True when the VYK company-scoped source is enabled (a members route is configured).</summary>
+    public bool HasMembersPath => !string.IsNullOrWhiteSpace(MembersPath);
+
+    /// <summary>Every configured secret (for redaction / never-echo guarantees).</summary>
+    public IEnumerable<string> Secrets =>
+        new[] { ApiKey, ApiSecret }.Where(s => !string.IsNullOrEmpty(s));
+
+    /// <summary>
+    /// The Basic-auth (username, password) pair for the gateway
+    /// (<c>ApiKey</c>:<c>ApiSecret</c>, live-verified 2026-10-18): the API key is the username,
+    /// the API secret the password. Both travel only in the <c>Authorization</c> header.
+    /// </summary>
+    public (string Username, string Password) BasicCredential() => (ApiKey, ApiSecret);
+
+    /// <summary>Replaces every configured secret in <paramref name="message"/> with <c>***</c>.</summary>
+    public string Redact(string? message)
+    {
+        var redacted = message ?? string.Empty;
+        foreach (var secret in Secrets)
+        {
+            redacted = redacted
+                .Replace(secret, "***", StringComparison.Ordinal)
+                .Replace(Uri.EscapeDataString(secret), "***", StringComparison.Ordinal);
+        }
+
+        // Defence in depth: the HTTP Basic token actually placed on the wire is the base64 of
+        // "ApiKey:ApiSecret" (see IngestionServiceCollectionExtensions) — a gateway fault
+        // echoing the Authorization header must not survive either. ASCII matches the encoder
+        // the client uses for the header.
+        if (HasCredential)
+        {
+            var (username, password) = BasicCredential();
+            var basic = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+            redacted = redacted.Replace(basic, "***", StringComparison.Ordinal);
+        }
+
+        return redacted;
+    }
 }

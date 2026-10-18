@@ -100,6 +100,18 @@ public static class RealSourceCatalog
     public const string IndexLevels = "isyatirim-index-levels";
     public const string IndexLevelsXu100 = "isyatirim-index-levels-xu100";
 
+    // KAP VYK API list/detail envelopes — the company-scoped statements-source lane
+    // (TKT-foundation-026). The MKK "KAP Data Dissemination Services" gateway identifies
+    // companies by `companyId` (resolved from `/members`), lists financial-report
+    // disclosures (`/disclosures`) and returns one disclosure's structured detail
+    // (`/disclosureDetail/{index}?fileType=data`, an XBRL-style `presentation` tree — the
+    // OpenAPI's declared `flatData` is absent from the real response). The list bodies are
+    // honestly-labeled constructed shapes; the detail body is a bounded live capture
+    // (2026-10-18) — never a fabricated capture (TC-MDF-063 posture).
+    public const string VykMembers = "kap-vyk-members";
+    public const string VykDisclosures = "kap-vyk-disclosures";
+    public const string VykDisclosureDetail = "kap-vyk-disclosure-detail";
+
     /// <summary>Concrete source name of the captured EOD price payloads.</summary>
     public const string IsYatirimSource = "isyatirim";
 
@@ -135,6 +147,9 @@ public static class RealSourceCatalog
         Universe,
         IndexLevels,
         IndexLevelsXu100,
+        VykMembers,
+        VykDisclosures,
+        VykDisclosureDetail,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -202,6 +217,27 @@ public static class RealSourceCatalog
         "Captured live from the İş Yatırım IndexHistoricalAll chart handler on 2026-10-18 " +
         "(bounded: nine XU100 daily index closes, 2026-10-06..2026-10-16, compact re-serialization).";
 
+    // TKT-foundation-026. The KAP VYK gateway's list/detail envelopes. The `/members`
+    // (Şirket Listesi) and `/disclosures` bodies are hand-constructed shape-faithful bodies
+    // (live-verified shape, values chosen so the loop tests bind ALFA/EPSL) — never a
+    // fabricated capture. The `/disclosureDetail` body is a <b>bounded live capture</b>
+    // (2026-10-18, the real `presentation` shape) — see VykDetailCaptureLabel.
+    private const string VykLabel =
+        "Constructed by hand for KAP VYK API (MKK gateway) list parsing-fidelity coverage " +
+        "(the /members and /disclosures shapes, live-verified 2026-10-18) — a shape-faithful " +
+        "body, not a live capture.";
+
+    // TKT-foundation-026. The real VYK disclosure-detail envelope for disclosure 1226255
+    // (1000 YATIRIMLAR HOLDİNG A.Ş., FY2023 9-month, live 2026-10-18). Bounded: the two
+    // sub-reports (balance sheet + income statement) are trimmed to a representative set of
+    // real report items with their real CURR/PREV values; the top-level fields are verbatim.
+    // This is <b>not</b> the OpenAPI's `flatData` — the gateway returns an XBRL-style
+    // `presentation` tree (live-verified), which the production decoder reads.
+    private const string VykDetailCaptureLabel =
+        "Captured live from the MKK KAP VYK disclosureDetail endpoint on 2026-10-18 " +
+        "(bounded: disclosure 1226255's balance-sheet + income-statement presentation trees " +
+        "trimmed to a representative real-report-item subset; real CURR/PREV values kept).";
+
     // ---- verbatim captured bodies (bounded; see CaptureNote) ----
     private const string PricesAselsJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_AOF":371.181,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":7.6454,"ENDEKS_BAZLI_FIYAT":0.0304,"DOLAR_HACIM":269201762.3352,"SERMAYE":4.56E9,"HG_KAPANIS":376.0,"HG_AOF":371.181,"HG_MIN":364.25,"HG_MAX":379.0,"PD":1714560000000.00000,"PD_USD":34862810643.30767,"HAO_PD":442013568000.000000,"HAO_PD_USD":8987632583.844717,"HG_HACIM":1.3239396512E10,"DOLAR_BAZLI_MIN":7.4064,"DOLAR_BAZLI_MAX":7.7064,"DOLAR_BAZLI_AOF":7.5474},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":356.437,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":7.0888,"ENDEKS_BAZLI_FIYAT":0.0288,"DOLAR_HACIM":346838924.8866,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":356.437,"HG_MIN":346.75,"HG_MAX":377.25,"PD":1590300000000.00000,"PD_USD":32324747548.66091,"HAO_PD":409979340000.000000,"HAO_PD_USD":8333319918.044783,"HG_HACIM":1.7063642691E10,"DOLAR_BAZLI_MIN":7.0481,"DOLAR_BAZLI_MAX":7.6681,"DOLAR_BAZLI_AOF":7.2450},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":345.473,"HGDG_MIN":340.25,"HGDG_MAX":354.0,"HGDG_HACIM":12941100644.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":7.0862,"ENDEKS_BAZLI_FIYAT":0.0286,"DOLAR_HACIM":262949264.5362,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":345.473,"HG_MIN":340.25,"HG_MAX":354.0,"PD":1590300000000.00000,"PD_USD":32313187795.64037,"HAO_PD":409979340000.000000,"HAO_PD_USD":8330339813.716087,"HG_HACIM":1.2941100644E10,"DOLAR_BAZLI_MIN":6.9135,"DOLAR_BAZLI_MAX":7.1929,"DOLAR_BAZLI_AOF":7.0196}]}""";
     private const string PricesThyaoJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"def507b11493419d9812dcee5ec7daca","value":[{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":290.5000,"HGDG_AOF":292.381,"HGDG_MIN":290.5,"HGDG_MAX":294.25,"HGDG_HACIM":7982835728.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":5.9068,"ENDEKS_BAZLI_FIYAT":0.0235,"DOLAR_HACIM":162318081.8297,"SERMAYE":1.38E9,"HG_KAPANIS":290.5,"HG_AOF":292.381,"HG_MIN":290.5,"HG_MAX":294.25,"PD":400890000000.00000,"PD_USD":8151451193.77310,"HAO_PD":196957257000.000000,"HAO_PD_USD":4004807971.500724,"HG_HACIM":7.982835728E9,"DOLAR_BAZLI_MIN":5.9068,"DOLAR_BAZLI_MAX":5.9831,"DOLAR_BAZLI_AOF":5.9451},{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":286.2500,"HGDG_AOF":286.776,"HGDG_MIN":283.75,"HGDG_MAX":290.5,"HGDG_HACIM":7765288779.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":5.8184,"ENDEKS_BAZLI_FIYAT":0.0236,"DOLAR_HACIM":157838772.1962,"SERMAYE":1.38E9,"HG_KAPANIS":286.25,"HG_AOF":286.776,"HG_MIN":283.75,"HG_MAX":290.5,"PD":395025000000.00000,"PD_USD":8029355090.49222,"HAO_PD":194115285000.000000,"HAO_PD_USD":3945625091.467877,"HG_HACIM":7.765288779E9,"DOLAR_BAZLI_MIN":5.7676,"DOLAR_BAZLI_MAX":5.9048,"DOLAR_BAZLI_AOF":5.8291},{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":284.2500,"HGDG_AOF":284.492,"HGDG_MIN":282.0,"HGDG_MAX":287.5,"HGDG_HACIM":5829586658.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":5.7757,"ENDEKS_BAZLI_FIYAT":0.0233,"DOLAR_HACIM":118450939.1001,"SERMAYE":1.38E9,"HG_KAPANIS":284.25,"HG_AOF":284.492,"HG_MIN":282.0,"HG_MAX":287.5,"PD":392265000000.00000,"PD_USD":7970403452.59188,"HAO_PD":192759021000.000000,"HAO_PD_USD":3916656256.603650,"HG_HACIM":5.829586658E9,"DOLAR_BAZLI_MIN":5.7299,"DOLAR_BAZLI_MAX":5.8417,"DOLAR_BAZLI_AOF":5.7806}]}""";
@@ -262,6 +298,24 @@ public static class RealSourceCatalog
 
     private const string IndexLevelsXu100Json = """{"data":[[1791234000000,12374.25977],[1791320400000,12122.94043],[1791406800000,12213.58008],[1791493200000,12265.98047],[1791752400000,12150.66992],[1791838800000,12250.67969],[1791925200000,12118.29004],[1792011600000,12070.16992],[1792098000000,11721.71973]],"timestamp":"2026-10-18T07:24:26.4004374+03:00"}""";
 
+    // ---- KAP VYK bodies (TKT-foundation-026): two shape-faithful constructed list bodies
+    //      plus one bounded live capture of the real `presentation` detail ----
+
+    // Şirket Listesi: companyId ↔ BIST stockCode (the symbol→companyId map the loop builds).
+    private const string VykMembersJson = """[{"id":"1001","title":"ALFA TEST A.Ş.","stockCode":"ALFA","memberType":"stock","kfifUrl":null},{"id":"1002","title":"EPSL TEST A.Ş.","stockCode":"EPSL","memberType":"stock","kfifUrl":null}]""";
+
+    // Bildirim Listesi: the financial-report (`disclosureClass` FR) disclosures of one company,
+    // each carrying its owning `companyId` (the cross-company identity guard's input).
+    private const string VykDisclosuresJson = """[{"disclosureIndex":"1001","disclosureType":"FR","disclosureClass":"FR","title":"Finansal Rapor","companyId":"1001","subReportIds":[],"acceptedDataFileTypes":["data"]}]""";
+
+    // Bildirim Detayı (`?fileType=data`) — a bounded live capture of the real shape: fiscal
+    // coordinates plus the XBRL-style `presentation` trees the gateway actually returns
+    // (live-verified 2026-10-18; there is no `flatData` member). Each presentation's
+    // `ContextList` binds context ids to periods and each leaf report item carries a bare
+    // IFRS taxonomy `name` with a `Values.Value[]` list of `{contextId, currency, rounding,
+    // value}` — the decoder reads the `CURR` context's value.
+    private const string VykDisclosureDetailJson = """{"disclosureIndex":"1226255","senderId":"5900","senderTitle":"1000 YATIRIMLAR HOLDİNG A.Ş.","senderExchCodes":["BINHO"],"behalfSenderId":"5900","disclosureReason":"NEW","disclosureType":"FR","disclosureClass":"FR","subject":{"tr":"Finansal Rapor ","en":"Financial Report"},"consolidation":"NC","year":"2023","period":{"tr":"9 Aylık","en":"9 Months"},"relatedStocks":[],"summary":{"tr":null,"en":null},"time":"15.12.2023 20:08:10","link":"https://www.kap.org.tr/Bildirim/1226255","attachmentUrls":[],"presentation":[{"id":"general_role_210015","content":{"id":"general_role_210015","isMultiDimensional":"no","ContextList":{"Context":[{"id":"2022-12-31","key":"PREV","Period":{"instant":"2022-12-31"}},{"id":"2023-09-30","key":"CURR","Period":{"instant":"2023-09-30"}}]},"ReportItem":{"name":"StatementOfFinancialPositionBalanceSheetAbstract","abstract":"true","ReportItem":[{"name":"CashAndCashEquivalents","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"355754"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"160725"}]},"langs":{"lang":[{"code":"tr","value":"Nakit ve Nakit Benzerleri"},{"code":"en","value":"Cash and cash equivalents"}]}},{"preferredLabel":"totalLabel","name":"CurrentAssets","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"256707489"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"1348983"}]},"langs":{"lang":[{"code":"tr","value":"TOPLAM DÖNEN VARLIKLAR"},{"code":"en","value":"Total current assets"}]}},{"preferredLabel":"totalLabel","name":"Assets","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"10169533147"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"4994449501"}]},"langs":{"lang":[{"code":"tr","value":"TOPLAM VARLIKLAR"},{"code":"en","value":"Total assets"}]}},{"preferredLabel":"totalLabel","name":"CurrentLiabilities","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"263190349"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"9550357"}]},"langs":{"lang":[{"code":"tr","value":"TOPLAM KISA VADELİ YÜKÜMLÜLÜKLER"},{"code":"en","value":"Total current liabilities"}]}},{"preferredLabel":"totalLabel","name":"Liabilities","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"2735012181"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"1153886755"}]},"langs":{"lang":[{"code":"tr","value":"TOPLAM YÜKÜMLÜLÜKLER"},{"code":"en","value":"Total liabilities"}]}},{"preferredLabel":"totalLabel","name":"Equity","Values":{"Value":[{"contextId":"2023-09-30","currency":"TRY","rounding":"INF","value":"7434520966"},{"contextId":"2022-12-31","currency":"TRY","rounding":"INF","value":"3840562746"}]},"langs":{"lang":[{"code":"tr","value":"TOPLAM ÖZKAYNAKLAR"},{"code":"en","value":"Total equity"}]}}]}}},{"id":"general_role_310003","content":{"id":"general_role_310003","isMultiDimensional":"yes","ContextList":{"Context":[{"id":"2022-01-012022-09-30","key":"PREV","Period":{"startDate":"2022-01-01","endDate":"2022-09-30"}},{"id":"2023-01-012023-09-30","key":"CURR","Period":{"startDate":"2023-01-01","endDate":"2023-09-30"}}]},"ReportItem":{"name":"StatementOfProfitOrLossAndOtherComprehensiveIncomeAbstract","abstract":"true","ReportItem":[{"name":"Revenue","Values":{"Value":[{"contextId":"2023-01-012023-09-30","currency":"TRY","rounding":"INF","value":"651945115"},{"contextId":"2022-01-012022-09-30","currency":"TRY","rounding":"INF","value":"0"}]},"langs":{"lang":[{"code":"tr","value":"Hasılat"},{"code":"en","value":"Revenue"}]}},{"preferredLabel":"standartCapitalsLabel","name":"GrossProfit","Values":{"Value":[{"contextId":"2023-01-012023-09-30","currency":"TRY","rounding":"INF","value":"651945115"},{"contextId":"2022-01-012022-09-30","currency":"TRY","rounding":"INF","value":"0"}]},"langs":{"lang":[{"code":"tr","value":"BRÜT KAR (ZARAR)"},{"code":"en","value":"GROSS PROFIT (LOSS)"}]}},{"preferredLabel":"standartCapitalsLabel","name":"ProfitLoss","Values":{"Value":[{"contextId":"2023-01-012023-09-30","currency":"TRY","rounding":"INF","value":"3566458220"},{"contextId":"2022-01-012022-09-30","currency":"TRY","rounding":"INF","value":"-1174578"}]},"langs":{"lang":[{"code":"tr","value":"DÖNEM KARI (ZARARI)"},{"code":"en","value":"PROFIT (LOSS)"}]}}]}}}]}""";
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -285,6 +339,9 @@ public static class RealSourceCatalog
         CapturedUniverse(Universe, UniverseJson),
         CapturedIndexLevels(IndexLevels, IndexLevelsLabel, IndexLevelsJson),
         CapturedIndexLevels(IndexLevelsXu100, IndexLevelsXu100Label, IndexLevelsXu100Json),
+        Vyk(VykMembers, VykMembersJson),
+        Vyk(VykDisclosures, VykDisclosuresJson),
+        CapturedVyk(VykDisclosureDetail, VykDisclosureDetailJson),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -325,6 +382,12 @@ public static class RealSourceCatalog
 
     private static RealSourcePayload KapStatements(string name, string json) =>
         Payload(name, KapStatementsLabel, RealSourceProvenance.Constructed, json, KapSource);
+
+    private static RealSourcePayload Vyk(string name, string json) =>
+        Payload(name, VykLabel, RealSourceProvenance.Constructed, json, KapSource);
+
+    private static RealSourcePayload CapturedVyk(string name, string json) =>
+        Payload(name, VykDetailCaptureLabel, RealSourceProvenance.Captured, json, KapSource);
 
     private static RealSourcePayload EvdsMacro(string name, string json) =>
         Payload(name, EvdsMacroLabel, RealSourceProvenance.Constructed, json, EvdsSource);
