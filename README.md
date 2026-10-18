@@ -464,6 +464,72 @@ Then open <http://localhost:5173>. The supporting services are:
 No `.env` file is required: every value has a safe local default. Sources under `src/`
 are bind-mounted, so editing a `.cs` file rebuilds and reloads the running API.
 
+### Dev-stack data: real-only vs. FU fixture universe
+
+The dev stack starts with **no market data** — `migrate` applies the schema and only the
+*application* seed (the metric catalog, the macro series and the `builder` account), never
+instruments. From there you choose which data world the dev database holds. **Real-only is the
+posture**; the synthetic FU fixture universe is an **opt-in** world for FU-based testing and
+demos.
+
+> **The two worlds do not mix cleanly.** The FU fixture universe (`fixtures/`, the `degerli-ci`
+> L4 stack) is a small set of synthetic instruments the L2/L4 test suites and CI depend on; the
+> real İş Yatırım chain produces the full real instrument set and the BIST 100 membership.
+> Seeding the fixtures *into* a database that also holds real rows yields a mixed stock list —
+> the `116 = 100 real + 16 fixture` condition this posture fixes. `FixtureSeedEntry` prints an
+> explicit warning every time it seeds, for exactly this reason.
+
+#### Real-only dev stack (the default path)
+
+A fresh database built by the real chain alone:
+
+```bash
+# 1. Drop the dev volume (removes any fixture rows a previous bootstrap left) and start fresh.
+docker compose -f compose.dev.yml down -v
+docker compose -f compose.dev.yml up -d
+docker compose -f compose.dev.yml run --rm migrate   # schema + application seed only
+
+# 2. Trigger the real universe chain as the seeded builder account.
+#    (dev/CI only — the checked-in default password is refused outside Development/Test.)
+BASE=http://localhost:8080
+TOKEN=$(curl -sS -c cookies.txt "$BASE/api/v1/auth/csrf-token" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -sS -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"email":"builder@degerli.local","password":"Degerli-Builder-2026"}' "$BASE/api/v1/auth/login"
+TOKEN=$(curl -sS -b cookies.txt -c cookies.txt "$BASE/api/v1/auth/csrf-token" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+
+# universe-sync: real instruments + the XU100 launch-seed (the covered universe)
+curl -sS -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{}' "$BASE/api/v1/admin/ingest/universe-sync/run"
+
+# prices backfill: per-ticker over the configured index (XU030 at launch)
+curl -sS -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"backfillFrom":"2024-01-01"}' "$BASE/api/v1/admin/ingest/prices/run"
+```
+
+After step 2 the browsing surface is real-only: `GET /api/v1/stocks` serves exactly the XU100
+membership (the real covered universe), and `GET /api/v1/stocks/search?q=ASELS` finds `ASELS`.
+Price and statement coverage on detail pages is bounded by what has landed: the prices backfill
+covers the configured index (XU030), while KAP statement ingestion and XU100-wide price/overview
+coverage arrive in their own tickets — until then, real stocks outside the backfilled index show
+the honest no-data state by design.
+
+#### FU-seeded dev/demo stack (opt-in)
+
+To browse the synthetic FU universe instead — for FU-based frontend work or a demo — bring up
+the CI/demo stack, which migrates, seeds the now-anchored fixture universe and runs the
+derived-data jobs before the API starts:
+
+```bash
+docker compose -f compose.ci.yml up --build --wait
+```
+
+This is the L4 world the Playwright suite runs against; it is **never** the production stack
+(`compose.prod.yml` does not run the fixtures entrypoint). To seed the FU universe into *any*
+other database (for example to reproduce a demo), run the same fixtures entrypoint against it —
+the `fixtures` service in `compose.ci.yml` is one-off and idempotent (exit 0; a re-run adds no
+rows). Treat that as an explicit, opt-in action: **never point the fixtures entrypoint at a
+database you intend to browse real data on.**
+
 ### Configuration
 
 Copy `.env.example` to `.env` only when you need to override a default:

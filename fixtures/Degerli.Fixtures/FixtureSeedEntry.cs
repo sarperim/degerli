@@ -88,6 +88,20 @@ public static class FixtureSeedEntry
         await DegerliDbSeeder.ApplyAsync(db, cancellationToken).ConfigureAwait(false);
         await FixtureSeeder.ApplyAsync(db, set, cancellationToken).ConfigureAwait(false);
 
+        // Honesty guard (01 v1.5 §10.9.9, TKT-foundation-023): the FU universe is a synthetic
+        // world. Seeding it into a database that already holds real rows (or that a browsing
+        // surface will read) yields a mixed universe — the exact condition that produced the
+        // 116 = 100 real + 16 fixture stock list. This is a log line only: exit code,
+        // idempotency and the L4 contract are unchanged. Real-only stacks use the README
+        // "Dev-stack data" reset path instead.
+        await log.WriteLineAsync(
+            "fixture-universe: WARNING — seeding the synthetic FU universe into this database. " +
+            "FU instruments/memberships coexist with any real rows already stored, so the " +
+            "browsing surface will mix synthetic and real data. Run this entrypoint only against " +
+            "the L2/L4 CI database or an opt-in dev/demo database — never against a database " +
+            "meant to browse real data (see README \"Dev-stack data\").")
+            .ConfigureAwait(false);
+
         await log.WriteLineAsync(
             $"fixture-universe: seeded L4 now-anchored variant; T={anchor.T:yyyy-MM-dd}; " +
             $"instruments={set.Instruments.Count}; prices={set.Prices.Count}; statements={set.Statements.Count}.")
