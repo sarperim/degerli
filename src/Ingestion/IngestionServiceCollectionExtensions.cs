@@ -122,9 +122,41 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<CoverageRecorder>();
         services.AddScoped<FundCoverageRecorder>();
 
-        // Universe, sector and index-levels sync (FR-MDF-006/007).
-        services.AddScoped<ISourceAdapter<UniversePayload>, UniverseSourceAdapter>();
-        services.AddScoped<ISourceAdapter<IndexLevelsPayload>, IndexLevelsSourceAdapter>();
+        // Universe, sector and index-levels sync (FR-MDF-006/007). The universe source has
+        // its own keyed source client bound to its base address (01 v1.5 §10.9.8), so the
+        // universe adapters never share the prices client. The real universe resource is a
+        // legacy ASP.NET AJAX POST handler, reachable through the client's POST seam; the
+        // index-levels resource is a plain GET on the same host. The base-address fallback
+        // (Universe:BaseUrl → Prices:BaseUrl → http://localhost) keeps the canonical L2
+        // harness composing over its own stubbed paths unchanged.
+        services.AddKeyedSingleton<ISourceClient>(UniverseSourceOptions.ClientKey, (provider, _) =>
+        {
+            var universe = provider.GetRequiredService<IOptions<UniverseSourceOptions>>().Value;
+            var baseUrl = universe.BaseUrl;
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = provider.GetRequiredService<IOptions<PricesSourceOptions>>().Value.BaseUrl;
+            }
+
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = "http://localhost";
+            }
+
+            return new HttpSourceClient(new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl, UriKind.Absolute),
+                Timeout = TimeSpan.FromSeconds(30),
+            });
+        });
+        services.AddScoped<ISourceAdapter<UniversePayload>>(provider =>
+            new UniverseSourceAdapter(
+                provider.GetRequiredKeyedService<ISourceClient>(UniverseSourceOptions.ClientKey),
+                provider.GetRequiredService<IOptions<UniverseSourceOptions>>()));
+        services.AddScoped<ISourceAdapter<IndexLevelsPayload>>(provider =>
+            new IndexLevelsSourceAdapter(
+                provider.GetRequiredKeyedService<ISourceClient>(UniverseSourceOptions.ClientKey),
+                provider.GetRequiredService<IOptions<UniverseSourceOptions>>()));
         services.AddScoped<UniverseSyncStore>();
 
         services.AddScoped<ISourceAdapter<StatementsPayload>, StatementsSourceAdapter>();
