@@ -9,7 +9,8 @@ scope:
 
 # TKT-res-012: Valuation history chart — add the missing Recharts Tooltip (date + close)
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/98
 - Size: S
 - Scope: frontend-only UI defect fix on the stock page's Valuation section (SCR-005 §2). `ValuationHistoryChart` in `ValuationSection.tsx` renders `XAxis`/`YAxis`/`Line` but no `<Tooltip>` child, so hovering highlights a point (Recharts' default active dot) with no way to read the price or date — user report 2026-10-18 ("it creates a point when i hover my mouse but it doesn't show the price"). The served data is correct; no backend/API change. Add a Recharts `<Tooltip>` that shows, per point, the **date** and the **plotted close** on the chart's honest basis — the `close` value `valuationHistoryPoints` already selected (adjusted when the payload is adjusted, raw otherwise; BR-MDF-010) — formatted with the existing `formatAsOfDate` / `formatNumber` helpers from `src/Web/src/lib/format.ts` using the active locale, consistent with the rest of the screen. The tooltip does **not** add its own basis claim: the figure caption already states the basis (captionAdjusted/captionRaw), and the tooltip value is simply the plotted `close` whichever basis that is. Any tooltip label copy (e.g. the series label "Kapanış"/"Close") goes through the i18n catalogs (`stockPage.valuation.history.*`) with tr+en parity — the CI parity gate owns this, do not inline literals. **Same-gap audit (done at slicing time):** `ValuationSection.tsx` is the only Recharts consumer in `src/Web` (grep for `LineChart|AreaChart|BarChart|ComposedChart|<Tooltip` across `src/Web` matches this file alone); no other chart in the Web app carries the defect, so nothing else enters this ticket's scope.
 - Traces to: FR-RES-006, FR-RES-013
