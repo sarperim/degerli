@@ -101,15 +101,20 @@ describe('DataSourceDisclaimer honest state markers (ii)', () => {
     renderWithProviders(<DataSourceDisclaimer />)
     await screen.findByTestId('data-source-disclaimer')
 
+    // The caveat is a standalone disclosure (a sibling of the class list), so it
+    // can never be a real class's displayed state; assert that directly rather
+    // than checking whether the class <li> "contains" a sibling <p>.
+    const caveat = screen.getByTestId('data-source-fixture-caveat')
+    expect(caveat).toHaveTextContent(tr('dataSources.fixtureCaveat'))
+
     for (const cls of LIVE_CLASSES) {
-      const row = screen.getByTestId(`data-source-${cls}`)
       expect(screen.getByTestId(`data-source-state-${cls}`)).toHaveTextContent(
         tr('dataSources.state.live'),
       )
       expect(screen.getByTestId(`data-source-state-${cls}`)).not.toHaveTextContent(
         tr('dataSources.state.unavailable'),
       )
-      expect(row).not.toHaveTextContent(tr('dataSources.fixtureCaveat'))
+      expect(screen.getByTestId(`data-source-state-${cls}`)).not.toBe(caveat)
     }
   })
 })

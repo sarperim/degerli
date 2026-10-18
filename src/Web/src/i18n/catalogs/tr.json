@@ -408,7 +408,7 @@
       "macro": "Makro seriler (TÜİK TÜFE, TCMB politika faizi, USD/TRY, EUR/TRY, altın)"
     },
     "nature": {
-      "eod": "Gün sonu (EOD) verisi — gerçek zamanlı değildir"
+      "eod": "Gün sonu (EOD) verisi"
     },
     "state": {
       "live": "Kaynak etkin",

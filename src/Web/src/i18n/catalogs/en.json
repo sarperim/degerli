@@ -408,10 +408,10 @@
       "macro": "Macro series (TÜİK CPI, CBRT policy rate, USD/TRY, EUR/TRY, gold)"
     },
     "nature": {
-      "eod": "End-of-day (EOD) data — not real-time"
+      "eod": "End-of-day (EOD) data"
     },
     "state": {
-      "live": "Source live",
+      "live": "Available",
       "unavailable": "Unavailable"
     },
     "freeSourceNote": "Data is taken from free, public source feeds.",

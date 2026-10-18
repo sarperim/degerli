@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
 import { apiGet } from '@/lib/api/client'
-import { cn } from '@/lib/utils'
 
 /**
  * Site-wide data-source provenance disclosure (TKT-foundation-029).
@@ -39,11 +38,6 @@ export interface DataSourceCatalogResponse {
   sources: DataSourceEntry[]
 }
 
-/** Query-key factory so prefetch/invalidation stay consistent. */
-const dataSourcesQueryKeys = {
-  catalog: () => ['meta', 'data-sources'] as const,
-}
-
 function fetchDataSourceCatalog(
   signal?: AbortSignal,
 ): Promise<DataSourceCatalogResponse> {
@@ -64,10 +58,10 @@ const NATURE_KEYS: Record<string, string> = {
   eod: 'dataSources.nature.eod',
 }
 
-export function DataSourceDisclaimer({ className }: { className?: string }) {
+export function DataSourceDisclaimer() {
   const { t } = useTranslation()
   const { data } = useQuery({
-    queryKey: dataSourcesQueryKeys.catalog(),
+    queryKey: ['meta', 'data-sources'] as const,
     queryFn: ({ signal }) => fetchDataSourceCatalog(signal),
     staleTime: Infinity,
   })
@@ -80,7 +74,7 @@ export function DataSourceDisclaimer({ className }: { className?: string }) {
     <div
       data-slot="data-source-disclaimer"
       data-testid="data-source-disclaimer"
-      className={cn('flex flex-col gap-2', className)}
+      className="flex flex-col gap-2"
     >
       <p className="font-medium text-foreground">{t('dataSources.label')}</p>
       <ul className="flex flex-col gap-1">
@@ -119,12 +113,14 @@ export function DataSourceDisclaimer({ className }: { className?: string }) {
         })}
       </ul>
       <p className="text-muted-foreground">{t('dataSources.freeSourceNote')}</p>
-      <p
-        data-testid="data-source-fixture-caveat"
-        className="text-muted-foreground"
-      >
-        {t('dataSources.fixtureCaveat')}
-      </p>
+      {import.meta.env.DEV ? (
+        <p
+          data-testid="data-source-fixture-caveat"
+          className="text-muted-foreground"
+        >
+          {t('dataSources.fixtureCaveat')}
+        </p>
+      ) : null}
     </div>
   )
 }
