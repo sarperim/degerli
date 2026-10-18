@@ -257,7 +257,9 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
     /// TC-MDF-075 — the fetch bound follows the configured index (config-only flip). XU30 →
     /// 5 per-ticker fetches / 5 instruments' rows; XU100 → 16 fetches / 16 rows (the L2
     /// harness binding that keeps the existing price-path goldens intact, §8 preamble). With
-    /// no override the bound resolves to the production default <c>XU030</c>.
+    /// no override the bound resolves to the production default <c>XU100</c> — the shipped
+    /// <c>src/Api/appsettings.json</c> value (the TKT-foundation-025 flip; the code-level
+    /// template default <c>XU030</c> is deliberately left unchanged).
     /// </summary>
     [Fact]
     public async Task TC_MDF_075_Fetch_bound_follows_the_configured_index()
@@ -289,12 +291,13 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             Assert.Equal(16, await db.DailyPrices.CountAsync(p => p.PriceDate == T));
         }
 
-        // No override configured → the production default XU030 (config-only flip, no code).
-        await using (var host = BuildIngestion(universeIndex: null, requestDelayMs: 0))
+        // No override configured → the production default is the shipped config value XU100
+        // (TKT-foundation-025's config-only flip; the code-level template default stays XU030).
+        await using (var host = BuildIngestion(universeIndex: null, requestDelayMs: 0, shippedConfig: true))
         {
             using var scope = host.Provider.CreateScope();
             var options = scope.ServiceProvider.GetRequiredService<IOptions<PricesSourceOptions>>().Value;
-            Assert.Equal("XU030", options.UniverseIndex);
+            Assert.Equal("XU100", options.UniverseIndex);
         }
     }
 
@@ -462,10 +465,16 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
     /// The ingestion composition used in production, retargeted at the Testcontainers database
     /// and the WireMock source double. The fetch bound and pacing are the two
     /// <c>Ingestion:Prices</c> knobs (01 §10.4); <paramref name="universeIndex"/> = null omits
-    /// the key so the production default resolves. A recording mail double replaces the alerting
-    /// seam; a Serilog test sink captures the per-symbol stats and log alerts.
+    /// the key so the production default resolves. <paramref name="shippedConfig"/> = true layers
+    /// the shipped <c>src/Api/appsettings.json</c> beneath the in-memory overrides so the real
+    /// production default (<c>Ingestion:Prices:UniverseIndex</c>) resolves instead of the
+    /// code-level template default. A recording mail double replaces the alerting seam; a Serilog
+    /// test sink captures the per-symbol stats and log alerts.
     /// </summary>
-    private IngestionHost BuildIngestion(string? universeIndex, int requestDelayMs)
+    private IngestionHost BuildIngestion(
+        string? universeIndex,
+        int requestDelayMs,
+        bool shippedConfig = false)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -483,7 +492,16 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             settings["Ingestion:Prices:UniverseIndex"] = universeIndex;
         }
 
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var configurationBuilder = new ConfigurationBuilder();
+        if (shippedConfig)
+        {
+            configurationBuilder.AddJsonFile(
+                Path.Combine(FindRepositoryRoot(), "src", "Api", "appsettings.json"),
+                optional: false);
+        }
+
+        // In-memory overrides win over the shipped config, so the WireMock retarget holds.
+        var configuration = configurationBuilder.AddInMemoryCollection(settings).Build();
 
         // Capture the prices job's per-symbol stats (Information) without the EF noise.
         var logger = new LoggerConfiguration()
@@ -638,6 +656,23 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             .Where(entry => entry.RequestMessage?.Path == PricesPath)
             .OrderBy(entry => entry.RequestMessage!.DateTime)
             .ToList();
+
+    /// <summary>Walks up from the test bin directory to the checkout holding the solution.</summary>
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Degerli.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate the repository root (Degerli.sln).");
+    }
 
     /// <summary>The active ingestion provider plus its alert/mail and log doubles.</summary>
     private sealed class IngestionHost : IAsyncDisposable

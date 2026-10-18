@@ -94,9 +94,11 @@ public static class RealSourceCatalog
     // EVDS macro (column-oriented real envelope) — the macro-side lane (TKT-foundation-019).
     public const string MacroEvds = "evds-macro";
 
-    // Universe / index-levels real envelopes — the universe-sync lane (TKT-foundation-021).
+    // Universe / index-levels real envelopes — the universe-sync lane (TKT-foundation-021);
+    // the XU100 index-levels capture joins the per-index set lane (TKT-foundation-025).
     public const string Universe = "isyatirim-universe";
     public const string IndexLevels = "isyatirim-index-levels";
+    public const string IndexLevelsXu100 = "isyatirim-index-levels-xu100";
 
     /// <summary>Concrete source name of the captured EOD price payloads.</summary>
     public const string IsYatirimSource = "isyatirim";
@@ -132,6 +134,7 @@ public static class RealSourceCatalog
         MacroEvds,
         Universe,
         IndexLevels,
+        IndexLevelsXu100,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -189,7 +192,15 @@ public static class RealSourceCatalog
 
     private const string IndexLevelsLabel =
         "Captured live from the İş Yatırım IndexHistoricalAll chart handler on 2026-10-18 " +
-        "(bounded: nine daily index closes, 2026-10-06..2026-10-16, compact re-serialization).";
+        "(bounded: nine XU030 daily index closes, 2026-10-06..2026-10-16, compact re-serialization).";
+
+    // TKT-foundation-025. The second index of the per-index set: the same live chart handler
+    // queried with `endeks=XU100`. The body carries no index code, so the production decoder
+    // stamps the requested code (XU100) onto every fact — this capture is what proves the
+    // multi-index loop fetches <em>both</em> real BIST indexes (FR-MDF-006).
+    private const string IndexLevelsXu100Label =
+        "Captured live from the İş Yatırım IndexHistoricalAll chart handler on 2026-10-18 " +
+        "(bounded: nine XU100 daily index closes, 2026-10-06..2026-10-16, compact re-serialization).";
 
     // ---- verbatim captured bodies (bounded; see CaptureNote) ----
     private const string PricesAselsJson = """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_AOF":371.181,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791234000000,"END_SEANS":2,"END_DEGER":12374.26,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791234000000,"DD_DEGER":49.1802,"DOLAR_BAZLI_FIYAT":7.6454,"ENDEKS_BAZLI_FIYAT":0.0304,"DOLAR_HACIM":269201762.3352,"SERMAYE":4.56E9,"HG_KAPANIS":376.0,"HG_AOF":371.181,"HG_MIN":364.25,"HG_MAX":379.0,"PD":1714560000000.00000,"PD_USD":34862810643.30767,"HAO_PD":442013568000.000000,"HAO_PD_USD":8987632583.844717,"HG_HACIM":1.3239396512E10,"DOLAR_BAZLI_MIN":7.4064,"DOLAR_BAZLI_MAX":7.7064,"DOLAR_BAZLI_AOF":7.5474},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":356.437,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791320400000,"END_SEANS":2,"END_DEGER":12122.94,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791320400000,"DD_DEGER":49.1976,"DOLAR_BAZLI_FIYAT":7.0888,"ENDEKS_BAZLI_FIYAT":0.0288,"DOLAR_HACIM":346838924.8866,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":356.437,"HG_MIN":346.75,"HG_MAX":377.25,"PD":1590300000000.00000,"PD_USD":32324747548.66091,"HAO_PD":409979340000.000000,"HAO_PD_USD":8333319918.044783,"HG_HACIM":1.7063642691E10,"DOLAR_BAZLI_MIN":7.0481,"DOLAR_BAZLI_MAX":7.6681,"DOLAR_BAZLI_AOF":7.2450},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"08-10-2026","HGDG_KAPANIS":348.7500,"HGDG_AOF":345.473,"HGDG_MIN":340.25,"HGDG_MAX":354.0,"HGDG_HACIM":12941100644.000000,"END_ENDEKS_KODU":"01","END_TARIH":1791406800000,"END_SEANS":2,"END_DEGER":12213.58,"DD_DOVIZ_KODU":"USD","DD_DT_KODU":"01","DD_TARIH":1791406800000,"DD_DEGER":49.2152,"DOLAR_BAZLI_FIYAT":7.0862,"ENDEKS_BAZLI_FIYAT":0.0286,"DOLAR_HACIM":262949264.5362,"SERMAYE":4.56E9,"HG_KAPANIS":348.75,"HG_AOF":345.473,"HG_MIN":340.25,"HG_MAX":354.0,"PD":1590300000000.00000,"PD_USD":32313187795.64037,"HAO_PD":409979340000.000000,"HAO_PD_USD":8330339813.716087,"HG_HACIM":1.2941100644E10,"DOLAR_BAZLI_MIN":6.9135,"DOLAR_BAZLI_MAX":7.1929,"DOLAR_BAZLI_AOF":7.0196}]}""";
@@ -249,6 +260,8 @@ public static class RealSourceCatalog
 
     private const string IndexLevelsJson = """{"data":[[1791234000000,15381.69043],[1791320400000,15013.83008],[1791406800000,15137.57031],[1791493200000,15145.26953],[1791752400000,15001.28027],[1791838800000,15191.57031],[1791925200000,15047.87012],[1792011600000,14986.78027],[1792098000000,14558.42969]],"timestamp":"2026-10-18T02:45:43.0802138+03:00"}""";
 
+    private const string IndexLevelsXu100Json = """{"data":[[1791234000000,12374.25977],[1791320400000,12122.94043],[1791406800000,12213.58008],[1791493200000,12265.98047],[1791752400000,12150.66992],[1791838800000,12250.67969],[1791925200000,12118.29004],[1792011600000,12070.16992],[1792098000000,11721.71973]],"timestamp":"2026-10-18T07:24:26.4004374+03:00"}""";
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -270,7 +283,8 @@ public static class RealSourceCatalog
         KapStatements(StatementsDuplicateUnequal, StatementsDuplicateUnequalJson),
         EvdsMacro(MacroEvds, MacroEvdsJson),
         CapturedUniverse(Universe, UniverseJson),
-        CapturedIndexLevels(IndexLevels, IndexLevelsJson),
+        CapturedIndexLevels(IndexLevels, IndexLevelsLabel, IndexLevelsJson),
+        CapturedIndexLevels(IndexLevelsXu100, IndexLevelsXu100Label, IndexLevelsXu100Json),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -318,8 +332,8 @@ public static class RealSourceCatalog
     private static RealSourcePayload CapturedUniverse(string name, string json) =>
         Payload(name, UniverseLabel, RealSourceProvenance.Captured, json);
 
-    private static RealSourcePayload CapturedIndexLevels(string name, string json) =>
-        Payload(name, IndexLevelsLabel, RealSourceProvenance.Captured, json);
+    private static RealSourcePayload CapturedIndexLevels(string name, string label, string json) =>
+        Payload(name, label, RealSourceProvenance.Captured, json);
 
     private static RealSourcePayload Payload(
         string name,

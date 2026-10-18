@@ -234,6 +234,47 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
         Assert.Equal(prior, (await db.MarketSnapshots.OrderBy(s => s.SnapshotDate).FirstAsync()).SnapshotDate);
     }
 
+    /// <summary>
+    /// TKT-foundation-025 (FLG-08; FR-MOV-001) — the BIST 30 index move resolves whichever
+    /// spelling the stored world carries. The real chain materializes <c>XU030</c> (the
+    /// <c>Xu030LaunchSeed</c> index row), while the FU world stores <c>XU30</c>; the engine
+    /// must not silently degrade the BIST 30 move to (0, 0) when only the real spelling is
+    /// present. Renaming the FU index to the real spelling (as a real-only DB has it) must
+    /// still yield a non-degenerate BIST 30 level + daily change, with the XU100 move
+    /// resolving alongside. The FU world's own <c>XU30</c> goldens (TC-MOV-001) are a
+    /// separate path (no <c>XU030</c> row there, so the extra spelling is a no-op).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_025_bist30_move_resolves_both_spellings()
+    {
+        await ResetAsync();
+        await RenameIndexAsync("XU30", "XU030");
+        try
+        {
+            await using var host = BuildHost();
+            var result = await RunSnapshotAsync(host, T);
+            Assert.Equal("succeeded", result.Status);
+
+            await using var db = _postgres.CreateContext();
+            var snapshot = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == T);
+
+            // The real BIST 30 spelling XU030 resolves: non-degenerate level + change
+            // (a bare (0, 0) is exactly the regression this guards).
+            Assert.NotEqual(0m, snapshot.Xu30Level);
+            AssertClose(30600.00m, snapshot.Xu30Level);
+            AssertClose(0.02m, snapshot.Xu30ChangePct);
+
+            // The XU100 move still resolves alongside over the covered universe.
+            Assert.NotEqual(0m, snapshot.Xu100Level);
+            AssertClose(10200.00m, snapshot.Xu100Level);
+            AssertClose(0.02m, snapshot.Xu100ChangePct);
+        }
+        finally
+        {
+            await RenameIndexAsync("XU030", "XU30");
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -270,6 +311,15 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM market_snapshots");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+    }
+
+    /// <summary>Renames an index code in place (same row id, so its levels stay bound) to
+    /// model the real-chain spelling of the BIST 30 index (<c>XU030</c>).</summary>
+    private async Task RenameIndexAsync(string from, string to)
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE indices SET code = {0} WHERE code = {1}", to, from);
     }
 
     /// <summary>

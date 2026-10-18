@@ -194,8 +194,13 @@ public sealed class MarketSnapshotEngine
         DateOnly date,
         CancellationToken cancellationToken)
     {
+        // The BIST 30 code has two spellings in the stored world: the real chain materializes
+        // `XU030` (the Xu030LaunchSeed index row; FLG-08), while the FU fixture world uses
+        // `XU30`. Resolve by both so a real-only DB never silently degrades the BIST 30 move to
+        // (0, 0); in the FU world no `XU030` row exists, so the extra spelling is a no-op and
+        // every FU golden re-runs unchanged (01 v1.5 §10.9.7).
         var indexIds = await _db.Indices
-            .Where(i => i.Code == "XU100" || i.Code == "XU30")
+            .Where(i => i.Code == "XU100" || i.Code == "XU30" || i.Code == "XU030")
             .ToDictionaryAsync(i => i.Code, i => i.Id, cancellationToken)
             .ConfigureAwait(false);
 
@@ -206,13 +211,17 @@ public sealed class MarketSnapshotEngine
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        IndexMove Move(string code)
+        IndexMove? Move(params string[] codes)
         {
-            if (!indexIds.TryGetValue(code, out var indexId))
+            var resolved = codes
+                .Select(code => indexIds.TryGetValue(code, out var id) ? id : (long?)null)
+                .FirstOrDefault(id => id is not null);
+            if (resolved is null)
             {
-                return new IndexMove(0m, 0m);
+                return null;
             }
 
+            var indexId = resolved.Value;
             var current = levels.FirstOrDefault(l => l.IndexId == indexId && l.LevelDate == date);
             if (current is null)
             {
@@ -234,6 +243,8 @@ public sealed class MarketSnapshotEngine
             return new IndexMove(current.Close, change);
         }
 
-        return (Move("XU100"), Move("XU30"));
+        return (
+            Move("XU100") ?? new IndexMove(0m, 0m),
+            Move("XU030", "XU30") ?? new IndexMove(0m, 0m));
     }
 }
