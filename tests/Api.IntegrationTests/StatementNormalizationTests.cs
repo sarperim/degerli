@@ -184,6 +184,10 @@ public sealed class StatementNormalizationTests : IClassFixture<PostgresFixture>
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = UsdxPath,
+                // Company-scoped loop bound: the test-local single-member bind keeps the USDX
+                // normalization goldens intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 
@@ -236,6 +240,8 @@ public sealed class StatementNormalizationTests : IClassFixture<PostgresFixture>
         await db.FinancialStatements.Where(s => s.InstrumentId == usdxId).ExecuteDeleteAsync();
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+
+        await StatementBound.ReplaceAsync(db, UsdxSymbol);
 
         return usdxId;
     }

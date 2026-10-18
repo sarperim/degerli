@@ -157,6 +157,11 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
             ["Ingestion:Prices:RequestDelayMs"] = "0",
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Statements:Path"] = StatementsPath,
+            // The company-scoped statements loop resolves its fetch bound from this index; the
+            // test-local single-member bind keeps the ALFA statement golden intact
+            // (TKT-foundation-024).
+            ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+            ["Ingestion:Statements:RequestDelayMs"] = "0",
             ["Ingestion:Dividends:Path"] = DividendsPath,
             ["Ingestion:CorporateActions:Path"] = CorporateActionsPath,
             ["Ingestion:Disclosures:Path"] = DisclosuresPath,
@@ -187,6 +192,7 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         await db.Database.ExecuteSqlRawAsync("DELETE FROM derived_metrics");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM sector_metric_medians");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM market_snapshots");
+        await StatementBound.ReplaceAsync(db, "ALFA");
     }
 
     private async Task<List<IngestRun>> LedgerAsync()

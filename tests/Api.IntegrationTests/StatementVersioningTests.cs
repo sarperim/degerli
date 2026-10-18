@@ -214,6 +214,10 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = "/canned-sources/statements-restated-rest-v2",
+                // Company-scoped loop bound: the test-local single-member bind keeps the REST
+                // restatement golden intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 
@@ -249,6 +253,8 @@ public sealed class StatementVersioningTests : IClassFixture<PostgresFixture>, I
             .ToListAsync();
         await db.FinLineItems.Where(l => statementIds.Contains(l.StatementId)).ExecuteDeleteAsync();
         await db.FinancialStatements.Where(s => s.InstrumentId == restId).ExecuteDeleteAsync();
+
+        await StatementBound.ReplaceAsync(db, "REST");
 
         return restId;
     }

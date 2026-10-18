@@ -6,6 +6,7 @@ using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -147,6 +148,7 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
     {
         // (1) Equal duplicates collapse; re-ingesting is an idempotent no-op.
         await ResetAsync();
+        await BindStatementsAsync("ALFA");
         var equal = _wireMock.StubRealSource(RealSourceCatalog.StatementsDuplicateEqual);
         await using (var provider = BuildIngestion(equal.DefaultPath))
         {
@@ -176,6 +178,7 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
         // (2) Unequal duplicates quarantine CONFLICTING_VALUE with both values retained; the
         // non-conflicting BS group ingests normally.
         await ResetAsync();
+        await BindStatementsAsync("ALFA");
         var unequal = _wireMock.StubRealSource(RealSourceCatalog.StatementsDuplicateUnequal);
         await using (var provider = BuildIngestion(unequal.DefaultPath))
         {
@@ -232,6 +235,7 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
 
         // End-to-end: the job quarantines the malformed body and writes nothing.
         await ResetAsync();
+        await BindStatementsAsync("ASELS");
         await using (var provider = BuildIngestion(path))
         {
             var result = await RunAsync(provider, "statements");
@@ -260,6 +264,37 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
             Options.Create(new StatementsSourceOptions { Path = path }));
     }
 
+    /// <summary>
+    /// Binds the statements job's fetch bound (TKT-foundation-024) to a test-local index
+    /// carrying <paramref name="symbols"/>, creating an instrument row for any symbol the FU
+    /// universe does not seed (e.g. the on-demand <c>ASELS</c>).
+    /// </summary>
+    private async Task BindStatementsAsync(params string[] symbols)
+    {
+        await using var db = _postgres.CreateContext();
+        var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        foreach (var symbol in symbols)
+        {
+            if (await db.Instruments.AnyAsync(i => i.Symbol == symbol))
+            {
+                continue;
+            }
+
+            db.Instruments.Add(new Instrument
+            {
+                Symbol = symbol,
+                Name = symbol,
+                Status = "active",
+                SourceRef = "test:statements-bound",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        await StatementBound.ReplaceAsync(db, symbols);
+    }
+
     private static StatementFact GroupFor(StatementsPayload payload, string statementType, int periodEndYear) =>
         payload.Statements.Single(s => s.StatementType == statementType && s.PeriodEndDate.Year == periodEndYear);
 
@@ -273,6 +308,10 @@ public sealed class RealSourceStatementsTests : IClassFixture<PostgresFixture>, 
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = statementsPath,
+                // Company-scoped loop bound: each test binds the symbol(s) its payload carries
+                // (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 

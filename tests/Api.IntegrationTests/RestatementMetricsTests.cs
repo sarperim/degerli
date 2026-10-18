@@ -132,6 +132,10 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = "/canned-sources/statements-restated-rest",
+                // Company-scoped loop bound: the test-local single-member bind keeps the REST
+                // restatement golden intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 
@@ -156,6 +160,7 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM derived_metrics");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+        await StatementBound.ReplaceAsync(db, "REST");
     }
 
     private static async Task<DerivedMetric> MetricAsync(DegerliDbContext db, long instrumentId, string metricCode) =>

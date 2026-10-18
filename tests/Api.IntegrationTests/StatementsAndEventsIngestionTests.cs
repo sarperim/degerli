@@ -258,6 +258,10 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             ["ConnectionStrings:Default"] = _postgres.ConnectionString,
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Statements:Path"] = "/canned-sources/statements-ok-alfa-fy2025",
+            // The company-scoped statements loop resolves its fetch bound from this index; the
+            // test-local single-member bind keeps the ALFA golden intact (TKT-foundation-024).
+            ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+            ["Ingestion:Statements:RequestDelayMs"] = "0",
             ["Ingestion:Dividends:Path"] = "/canned-sources/dividends-ok",
             ["Ingestion:CorporateActions:Path"] = "/canned-sources/corporate-actions-ok",
             ["Ingestion:Disclosures:Path"] = "/canned-sources/disclosures-ok",
@@ -295,6 +299,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         await db.Database.ExecuteSqlRawAsync("DELETE FROM kap_disclosures");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+        await StatementBound.ReplaceAsync(db, "ALFA");
     }
 
     /// <summary>Creates the fixture document volume the disclosures job points at: one
