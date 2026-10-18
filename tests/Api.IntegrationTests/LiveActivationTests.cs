@@ -374,6 +374,86 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
         }
     }
 
+    /// <summary>
+    /// TKT-foundation-022 — XU100 covered-universe launch-seed (the TC-MDF-076 lane shape
+    /// applied to the covered universe, FR-MDF-007/BR-MDF-005). The seed writes append-only,
+    /// effective-dated current membership (<c>effective_to</c> NULL, <c>source_ref</c>
+    /// <c>bist://xu100-launch</c> recorded); re-application is idempotent (no duplicate rows, no
+    /// mutations); the accepted pre-launch constituent-history gap is recorded once; and any
+    /// FU fixture members already open on XU100 coexist (<c>AlreadyPresent</c>) — the dev
+    /// posture. The checked-in seed's real-world correctness is a live-pull observation (the
+    /// ticket criterion), not asserted here.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_022_Xu100_membership_launch_seed_structure_and_idempotency()
+    {
+        await ResetAsync();
+        await CreateXu100InstrumentsAsync();
+
+        var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        UniverseLaunchSeedResult first;
+        UniverseLaunchSeedResult second;
+
+        await using (var seedHost = BuildIngestion(universeIndex: null, requestDelayMs: 0))
+        {
+            using var scope = seedHost.Provider.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<UniverseSyncStore>();
+            var coverage = scope.ServiceProvider.GetRequiredService<CoverageRecorder>();
+
+            first = await Xu100LaunchSeed.ApplyAsync(store, coverage, recordedAt);
+            second = await Xu100LaunchSeed.ApplyAsync(store, coverage, recordedAt);
+        }
+
+        Assert.Equal(Xu100LaunchSeed.Symbols.Count, first.Seeded);
+        Assert.Empty(first.UnknownSymbols);
+        Assert.Equal(0, second.Seeded);
+        Assert.Equal(Xu100LaunchSeed.Symbols.Count, second.AlreadyPresent);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+            var seedRows = await db.IndexConstituents
+                .Where(c => c.IndexId == xu100 && c.SourceRef == Xu100LaunchSeed.SourceRef)
+                .ToListAsync();
+
+            // Idempotent re-application: no duplicate rows, no mutations.
+            Assert.Equal(Xu100LaunchSeed.Symbols.Count, seedRows.Count);
+            Assert.All(seedRows, row =>
+            {
+                Assert.Null(row.EffectiveTo);
+                Assert.Equal(Xu100LaunchSeed.AsOfDate, row.EffectiveFrom);
+                Assert.Equal(Xu100LaunchSeed.SourceRef, row.SourceRef);
+            });
+
+            // The FU fixture members already open on XU100 coexist — the dev posture: the
+            // real seed fires alongside them, never replacing them.
+            Assert.True(await db.IndexConstituents.AnyAsync(c =>
+                c.IndexId == xu100 && c.SourceRef == "fixture:universe:membership"));
+
+            // The accepted pre-launch constituent-history gap stays an explicit, single record.
+            var gap = Assert.Single(await db.CoverageMetadata
+                .Where(c => c.Scope == "universe" && c.DataType == CoverageDataTypes.Constituents)
+                .ToListAsync());
+            Assert.Equal(Xu100LaunchSeed.AsOfDate, gap.AvailableFrom);
+        }
+    }
+
+    /// <summary>
+    /// TKT-foundation-022 — the market-structure containment invariant: every checked-in
+    /// <see cref="Xu030LaunchSeed"/> member is present in the checked-in
+    /// <see cref="Xu100LaunchSeed"/> list (XU030 ⊆ XU100). A violation means one of the lists is
+    /// stale and must be investigated and corrected with a re-dated note, never auto-corrected.
+    /// </summary>
+    [Fact]
+    public void TKT_foundation_022_Xu030_is_a_subset_of_Xu100()
+    {
+        var xu100 = Xu100LaunchSeed.Symbols.ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(Xu100LaunchSeed.Symbols.Count, xu100.Count); // no duplicates
+        Assert.Equal(100, Xu100LaunchSeed.Symbols.Count); // the covered universe is the BIST 100
+        Assert.DoesNotContain(Xu030LaunchSeed.Symbols, symbol => !xu100.Contains(symbol));
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -446,6 +526,10 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             "DELETE FROM index_constituents WHERE index_id IN (SELECT id FROM indices WHERE code = 'XU030')");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM indices WHERE code = 'XU030'");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE source_ref = 'test:xu030-launch'");
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM index_constituents WHERE instrument_id IN " +
+            "(SELECT id FROM instruments WHERE source_ref = 'test:xu100-launch')");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE source_ref = 'test:xu100-launch'");
     }
 
     /// <summary>Adds a closed (removed) XU30 membership row so TC-MDF-072 can assert
@@ -478,6 +562,29 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
                 AccountingProfile = "industrial",
                 Status = "active",
                 SourceRef = "test:xu030-launch",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Creates the test-local instrument rows the XU100 launch-seed needs (the real
+    /// BIST 100 members are outside the FU universe; the FU XU100 index row already exists).</summary>
+    private async Task CreateXu100InstrumentsAsync()
+    {
+        await using var db = _postgres.CreateContext();
+        var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        foreach (var symbol in Xu100LaunchSeed.Symbols)
+        {
+            db.Instruments.Add(new Instrument
+            {
+                Symbol = symbol,
+                Name = symbol,
+                AccountingProfile = "industrial",
+                Status = "active",
+                SourceRef = "test:xu100-launch",
                 RecordedAt = recordedAt,
             });
         }

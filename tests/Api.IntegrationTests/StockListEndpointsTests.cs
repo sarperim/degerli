@@ -2,8 +2,12 @@ using System.Net;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
+using Degerli.Ingestion.Coverage;
+using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Api.IntegrationTests;
 
@@ -188,6 +192,70 @@ public sealed class StockListEndpointsTests : IClassFixture<PostgresFixture>
         Assert.Equal(HttpStatusCode.OK, miss.StatusCode);
         using var missDocument = JsonDocument.Parse(await miss.Content.ReadAsStringAsync());
         Assert.Empty(Stocks(missDocument.RootElement));
+    }
+
+    /// <summary>
+    /// TKT-foundation-022 — the covered-universe read surface (FR-RES-001, BR-MDF-005) serves a
+    /// real BIST 100 member once the checked-in <see cref="Xu100LaunchSeed"/> has seeded its
+    /// XU100 membership. This is the user-visible end of the real-universe chain: a seeded real
+    /// instrument appears in both the universe list and the typeahead. Membership/shape is
+    /// asserted, never derived numbers.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_022_seeded_xu100_membership_surfaces_real_symbols_in_the_read_surface()
+    {
+        await SeedAsync();
+        var recordedAt = new DateTimeOffset(L2.Anchor.T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        try
+        {
+            await using (var db = _postgres.CreateContext())
+            {
+                db.Instruments.Add(new Instrument
+                {
+                    Symbol = "ASELS",
+                    Name = "Aselsan Elektronik",
+                    AccountingProfile = "industrial",
+                    Status = "active",
+                    SourceRef = "test:xu100-launch",
+                    RecordedAt = recordedAt,
+                });
+                await db.SaveChangesAsync();
+
+                await Xu100LaunchSeed.ApplyAsync(new UniverseSyncStore(db), new CoverageRecorder(db), recordedAt);
+            }
+
+            await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+            using var client = CreateClient(factory);
+
+            using var list = await client.GetAsync("/api/v1/stocks");
+            Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+            using var listDocument = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+            var listedSymbols = Stocks(listDocument.RootElement)
+                .Select(row => row.GetProperty("symbol").GetString())
+                .ToList();
+            Assert.Contains("ASELS", listedSymbols);
+
+            using var search = await client.GetAsync("/api/v1/stocks/search?q=ASELS");
+            Assert.Equal(HttpStatusCode.OK, search.StatusCode);
+            using var searchDocument = JsonDocument.Parse(await search.Content.ReadAsStringAsync());
+            var asels = Assert.Single(Stocks(searchDocument.RootElement));
+            Assert.Equal("ASELS", asels.GetProperty("symbol").GetString());
+            Assert.Equal("Aselsan Elektronik", asels.GetProperty("name").GetString());
+            Assert.Equal(
+                new[] { "symbol", "name" },
+                asels.EnumerateObject().Select(property => property.Name).ToArray());
+        }
+        finally
+        {
+            // Restore the shared L2 baseline so the class's other count-based cases are
+            // order-independent.
+            await using var db = _postgres.CreateContext();
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM index_constituents WHERE instrument_id IN " +
+                "(SELECT id FROM instruments WHERE source_ref = 'test:xu100-launch')");
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE source_ref = 'test:xu100-launch'");
+        }
     }
 
     // ---------------------------------------------------------------------------

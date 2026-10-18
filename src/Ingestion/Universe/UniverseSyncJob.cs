@@ -145,6 +145,45 @@ public sealed class UniverseSyncJob : IIngestJob
             }
         }
 
+        // XU100 covered-universe launch-seed (01 v1.5 §10.9.3 amendment 2026-10-18,
+        // FR-MDF-007, BR-MDF-005): the real İş Yatırım universe snapshot publishes instrument
+        // rows only — no index-membership rows (§10.9.8) — so the snapshot-derived cold-start
+        // block above degrades to "no seed" and nothing in the real chain ever writes a real
+        // XU100 membership row; the covered-universe read surface (FR-RES-001) stays empty while
+        // the real instruments sit stored. This checked-in seed closes that gap. It fires only
+        // (1) for the real source envelope — the canonical L2 double carries its own ref, so the
+        // checked-in real seed never fires in the stub world and canonical goldens stay untouched
+        // (§10.9.7); (2) on cold-start posture — a snapshot that publishes an effective-dated
+        // change set hands membership to the FR-MDF-007 change-detection path; and (3) at most
+        // once — keyed on the seed's own provenance marker. Deliberately NOT gated on
+        // !HasOpenConstituentsAsync("XU100"): the FU/dev world legitimately pre-populates XU100
+        // with its fixture members (FLG-08) and the real seed must still fire alongside them —
+        // the TC-MDF-062 machinery lands those overlapped members as AlreadyPresent, never
+        // duplicated.
+        if (fetched.Payload.EffectiveDate is null
+            && string.Equals(fetched.SourceRef, UniverseSourceAdapter.IsYatirimSource, StringComparison.Ordinal)
+            && !await _store
+                .HasSeedAsync(Xu100LaunchSeed.IndexCode, Xu100LaunchSeed.SourceRef, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            var seed = await Xu100LaunchSeed
+                .ApplyAsync(_store, _coverage, now, cancellationToken)
+                .ConfigureAwait(false);
+            seededMemberships += seed.Seeded;
+
+            // Unresolved symbols are reported and quarantined, never silently dropped
+            // (NFR-MDF-003).
+            foreach (var symbol in seed.UnknownSymbols)
+            {
+                _logger.LogWarning(
+                    "universe-sync: XU100 launch seed symbol {Symbol} resolved to no stored instrument (UNKNOWN_REFERENCE)",
+                    symbol);
+                await QuarantineAsync(Xu100LaunchSeed.SourceRef, symbol, "UNKNOWN_REFERENCE", cancellationToken)
+                    .ConfigureAwait(false);
+                quarantined++;
+            }
+        }
+
         // The accepted pre-launch constituent-history gap (FR-MDF-007/011, BR-MDF-007) is
         // recorded exactly once, independently of whether the seed above ran: a cold start
         // that already carries open XU100 memberships (e.g. a bootstrap that seeds the

@@ -8,6 +8,7 @@ using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -537,6 +538,29 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
             await cleanup.Database.ExecuteSqlRawAsync(
                 "UPDATE instruments SET accounting_profile = 'industrial' WHERE symbol = 'BETA'");
         }
+    }
+
+    /// <summary>
+    /// TKT-foundation-022 — a canonical stub-ref universe sync never applies the checked-in
+    /// <see cref="Xu100LaunchSeed"/>: the L2 world stays fixture-only (01 v1.5 §10.9.7 — no
+    /// golden churn). The real-source gate on the seed is what keeps the two worlds apart.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_022_Canonical_stub_sync_never_applies_the_checked_in_xu100_seed()
+    {
+        await ColdStartUniverseAsync();
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexPath);
+        await using var host = BuildIngestion(UniversePath, IndexPath);
+
+        var result = await RunAsync(host, "universe-sync");
+
+        Assert.NotEqual(IngestResult.Failed, result.Status);
+
+        await using var db = _postgres.CreateContext();
+        Assert.False(
+            await db.IndexConstituents.AnyAsync(c => c.SourceRef == Xu100LaunchSeed.SourceRef),
+            "the checked-in real XU100 seed must never fire for a canonical stub-ref sync");
     }
 
     // ---------------------------------------------------------------------------------
