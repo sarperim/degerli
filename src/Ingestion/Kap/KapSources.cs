@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Degerli.Ingestion.Sources;
 
@@ -158,6 +159,17 @@ public sealed class KapSourceOptions
             redacted = redacted
                 .Replace(secret, "***", StringComparison.Ordinal)
                 .Replace(Uri.EscapeDataString(secret), "***", StringComparison.Ordinal);
+        }
+
+        // Defence in depth: the HTTP Basic token actually placed on the wire is the base64 of
+        // "ApiKey:ApiSecret" (see IngestionServiceCollectionExtensions) — a gateway fault
+        // echoing the Authorization header must not survive either. ASCII matches the encoder
+        // the client uses for the header.
+        if (HasCredential)
+        {
+            var (username, password) = BasicCredential();
+            var basic = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+            redacted = redacted.Replace(basic, "***", StringComparison.Ordinal);
         }
 
         return redacted;

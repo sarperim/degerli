@@ -111,15 +111,17 @@ public static class IngestionServiceCollectionExtensions
             // configured (empty in local/test wiring, where the WireMock double ignores it).
             // The secret list feeds the client's redaction guard so no configured credential
             // can leak into a thrown message.
+            var secrets = options.Secrets.ToList();
             if (options.HasCredential)
             {
                 var (username, password) = options.BasicCredential();
-                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-                    "Basic",
-                    Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}")));
+                var basic = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
+                // The base64 token placed on the wire is itself redaction surface (SEC-2).
+                secrets.Add(basic);
             }
 
-            return new KapHttpSourceClient(http, options.Secrets);
+            return new KapHttpSourceClient(http, secrets);
         });
 
         services.Configure<StatementsSourceOptions>(configuration.GetSection(StatementsSourceOptions.SectionName));

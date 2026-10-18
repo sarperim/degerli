@@ -265,6 +265,7 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
 
         while (true)
         {
+            var previousIndex = lastIndex;
             var pageFrom = lastIndex is null ? from : (lastIndex.Value + 1).ToString(CultureInfo.InvariantCulture);
             var listRaw = await GetVykAsync(BuildDisclosuresPath(from: pageFrom, companyId), cancellationToken).ConfigureAwait(false);
             raw.AppendLine(listRaw);
@@ -298,8 +299,12 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
                 lastIndex = lastIndex is null ? maxIndex : Math.Max(lastIndex.Value, maxIndex);
             }
 
-            // A full page may mean more; a short/empty page ends the walk (01 v1.5 §10.9.11).
-            if (listed.Count < VykPageSize || maxIndex < 0)
+            // A short/empty page ends the walk (01 v1.5 §10.9.11); so does a full page that
+            // does not advance the cursor — a gateway that ignored the disclosureIndex offset
+            // and re-served the same page would otherwise loop forever (DR-5).
+            var advanced = lastIndex is not null
+                && (previousIndex is null || lastIndex.Value > previousIndex.Value);
+            if (listed.Count < VykPageSize || maxIndex < 0 || !advanced)
             {
                 break;
             }
@@ -345,7 +350,7 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
     }
 
     /// <summary>Parses the disclosure list, classifying a gateway fault as a source failure.</summary>
-    private static IReadOnlyList<DisclosureInfo> ParseDisclosureList(string raw)
+    private IReadOnlyList<DisclosureInfo> ParseDisclosureList(string raw)
     {
         using var document = ParseDocument(raw);
         var root = document.RootElement;
@@ -353,14 +358,14 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
         var fault = VykFault.TryRead(root);
         if (fault is not null)
         {
-            throw new SourceFetchException($"VYK /disclosures returned a fault ({fault.Code}): {fault.Message}");
+            throw new SourceFetchException($"VYK /disclosures returned a fault ({fault.Code}): {Redact(fault.Message)}");
         }
 
         return VykEnvelopes.Elements(root).Select(DisclosureInfo.From).ToList();
     }
 
     /// <summary>Decodes one VYK disclosure detail, classifying a gateway fault as a source failure.</summary>
-    private static StatementsPayload DecodeVykDetail(string raw, string symbol)
+    private StatementsPayload DecodeVykDetail(string raw, string symbol)
     {
         using var document = ParseDocument(raw);
         var root = document.RootElement;
@@ -368,7 +373,7 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
         var fault = VykFault.TryRead(root);
         if (fault is not null)
         {
-            throw new SourceFetchException($"VYK /disclosureDetail returned a fault ({fault.Code}): {fault.Message}");
+            throw new SourceFetchException($"VYK /disclosureDetail returned a fault ({fault.Code}): {Redact(fault.Message)}");
         }
 
         if (!VykStatementDecoder.IsEnvelope(document))
@@ -385,6 +390,13 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
             throw new SourcePayloadException(raw, exception);
         }
     }
+
+    /// <summary>
+    /// Pipes a gateway-supplied fault string through the configured credential redaction
+    /// (SEC-1): a future fault echoing the credential must not survive into a thrown message
+    /// or a log line.
+    /// </summary>
+    private string Redact(string? message) => _kapOptions?.Redact(message) ?? message ?? string.Empty;
 
     private static bool IsNumeric(string value) => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out _);
 
