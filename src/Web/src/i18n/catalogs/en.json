@@ -110,7 +110,8 @@
       "history": {
         "title": "Price history",
         "captionAdjusted": "{{count}} adjusted closes",
-        "captionRaw": "{{count}} closes"
+        "captionRaw": "{{count}} closes",
+        "close": "Close"
       },
       "strip": {
         "title": "Vs. sector",

@@ -110,7 +110,8 @@
       "history": {
         "title": "Fiyat geçmişi",
         "captionAdjusted": "{{count}} düzeltilmiş kapanış",
-        "captionRaw": "{{count}} kapanış"
+        "captionRaw": "{{count}} kapanış",
+        "close": "Kapanış"
       },
       "strip": {
         "title": "Sektör karşılaştırması",

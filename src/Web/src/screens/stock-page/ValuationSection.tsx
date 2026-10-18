@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Line, LineChart, XAxis, YAxis } from 'recharts'
+import { Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
+import type { TooltipContentProps } from 'recharts'
 
 import { NotMeaningful } from '@/components/honest-data'
 import type {
@@ -17,6 +18,7 @@ import {
   isPercentValuationMetric,
   valuationHistoryPoints,
   VALUATION_METRIC_ORDER,
+  type ValuationHistoryPoint,
   type ValuationMetricCode,
 } from '@/screens/stock-page/valuation'
 
@@ -51,6 +53,43 @@ function formatMetric(locale: string, code: string, value: number): string {
   return isPercentValuationMetric(code)
     ? formatPercent(locale, value, 2)
     : formatNumber(locale, value)
+}
+
+/**
+ * The history chart's hover tooltip (TKT-res-012): the hovered point's date and
+ * plotted close, formatted with the shared locale helpers (`formatAsOfDate` /
+ * `formatNumber`). Recharts injects `active`/`payload`; an entry's `payload` is
+ * the plotted `ValuationHistoryPoint` — the same basis-consistent `close` the line
+ * draws — so the tooltip adds no basis claim beyond the figure caption
+ * (UXR-RES-020). Exported so its output is testable without hover simulation.
+ */
+export function ValuationTooltipContent({
+  active,
+  payload,
+}: Partial<TooltipContentProps<number, string>>) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'tr'
+
+  if (active !== true || payload === undefined || payload.length === 0) return null
+  const point = payload[0].payload as ValuationHistoryPoint | undefined
+  if (point === undefined) return null
+
+  return (
+    <div
+      data-testid="valuation-tooltip"
+      className="flex flex-col gap-0.5 rounded-md border bg-background px-2 py-1 text-xs shadow-md"
+    >
+      <span data-slot="tooltip-date" className="text-muted-foreground">
+        {formatAsOfDate(locale, point.date)}
+      </span>
+      <span
+        data-slot="tooltip-close"
+        className="font-medium tabular-nums text-foreground"
+      >
+        {t('stockPage.valuation.history.close')}: {formatNumber(locale, point.close)}
+      </span>
+    </div>
+  )
 }
 
 /** The historical price series as an SVG line on its honest basis (FR-RES-006/013). */
@@ -100,6 +139,10 @@ export function ValuationHistoryChart({
               dot={false}
               isAnimationActive={false}
               strokeWidth={2}
+            />
+            <Tooltip
+              content={<ValuationTooltipContent />}
+              isAnimationActive={false}
             />
           </LineChart>
         </div>
