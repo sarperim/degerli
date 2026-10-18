@@ -101,7 +101,7 @@ public sealed class StatementsJob : IIngestJob
             try
             {
                 var fetched = await _adapter
-                    .FetchCompanyAsync(symbol, request.Date, cancellationToken)
+                    .FetchCompanyAsync(symbol, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (string.IsNullOrWhiteSpace(fetched.SourceRef))

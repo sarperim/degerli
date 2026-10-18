@@ -60,6 +60,16 @@ public sealed class FinancialStatementStore
         ArgumentNullException.ThrowIfNull(payload);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
 
+        // Nothing to persist: an empty statement set is a deliberate no-op, never a
+        // schema failure. The per-company identity guard narrows a body whose identity
+        // does not match the bound symbol to an empty set (01 v1.5 §10.9.10, FR-MDF-008),
+        // so it must return clean here — validating scale/currency first would otherwise
+        // refuse it with SCHEMA_MISMATCH and quarantine the *other* company's raw body.
+        if (payload.Statements.Count == 0)
+        {
+            return new StatementWriteResult(payload.Symbol, 0, 0, []);
+        }
+
         // The payload's scale/currency declaration is mandatory and must be valid: an
         // undeclared or unknown scale/currency is a payload-schema failure (02 §3.1,
         // TC-MDF-055) — never a silent guess.

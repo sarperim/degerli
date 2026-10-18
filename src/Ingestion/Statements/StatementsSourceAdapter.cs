@@ -96,7 +96,6 @@ public sealed class StatementsSourceAdapter : ISourceAdapter<StatementsPayload>
     /// </summary>
     public async Task<SourcePayload<StatementsPayload>> FetchCompanyAsync(
         string symbol,
-        DateOnly date,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);

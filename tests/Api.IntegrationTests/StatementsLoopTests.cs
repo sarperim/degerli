@@ -268,6 +268,63 @@ public sealed class StatementsLoopTests : IClassFixture<PostgresFixture>, IClass
         Assert.True(statements.GetProperty("RequestDelayMs").GetInt32() > 0);
     }
 
+    /// <summary>
+    /// TKT-foundation-024 (FR-MDF-008, §10.9.10; regression for DR-1) — the cross-company
+    /// identity guard narrows a body whose identity does not match the bound symbol to an
+    /// <b>empty statement set</b>. A deliberate narrowing is a silent no-op: the run writes
+    /// zero rows under either identity and quarantines <b>nothing</b> — it never refuses the
+    /// payload as <c>SCHEMA_MISMATCH</c> and quarantines another company's body. Both adapter
+    /// shapes are exercised: the real KAP XBRL fact envelope (<c>companyCode</c> mismatch) and
+    /// the canonical double (<c>FilterBySymbol</c>, the foreign symbol carrying no instrument
+    /// row).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_024_cross_company_identity_guard_narrows_to_a_noop()
+    {
+        // (1) Real KAP XBRL envelope: every bound member's route serves a body for ZZZZ.
+        await ResetAsync();
+        StubPerSymbolForeignRealEnvelope("ZZZZ");
+        _wireMock.Server.ResetLogEntries();
+
+        await using (var host = BuildIngestion(universeIndex: "XU30", requestDelayMs: 0))
+        {
+            var result = await RunAsync(host, StatementsJob.Code);
+
+            Assert.Equal(IngestResult.Succeeded, result.Status);
+            Assert.Equal(5, RequestsSeen());
+            Assert.Equal(0, result.Written);
+            Assert.Equal(0, result.Quarantined);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.FinancialStatements.CountAsync());
+            Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "statements"));
+        }
+
+        // (2) Canonical double: the foreign symbol (no instrument row) is narrowed to an
+        // empty set, never SCHEMA_MISMATCH-quarantined.
+        await ResetAsync();
+        StubPerSymbolForeignCanonical("ZZZZ");
+        _wireMock.Server.ResetLogEntries();
+
+        await using (var host = BuildIngestion(universeIndex: "XU30", requestDelayMs: 0))
+        {
+            var result = await RunAsync(host, StatementsJob.Code);
+
+            Assert.Equal(IngestResult.Succeeded, result.Status);
+            Assert.Equal(5, RequestsSeen());
+            Assert.Equal(0, result.Written);
+            Assert.Equal(0, result.Quarantined);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.FinancialStatements.CountAsync());
+            Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "statements"));
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -372,6 +429,53 @@ public sealed class StatementsLoopTests : IClassFixture<PostgresFixture>, IClass
                 .RespondWith(response);
         }
     }
+
+    /// <summary>
+    /// Stubs one route per current XU30 member serving a <b>real KAP XBRL fact envelope</b>
+    /// whose <c>companyCode</c> is <paramref name="foreignCompanyCode"/> — a body for a
+    /// company other than the requested member (the identity-guard case).
+    /// </summary>
+    private void StubPerSymbolForeignRealEnvelope(string foreignCompanyCode)
+    {
+        _wireMock.Server.ResetMappings();
+
+        foreach (var symbol in Xu30Members)
+        {
+            _wireMock.Server
+                .Given(Request.Create().WithPath(StatementsPath(symbol)).UsingGet())
+                .RespondWith(Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(RealEnvelopeBody(foreignCompanyCode)));
+        }
+    }
+
+    /// <summary>
+    /// Stubs one route per current XU30 member serving a <b>canonical double</b> whose
+    /// <c>symbol</c> is <paramref name="foreignSymbol"/> — the <c>FilterBySymbol</c> narrowing
+    /// case (the foreign symbol carries no instrument row).
+    /// </summary>
+    private void StubPerSymbolForeignCanonical(string foreignSymbol)
+    {
+        _wireMock.Server.ResetMappings();
+
+        foreach (var symbol in Xu30Members)
+        {
+            _wireMock.Server
+                .Given(Request.Create().WithPath(StatementsPath(symbol)).UsingGet())
+                .RespondWith(Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(Body(foreignSymbol)));
+        }
+    }
+
+    /// <summary>A well-formed real KAP XBRL fact envelope carrying <paramref name="companyCode"/>.</summary>
+    private static string RealEnvelopeBody(string companyCode) => $$"""
+        {"companyCode":"{{companyCode}}","unitScale":"units","currency":"TRY","facts":[
+          {"fiscalYear":2023,"periodType":"Q","periodEndDate":"{{FreshPeriod}}","statementType":"IS",
+           "version":"as_reported","concept":"ifrs-full:Revenue","value":"100"}]}
+        """;
 
     /// <summary>One company's canonical statement payload at a fresh (unseeded) period.</summary>
     private static string Body(string symbol) => $$"""

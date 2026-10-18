@@ -605,8 +605,8 @@ payload, so unlike the prices/index-levels resources there is no multi-symbol li
 seam is one company at a time. §10.9.2's seam doctrine therefore applies **verbatim** to
 companies:
 
-- **Company-scoped adapter; loop in the job.** `StatementsSourceAdapter.FetchCompanyAsync(symbol,
-  date)` fetches and parses **one company's** payload; the `{symbol}` token in the configured path
+- **Company-scoped adapter; loop in the job.** `StatementsSourceAdapter.FetchCompanyAsync(symbol)`
+  fetches and parses **one company's** payload; the `{symbol}` token in the configured path
   template is substituted in place (a template without the token gets the symbol appended as a
   `symbol` query parameter, so the fixed canonical L2 double route still resolves). Envelope
   detection stays inside the adapter — the real KAP XBRL fact envelope (§10.9.5) and the canonical
@@ -636,10 +636,13 @@ companies:
   cold-start/misconfiguration gap and is reported `Failed` (never a silent healthy success); a
   differently-named bound resolving empty degrades to `Succeeded` (its instruments may not exist
   yet). Identical posture to the prices job (§10.9.2).
-- **Backfill (FR-MDF-010, FR-MDF-011).** Backfill reuses the same per-company loop; the achieved
-  depth is what the source returned, and the per-instrument statements coverage depth is derived
-  from the stored statements by the existing `CoverageRecorder` no-silent-gaps reconcile — never
-  re-invented or fabricated beyond the source.
+- **Backfill (FR-MDF-010, FR-MDF-011).** Backfill reuses the same per-company loop and is a
+  **nominal** distinction at this seam: the loop does not branch on `request.IsBackfill` because the
+  per-company KAP resource returns the periods the source holds regardless, so an incremental and a
+  backfill run perform identical per-company work. The achieved depth is what the source returned,
+  and the per-instrument statements coverage depth is derived from the stored statements by the
+  existing `CoverageRecorder` no-silent-gaps reconcile — never re-invented or fabricated beyond the
+  source.
 
 **Config (`Ingestion:Kap` / `Ingestion:Statements`, §10.4).** Shipped in `src/Api/appsettings.json`:
 `Ingestion:Kap:BaseUrl = https://www.kap.org.tr`; `Ingestion:Statements = { Path, UniverseIndex =
