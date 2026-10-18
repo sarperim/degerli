@@ -30,8 +30,12 @@ namespace Degerli.Ingestion.Macro;
 /// </summary>
 public static class EvdsMacroDecoder
 {
-    /// <summary>The source-locale date format the real EVDS envelope uses (dd-MM-yyyy).</summary>
+    /// <summary>The source-locale date format the real EVDS daily envelope uses (dd-MM-yyyy).</summary>
     public const string SourceDateFormat = "dd-MM-yyyy";
+
+    /// <summary>The month format the real EVDS monthly envelope uses (yyyy-MM); resolves to
+    /// the month's first day.</summary>
+    public const string MonthFormat = "yyyy-MM";
 
     /// <summary>The date column of the real EVDS envelope.</summary>
     public const string DateColumn = "Tarih";
@@ -60,7 +64,20 @@ public static class EvdsMacroDecoder
     /// value-date window are kept (the 90-day lookback bound; a source that ignores the
     /// request window cannot smuggle out-of-bound values past the adapter).
     /// </summary>
-    public static IReadOnlyList<MacroItem> DecodeRows(JsonDocument document, DateOnly from, DateOnly to)
+    public static IReadOnlyList<MacroItem> DecodeRows(JsonDocument document, DateOnly from, DateOnly to) =>
+        DecodeRows(document, from, to, allowedCanonicalCodes: null);
+
+    /// <summary>
+    /// As <see cref="DecodeRows(JsonDocument, DateOnly, DateOnly)"/>, additionally narrowing to
+    /// <paramref name="allowedCanonicalCodes"/> when supplied: the v3 adapter issues one request
+    /// per series group and decodes only the series it asked for (so a merged response cannot
+    /// leak a series from the other request). A <c>null</c> set means every mapped series.
+    /// </summary>
+    public static IReadOnlyList<MacroItem> DecodeRows(
+        JsonDocument document,
+        DateOnly from,
+        DateOnly to,
+        IReadOnlySet<string>? allowedCanonicalCodes)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -89,14 +106,23 @@ public static class EvdsMacroDecoder
                 continue;
             }
 
-            foreach (var evdsCode in EvdsSeries.RequestOrder)
+            // Enumerate the row's columns and resolve each EVDS column key to its canonical
+            // code. The platform serialises a column key by replacing '.' with '_'
+            // (TP.DK.USD.S.YTL → TP_DK_USD_S_YTL); normalising '_' → '.' recovers the
+            // identifier, so both the dotted and underscored spellings resolve (the union map).
+            foreach (var column in item.EnumerateObject())
             {
-                if (!EvdsSeries.CanonicalByEvdsCode.TryGetValue(evdsCode, out var canonical))
+                if (!TryResolveCanonical(column.Name, out var canonical))
                 {
                     continue;
                 }
 
-                var value = ReadDecimal(item, evdsCode);
+                if (allowedCanonicalCodes is not null && !allowedCanonicalCodes.Contains(canonical))
+                {
+                    continue;
+                }
+
+                var value = ReadDecimal(column.Value);
                 if (value is null)
                 {
                     continue;
@@ -111,41 +137,80 @@ public static class EvdsMacroDecoder
         return rows;
     }
 
+    /// <summary>
+    /// Resolves one envelope column key to its canonical macro code. EVDS 3.0 underscores the
+    /// dotted identifier, so the key is normalised (<c>_</c> → <c>.</c>) before the union
+    /// lookup; a key that names no known series is ignored.
+    /// </summary>
+    public static bool TryResolveCanonical(string columnName, out string canonicalCode)
+    {
+        canonicalCode = string.Empty;
+        if (string.IsNullOrEmpty(columnName))
+        {
+            return false;
+        }
+
+        var normalized = columnName.Replace('_', '.');
+        return EvdsSeries.CanonicalByEvdsCode.TryGetValue(normalized, out canonicalCode!)
+            || EvdsSeries.CanonicalByEvdsCode.TryGetValue(columnName, out canonicalCode!);
+    }
+
     private static string? ReadString(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 
     /// <summary>
-    /// Reads one EVDS value cell. The real export serializes values as JSON numbers, but a
-    /// few series arrive as locale-free numeric strings; both are accepted, anything else
-    /// (null, a non-numeric marker) is treated as a missing observation.
+    /// Reads one EVDS value cell. The real export serializes values as locale-free strings
+    /// that carry <b>thousands-grouping commas</b> regardless of the requested
+    /// <c>decimalSeperator</c> (01 v1.5.6 §10.9.12 — e.g. <c>"6,622,000.00"</c>): the grouping
+    /// separators are stripped before the invariant numeric parse. A JSON number is accepted
+    /// as-is; anything else (null, a non-numeric marker) is treated as a missing observation.
     /// </summary>
-    private static decimal? ReadDecimal(JsonElement item, string name)
-    {
-        if (!item.TryGetProperty(name, out var value))
-        {
-            return null;
-        }
-
-        return value.ValueKind switch
+    private static decimal? ReadDecimal(JsonElement value) =>
+        value.ValueKind switch
         {
             JsonValueKind.Number => value.GetDecimal(),
             JsonValueKind.String => TryParseDecimal(value.GetString()),
             _ => null,
         };
-    }
 
-    private static decimal? TryParseDecimal(string? text) =>
-        decimal.TryParse(
-            text,
-            NumberStyles.Float | NumberStyles.AllowThousands,
+    private static decimal? TryParseDecimal(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        // EVDS 3.0 returns values with thousands-grouping commas and a '.' decimal point
+        // regardless of the requested decimalSeperator; strip the grouping before parsing.
+        var normalized = text.Replace(",", string.Empty, StringComparison.Ordinal);
+        return decimal.TryParse(
+            normalized,
+            NumberStyles.Float,
             CultureInfo.InvariantCulture,
             out var value)
             ? value
             : null;
+    }
 
-    private static bool TryParseDate(string text, out DateOnly date) =>
-        DateOnly.TryParseExact(text, SourceDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
-        || DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    /// <summary>
+    /// Parses a real EVDS observation date: daily rows use <c>dd-MM-yyyy</c>; monthly rows
+    /// (the CPI index, the policy rate) use <c>yyyy-MM</c> and resolve to the month's first
+    /// day (the observation is the month — 01 v1.5.6 §10.9.12).
+    /// </summary>
+    public static bool TryParseDate(string text, out DateOnly date)
+    {
+        if (DateOnly.TryParseExact(text, SourceDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        {
+            return true;
+        }
+
+        if (DateOnly.TryParseExact(text, MonthFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        {
+            return true;
+        }
+
+        return DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
 }
