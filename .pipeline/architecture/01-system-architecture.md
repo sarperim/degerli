@@ -592,6 +592,13 @@ on not-yet-covered real stocks are FR-RES-016 working as pinned.
 
 #### 10.9.10 Statements — company-scoped fetch and the statements bound (TKT-foundation-024, FR-MDF-002/008/010/011/012)
 
+> **Superseded by replacement (orchestrator record, TKT-foundation-026, merged PR #99, 2026-10-18):**
+> this section's *blocked live-discovery block* (the `www.kap.org.tr` website-proxy candidate, §13.1
+> v1.5.3) is **superseded by the MKK VYK API source contract in §10.9.11** — the company-scoped loop,
+> per-company isolation and the keyed `IKapSourceClient` are reused unchanged; only the **source** is
+> rewired. TKT-foundation-024's open live criterion is **closed by replacement** (recorded in 024's
+> ticket; no attempt fabricated).
+
 **Why (the defect this closes).** The §10.9.5 KAP XBRL fact envelope has decoded in the product
 since TKT-foundation-017 and `StatementsJob` persists versioned statements idempotently, but no
 `Ingestion:Kap` / `Ingestion:Statements` sections existed in `src/Api/appsettings.json`: the KAP
