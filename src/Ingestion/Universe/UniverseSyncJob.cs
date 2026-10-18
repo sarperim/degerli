@@ -20,6 +20,14 @@ public sealed class UniverseSyncJob : IIngestJob
     /// <summary>Stable job code used by the ledger, scheduler and admin trigger.</summary>
     public const string Code = "universe-sync";
 
+    /// <summary>
+    /// Reason code for an index-levels transport failure (a source-down, not a parse event).
+    /// Matches <c>prices</c>' per-symbol source-failure class: the real index-levels resource
+    /// is a secondary endpoint (01 v1.5 §10.9.8), so its unavailability degrades the run to
+    /// <see cref="IngestResult.Partial"/> without aborting the instrument/membership sync.
+    /// </summary>
+    public const string SourceFetchFailed = "SOURCE_FETCH_FAILED";
+
     /// <summary>The covered universe index (BR-MDF-005): the BIST 100.</summary>
     private const string UniverseIndexCode = "XU100";
 
@@ -229,6 +237,31 @@ public sealed class UniverseSyncJob : IIngestJob
         {
             _logger.LogWarning("universe-sync: index-levels payload unparseable (UNPARSEABLE_PAYLOAD)");
             await QuarantineAsync(null, exception.RawJson, "UNPARSEABLE_PAYLOAD", cancellationToken)
+                .ConfigureAwait(false);
+            quarantined++;
+        }
+        catch (SourceFetchException exception)
+        {
+            // Index-levels is a secondary resource (01 v1.5 §10.9.8): a live fetch failure (a
+            // source-down — the chart endpoint unreachable, the pre-fix defect) must degrade to
+            // the same non-fatal quarantine + Partial + alert class as an unparseable payload,
+            // never abort the instrument/membership sync that already succeeded above. The
+            // launch-blocking chain (instruments → XU030 membership → prices) is never hostage
+            // to this second endpoint's availability.
+            _logger.LogWarning(
+                exception,
+                "universe-sync: index-levels source fetch failed (SOURCE_FETCH_FAILED)");
+            await QuarantineAsync(null, null, SourceFetchFailed, cancellationToken)
+                .ConfigureAwait(false);
+            await _alerter.RaiseAsync(
+                    new IngestionAlert(
+                        Code,
+                        SourceFetchFailed,
+                        Subject: $"Degerli alert: universe-sync could not fetch index-levels ({SourceFetchFailed})",
+                        BodyTr: "universe-sync işi endeks seviyeleri kaynağından veri çekemedi; enstrüman ve üyelik senkronizasyonu tamamlandı, endeks seviyeleri bu çalıştırmada atlandı ve işaretlendi (kaynak hatası, ayrıştırma olayı değildir).",
+                        BodyEn: "The universe-sync job could not fetch the index-levels source; the instrument and membership sync completed, and index levels were skipped and flagged for this run (a source failure, not a parse event).",
+                        SourceRef: null),
+                    cancellationToken)
                 .ConfigureAwait(false);
             quarantined++;
         }

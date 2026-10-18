@@ -16,6 +16,17 @@ public interface ISourceClient
     /// charset (01 v1.5 §10.9.4); throws on a non-success response.
     /// </summary>
     Task<string> GetStringAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a source resource as a raw string through an HTTP <b>POST</b> carrying a JSON
+    /// request body, decoded under the response's declared charset (01 v1.5 §10.9.4); throws
+    /// on a non-success response. The İş Yatırım instrument-universe resource is a legacy
+    /// ASP.NET AJAX POST handler (01 v1.5 §10.9.8) — its query cannot ride the GET seam. The
+    /// default implementation throws so a client built only for GET (test doubles) still
+    /// satisfies the seam.
+    /// </summary>
+    Task<string> PostJsonAsync(string path, string jsonBody, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This ISourceClient does not support POST requests.");
 }
 
 /// <summary>
@@ -39,6 +50,27 @@ public sealed class HttpSourceClient : ISourceClient
         {
             throw new SourceFetchException(
                 $"Source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'.");
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        return DecodeBody(bytes, response.Content.Headers.ContentType?.CharSet);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> PostJsonAsync(
+        string path,
+        string jsonBody,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(jsonBody);
+
+        using var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        using var response = await _http.PostAsync(path, content, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new SourceFetchException(
+                $"Source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for POST '{path}'.");
         }
 
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
