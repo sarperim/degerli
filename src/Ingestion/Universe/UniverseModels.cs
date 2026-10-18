@@ -61,7 +61,27 @@ public sealed record IndexLevelFact(
     [property: JsonPropertyName("date")] DateOnly Date,
     [property: JsonPropertyName("close")] decimal Close);
 
-/// <summary>The <c>index-levels</c> source payload (FR-MDF-006).</summary>
+/// <summary>
+/// One index whose index-levels fetch failed within a multi-index batch (FR-MDF-006, 01 v1.5
+/// §10.9.8). The index-levels resource is per-index, so the sync is degraded <b>per index</b>:
+/// a failing index is quarantined + alerted while the others' levels still store. The reason
+/// code mirrors the existing quarantine vocabulary (<c>SOURCE_FETCH_FAILED</c> for a transport
+/// failure — the TC-MDF-070 class; <c>UNPARSEABLE_PAYLOAD</c> for an unparseable body). The
+/// body is carried for the quarantine row when available (a transport failure has none).
+/// </summary>
+public sealed record IndexLevelFetchFailure(
+    [property: JsonPropertyName("indexCode")] string IndexCode,
+    [property: JsonPropertyName("reasonCode")] string ReasonCode,
+    [property: JsonPropertyName("raw")] string? RawJson = null);
+
+/// <summary>
+/// The <c>index-levels</c> source payload (FR-MDF-006). <see cref="Failures"/> is populated
+/// only by the multi-index production fetch path: it names the configured indices whose fetch
+/// failed so the job can apply the §10.9.8 per-index degradation posture (quarantine + alert +
+/// <c>Partial</c>) while still storing the successful indices' levels. Canonical and real
+/// envelopes carry no <c>failures</c> field — it stays null outside the multi-index path.
+/// </summary>
 public sealed record IndexLevelsPayload(
     [property: JsonPropertyName("sourceRef")] string? SourceRef,
-    [property: JsonPropertyName("levels")] IReadOnlyList<IndexLevelFact>? Levels);
+    [property: JsonPropertyName("levels")] IReadOnlyList<IndexLevelFact>? Levels,
+    [property: JsonPropertyName("failures")] IReadOnlyList<IndexLevelFetchFailure>? Failures = null);

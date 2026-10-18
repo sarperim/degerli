@@ -58,8 +58,25 @@ public sealed class UniverseSourceOptions
         "/_Layouts/15/IsYatirim.Website/Common/ChartData.aspx/IndexHistoricalAll" +
         "?period=1440&from={from}&to={to}&endeks={index}";
 
-    /// <summary>The index whose levels the index-levels resource is queried for (default XU030).</summary>
-    public string IndexLevelsIndex { get; set; } = "XU030";
+    /// <summary>
+    /// The indices whose levels the index-levels resource is queried for (FR-MDF-006 pins
+    /// "including BIST 100 and BIST 30", FR-MOV-001 displays both; 01 v1.5 §10.9.8). The
+    /// universe job's index-levels step fetches each configured index through the templated
+    /// route and degrades per index. Production default <c>XU100, XU030</c>; the L2 harness
+    /// binds its own subset either way. An empty list (unconfigured) falls back to
+    /// <see cref="DefaultIndexLevelsIndices"/>.
+    /// <para>
+    /// The instance default is <b>empty</b>, not the production set: the options binder
+    /// <i>appends</i> configured entries to any non-empty initial value (a
+    /// <c>List&lt;string&gt;</c>/array with a seeded default would double the set), so a
+    /// clean bind requires an empty seed and the fallback below carries the documented default.
+    /// </para>
+    /// </summary>
+    public List<string> IndexLevelsIndices { get; set; } = [];
+
+    /// <summary>The production default index set (FR-MDF-006), applied when the set is
+    /// unconfigured.</summary>
+    public static IReadOnlyList<string> DefaultIndexLevelsIndices { get; } = ["XU100", "XU030"];
 
     /// <summary>Bounded lookback (days) of the index-levels request window.</summary>
     public int IndexLevelsLookbackDays { get; set; } = 30;
@@ -152,6 +169,17 @@ public sealed class UniverseSourceAdapter : ISourceAdapter<UniversePayload>
 /// through this one adapter (01 v1.5 §10.9.8): the <b>real</b> İş Yatırım <c>data</c>
 /// dated-close envelope (decoded by <see cref="UniverseRealEnvelopeDecoder"/>) and the
 /// canonical <c>sourceRef</c>/<c>levels</c> double (the L2 golden shape, §10.9.7).
+/// <para>
+/// The resource is <b>per-index</b> — one request per <c>endeks</c> code. This adapter fetches
+/// every index named by <see cref="UniverseSourceOptions.IndexLevelsIndices"/> (production
+/// default <c>XU100, XU030</c>; FR-MDF-006 pins "including BIST 100 and BIST 30") through the
+/// templated route and merges their levels into one payload, recording each failing index in
+/// <see cref="IndexLevelsPayload.Failures"/> so the job can apply the §10.9.8 <b>per-index</b>
+/// degradation posture (one index's failure quarantines + alerts + <c>Partial</c> without
+/// dropping the other index's levels, and never aborts the instrument/membership sync). A
+/// transport failure is recorded (the TC-MDF-070 class) rather than thrown; only the canonical
+/// single-index path that carries no failures keeps the fetch-exception class job-side.
+/// </para>
 /// </summary>
 public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload>
 {
@@ -174,35 +202,102 @@ public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
-        var path = ResolveIndexLevelsPath(_options.IndexLevelsPath, _options.IndexLevelsIndex, date);
-        var raw = await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
+        var configured = _options.IndexLevelsIndices is { Count: > 0 }
+            ? _options.IndexLevelsIndices
+            : UniverseSourceOptions.DefaultIndexLevelsIndices;
 
-        using var document = ParseDocument(raw);
-        if (UniverseRealEnvelopeDecoder.IsIndexLevelsEnvelope(document))
+        // A path without an `{index}` token is a single fixed route (the canonical L2 double,
+        // §10.9.7): it cannot be queried per-index, so fetch it once and let the payload's own
+        // index codes stand. Only the real templated route loops the configured set.
+        var indices = _options.IndexLevelsPath.Contains("{index}", StringComparison.Ordinal)
+            ? configured
+            : configured.Take(1).ToList();
+
+        var levels = new List<IndexLevelFact>();
+        var failures = new List<IndexLevelFetchFailure>();
+        var raws = new List<string>();
+        string? sourceRef = null;
+
+        foreach (var indexCode in indices)
         {
-            var payload = UniverseRealEnvelopeDecoder.DecodeIndexLevels(
-                document,
-                UniverseSourceAdapter.IsYatirimSource,
-                _options.IndexLevelsIndex);
-            return new SourcePayload<IndexLevelsPayload>(UniverseSourceAdapter.IsYatirimSource, payload, raw);
+            if (string.IsNullOrWhiteSpace(indexCode))
+            {
+                continue;
+            }
+
+            var path = ResolveIndexLevelsPath(_options.IndexLevelsPath, indexCode, date);
+
+            string raw;
+            try
+            {
+                raw = await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (SourceFetchException)
+            {
+                // A transport failure is a source-down (the TC-MDF-070 class), not a parse
+                // event: recorded per index so the job quarantines + alerts + degrades to
+                // Partial without dropping the other indices' levels (§10.9.8).
+                failures.Add(new IndexLevelFetchFailure(indexCode, UniverseSyncJob.SourceFetchFailed));
+                continue;
+            }
+
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(raw);
+            }
+            catch (JsonException)
+            {
+                failures.Add(new IndexLevelFetchFailure(indexCode, "UNPARSEABLE_PAYLOAD", raw));
+                continue;
+            }
+
+            using (document)
+            {
+                if (UniverseRealEnvelopeDecoder.IsIndexLevelsEnvelope(document))
+                {
+                    var payload = UniverseRealEnvelopeDecoder.DecodeIndexLevels(
+                        document,
+                        UniverseSourceAdapter.IsYatirimSource,
+                        indexCode);
+                    sourceRef = UniverseSourceAdapter.IsYatirimSource;
+                    levels.AddRange(payload.Levels ?? []);
+                }
+                else
+                {
+                    IndexLevelsPayload? canonical;
+                    try
+                    {
+                        canonical = JsonSerializer.Deserialize<IndexLevelsPayload>(raw, JsonOptions);
+                    }
+                    catch (JsonException)
+                    {
+                        failures.Add(new IndexLevelFetchFailure(indexCode, "UNPARSEABLE_PAYLOAD", raw));
+                        continue;
+                    }
+
+                    if (canonical is null)
+                    {
+                        failures.Add(new IndexLevelFetchFailure(indexCode, "UNPARSEABLE_PAYLOAD", raw));
+                        continue;
+                    }
+
+                    sourceRef ??= canonical.SourceRef;
+                    levels.AddRange(canonical.Levels ?? []);
+                }
+            }
+
+            raws.Add(raw);
         }
 
-        IndexLevelsPayload? canonical;
-        try
-        {
-            canonical = JsonSerializer.Deserialize<IndexLevelsPayload>(raw, JsonOptions);
-        }
-        catch (JsonException exception)
-        {
-            throw new SourcePayloadException(raw, exception);
-        }
-
-        if (canonical is null)
-        {
-            throw new SourceFetchException("Index-levels payload deserialized to null.");
-        }
-
-        return new SourcePayload<IndexLevelsPayload>(canonical.SourceRef, canonical, raw);
+        var merged = new IndexLevelsPayload(
+            sourceRef,
+            levels.Count > 0 ? levels : null,
+            failures.Count > 0 ? failures : null);
+        return new SourcePayload<IndexLevelsPayload>(
+            sourceRef,
+            merged,
+            raws.Count > 0 ? string.Join('\n', raws) : string.Empty);
     }
 
     /// <summary>
@@ -224,17 +319,5 @@ public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload
             .Replace("{from}", from + "000000", StringComparison.Ordinal)
             .Replace("{to}", to + "235959", StringComparison.Ordinal)
             .Replace("{index}", Uri.EscapeDataString(indexCode), StringComparison.Ordinal);
-    }
-
-    private static JsonDocument ParseDocument(string raw)
-    {
-        try
-        {
-            return JsonDocument.Parse(raw);
-        }
-        catch (JsonException exception)
-        {
-            throw new SourcePayloadException(raw, exception);
-        }
     }
 }

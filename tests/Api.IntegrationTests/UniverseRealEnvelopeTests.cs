@@ -196,7 +196,7 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
         _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
 
-        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndices: ["XU30"]);
         var result = await RunAsync(host, "universe-sync");
 
         Assert.NotEqual(IngestResult.Failed, result.Status);
@@ -247,7 +247,7 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         // The index-levels endpoint is down: a non-success response, never a parseable body.
         _wireMock.StubJson(IndexLevelsPath, """{"error":"source unavailable"}""", statusCode: 500);
 
-        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndices: ["XU30"]);
         var result = await RunAsync(host, "universe-sync");
 
         // Degraded, not failed: the run is Partial and the failure is counted once.
@@ -270,6 +270,99 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
     }
 
     /// <summary>
+    /// TKT-foundation-025 — the index-levels step fetches <b>both</b> real BIST indexes
+    /// (FR-MDF-006 pins "including BIST 100 and BIST 30") through the templated route: each
+    /// configured <c>endeks</c> code is requested once, its captured chart envelope decodes
+    /// through the production adapter (the body carries no code, so the requested code is
+    /// stamped), and both indices' levels are stored with the real source provenance. This is
+    /// the CI half of the real-chain criterion; the orchestrator's live run proves the same
+    /// over the live endpoints.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_025_index_levels_loop_fetches_both_real_indices_through_the_templated_route()
+    {
+        await ResetAsync();
+        await CreateXu100InstrumentsAsync();
+        await CreateXu030IndexAsync();
+
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
+        _wireMock.StubRealSource(RealSourceCatalog.IndexLevelsXu100, path: "/real-sources/isl-XU100");
+        _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: "/real-sources/isl-XU030");
+
+        await using var host = BuildIngestion(
+            method: "POST",
+            indexLevelsIndices: ["XU100", "XU030"],
+            indexLevelsPath: "/real-sources/isl-{index}");
+        var result = await RunAsync(host, "universe-sync");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+
+        await using var db = _postgres.CreateContext();
+        var indexIds = await db.Indices.ToDictionaryAsync(i => i.Code, i => i.Id);
+
+        var xu100 = await db.IndexLevels.Where(l => l.IndexId == indexIds["XU100"]).ToListAsync();
+        Assert.Equal(9, xu100.Count);
+        Assert.All(xu100, level => Assert.Equal(UniverseSourceAdapter.IsYatirimSource, level.SourceRef));
+        Assert.Contains(
+            xu100,
+            level => level.LevelDate == new DateOnly(2026, 10, 6) && level.Close == 12374.2598m);
+
+        var xu030 = await db.IndexLevels.Where(l => l.IndexId == indexIds["XU030"]).ToListAsync();
+        Assert.Equal(9, xu030.Count);
+        Assert.All(xu030, level => Assert.Equal(UniverseSourceAdapter.IsYatirimSource, level.SourceRef));
+        Assert.Contains(
+            xu030,
+            level => level.LevelDate == new DateOnly(2026, 10, 6) && level.Close == 15381.6904m);
+    }
+
+    /// <summary>
+    /// TKT-foundation-025 — the index-levels degradation is <b>per index</b> (01 v1.5 §10.9.8):
+    /// one configured index's fetch fails while the other succeeds. The failing index
+    /// quarantines (<c>SOURCE_FETCH_FAILED</c>) + alerts and the run is <c>Partial</c>, but the
+    /// other index's levels still store and the instrument/membership sync never aborts.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_025_index_levels_degradation_is_per_index()
+    {
+        await ResetAsync();
+        await CreateXu100InstrumentsAsync();
+        await CreateXu030IndexAsync();
+
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
+        _wireMock.StubRealSource(RealSourceCatalog.IndexLevelsXu100, path: "/real-sources/isl-XU100");
+        // The XU030 index-levels endpoint is down: a non-success response, never a parseable body.
+        _wireMock.StubJson("/real-sources/isl-XU030", """{"error":"source unavailable"}""", statusCode: 500);
+
+        await using var host = BuildIngestion(
+            method: "POST",
+            indexLevelsIndices: ["XU100", "XU030"],
+            indexLevelsPath: "/real-sources/isl-{index}");
+        var result = await RunAsync(host, "universe-sync");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(1, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+
+        // The instrument sync was not aborted by the one index's failure.
+        Assert.True(await db.Instruments.AnyAsync(i => i.Symbol == "A1CAP"));
+
+        var indexIds = await db.Indices.ToDictionaryAsync(i => i.Code, i => i.Id);
+        // The other index's levels still stored …
+        Assert.Equal(9, await db.IndexLevels.CountAsync(l => l.IndexId == indexIds["XU100"]));
+        // … and the failing index's were not.
+        Assert.False(await db.IndexLevels.AnyAsync(l => l.IndexId == indexIds["XU030"]));
+
+        var quarantined = await db.QuarantinedFacts.SingleAsync(q => q.ReasonCode == UniverseSyncJob.SourceFetchFailed);
+        Assert.Equal("universe-sync", quarantined.JobCode);
+
+        Assert.Contains(host.Mail.Sent, m =>
+            m.Subject.Contains(UniverseSyncJob.SourceFetchFailed, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// TKT-foundation-022 — the real İş Yatırım universe snapshot (instruments only, no
     /// membership rows, §10.9.8) flows through the production <c>universe-sync</c> job and the
     /// checked-in <see cref="Xu100LaunchSeed"/> fires exactly once, seeding the real BIST 100
@@ -287,7 +380,7 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
         _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
 
-        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndices: ["XU30"]);
         var result = await RunAsync(host, "universe-sync");
 
         Assert.NotEqual(IngestResult.Failed, result.Status);
@@ -361,7 +454,7 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
         _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
 
-        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndices: ["XU30"]);
         var result = await RunAsync(host, "universe-sync");
 
         Assert.Equal(IngestResult.Partial, result.Status);
@@ -406,25 +499,43 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
             {
                 BaseUrl = _wireMock.BaseUrl,
                 IndexLevelsPath = path,
-                IndexLevelsIndex = indexCode,
+                IndexLevelsIndices = [indexCode],
             }));
 
-    private IngestionHost BuildIngestion(string method, string indexLevelsIndex)
+    /// <summary>
+    /// The real-source L2 harness. <paramref name="indexLevelsIndices"/> binds the configured
+    /// index set (TKT-foundation-025); <paramref name="indexLevelsPath"/> overrides the
+    /// templated route. An unset set falls back to the production default
+    /// (<see cref="UniverseSourceOptions.DefaultIndexLevelsIndices"/>).
+    /// </summary>
+    private IngestionHost BuildIngestion(
+        string method,
+        IReadOnlyList<string>? indexLevelsIndices = null,
+        string? indexLevelsPath = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Universe:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Universe:Method"] = method,
+            ["Ingestion:Universe:Path"] = UniversePath,
+            ["Ingestion:Universe:IndexLevelsPath"] = indexLevelsPath ?? IndexLevelsPath,
+        };
+
+        if (indexLevelsIndices is not null)
+        {
+            for (var i = 0; i < indexLevelsIndices.Count; i++)
             {
-                ["ConnectionStrings:Default"] = _postgres.ConnectionString,
-                ["Ingestion:Universe:BaseUrl"] = _wireMock.BaseUrl,
-                ["Ingestion:Universe:Method"] = method,
-                ["Ingestion:Universe:Path"] = UniversePath,
-                ["Ingestion:Universe:IndexLevelsPath"] = IndexLevelsPath,
-                ["Ingestion:Universe:IndexLevelsIndex"] = indexLevelsIndex,
-            })
+                settings[$"Ingestion:Universe:IndexLevelsIndices:{i}"] = indexLevelsIndices[i];
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
             .Build();
 
         var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
@@ -491,6 +602,18 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>Creates the real BIST 30 index row (<c>XU030</c>, the real code the
+    /// <c>Xu030LaunchSeed</c> materializes) so the multi-index lane's XU030 levels resolve — the
+    /// FU world carries only the fixture's <c>XU30</c> spelling.</summary>
+    private async Task CreateXu030IndexAsync()
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO indices (code, name_tr, name_en) " +
+            "SELECT 'XU030', 'BIST 30', 'BIST 30' " +
+            "WHERE NOT EXISTS (SELECT 1 FROM indices WHERE code = 'XU030')");
     }
 
     /// <summary>The active ingestion provider plus its alert/mail and log doubles.</summary>

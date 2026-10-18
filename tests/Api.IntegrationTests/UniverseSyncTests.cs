@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Serilog;
 
@@ -99,6 +100,63 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
         Assert.Equal(10200.00m, xu100.Close);
         var xu30 = await db.IndexLevels.SingleAsync(l => l.IndexId == indexIds["XU30"] && l.LevelDate == T);
         Assert.Equal(30600.00m, xu30.Close);
+    }
+
+    /// <summary>
+    /// TKT-foundation-025 — the index-levels step is config-driven over a <b>set</b> (FR-MDF-006
+    /// pins "including BIST 100 and BIST 30"): every configured index is fetched through the
+    /// templated route and its levels stored. Two distinct templated routes let the canonical
+    /// double serve one body per index (the real per-index envelopes are exercised in
+    /// <c>UniverseRealEnvelopeTests</c>).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_025_index_levels_loop_fetches_every_configured_index()
+    {
+        await ResetUniverseAsync();
+
+        // The real BIST code XU030 has no FU index row — create it so its level resolves (the
+        // real chain's Xu030LaunchSeed materializes it).
+        await using (var setup = _postgres.CreateContext())
+        {
+            await setup.Database.ExecuteSqlRawAsync(
+                "INSERT INTO indices (code, name_tr, name_en) " +
+                "SELECT 'XU030', 'BIST 30', 'BIST 30' " +
+                "WHERE NOT EXISTS (SELECT 1 FROM indices WHERE code = 'XU030')");
+        }
+
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
+
+        string LevelsBody(string index, decimal close) => JsonSerializer.Serialize(new
+        {
+            sourceRef = $"kap://index-levels/{index}",
+            levels = new[] { new { indexCode = index, date = T, close } },
+        }, JsonOptions);
+
+        const string templatedPath = "/canned-sources/index-levels-{index}";
+        _wireMock.StubJson("/canned-sources/index-levels-XU100", LevelsBody("XU100", 10200.00m));
+        _wireMock.StubJson("/canned-sources/index-levels-XU030", LevelsBody("XU030", 30600.00m));
+
+        await using var host = BuildIngestion(UniversePath, templatedPath, ["XU100", "XU030"]);
+        using (var scope = host.Provider.CreateScope())
+        {
+            var opts = scope.ServiceProvider.GetRequiredService<IOptions<UniverseSourceOptions>>().Value;
+            Assert.Equal(new[] { "XU100", "XU030" }, opts.IndexLevelsIndices);
+        }
+
+        await RunAsync(host, "universe-sync");
+
+        // Both configured indices were fetched exactly once, through their templated route.
+        Assert.Equal(1, _wireMock.RequestsFor("/canned-sources/index-levels-XU100"));
+        Assert.Equal(1, _wireMock.RequestsFor("/canned-sources/index-levels-XU030"));
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var indexIds = await db.Indices.ToDictionaryAsync(i => i.Code, i => i.Id);
+            var xu100 = await db.IndexLevels.SingleAsync(l => l.IndexId == indexIds["XU100"] && l.LevelDate == T);
+            Assert.Equal(10200.00m, xu100.Close);
+            var xu030 = await db.IndexLevels.SingleAsync(l => l.IndexId == indexIds["XU030"] && l.LevelDate == T);
+            Assert.Equal(30600.00m, xu030.Close);
+        }
     }
 
     /// <summary>TC-MDF-025 — missing sector classification is flagged, not dropped.</summary>
@@ -570,21 +628,40 @@ public sealed class UniverseSyncTests : IClassFixture<PostgresFixture>, IClassFi
     /// The ingestion composition used in production, retargeted at the Testcontainers
     /// database and the WireMock source double. A recording mail double replaces the
     /// alerting seam; a Serilog test sink captures the log alerts.
+    /// <para>
+    /// The canonical L2 harness binds its own index-levels set (TKT-foundation-025): the
+    /// canonical source double serves one body per route regardless of the <c>endeks</c> query,
+    /// so the default binding is a single index (<c>XU100</c>) — a multi-index run against the
+    /// double would fetch the same body twice. The real multi-index set is exercised against
+    /// the real envelopes in <c>UniverseRealEnvelopeTests</c>; pass
+    /// <paramref name="indexLevelsIndices"/> to drive a config-driven set here too.
+    /// </para>
     /// </summary>
-    private IngestionHost BuildIngestion(string universePath, string indexPath)
+    private IngestionHost BuildIngestion(
+        string universePath,
+        string indexPath,
+        IReadOnlyList<string>? indexLevelsIndices = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Universe:Path"] = universePath,
+            ["Ingestion:Universe:IndexLevelsPath"] = indexPath,
+        };
+
+        var indices = indexLevelsIndices ?? ["XU100"];
+        for (var i = 0; i < indices.Count; i++)
+        {
+            settings[$"Ingestion:Universe:IndexLevelsIndices:{i}"] = indices[i];
+        }
+
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:Default"] = _postgres.ConnectionString,
-                ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
-                ["Ingestion:Universe:Path"] = universePath,
-                ["Ingestion:Universe:IndexLevelsPath"] = indexPath,
-            })
+            .AddInMemoryCollection(settings)
             .Build();
 
         var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();

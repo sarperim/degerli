@@ -241,12 +241,49 @@ public sealed class UniverseSyncJob : IIngestJob
         try
         {
             var levels = await _indexLevelsAdapter.FetchAsync(request.Date, cancellationToken).ConfigureAwait(false);
+
+            // Per-index degradation (01 v1.5 §10.9.8): the index-levels resource is per-index,
+            // so each failing index quarantines + (for a transport failure) alerts, while the
+            // other indices' levels still store and the instrument/membership sync that already
+            // ran is never aborted. A parse failure quarantines UNPARSEABLE_PAYLOAD without an
+            // alert (the a-parse-event-not-a-source-down distinction the single-index path made).
+            foreach (var failure in levels.Payload.Failures ?? [])
+            {
+                _logger.LogWarning(
+                    "universe-sync: index-levels fetch failed for {IndexCode} ({ReasonCode})",
+                    failure.IndexCode,
+                    failure.ReasonCode);
+                await QuarantineAsync(failure.IndexCode, failure.RawJson, failure.ReasonCode, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (string.Equals(failure.ReasonCode, SourceFetchFailed, StringComparison.Ordinal))
+                {
+                    await _alerter.RaiseAsync(
+                            new IngestionAlert(
+                                Code,
+                                SourceFetchFailed,
+                                Subject: $"Degerli alert: universe-sync could not fetch index-levels for {failure.IndexCode} ({SourceFetchFailed})",
+                                BodyTr: $"universe-sync işi {failure.IndexCode} endeksi için endeks seviyeleri kaynağından veri çekemedi; enstrüman ve üyelik senkronizasyonu tamamlandı, diğer endekslerin seviyeleri yazıldı ve bu endeks işaretlendi (kaynak hatası, ayrıştırma olayı değildir).",
+                                BodyEn: $"The universe-sync job could not fetch the index-levels source for {failure.IndexCode}; the instrument and membership sync completed, the other indices' levels were written, and this index was flagged (a source failure, not a parse event).",
+                                SourceRef: null),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                quarantined++;
+            }
+
             if (string.IsNullOrWhiteSpace(levels.SourceRef))
             {
-                _logger.LogWarning("universe-sync: index-levels payload carries no provenance (MISSING_PROVENANCE)");
-                await QuarantineAsync(null, levels.RawJson, "MISSING_PROVENANCE", cancellationToken)
-                    .ConfigureAwait(false);
-                quarantined++;
+                // No index produced a provenance-bearing payload and none failed (an empty
+                // configured set): a provenance gap, quarantined exactly as before.
+                if ((levels.Payload.Failures?.Count ?? 0) == 0)
+                {
+                    _logger.LogWarning("universe-sync: index-levels payload carries no provenance (MISSING_PROVENANCE)");
+                    await QuarantineAsync(null, levels.RawJson, "MISSING_PROVENANCE", cancellationToken)
+                        .ConfigureAwait(false);
+                    quarantined++;
+                }
             }
             else
             {
