@@ -36,11 +36,19 @@ public sealed class StatementsJob : IIngestJob
     /// <summary>Reason code for a per-company transport failure (a source-down, not a parse event).</summary>
     public const string SourceFetchFailed = "SOURCE_FETCH_FAILED";
 
+    /// <summary>
+    /// Reason code for a bound symbol the VYK directory could not map to a
+    /// <c>companyId</c> (FR-MDF-008/FR-MDF-012, 01 v1.5 §10.9.11): the company is marked
+    /// failed and reported, never dropped and never written under a fabricated identity.
+    /// </summary>
+    public const string CompanyIdentityUnresolved = "COMPANY_IDENTITY_UNRESOLVED";
+
     private readonly StatementsSourceAdapter _adapter;
     private readonly FinancialStatementStore _store;
     private readonly IQuarantineWriter _quarantine;
     private readonly IIngestionAlerter _alerter;
     private readonly UniverseSyncStore _universe;
+    private readonly KapDisclosureCursorStore _cursorStore;
     private readonly StatementsSourceOptions _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<StatementsJob> _logger;
@@ -51,6 +59,7 @@ public sealed class StatementsJob : IIngestJob
         IQuarantineWriter quarantine,
         IIngestionAlerter alerter,
         UniverseSyncStore universe,
+        KapDisclosureCursorStore cursorStore,
         IOptions<StatementsSourceOptions> options,
         TimeProvider clock,
         ILogger<StatementsJob> logger)
@@ -60,6 +69,7 @@ public sealed class StatementsJob : IIngestJob
         _quarantine = quarantine;
         _alerter = alerter;
         _universe = universe;
+        _cursorStore = cursorStore;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
@@ -100,18 +110,26 @@ public sealed class StatementsJob : IIngestJob
 
             try
             {
-                var fetched = await _adapter
-                    .FetchCompanyAsync(symbol, cancellationToken)
-                    .ConfigureAwait(false);
+                // The per-company incremental cursor (01 v1.5 §10.9.11): only the VYK source
+                // is cursor-driven; the single-resource canonical/XBRL path ignores it (and
+                // consults no cursor row), so its L2 goldens are byte-for-byte unchanged.
+                var cursor = _adapter.VykEnabled
+                    ? await _cursorStore.GetAsync(symbol, cancellationToken).ConfigureAwait(false)
+                    : null;
 
-                if (string.IsNullOrWhiteSpace(fetched.SourceRef))
+                var fetched = await _adapter
+                    .FetchCompanyAsync(symbol, cursor, cancellationToken)
+                    .ConfigureAwait(false);
+                var source = fetched.Source;
+
+                if (string.IsNullOrWhiteSpace(source.SourceRef))
                 {
                     // Provenance is required on every fact (FR-MDF-008): refuse this company's payload.
                     _logger.LogWarning(
                         "statements: company {Symbol} payload for {Date} carries no provenance (MISSING_PROVENANCE)",
                         symbol,
                         request.Date);
-                    await QuarantineAsync(null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
+                    await QuarantineAsync(null, source.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
                         .ConfigureAwait(false);
                     quarantined++;
                     symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
@@ -119,7 +137,7 @@ public sealed class StatementsJob : IIngestJob
                 }
 
                 var outcome = await _store
-                    .UpsertAsync(fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload, cancellationToken)
+                    .UpsertAsync(source.SourceRef, _clock.GetUtcNow(), source.Payload, cancellationToken)
                     .ConfigureAwait(false);
 
                 var symbolQuarantined = 0;
@@ -127,7 +145,7 @@ public sealed class StatementsJob : IIngestJob
                 {
                     _logger.LogWarning(
                         "statements: refused payload for {Symbol} ({ReasonCode})", outcome.Symbol, reasonCode);
-                    await QuarantineAsync(fetched.SourceRef, fetched.RawJson, reasonCode, cancellationToken)
+                    await QuarantineAsync(source.SourceRef, source.RawJson, reasonCode, cancellationToken)
                         .ConfigureAwait(false);
                     symbolQuarantined++;
                 }
@@ -136,7 +154,28 @@ public sealed class StatementsJob : IIngestJob
                 unchanged += outcome.Unchanged;
                 quarantined += symbolQuarantined;
 
+                // Advance the company's cursor to the last-processed disclosure index (the
+                // disclosure was decoded and persisted — or idempotently collapsed — so the
+                // next run resumes after it; FR-MDF-010/011).
+                if (fetched.Cursor is not null)
+                {
+                    await _cursorStore.SetAsync(symbol, fetched.Cursor, cancellationToken).ConfigureAwait(false);
+                }
+
                 symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false));
+            }
+            catch (CompanyIdentityUnresolvedException)
+            {
+                // The bound symbol has no VYK companyId (FR-MDF-008/FR-MDF-012): mark the
+                // company failed with the named reason, write nothing, never fabricate a
+                // mapping — and continue the loop.
+                _logger.LogWarning(
+                    "statements: company {Symbol} could not be mapped to a VYK companyId for {Date} ({ReasonCode})",
+                    symbol,
+                    request.Date,
+                    CompanyIdentityUnresolved);
+                failedSymbols.Add(symbol);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true));
             }
             catch (SourcePayloadException exception)
             {

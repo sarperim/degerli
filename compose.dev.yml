@@ -20,6 +20,10 @@ x-api-environment: &api-environment
   # it off here so copying .env.example (whose VPS-oriented default is true) is safe.
   Smtp__UseStartTls: "false"
   Evren__ApiKey: ${Evren__ApiKey:-}
+  # KAP VYK API credentials (MKK "KAP Data Dissemination Services", Ingestion:Kap:ApiKey /
+  # ApiSecret). Reach the api service only through this passthrough; never baked into an image.
+  Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}
+  Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}
   APP_URL: ${APP_URL:-http://localhost:5173}
   ALERT_EMAIL: ${ALERT_EMAIL:-builder@degerli.local}
 
