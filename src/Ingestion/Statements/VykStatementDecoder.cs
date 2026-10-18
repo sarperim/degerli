@@ -260,7 +260,14 @@ public static class VykStatementDecoder
 
         foreach (var subReport in presentation.EnumerateArray())
         {
-            if (!subReport.TryGetProperty("content", out var content) || !content.TryGetProperty("ReportItem", out var reportItem))
+            // JsonElement.TryGetProperty throws InvalidOperationException on a non-object — and
+            // that exception is not in DecodeVykDetail's catch filter, so it would escape the
+            // job's per-company isolation. Guard exactly as the Decode loop (line 81) and
+            // FindCurrency (line 280) do.
+            if (subReport.ValueKind != JsonValueKind.Object
+                || !subReport.TryGetProperty("content", out var content)
+                || content.ValueKind != JsonValueKind.Object
+                || !content.TryGetProperty("ReportItem", out var reportItem))
             {
                 continue;
             }

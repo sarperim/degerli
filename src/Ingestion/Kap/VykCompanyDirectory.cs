@@ -87,7 +87,7 @@ public sealed class VykCompanyDirectory
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
                 null,
                 Failed: true,
-                FailureReason: exception.Message);
+                FailureReason: _options.Redact(exception.Message));
         }
     }
 
@@ -101,7 +101,7 @@ public sealed class VykCompanyDirectory
         var fault = VykFault.TryRead(root);
         if (fault is not null)
         {
-            throw new SourceFetchException($"VYK /members returned a fault ({fault.Code}): {fault.Message}");
+            throw new SourceFetchException($"VYK /members returned a fault ({fault.Code}): {_options.Redact(fault.Message)}");
         }
 
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -136,9 +136,11 @@ public sealed class VykCompanyDirectory
                     ? value.GetString()
                     : null;
         }
-        catch (SourceFetchException exception)
+        catch (Exception exception) when (exception is SourceFetchException or SourcePayloadException)
         {
-            // The anchor is a secondary read; its unavailability must not fail the directory.
+            // The anchor is a secondary read; its unavailability — a transport failure *or* a
+            // body that is not the anchor shape at all — must not fail the directory
+            // (01 v1.5 §10.9.11). A malformed anchor body must never mark every company failed.
             _logger.LogWarning(exception, "VYK lastDisclosureIndex anchor fetch failed (degraded)");
             return null;
         }
