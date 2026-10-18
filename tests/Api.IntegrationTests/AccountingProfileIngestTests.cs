@@ -146,6 +146,10 @@ public sealed class AccountingProfileIngestTests : IClassFixture<PostgresFixture
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = StatementsPath,
+                // Company-scoped loop bound: the test-local bind carries BANKA/SIGORTA so the
+                // bank/insurance ingest goldens stay intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
                 ["Ingestion:Universe:Path"] = UniversePath,
                 ["Ingestion:Universe:IndexLevelsPath"] = IndexPath,
             })
@@ -212,6 +216,8 @@ public sealed class AccountingProfileIngestTests : IClassFixture<PostgresFixture
         await db.FinancialStatements.Where(s => ids.Contains(s.InstrumentId)).ExecuteDeleteAsync();
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+
+        await StatementBound.ReplaceAsync(db, "BANKA", "SIGORTA");
     }
 
     private static async Task<decimal> LineAsync(DegerliDbContext db, long statementId, string itemCode) =>

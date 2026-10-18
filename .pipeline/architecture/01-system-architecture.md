@@ -590,6 +590,84 @@ coverage on detail pages is bounded by what has landed (the prices backfill cove
 index — XU030 at launch — and KAP statements are activated separately); the honest no-data states
 on not-yet-covered real stocks are FR-RES-016 working as pinned.
 
+#### 10.9.10 Statements — company-scoped fetch and the statements bound (TKT-foundation-024, FR-MDF-002/008/010/011/012)
+
+**Why (the defect this closes).** The §10.9.5 KAP XBRL fact envelope has decoded in the product
+since TKT-foundation-017 and `StatementsJob` persists versioned statements idempotently, but no
+`Ingestion:Kap` / `Ingestion:Statements` sections existed in `src/Api/appsettings.json`: the KAP
+base address fell back to `http://localhost` and the statements path to the placeholder
+`/statements`, so a production `statements` run could never fetch a real payload and
+`financial_statements` stayed empty for real instruments — starving every downstream consumer
+(metrics-recompute → FR-RES-006/008/009/010/011, valuation/DCF, FR-MOV-006 market P/E).
+
+**The statements resource is per-company.** The §10.9.5 envelope carries one `companyCode` per
+payload, so unlike the prices/index-levels resources there is no multi-symbol list body; the fetch
+seam is one company at a time. §10.9.2's seam doctrine therefore applies **verbatim** to
+companies:
+
+- **Company-scoped adapter; loop in the job.** `StatementsSourceAdapter.FetchCompanyAsync(symbol)`
+  fetches and parses **one company's** payload; the `{symbol}` token in the configured path
+  template is substituted in place (a template without the token gets the symbol appended as a
+  `symbol` query parameter, so the fixed canonical L2 double route still resolves). Envelope
+  detection stays inside the adapter — the real KAP XBRL fact envelope (§10.9.5) and the canonical
+  `statements` double are both first-class. Persistence, validation and quarantine stay job-side,
+  which is what makes per-company failure isolation and pacing expressible.
+- **Identity guard (FR-MDF-008).** The canonical double is a single-company body; a payload whose
+  company identity does not match the requested symbol is narrowed to an **empty statement set**
+  (real envelope: skipped before decode by `companyCode`; canonical: `FilterBySymbol`), so a bound
+  member can never be written under another company's identity or have another company's facts
+  quarantined.
+- **Universe bound:** the loop resolves the current constituents of the index named by
+  **`Ingestion:Statements:UniverseIndex`** (`index_constituents`, `effective_to IS NULL`). Launch
+  default **`XU030`**; **`XU100` later = a config flip, not new code**. This is its **own key,
+  deliberately independent of `Ingestion:Prices:UniverseIndex`** (AD-14) so the two bounds flip
+  separately as their pacing/coverage is verified.
+- **Politeness posture:** strictly **sequential** per-company requests with a small inter-request
+  delay (**`Ingestion:Statements:RequestDelayMs`**, default 500 ms); **no parallelism** against the
+  public endpoint — identical to §10.9.2.
+- **Per-company failure isolation and status.** A transport failure is a **source-down, not a
+  parse/validation event**: the company is marked failed, **no quarantine row** is written, exactly
+  one aggregate alert names the failed companies, and the loop continues. A per-company parse
+  failure (`SourcePayloadException`) quarantines (`UNPARSEABLE_PAYLOAD`) and continues. Terminal
+  status: `Failed` when every current constituent failed to fetch or parse (the retry ladder
+  applies); `Partial` when some failed or some facts quarantined; otherwise `Succeeded`. The
+  run-ledger row carries the per-company breakdown (`ingest_runs.stats_json.symbols`).
+- **Empty bound.** Under the launch default bound (`XU030`), an empty resolution is a real
+  cold-start/misconfiguration gap and is reported `Failed` (never a silent healthy success); a
+  differently-named bound resolving empty degrades to `Succeeded` (its instruments may not exist
+  yet). Identical posture to the prices job (§10.9.2).
+- **Backfill (FR-MDF-010, FR-MDF-011).** Backfill reuses the same per-company loop and is a
+  **nominal** distinction at this seam: the loop does not branch on `request.IsBackfill` because the
+  per-company KAP resource returns the periods the source holds regardless, so an incremental and a
+  backfill run perform identical per-company work. The achieved depth is what the source returned,
+  and the per-instrument statements coverage depth is derived from the stored statements by the
+  existing `CoverageRecorder` no-silent-gaps reconcile — never re-invented or fabricated beyond the
+  source.
+
+**Config (`Ingestion:Kap` / `Ingestion:Statements`, §10.4).** Shipped in `src/Api/appsettings.json`:
+`Ingestion:Kap:BaseUrl = https://www.kap.org.tr`; `Ingestion:Statements = { Path, UniverseIndex =
+XU030, RequestDelayMs = 500 }`.
+
+**Live discovery — honestly blocked (2026-10-18, read-only probes; attempt record per the
+018–023 honesty posture).** KAP's host `www.kap.org.tr` is reachable (HTTP 200) but has been
+redesigned onto a Next.js front end; the former backend host `kapsitebackend.mkk.com.tr` no longer
+resolves. Probing the candidate per-company route
+`GET https://www.kap.org.tr/tr/api/company/items/{r}/{a}` returned **HTTP 500** for every parameter
+combination tried and every other probed route returned **404**; no browser tooling was available
+from this environment to reverse the front end's data calls. **No real KAP capture was obtained, so
+none was fabricated** and no `RealSourceCatalog.cs` entry was added. The shipped
+`Ingestion:Statements:Path` value is a **discovered-but-unverified candidate**: a live run against it
+yields per-company `SOURCE_FETCH_FAILED` (honest `Partial`/`Failed`, zero fabricated rows, no
+statements written) until the concrete route is re-verified live. **Live verification of the real
+per-company resource is the orchestrator's post-merge criterion** (the 021 precedent), not a CI gate.
+
+**Test-double posture (§10.9.7).** No golden value changed. The company-scoped seam needs the L2
+harness to bind a **test-local single-member index** (`StatementBound`, index code `STMT`) carrying
+exactly the symbol(s) each existing statements test serves, plus `RequestDelayMs = 0`; that
+harness *binding* delta is the only permitted change to the existing statements-path goldens
+(TC-MDF-065/067/071 and the versioning/normalization/accounting-profile lanes re-run green
+unchanged). The new loop tests reuse the TC-MDF-072/073/074 lane shapes for companies.
+
 ## 11. Architecture decision log (summary)
 
 | AD | Decision | One-line rationale (full text in sections above) |
@@ -639,3 +717,4 @@ Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets 
 | v1.5 | 2026-10-17 | **Builder-directed real-source ingestion contract** (builder instruction 2026-10-17 — "main functionality requires real data"; resolves the PR #82 / TKT-foundation-015 round-1 escalation findings DR-01..03 by design authority): (1) the real İş Yatırım EOD `HGDG_*` envelope becomes a first-class production parse target in the prices adapter (field map with `HG_*` fallbacks, `dd-MM-yyyy` dates, scientific-notation volume, honest NULL `open` — never invented from AOF; same mapping on backfill) — §10.9.1; (2) production prices fetch is per-ticker over the configured index's current constituents — loop in the job, symbol-scoped adapter, strictly sequential + paced; bounded to **XU030** at launch via `Ingestion:Prices:UniverseIndex` + `Ingestion:Prices:RequestDelayMs` (XU100 = config flip, §10.4) — §10.9.2; (3) XU030 membership launch-seed reusing the TC-MDF-062 machinery (no new FR) — §10.9.3; (4) `ISourceClient` honors declared response charsets (windows-1254/ISO-8859-9 via the code-pages provider, registered in product startup — moved out of fixtures) — §10.9.4; (5) the KAP XBRL fact envelope becomes a first-class production parse target (concept map collapsing IFRS/TR tag variance onto `02` §6.1 item codes, Turkish-locale numbers, period/statement/version grouping, duplicate-concept rule: equal collapses / unequal quarantines — never silent latest-wins) — §10.9.5; (6) real EVDS envelope verified/hardened against a bounded capture — §10.9.6; (7) test-double posture: FU canonical envelope stays the L2 golden contract (goldens untouched); a charset-faithful, honestly-labeled real-source catalog is the recorded FU §1 exception and parsing-fidelity lane — §10.9.7. (8) the stored `volume` semantic is pinned to **TRY turnover (₺)** — İş Yatırım rows store `HGDG_HACIM` as-is; Yahoo-contingency rows store NULL volume (honest gap, different unit); the movers threshold (`Ingestion:MarketSnapshot:VolumeEligibilityThreshold`) is recalibrated from the observed BIST 30 distribution at live activation; FU volumes reinterpret as ₺ unchanged (no golden churn) — §10.9.1 (FLG-09 builder resolution, 2026-10-17). AD-14 records the decision; no new FRs; downstream (C5 storage, C3b metrics, C2 API) deliberately untouched | FR-MDF-001/010 (prices mechanism refined — real envelope + per-ticker loop); FR-MDF-002 (statements mechanism refined — real envelope); FR-MDF-006/007 (index bound + launch seed); FR-MOV-014 (EVDS hardening); FR-MDF-008 (provenance posture unchanged: `isyatirim`/`kap`/`evds`); `03` §1.2 per-row price-source provenance unchanged; FR-MOV-021/FR-MOV-005 + BR-MOV-011 (volume semantics: ₺ turnover canonical — FLG-09 resolution) | **Re-validation:** test-planner mirrors §10.9.7 (record the FU §1/§10 exception; give TC-MDF-063..068 from PR #82 a recorded home; add an EVDS capture case — DR-02's routing); planner slices the follow-up wave (lift decoders/concept-map/charset registration from branch `TKT-foundation-015` into `src/`; symbol-scoped adapter fetch + job loop; XU030 seed; EVDS bounded capture); PR #82 stays closed-unmerged (raw material only); FLG-08 resolved same day (one-line `02` §3.1 mirror applied: `XU30` → `XU030`); FLG-09 resolved by builder decision 2026-10-17 (stored `volume` = TRY turnover ₺ canonical; Yahoo rows NULL volume; movers threshold `Ingestion:MarketSnapshot:VolumeEligibilityThreshold` recalibrated from the observed BIST 30 distribution at live activation; FU volumes reinterpret as ₺ unchanged — no golden churn — §10.9.1) |
 | v1.5.1 | 2026-10-18 | **XU100 covered-universe launch-seed** (TKT-foundation-022, §10.9.3 amendment): a checked-in, date-stamped `Xu100LaunchSeed` (sibling of `Xu030LaunchSeed`) writes the current BIST 100 membership to `index_constituents` append-only, closing the real-universe read-path gap — the real İş Yatırım universe snapshot publishes instrument rows only, so no real XU100 membership was ever written and the covered-universe read surface (FR-RES-001) served only the fixture universe. Provenance `bist://xu100-launch`; wired into `UniverseSyncJob` gated on real-source + cold-start + once-only by the seed's own provenance marker; deliberate coexistence with FU XU100 members (AlreadyPresent); XU030 ⊆ XU100 invariant asserted; no new FR (the FR-MDF-007 recorded launch state). Read path and `PricesJob` unchanged. | FR-RES-001 (read surface unblocked); FR-MDF-007 (recorded launch state — no new FR); FR-MDF-006/008/011; BR-MDF-005/007; NFR-MDF-003 | Tests carrying the TKT-foundation-022 tag in LiveActivation/UniverseRealEnvelope/UniverseSync/StockListEndpoints; universe-lane TC derivation remains a test-planner follow-up (flagged by 021) |
 | v1.5.2 | 2026-10-18 | **Real-only dev-stack data posture** (TKT-foundation-023, new §10.9.9): pins the dev data-world decision after the user-reported mixed 116-stock dev list (100 real + 16 FU fixture, a *data condition*, not a read-path defect). **Option A (recorded):** the real-only dev stack is a fresh database built by the real chain only — `down -v` → `up` → `run --rm migrate` → admin-trigger `universe-sync` → prices backfill — documented end to end in README "Dev-stack data"; the FU fixture seed stays the L2/L4 CI world and an opt-in dev/demo bootstrap. §10.9.3's deliberate FU/real coexistence in CI is the *reason* a reset path (not an exclusion switch) is the fix. Rejected: fixture-exclusion switch (a read-path filter existing only to undo a seed; `StockListEndpoints` is right — FR-RES-001) and "dev keeps both, only production is real" (leaves the reported mixed list as the dev default and lets T-anchored derived data pose as real). `FixtureSeedEntry.RunAsync` gains one honesty warning line on the seed path (log only — exit code, idempotency, L4 contract unchanged). | FR-RES-001 (dev browsing experience fixed by data posture, not read-path change); FR-MDF-006/007/011; FU §1 (fixture universe kept intact as the CI world); NFR-MDF-005 (reproducible documented bootstrap); `02` §8 (application seed the migrate step runs — unchanged) | No TCs needed (docs + one log line; foundation convention — explicit criteria). README + §10.9.9 + `FixtureSeedEntry` only; nothing under `src/Api`/`src/Ingestion`/`tests/` changes. Live criterion (018–022 honesty posture): the orchestrator runs the documented reset path on a fresh dev volume post-merge and verifies the stock list serves exactly the real covered universe |
+| v1.5.3 | 2026-10-18 | **KAP statements company-scoped wiring** (TKT-foundation-024, new §10.9.10): the `statements` job is wired to a real per-company KAP resource — the §10.9.5 envelope carries one `companyCode` per payload, so §10.9.2's seam doctrine applies verbatim to companies: company-scoped `StatementsSourceAdapter.FetchCompanyAsync` (`{symbol}`-templated path), the loop stays in the job over the bound index's current constituents, strictly sequential + paced (`Ingestion:Statements:RequestDelayMs`, default 500 ms), per-company failure isolation (a transport failure marks the company failed, writes **no** quarantine, raises one aggregate alert, continues the loop; a parse failure quarantines `UNPARSEABLE_PAYLOAD` and continues; terminal `Failed`/`Partial`/`Succeeded`). Its **own bound key `Ingestion:Statements:UniverseIndex`, default `XU030`, independent of `Ingestion:Prices:UniverseIndex`** (AD-14). Ships `Ingestion:Kap:BaseUrl = https://www.kap.org.tr` + an `Ingestion:Statements` section in `src/Api/appsettings.json`. **Live discovery honestly blocked** (2026-10-18): `www.kap.org.tr` is behind a Next.js front end, the former `kapsitebackend.mkk.com.tr` backend no longer resolves, and the candidate route returned 500/404 on every probe — **no capture fabricated**, no `RealSourceCatalog` entry; the shipped `Path` is a discovered-but-unverified candidate and live verification is the orchestrator's post-merge criterion. No golden churn: the company seam needed only an L2 harness *binding* delta (test-local `StatementBound` index `STMT`). | FR-MDF-002 (activated); FR-MDF-008 (per-company identity guard + provenance); FR-MDF-010/011 (backfill depth via existing `CoverageRecorder`); FR-MDF-012 (per-company isolation); unblocks FR-RES-006/008/009/010/011, FR-VAL-001, FR-MOV-006; AD-14 | Existing statements-path goldens (TC-MDF-065/067/071 + versioning/normalization/accounting-profile lanes) re-run green unchanged; new loop tests reuse TC-MDF-072/073/074 lane shapes for companies; statements-loop TC derivation remains a test-planner follow-up (flagged by 021) |

@@ -190,6 +190,11 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
         await EnsureConstituentAsync(builder, banka.Id);
         await EnsureConstituentAsync(builder, sigorta.Id);
 
+        await using (var bind = _postgres.CreateContext())
+        {
+            await StatementBound.ReplaceAsync(bind, "BANKA", "SIGORTA");
+        }
+
         await using var host = BuildIngestion();
 
         // BANKA — bank-shaped with the spurious REV 500 (FU §3b).
@@ -326,6 +331,10 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = StatementsPath,
+                // Company-scoped loop bound: the test-local bind carries BANKA/SIGORTA so the
+                // accounting-profile ingest goldens stay intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 

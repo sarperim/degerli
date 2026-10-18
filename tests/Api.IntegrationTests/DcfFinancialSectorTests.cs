@@ -192,6 +192,11 @@ public sealed class DcfFinancialSectorTests : IClassFixture<PostgresFixture>, IC
                 "UPDATE instruments SET status = 'active' WHERE symbol IN ('BANKA', 'SIGORTA')");
         }
 
+        await using (var bind = _postgres.CreateContext())
+        {
+            await StatementBound.ReplaceAsync(bind, "BANKA", "SIGORTA");
+        }
+
         await using (var host = BuildIngestion())
         {
             _wireMock.Server.ResetMappings();
@@ -277,6 +282,10 @@ public sealed class DcfFinancialSectorTests : IClassFixture<PostgresFixture>, IC
                 ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:Statements:Path"] = StatementsPath,
+                // Company-scoped loop bound: the test-local bind carries BANKA/SIGORTA so the
+                // financial-sector ingest goldens stay intact (TKT-foundation-024).
+                ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+                ["Ingestion:Statements:RequestDelayMs"] = "0",
             })
             .Build();
 

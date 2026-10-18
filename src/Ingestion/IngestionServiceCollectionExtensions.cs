@@ -159,7 +159,8 @@ public static class IngestionServiceCollectionExtensions
                 provider.GetRequiredService<IOptions<UniverseSourceOptions>>()));
         services.AddScoped<UniverseSyncStore>();
 
-        services.AddScoped<ISourceAdapter<StatementsPayload>, StatementsSourceAdapter>();
+        services.AddScoped<StatementsSourceAdapter>();
+        services.AddScoped<ISourceAdapter<StatementsPayload>>(provider => provider.GetRequiredService<StatementsSourceAdapter>());
         services.AddScoped<FinancialStatementStore>();
 
         services.AddScoped<ISourceAdapter<DividendsPayload>, DividendsSourceAdapter>();
