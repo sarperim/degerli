@@ -41,3 +41,24 @@ Probes below were run read-only against `evds3.tcmb.gov.tr` and the cached SPA b
 5. **Anonymous dashboards exist but are NOT a values substitute:** `GET /dashboards/baslica-gostergeler` (Başlıca Göstergeler) and `/dashboards/home-page-dashboards` return published dashboards (CPI charts 1581/1582 = TÜİK TÜFE, reserves 950, deposits/loans) — none carry live USD/TRY or gold quote rows; `/public/charts/portlet/<id>` returns HTTP 200 empty without the session/dashboard context. Not for ingestion.
 6. **`.env` now holds `Ingestion__Macro__EvdsApiKey=Tlt5B298…` (10 chars) — the user states it was copied from the NEW evds3 portal's "COPY API KEY" (so treat it as a possible v3 key, not an old-gen reject).** Its validity was never exercised because the values request itself never succeeded — resolve the working `/fe` request first, then verify the key's role.
 7. Do not redo: bundle analysis (`/tmp/opencode/evds3-bundle.js` — the endpoint map + body shapes are there), the failure matrix above, catalog parsing.
+
+## VERIFIED UNBLOCK (2026-10-18, 22:xx) — the values endpoint is ANONYMOUS, no key, no login
+
+**The `/fe` values endpoint requires NO authentication and NO API key.** The earlier 400s were purely the wrong body shape — the user captured a real request from the site UI (logged-in session), and replays of the exact body WITHOUT any cookies return IPv6 200 + real data. **Live criteria for 027 flip from blocked-with-attempt to actually live-verifiable (no credential dependency at all).** The `.env` `Ingestion__Macro__EvdsApiKey` value is OPTIONAL for `/fe` (may still be wanted for other key-gated features — implementer verifies or drops it, records decision; do not commit it regardless).
+
+**Verified working request (exact):** `POST https://evds3.tcmb.gov.tr/igmevdsms-dis/fe`, `Content-Type: application/json`, no auth headers required (Origin/Referer optional):
+```json
+{"type":"json","series":"TP.DK.USD.S.YTL-TP.DK.EUR.S.YTL","aggregationTypes":"avg-avg","formulas":"0-0","startDate":"15-10-2026","endDate":"16-10-2026","frequency":"2","decimalSeperator":".","decimal":"2","dateFormat":"0","lang":"tr","yon":"0","sira":"0","ozelFormuller":[],"groupSeperator":true,"isRaporSayfasi":false}
+```
+Field semantics (all confirmed from the user-captured cURL, NOT guessed): `series` = `-`-joined series codes; `aggregationTypes` = `-`-joined per-series agg from serieList `DEFAULT_AGG_METHOD` (`avg` for FX, `last` for gold closes/Brent); `formulas` = `-`-joined `0`; `frequency:"2"` = "İş Günü" (business day — the site's default; NOT `"1"`); **`dateFormat:"0"`, `yon:"0"`, `sira:"0"`** (numeric codes, not "dd-MM-yyyy"/"asc"/"1"); `ozelFormuller:[]` (array). Curl evidence cached at `/tmp/opencode/fe-exact.json` (anon 200), `/tmp/opencode/gold.json`, `/tmp/opencode/cpi-serielist.json`.
+
+**Verified response schema:** `{"totalCount":N, "items":[{ "Tarih":"dd-MM-yyyy", "<CODE>_<with>_<dots>_<as>_<_underscores>":"<value-as-string>", ..., "UNIXTIME":{"$numberLong":"<epoch>"} }], "transposedItems":[{"serieCode","serieName", per-date columns}]}`. ⚠️ **values are STRINGS and carry thousands-grouping commas** regardless of `decimalSeperator` (e.g. `"6,622,000.00"` for gold TL/kg) — decode must strip grouping separators before numeric parse.
+
+**Verified series codes (user-captured + probes, all in the live request):**
+- USD buying/selling: `TP.DK.USD.A.YTL` / `TP.DK.USD.S.YTL` (S = satış = selling → `USD_TRY` uses S)
+- EUR buying/selling: `TP.DK.EUR.A.YTL` / `TP.DK.EUR.S.YTL`
+- Gold close TL/kg: `TP.ALTINPIYASA.KAP02` (= 6,622,000 TL/kg on 16-10-2026; gram altın ≈ value/1000)
+- Gold close USD/ons: `TP.ALTINPIYASA.KAP03` (= 4,175.90 USD)
+- Brent crude: `TP.BRENTPETROL.EUBP`
+- TÜİK CPI general index (level, 2025=100): `TP.TUKFIY2025.GENEL` (from `bie_tukfiy2025`, 349 series incl. subcategories); **TUIK_CPI is "% YoY"** — either locate the published annual-change series in the catalog (search datagroups) or compute YoY deterministically from two index fetches a year apart via the existing macro store cadence; implementer records the choice. ENAG `INDEP_CPI` unchanged (admin-entry only; NOT on EVDS).
+- **CBRT_REPO still unresolved** — candidates from catalog text: `bie_fadth`/`bie_fafaiz` (max interest rates), `bie_reesavans` (rediscount); also check "MERKEZ BANKASI BİLANÇO VE PİYASA VERİLERİ" datagroups; resolve via serieList, never guess.
