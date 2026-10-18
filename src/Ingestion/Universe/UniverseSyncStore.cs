@@ -342,6 +342,36 @@ public sealed class UniverseSyncStore
     }
 
     /// <summary>
+    /// Whether any membership row for the index already carries the given seed provenance
+    /// (<c>source_ref</c>) — i.e. the checked-in launch seed has already run. The job guards the
+    /// XU100 covered-universe launch seed on this (01 v1.5 §10.9.3 amendment, FR-MDF-007): the
+    /// seed fires at most once, keyed on its own provenance marker. This is deliberately *not*
+    /// <see cref="HasOpenConstituentsAsync"/> — the FU/dev world legitimately pre-populates
+    /// XU100 with its fixture members (FLG-08) and the real seed must still fire alongside them.
+    /// </summary>
+    public async Task<bool> HasSeedAsync(
+        string indexCode,
+        string sourceRef,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
+
+        var indexId = await _db.Indices
+            .Where(i => i.Code == indexCode)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return indexId is not null
+            && await _db.IndexConstituents
+                .AnyAsync(
+                    c => c.IndexId == indexId.Value && c.SourceRef == sourceRef,
+                    cancellationToken)
+                .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Whether the index reference row is stored (FR-MDF-006). The job guards the
     /// one-time launch seed on this: a snapshot that publishes instruments but carries
     /// no XU100 index reference has no index to attach the seeded memberships to, so the

@@ -3,10 +3,13 @@ using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -184,6 +187,11 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
     public async Task TKT_foundation_021_Real_envelopes_ingest_through_the_job_db_path()
     {
         await ResetAsync();
+        // The real universe-sync also fires the checked-in XU100 launch-seed (TKT-foundation-022);
+        // in production its members resolve against the ~646 real instruments the sync creates.
+        // The bounded CI capture carries only five rows, so stand those members up here so the
+        // seed resolves cleanly and this case stays focused on the instrument/level ingest path.
+        await CreateXu100InstrumentsAsync();
         _wireMock.Server.ResetMappings();
         _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
         _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
@@ -231,6 +239,9 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
     public async Task TKT_foundation_021_Index_levels_fetch_failure_degrades_without_aborting()
     {
         await ResetAsync();
+        // Stand up the XU100 launch-seed members so the (TKT-foundation-022) seed resolves and
+        // this case asserts exactly the index-levels failure is counted once.
+        await CreateXu100InstrumentsAsync();
         _wireMock.Server.ResetMappings();
         _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
         // The index-levels endpoint is down: a non-success response, never a parseable body.
@@ -256,6 +267,121 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         // … and the builder is alerted with the failure reason.
         Assert.Contains(host.Mail.Sent, m =>
             m.Subject.Contains(UniverseSyncJob.SourceFetchFailed, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// TKT-foundation-022 — the real İş Yatırım universe snapshot (instruments only, no
+    /// membership rows, §10.9.8) flows through the production <c>universe-sync</c> job and the
+    /// checked-in <see cref="Xu100LaunchSeed"/> fires exactly once, seeding the real BIST 100
+    /// membership (01 v1.5 §10.9.3 amendment, FR-MDF-007). The covered-universe read surface
+    /// (FR-RES-001) then serves the real symbols — ASELS in <c>GET /api/v1/stocks</c> and
+    /// <c>GET /api/v1/stocks/search?q=ASELS</c> (membership/shape asserted, never derived
+    /// numbers). A re-run applies nothing (the seed's own provenance marker gates it).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_022_Real_universe_sync_applies_the_xu100_seed_once_and_serves_real_symbols()
+    {
+        await ResetAsync();
+        await CreateXu100InstrumentsAsync();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
+        _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
+
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        var result = await RunAsync(host, "universe-sync");
+
+        Assert.NotEqual(IngestResult.Failed, result.Status);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+            var seedRows = await db.IndexConstituents
+                .Where(c => c.IndexId == xu100 && c.SourceRef == Xu100LaunchSeed.SourceRef)
+                .ToListAsync();
+
+            Assert.Equal(Xu100LaunchSeed.Symbols.Count, seedRows.Count);
+            Assert.All(seedRows, row =>
+            {
+                Assert.Null(row.EffectiveTo);
+                Assert.Equal(Xu100LaunchSeed.AsOfDate, row.EffectiveFrom);
+            });
+        }
+
+        // The read surface now returns the real covered-universe symbols.
+        await using (var factory = new DegerliAppFactory(_postgres.ConnectionString))
+        {
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost"),
+                AllowAutoRedirect = false,
+            });
+
+            using var list = await client.GetAsync("/api/v1/stocks");
+            Assert.Equal(System.Net.HttpStatusCode.OK, list.StatusCode);
+            using var listDocument = System.Text.Json.JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+            var listedSymbols = listDocument.RootElement.GetProperty("stocks").EnumerateArray()
+                .Select(row => row.GetProperty("symbol").GetString())
+                .ToList();
+            Assert.Contains("ASELS", listedSymbols);
+
+            using var search = await client.GetAsync("/api/v1/stocks/search?q=ASELS");
+            Assert.Equal(System.Net.HttpStatusCode.OK, search.StatusCode);
+            using var searchDocument = System.Text.Json.JsonDocument.Parse(await search.Content.ReadAsStringAsync());
+            var matches = searchDocument.RootElement.GetProperty("stocks").EnumerateArray().ToList();
+            var asels = Assert.Single(matches);
+            Assert.Equal("ASELS", asels.GetProperty("symbol").GetString());
+            Assert.Equal(
+                new[] { "symbol", "name" },
+                asels.EnumerateObject().Select(p => p.Name).ToArray());
+        }
+
+        // A re-run applies the seed nothing further (once-only, keyed on its provenance marker).
+        await using (var db = _postgres.CreateContext())
+        {
+            var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+            var before = await db.IndexConstituents.CountAsync(c => c.IndexId == xu100);
+            var second = await RunAsync(host, "universe-sync");
+            Assert.NotEqual(IngestResult.Failed, second.Status);
+            Assert.Equal(before, await db.IndexConstituents.CountAsync(c => c.IndexId == xu100));
+        }
+    }
+
+    /// <summary>
+    /// TKT-foundation-022 — a seed symbol that resolves to no stored instrument is reported,
+    /// quarantined and counted, never silently dropped (NFR-MDF-003). One member is
+    /// deliberately absent from the instrument base; the other 99 seed.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_022_Unknown_seed_symbol_is_quarantined_never_dropped()
+    {
+        const string unknown = "YKBNK";
+        await ResetAsync();
+        await CreateXu100InstrumentsAsync(except: unknown);
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubRealSource(RealSourceCatalog.Universe, path: UniversePath, method: "POST");
+        _wireMock.StubRealSource(RealSourceCatalog.IndexLevels, path: IndexLevelsPath);
+
+        await using var host = BuildIngestion(method: "POST", indexLevelsIndex: "XU30");
+        var result = await RunAsync(host, "universe-sync");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(1, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+        var xu100 = await db.Indices.Where(i => i.Code == "XU100").Select(i => i.Id).SingleAsync();
+        Assert.Equal(
+            Xu100LaunchSeed.Symbols.Count - 1,
+            await db.IndexConstituents.CountAsync(c =>
+                c.IndexId == xu100 && c.SourceRef == Xu100LaunchSeed.SourceRef));
+
+        var quarantined = await db.QuarantinedFacts.SingleAsync(q => q.ReasonCode == "UNKNOWN_REFERENCE");
+        Assert.Equal("universe-sync", quarantined.JobCode);
+        Assert.Contains(unknown, quarantined.PayloadJson);
+
+        // The unresolved symbol is logged, never silent.
+        Assert.True(
+            host.Logs.Contains(evt => evt.RenderMessage().Contains(unknown, StringComparison.Ordinal)),
+            $"no log event naming the unresolved seed symbol {unknown}");
     }
 
     // ---------------------------------------------------------------------------------
@@ -332,9 +458,39 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         await db.Database.ExecuteSqlRawAsync("DELETE FROM index_constituents");
         await db.Database.ExecuteSqlRawAsync(
             "DELETE FROM instruments WHERE symbol IN ('A1CAP','A1YEN','AAGYO','ACSEL','ADEL')");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM instruments WHERE source_ref = 'test:xu100-launch'");
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
         await db.Database.ExecuteSqlRawAsync("UPDATE instruments SET sector_id = NULL");
+    }
+
+    /// <summary>Creates the test-local instrument rows the XU100 launch-seed needs (the real
+    /// BIST 100 members are outside the FU universe). <paramref name="except"/> deliberately
+    /// omits one member so the unknown-symbol path is exercised.</summary>
+    private async Task CreateXu100InstrumentsAsync(string? except = null)
+    {
+        await using var db = _postgres.CreateContext();
+        var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        foreach (var symbol in Xu100LaunchSeed.Symbols)
+        {
+            if (string.Equals(symbol, except, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            db.Instruments.Add(new Instrument
+            {
+                Symbol = symbol,
+                Name = symbol,
+                AccountingProfile = "industrial",
+                Status = "active",
+                SourceRef = "test:xu100-launch",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
 
     /// <summary>The active ingestion provider plus its alert/mail and log doubles.</summary>
