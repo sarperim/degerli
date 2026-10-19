@@ -8,7 +8,8 @@ scope:
 
 # TKT-foundation-028: market-snapshot job targets the latest stored trading day — cold-start and missed-run catch-up
 
-- Status: blocked
+- Status: done
+- Done: PR https://github.com/sarperim/degerli/pull/100 merged 2026-10-19 as `980ec80` (review round-2 MERGEABLE — all gates green incl. E2E after the TKT-030 dev-E2E fix; live criteria recorded on the ticket: real Friday-2026-10-16 snapshot from stored prices, overview `asOf=2026-10-16 stale=false` on a real weekend, idempotent re-run `WRITTEN=0`). Blocked→done transition: the user arbitration (Option A) was satisfied by TKT-foundation-030 (PR #103). Non-blocking carry: DR-01 weekend-test aggregate assertion follow-up (gate-owner + tick owner).
 - PR: https://github.com/sarperim/degerli/pull/100
 - Blocked reason (round 1, 2026-10-18): review-lead ESCALATED. Diff/CI content sound (diff-reviewer no blockers; backend+web CI green; live criteria MET). Two gate findings need human arbitration and are NOT code defects: (1) **GATE-3 red-ci — upstream base-branch defect**: E2E `tests/e2e/src/market-macro.spec.ts:102` (the mov/macro stale-badge E2E spec) red on `dev` itself (fails on every recent dev push; reproduced on docs-only dev commit run 39138189811) — blocks every PR's mergeability; (2) **GATE-1/GATE-2 facet `missing_tc` tooling artifacts**: a bogus `TC` token from the ticket prose "UTC today" (line 14) + `TC-MOV-001` pre-existing unchanged test (diff-only scan). Artifact: `.pipeline/plan/reviews/TKT-foundation-028-round-1.md`.
 - Arbitration (user, 2026-10-18): **Option A** — upstream E2E defect routed to the re-planning lane (test-planner fix/waive on `dev`) as the proper fix. 028's re-review re-dispatch waits until `dev` E2E is green; until then this ticket stays blocked (transitively waits on that). Tooling artifacts noted in run report for the same lane. PR #100 remains open.

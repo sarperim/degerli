@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-029: data-source provenance disclosure in the product — "where the data comes from" is shown to the user
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/101
 - Review state (2026-10-18): round 1 CHANGES-REQUESTED (DR-01), fixed; round-2 ESCALATED only on two *routed* defects, both resolved by user arbitration: **TC-XC-004** (tests/e2e harness-defect, fix out of ticket scope — product behavior verified correct, assertion unsound) → user **ACCEPTED as non-blocking** 2026-10-18 (recorded in run report); **TC-MOV-024** (pre-existing upstream `dev` E2E red) → user acknowledged + routed to the re-plan lane (Option A). Per that decision this PR is **mergeable-pending dev E2E green**; the merge grant is held — orchestrator merges once `dev` E2E is green. Backend+Web CI green; product-relevant E2E TC-XC-021 green. Artifacts: `.pipeline/plan/reviews/TKT-foundation-029-round-1.md`, `-round-2.md`.
 - Size: S
