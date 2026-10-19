@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, useMatches } from 'react-router'
 
+import { DataSourceDisclaimer } from '@/components/DataSourceDisclaimer'
 import { Disclaimer } from '@/components/Disclaimer'
 import { Header } from '@/components/Header'
 import { LoadingScreen } from '@/components/LoadingScreen'
@@ -9,8 +10,9 @@ import { LoadingScreen } from '@/components/LoadingScreen'
 /**
  * Application shell: the persistent global header surrounds the routed screen
  * (UXR-G-013); the footer carries the informational-only disclaimer on research
- * surfaces (UXR-G-016). The header lives outside the route `Outlet`, so language
- * changes do not remount or navigate the active screen.
+ * surfaces (UXR-G-016) plus the site-wide data-source provenance disclosure
+ * (TKT-foundation-029) on every route. The header lives outside the route
+ * `Outlet`, so language changes do not remount or navigate the active screen.
  */
 export function AppShell() {
   const { t } = useTranslation()
@@ -31,6 +33,7 @@ export function AppShell() {
       <footer className="border-t bg-background">
         <div className="mx-auto flex w-full max-w-content flex-col gap-3 px-gutter py-6 text-xs text-muted-foreground">
           {isResearch ? <Disclaimer /> : null}
+          <DataSourceDisclaimer />
           <p>
             {t('app.name')} — {t('app.tagline')}
           </p>

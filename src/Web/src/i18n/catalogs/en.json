@@ -397,6 +397,26 @@
     "label": "Disclaimer",
     "text": "Değerli provides research information only. It is not investment advice and is not a recommendation to buy or sell any security."
   },
+  "dataSources": {
+    "label": "Data sources",
+    "line": "{{class}} — {{source}}",
+    "classes": {
+      "prices": "Prices and company fundamentals",
+      "indexLevels": "Index levels (BIST 100 / BIST 30)",
+      "universe": "Universe and sector classification",
+      "statements": "Financial statements and disclosures",
+      "macro": "Macro series (TÜİK CPI, CBRT policy rate, USD/TRY, EUR/TRY, gold)"
+    },
+    "nature": {
+      "eod": "End-of-day (EOD) data"
+    },
+    "state": {
+      "live": "Available",
+      "unavailable": "Unavailable"
+    },
+    "freeSourceNote": "Data is taken from free, public source feeds.",
+    "fixtureCaveat": "Sample (fixture) data is used in the development environment only; it is never presented as real."
+  },
   "marketOverview": {
     "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — change, volume",
     "errorTitle": "This section could not be loaded",

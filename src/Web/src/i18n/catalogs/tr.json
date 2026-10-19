@@ -397,6 +397,26 @@
     "label": "Yasal uyarı",
     "text": "Değerli yalnızca araştırma bilgisi sunar. Yatırım tavsiyesi değildir ve hiçbir menkul kıymetin alım ya da satımına yönelik öneri içermez."
   },
+  "dataSources": {
+    "label": "Veri kaynakları",
+    "line": "{{class}} — {{source}}",
+    "classes": {
+      "prices": "Fiyatlar ve şirket temelleri",
+      "indexLevels": "Endeks seviyeleri (BIST 100 / BIST 30)",
+      "universe": "Evren ve sektör sınıflandırması",
+      "statements": "Mali tablolar ve bildirimler",
+      "macro": "Makro seriler (TÜİK TÜFE, TCMB politika faizi, USD/TRY, EUR/TRY, altın)"
+    },
+    "nature": {
+      "eod": "Gün sonu (EOD) verisi"
+    },
+    "state": {
+      "live": "Kaynak etkin",
+      "unavailable": "Kullanılamıyor"
+    },
+    "freeSourceNote": "Veriler ücretsiz ve herkese açık kaynak akışlarından alınır.",
+    "fixtureCaveat": "Geliştirme amaçlı örnek (fixture) veriler yalnızca geliştirme ortamında kullanılır; hiçbir zaman gerçek veri olarak sunulmaz."
+  },
   "marketOverview": {
     "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — değişim, hacim",
     "errorTitle": "Bu bölüm yüklenemedi",
