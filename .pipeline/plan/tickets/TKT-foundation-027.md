@@ -9,13 +9,15 @@ scope:
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - tests/Api.IntegrationTests/MacroEvdsAdapterTests.cs
   - tests/Api.IntegrationTests/LiveActivationTests.cs
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
   - .pipeline/architecture/01-system-architecture.md
 ---
 
 # TKT-foundation-027: TCMB EVDS 3.0 macro-source migration — the dead evds2 wiring is rewired to the new platform
 
-- Status: blocked
+- Status: in-review
 - PR: https://github.com/sarperim/degerli/pull/102
+- Re-review: 2026-10-19 — `scope:` frontmatter updated per user authorization (added `tests/Api.IntegrationTests/RealSourcePricesTests.cs`, the file the round-1 fix legitimately touched) to clear the facet `out_of_scope` gate; re-dispatch for final verdict.
 - Blocked reason (round 1–3, 2026-10-19): review-lead ESCALATED on a single non-code item. **Code is clean and CI is green** (all three CI jobs pass, run 39186880018; round-1 backend-red was the PR's own POST-catalog-entry vs TC-MDF-063 GET-stub contract test — fixed by fixer; round-2 three real defects — GOLD datagroup (`bie_altinbistbul`, not `bie_mkaltytl`), mixed-frequency `/fe` request (monthly repo collapsing daily rows — split resolved), CPI window too short (no year-prior baseline on first live run) — all fixed-verified by the review-lead, who also disproved the remaining should-fix; security lane clear). **Sole blocker:** `tests/Api.IntegrationTests/RealSourcePricesTests.cs` — which the legitimate round-1 fix had to touch — is missing from this ticket's `scope:` frontmatter, so the facet gate reports `out_of_scope` on every pass and no code change can close it. Unblock: add that file to the `scope:` frontmatter (planner/content change — user/planner decision) or user waives the `out_of_scope` gate finding; then re-review → MERGEABLE (under grant). Artifacts: `.pipeline/plan/reviews/TKT-foundation-027-round-1.md`, `-round-2.md`, `-round-3.md`.
 - Review state 2026-10-19: ESCALATED — see round artifacts above. Other recorded (non-blocking): ticket "~13-month window" wording vs code; PR description cites non-existent `MacroEvdsRealEnvelopeTests.cs` (lives in MacroEvdsAdapterTests.cs); R2-F9/F13 config-hardening follow-ups.
 - Size: M
