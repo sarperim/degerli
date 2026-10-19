@@ -8,7 +8,8 @@ scope:
 
 # TKT-foundation-032: KAP VYK URI-resolution defect — the `/api/vyk` base prefix is dropped and every real-gateway request 404s
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/104
 - Size: S
 - **Priority: P2 — dispatch tonight (after/alongside TKT-foundation-031; serialized only on the architecture change-record).** Small, independent, unblocks every real KAP usage and obsoletes the interim operational workaround.
 - Root cause (classified by the planner 2026-10-20, evidence in `run-report.md` §"Post-merge live-run session" finding 1): **ships-broken URL composition at the KAP client seam.** `Ingestion:Kap:BaseUrl` = `https://apigwdev.mkk.com.tr/api/vyk` has **no trailing slash**, and every VYK path option carries a **leading slash** (`/members`, `/lastDisclosureIndex`, `/disclosures`, `/disclosureDetail/{disclosureIndex}` — `src/Api/appsettings.json` + the defaults in `KapSourceOptions`/`StatementsSourceOptions`). .NET `HttpClient` base+relative resolution treats a leading-slash relative URI as **root-relative**, so `GET /members` against base `…/api/vyk` requests `https://apigwdev.mkk.com.tr/members` — the `/api/vyk` prefix is silently dropped and the gateway answers 404. **Live-verified 2026-10-19/20:** the broken URL 404s; the correct URL (`https://apigwdev.mkk.com.tr/api/vyk/members`) returns 200 with the same HTTP Basic creds. **CI cannot catch it:** the L2 WireMock doubles bind at the server root (`WireMockFixture.BaseUrl`), where root-relative and base-relative resolve identically. An interim operational workaround (env overrides in `/tmp/opencode/dev-overrides.yml`, repo untouched) papers over it on the dev stack only.
