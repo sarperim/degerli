@@ -87,8 +87,15 @@ public sealed class RealSourcePricesTests : IClassFixture<WireMockFixture>
 
             // Serving the raw bytes with the declared Content-Type; charset= header and
             // fetching through the production client yields the entry's decoded body.
+            // TC-MDF-063 — the catalog contract: each entry is fetched through the transport
+            // it declares (01 §10.9.7/§10.9.8): the EVDS v3 values entries are served at the
+            // `/fe` POST route, so a GET-only fetch would 404 against an honest catalog. The
+            // request-body shape is pinned by the adapter tests (TC-MOV-028); this contract
+            // exercises the response side only.
             _wireMock.StubRealSource(payload.Name);
-            var fetched = await client.GetStringAsync(payload.DefaultPath);
+            var fetched = string.Equals(payload.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                ? await client.PostJsonAsync(payload.DefaultPath, "{}")
+                : await client.GetStringAsync(payload.DefaultPath);
             Assert.Equal(payload.Body, fetched);
         }
 

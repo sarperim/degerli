@@ -1,4 +1,5 @@
 using Degerli.Fixtures;
+using Degerli.Ingestion.Macro;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 
@@ -67,5 +68,83 @@ public sealed class FixtureUniverseNowAnchoredTests : IClassFixture<PostgresFixt
         Assert.NotEqual(absolute.Prices[0].Date, now.Prices[0].Date);
         Assert.True(now.Anchor.IsNowAnchored);
         Assert.False(absolute.Anchor.IsNowAnchored);
+    }
+}
+
+/// <summary>
+/// TKT-foundation-030 acceptance (i): the L4 now-anchored seed must stay <em>fresh</em> on
+/// the runtime clock on a <b>weekend</b> seed day, when <c>T</c> is backed to the preceding
+/// Friday. The daily macro rows (<c>USD_TRY</c>/<c>EUR_TRY</c>) are "now" ingests — nothing
+/// was missed — so their <c>recorded_at</c> sits on the real seed day (the Friday vintage
+/// stays the value date/as-of); <c>GOLD</c> (T−10) stays stale by construction and still
+/// drives TC-MOV-024's stale side. This is the deterministic, CI-runnable reproduction of
+/// the Sunday E2E flake (dev run <c>39085551576</c>, 2026-10-18) — no wall-clock wait.
+/// <para>
+/// Its own <see cref="PostgresFixture"/> (hence its own class): the weekday class above
+/// seeds a different anchor into the same container, and sharing it would make both
+/// classes' row assertions order-dependent (FU §8.3 determinism rule).
+/// </para>
+/// </summary>
+public sealed class FixtureUniverseNowAnchoredSundayTests : IClassFixture<PostgresFixture>
+{
+    // The 2026-10-18 precedent: a Sunday seed start (01:11Z, dev run 39085551576).
+    private static readonly DateOnly SeedDay = new(2026, 10, 18);
+
+    private readonly PostgresFixture _fixture;
+
+    public FixtureUniverseNowAnchoredSundayTests(PostgresFixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task Sunday_seed_day_keeps_daily_macro_rows_fresh_on_the_runtime_clock()
+    {
+        var clock = new FakeTimeProvider(
+            new DateTimeOffset(SeedDay.ToDateTime(new TimeOnly(1, 11)), TimeSpan.Zero));
+        var anchor = FixtureAnchor.NowAnchored(clock);
+
+        // The trading-day anchor backs a weekend start to the preceding Friday (FU §2).
+        Assert.Equal(DayOfWeek.Sunday, SeedDay.DayOfWeek);
+        Assert.Equal(new DateOnly(2026, 10, 16), anchor.T);
+        Assert.Equal(DayOfWeek.Friday, anchor.T.DayOfWeek);
+
+        var set = FixtureUniverse.Build(anchor);
+
+        await using var db = _fixture.CreateContext();
+        await FixtureSeeder.ApplyAsync(db, set);
+
+        // The real L4 read (MarketEndpoints → MacroFreshnessService) with the same clock.
+        var freshness = new MacroFreshnessService(db, clock);
+
+        foreach (var code in new[] { "USD_TRY", "EUR_TRY" })
+        {
+            // The latest daily ingest is the seed day itself — not the backed T (Friday),
+            // which would read as ageDays 2 against the daily tolerance of 1.
+            var row = await db.MacroValues.SingleAsync(v => v.SeriesCode == code && v.ValueDate == anchor.T);
+            Assert.Equal(SeedDay, DateOnly.FromDateTime(row.RecordedAt.UtcDateTime));
+
+            // The published vintage (value date/as-of) is untouched: Friday's value.
+            Assert.Equal(anchor.T, row.ValueDate);
+
+            var state = await freshness.GetStateAsync(code);
+            Assert.False(state.Stale);
+            Assert.Equal("fresh", state.State);
+            Assert.Equal(anchor.T, state.AsOf);
+
+            // The fixture's declared freshness agrees with the service read.
+            var declared = set.MacroFreshness.Single(f => f.SeriesCode == code);
+            Assert.False(declared.IsStale);
+            Assert.Equal(0, declared.AgeDays);
+        }
+
+        // GOLD is the stale side by construction: last successful ingest T−10.
+        var gold = await db.MacroValues.SingleAsync(v => v.SeriesCode == "GOLD");
+        Assert.Equal(anchor.Calendar(-10), gold.ValueDate);
+
+        var goldState = await freshness.GetStateAsync("GOLD");
+        Assert.True(goldState.Stale);
+        Assert.Equal("stale", goldState.State);
+
+        var declaredGold = set.MacroFreshness.Single(f => f.SeriesCode == "GOLD");
+        Assert.True(declaredGold.IsStale);
+        Assert.Equal(SeedDay.DayNumber - anchor.Calendar(-10).DayNumber, declaredGold.AgeDays);
     }
 }

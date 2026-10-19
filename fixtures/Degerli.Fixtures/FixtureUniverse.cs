@@ -654,7 +654,16 @@ public static class FixtureUniverse
 
     private static List<FixtureMacroValue> BuildMacroValues(FixtureAnchor anchor)
     {
-        var dailyRecorded = new DateTimeOffset(anchor.T.ToDateTime(new TimeOnly(21, 30)), TimeSpan.Zero);
+        // FU §7 (v1.6) — the daily FX rows are "now" ingests: the last successful ingest is
+        // the seed moment, so their recorded_at sits on the REAL seed day, not on the
+        // trading-day-backed T. On a weekend start T backs to the preceding Friday while the
+        // ingest still runs on the seed day; dating recorded_at at T would read as ageDays 2
+        // against the daily tolerance of 1 and mark a never-missed series stale on the
+        // runtime clock (TKT-foundation-030, TC-MOV-024). The value date (as-of) stays T —
+        // the Friday vintage is what the source last published. L2 and weekday starts are
+        // unchanged: there seed day = T, so the rows are byte-identical.
+        var dailyRecordedOn = anchor.IsNowAnchored ? anchor.SeedDate : anchor.T;
+        var dailyRecorded = new DateTimeOffset(dailyRecordedOn.ToDateTime(new TimeOnly(21, 30)), TimeSpan.Zero);
         var goldDate = anchor.Calendar(-10);
         return
         [
@@ -688,6 +697,12 @@ public static class FixtureUniverse
     private static List<FixtureMacroFreshness> BuildMacroFreshness(FixtureAnchor anchor)
     {
         var macroValues = BuildMacroValues(anchor);
+
+        // FU §7 — the declared age is measured against the same "now" the runtime clock
+        // uses: the seed day for the L4 variant (a weekend start is not T), T for L2 and
+        // trading-day starts (seed day = T there, so L2/weekday output is unchanged).
+        var nowDay = anchor.IsNowAnchored ? anchor.SeedDate : anchor.T;
+
         return macroValues
             .GroupBy(v => v.SeriesCode, StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
@@ -697,7 +712,7 @@ public static class FixtureUniverse
                 // row; age is measured against that ingest, never the value_date.
                 var latestIngest = g.MaxBy(v => v.RecordedAt)!;
                 var ingestedOn = DateOnly.FromDateTime(latestIngest.RecordedAt.UtcDateTime);
-                var ageDays = anchor.T.DayNumber - ingestedOn.DayNumber;
+                var ageDays = nowDay.DayNumber - ingestedOn.DayNumber;
                 var tolerance = MacroCadenceToleranceDays[g.Key];
                 return new FixtureMacroFreshness(g.Key, ageDays, tolerance is int maxAge && ageDays > maxAge);
             })

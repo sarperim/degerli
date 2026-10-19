@@ -457,6 +457,37 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
         Assert.DoesNotContain(Xu030LaunchSeed.Symbols, symbol => !xu100.Contains(symbol));
     }
 
+    /// <summary>
+    /// TKT-foundation-027 (criterion (i)) — the macro source's <b>deployment wiring</b> carries
+    /// the migrated EVDS 3.0 contract: the <c>.env.example</c> Macro lines point at
+    /// <c>https://evds3.tcmb.gov.tr</c> with the v3 values route plus the additive discovery
+    /// routes (and an empty key), and the <c>compose.dev.yml</c> API environment passes the
+    /// optional <c>Ingestion__Macro__EvdsApiKey</c> through (empty default, never baked into an
+    /// image). The old <c>evds2.tcmb.gov.tr</c> / <c>/service/evds</c> v2 wiring is gone.
+    /// </summary>
+    [Fact]
+    public void TKT_foundation_027_deployment_wiring_carries_the_v3_contract()
+    {
+        var envExample = File.ReadAllText(Path.Combine(FindRepositoryRoot(), ".env.example"));
+        Assert.Contains("Ingestion__Macro__BaseUrl=https://evds3.tcmb.gov.tr", envExample, StringComparison.Ordinal);
+        Assert.Contains("Ingestion__Macro__Path=/igmevdsms-dis/fe", envExample, StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Macro__CatalogPath=/igmevdsms-dis/categories/withDatagroups/type=json",
+            envExample,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Macro__SerieListPath=/igmevdsms-dis/serieList/fe/type=json&code={code}",
+            envExample,
+            StringComparison.Ordinal);
+        Assert.Contains("Ingestion__Macro__EvdsApiKey=", envExample, StringComparison.Ordinal);
+        Assert.DoesNotContain("evds2.tcmb.gov.tr", envExample, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ingestion__Macro__Path=/service/evds", envExample, StringComparison.Ordinal);
+
+        var compose = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "compose.dev.yml"));
+        Assert.Contains("Ingestion__Macro__EvdsApiKey:", compose, StringComparison.Ordinal);
+        Assert.DoesNotContain("evds2.tcmb.gov.tr", compose, StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------

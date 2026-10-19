@@ -260,11 +260,15 @@ public sealed class StatementsLoopTests : IClassFixture<PostgresFixture>, IClass
         using var document = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
         var ingestion = document.RootElement.GetProperty("Ingestion");
 
-        Assert.Equal("https://www.kap.org.tr", ingestion.GetProperty("Kap").GetProperty("BaseUrl").GetString());
+        // TKT-foundation-026 (permitted delta — the shipped config values of criterion (i)):
+        // the KAP source rewired from the website-proxy path to the MKK VYK gateway, so the
+        // shipped base URL and statements path are the VYK ones. The default bound/pacing
+        // assertions above stay unchanged.
+        Assert.Equal("https://apigwdev.mkk.com.tr/api/vyk", ingestion.GetProperty("Kap").GetProperty("BaseUrl").GetString());
 
         var statements = ingestion.GetProperty("Statements");
         Assert.Equal("XU030", statements.GetProperty("UniverseIndex").GetString());
-        Assert.Contains("{symbol}", statements.GetProperty("Path").GetString()!, StringComparison.Ordinal);
+        Assert.Equal("/disclosures", statements.GetProperty("Path").GetString());
         Assert.True(statements.GetProperty("RequestDelayMs").GetInt32() > 0);
     }
 

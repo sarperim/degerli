@@ -52,6 +52,23 @@ public static class KapXbrlStatementDecoder
             ["ifrs-full:Equity"] = "TOTAL_EQUITY",
             ["ifrs-full:NumberOfShares"] = "SHARES_DILUTED",
             ["ifrs-full:CashAndCashEquivalents"] = "CASH",
+
+            // The VYK `presentation` tree (01 v1.5 §10.9.11) names its report items with bare
+            // IFRS taxonomy element names (no `ifrs-full:` prefix) — live-verified 2026-10-18.
+            // The same canonical targets as the prefixed spellings above.
+            ["Revenue"] = "REV",
+            ["CostOfSales"] = "COGS",
+            ["GrossProfit"] = "GROSS_PROFIT",
+            ["ProfitLoss"] = "NI",
+            ["Equity"] = "TOTAL_EQUITY",
+            ["CashAndCashEquivalents"] = "CASH",
+            ["CurrentAssets"] = "CUR_ASSETS",
+            ["CurrentLiabilities"] = "CUR_LIAB",
+            ["ProfitLossBeforeTax"] = "PRETAX_INC",
+            ["IncomeTaxExpenseContinuingOperations"] = "TAX_EXP",
+            ["FinanceCosts"] = "FIN_EXP",
+            ["ProfitLossFromOperatingActivities"] = "EBIT",
+            ["AdministrativeExpense"] = "SGA",
         };
 
     /// <summary>
