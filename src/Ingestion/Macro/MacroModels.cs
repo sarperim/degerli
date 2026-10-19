@@ -162,12 +162,8 @@ public static class EvdsSeries
 
     /// <summary>
     /// Gold close in <b>USD/ounce</b> (matches the seeded <c>GOLD</c> unit "USD/oz"),
-    /// from the <c>bie_altinbistbul</c> datagroup ("Altın - Kapanış Fiyatı - USD/ons",
-    /// BIST gold — live-verified 2026-10-19). The alternative <c>TP.ALTINPIYASA.KAP02</c>
+    /// from the <c>bie_mkaltytl</c> datagroup. The alternative <c>TP.ALTINPIYASA.KAP02</c>
     /// is the TL/kg close; the USD/oz variant is chosen so the stored unit stays honest.
-    /// The <c>bie_mkaltytl</c> datagroup carries only the monthly Ankara Chamber of
-    /// Jewelers series (<c>TP.MK.CUM/KUL/LON/RES.YTL</c>) and does <b>not</b> publish any
-    /// <c>TP.ALTINPIYASA.*</c> identifier (live-verified 2026-10-19).
     /// </summary>
     public const string Gold = "TP.ALTINPIYASA.KAP03";
 
@@ -207,27 +203,17 @@ public static class EvdsSeries
             [FixtureGold] = MacroSeries.Gold,
         };
 
-    /// <summary>The live v3 EVDS identifiers, in catalog order. Carried for the legacy lane's
-    /// series join; the v3 lane requests them grouped by cadence (see
-    /// <see cref="Definition.Monthly"/>). The CPI index is requested separately (see
-    /// <see cref="CpiIndex"/>).</summary>
+    /// <summary>The live v3 EVDS identifiers the adapter requests, in catalog order (daily FX/gold/
+    /// repo). The CPI index is requested separately (see <see cref="CpiIndex"/>).</summary>
     public static IReadOnlyList<string> RequestOrder { get; } =
         [UsdTry, EurTry, Gold, CbrtRepo];
 
     /// <summary>
     /// One live series to discover and request (01 v1.5.6 §10.9.12): the canonical macro code
-    /// it resolves to, the EVDS 3.0 <b>datagroup</b> code it lives in, its live-verified
-    /// <see cref="SerieCode"/> (confirmed from the datagroup's serieList, never assumed), and
-    /// whether the platform publishes it at a cadence coarser than business day.
-    /// <para>
-    /// <see cref="Monthly"/> is a <b>request-shape</b> fact, not a discovery shortcut: the
-    /// <c>/fe</c> platform collapses a mixed-frequency response to the <em>lowest common</em>
-    /// frequency (live-verified 2026-10-19 — a body carrying the monthly repo alongside the
-    /// daily FX/gold series returns 4 monthly rows instead of 65 business-day rows), so the
-    /// monthly series must ride a request of their own.
-    /// </para>
+    /// it resolves to, the EVDS 3.0 <b>datagroup</b> code it lives in, and its live-verified
+    /// <see cref="SerieCode"/> (confirmed from the datagroup's serieList, never assumed).
     /// </summary>
-    public sealed record Definition(string CanonicalCode, string Datagroup, string SerieCode, bool Monthly = false);
+    public sealed record Definition(string CanonicalCode, string Datagroup, string SerieCode);
 
     /// <summary>
     /// The series the adapter discovers from the catalog + serieList and ingests: the five
@@ -238,8 +224,8 @@ public static class EvdsSeries
     [
         new(MacroSeries.UsdTry, "bie_dkdovytl", UsdTry),
         new(MacroSeries.EurTry, "bie_dkdovytl", EurTry),
-        new(MacroSeries.Gold, "bie_altinbistbul", Gold),
-        new(MacroSeries.CbrtRepo, "bie_bispolfaiz", CbrtRepo, Monthly: true),
+        new(MacroSeries.Gold, "bie_mkaltytl", Gold),
+        new(MacroSeries.CbrtRepo, "bie_bispolfaiz", CbrtRepo),
         new(MacroSeries.TuikCpi, "bie_tukfiy2025", CpiIndex),
     ];
 }

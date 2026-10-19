@@ -165,14 +165,12 @@ public static class EvdsMacroDecoder
     /// that carry <b>thousands-grouping commas</b> regardless of the requested
     /// <c>decimalSeperator</c> (01 v1.5.6 §10.9.12 — e.g. <c>"6,622,000.00"</c>): the grouping
     /// separators are stripped before the invariant numeric parse. A JSON number is accepted
-    /// as-is; anything else (null, a non-numeric marker, a number outside the
-    /// <see cref="decimal"/> range) is treated as a missing observation — an untrusted value
-    /// must never crash the run with a <see cref="FormatException"/>.
+    /// as-is; anything else (null, a non-numeric marker) is treated as a missing observation.
     /// </summary>
     private static decimal? ReadDecimal(JsonElement value) =>
         value.ValueKind switch
         {
-            JsonValueKind.Number => value.TryGetDecimal(out var parsed) ? parsed : null,
+            JsonValueKind.Number => value.GetDecimal(),
             JsonValueKind.String => TryParseDecimal(value.GetString()),
             _ => null,
         };
