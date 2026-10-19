@@ -433,6 +433,173 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-031 — price-derived vs share-derived aggregate decoupling (01 §10.9.14)
+    //
+    // A covered-universe member with no usable SHARES_DILUTED is no longer dropped from the
+    // snapshot: it enters the price-derived blocks (breadth, movers, total volume) and is
+    // excluded from the market-cap-derived blocks (market P/E, dividend yield, sector
+    // weights), where the exclusion is disclosed via market_pe_excluded_count. The
+    // share-derived blocks carry their honest null / empty state — never a fabricated 0.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// (i) TKT-foundation-031 — zero share data (the real dev-stack shape): the job writes
+    /// exactly one row and <c>GET /market/overview</c> serves real price-derived blocks with
+    /// <c>marketPe</c>/<c>marketDivYield</c> null, <c>marketPeExcludedCount</c> = the
+    /// constituent count and an empty <c>sectorPerformance</c>.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_031_zero_shares_serves_price_derived_blocks_with_honest_nulls()
+    {
+        await ResetAsync();
+        await DeleteSharesAsync(); // every constituent loses its balance-sheet share count
+
+        IngestResult result;
+        await using (var host = BuildHost())
+        {
+            result = await RunSnapshotAsync(host, T);
+        }
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(1, result.Written);
+
+        // Price-derived blocks are computable from the stored prices alone; the FU world's
+        // price facts are unchanged by the missing share counts.
+        await using (var db = _postgres.CreateContext())
+        {
+            var snapshot = await db.MarketSnapshots.SingleAsync();
+            Assert.Equal(T, snapshot.SnapshotDate);
+            Assert.Equal(T, snapshot.AsOfTradingDate);
+            AssertClose(10200.00m, snapshot.Xu100Level);
+            AssertClose(0.02m, snapshot.Xu100ChangePct);
+            AssertClose(30600.00m, snapshot.Xu30Level);
+            AssertClose(0.02m, snapshot.Xu30ChangePct);
+            Assert.Equal(10, snapshot.BreadthAdvancing);
+            Assert.Equal(5, snapshot.BreadthDeclining);
+            Assert.Equal(1, snapshot.BreadthUnchanged);
+            AssertClose(174_500_000m, snapshot.VolumeTotal);
+            Assert.Equal(
+                new[] { "ETA", "NEWP", "ZETA", "KAPPA", "EPSL", "PART", "REST", "ALFA", "DELTA" },
+                ReadMovers(snapshot.GainersJson).Select(g => g.Symbol).ToArray());
+            Assert.Equal(
+                new[] { "THETA", "IOTA", "BETA", "GAMA", "UNSEC" },
+                ReadMovers(snapshot.LosersJson).Select(l => l.Symbol).ToArray());
+
+            // Share-derived blocks: honest nulls, the whole universe disclosed as excluded.
+            Assert.Null(snapshot.MarketPe);
+            Assert.Equal(16, snapshot.MarketPeExcludedCount);
+            Assert.Null(snapshot.MarketDivYield);
+            Assert.Empty(ReadSectors(snapshot.SectorPerfJson));
+        }
+
+        // The served payload is available (not unavailable) and carries the same honest state.
+        // The harness clock is already pinned to T (18:00 UTC), so the served row is not stale.
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+        });
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal(T, DateOnly.Parse(root.GetProperty("asOf").GetString()!));
+        Assert.False(root.GetProperty("stale").GetBoolean());
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(10200.00m, root.GetProperty("indices").GetProperty("xu100").GetProperty("level").GetDecimal());
+        Assert.Equal(30600.00m, root.GetProperty("indices").GetProperty("xu30").GetProperty("level").GetDecimal());
+        Assert.Equal(10, root.GetProperty("breadth").GetProperty("advancing").GetInt32());
+        Assert.Equal(5, root.GetProperty("breadth").GetProperty("declining").GetInt32());
+        Assert.Equal(1, root.GetProperty("breadth").GetProperty("unchanged").GetInt32());
+        Assert.Equal(174_500_000m, root.GetProperty("volumeTotal").GetDecimal());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("marketPe").ValueKind);
+        Assert.Equal(16, root.GetProperty("marketPeExcludedCount").GetInt32());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("marketDivYield").ValueKind);
+        Assert.Empty(root.GetProperty("sectorPerformance").EnumerateObject());
+        Assert.Equal(9, root.GetProperty("gainers").GetArrayLength());
+        Assert.Equal(5, root.GetProperty("losers").GetArrayLength());
+    }
+
+    /// <summary>
+    /// (ii) TKT-foundation-031 — partial share data: only sector A keeps its share counts.
+    /// P/E, dividend yield and sector weights are computed over the share-bearing subset
+    /// (ALFA/DELTA/REST profitable: cap 3,750, NI 325, DIV_TTM 150), the sector dictionary
+    /// omits every sector without a share-bearing member, and the no-share members still
+    /// count in breadth/movers/volume and in the disclosed exclusion count.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_031_partial_shares_aggregate_over_share_bearing_subset()
+    {
+        await ResetAsync();
+        // Keep the share counts of the sector-A members only (ALFA, BETA, GAMA, DELTA, REST).
+        await DeleteSharesAsync("EPSL", "ZETA", "ETA", "THETA", "PART", "NEWP",
+            "IOTA", "KAPPA", "LAMDA", "NU", "UNSEC");
+
+        IngestResult result;
+        await using (var host = BuildHost())
+        {
+            result = await RunSnapshotAsync(host, T);
+        }
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(1, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        var snapshot = await db.MarketSnapshots.SingleAsync();
+
+        // Price-derived blocks are unchanged: every no-share member still participates.
+        Assert.Equal(10, snapshot.BreadthAdvancing);
+        Assert.Equal(5, snapshot.BreadthDeclining);
+        Assert.Equal(1, snapshot.BreadthUnchanged);
+        AssertClose(174_500_000m, snapshot.VolumeTotal);
+        Assert.Equal(
+            new[] { "ETA", "NEWP", "ZETA", "KAPPA", "EPSL", "PART", "REST", "ALFA", "DELTA" },
+            ReadMovers(snapshot.GainersJson).Select(g => g.Symbol).ToArray());
+        Assert.Equal(
+            new[] { "THETA", "IOTA", "BETA", "GAMA", "UNSEC" },
+            ReadMovers(snapshot.LosersJson).Select(l => l.Symbol).ToArray());
+
+        // P/E over share-bearing profitable members only: 3,750 mcap / 325 NI.
+        Assert.NotNull(snapshot.MarketPe);
+        AssertClose(11.5385m, snapshot.MarketPe);
+
+        // Every member not in the P/E sum is disclosed: 11 no-share + BETA/GAMA (loss-makers).
+        Assert.Equal(13, snapshot.MarketPeExcludedCount);
+
+        // Dividend yield over every share-bearing member (BETA/GAMA keep their share counts):
+        // 150 DIV_TTM / 5,030 mcap.
+        Assert.NotNull(snapshot.MarketDivYield);
+        AssertClose(0.029821m, snapshot.MarketDivYield);
+
+        // Sector weights only over share-bearing members; B and C have none → omitted.
+        var sectors = ReadSectors(snapshot.SectorPerfJson);
+        Assert.Equal(new[] { "A" }, sectors.Keys.ToArray());
+        AssertClose(0.002530m, sectors["A"]);
+
+        // The served payload stays available and mirrors the honest partial state.
+        // The harness clock is already pinned to T (18:00 UTC), so the served row is not stale.
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+        });
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(13, root.GetProperty("marketPeExcludedCount").GetInt32());
+        Assert.Equal(
+            new[] { "A" },
+            root.GetProperty("sectorPerformance").EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -522,6 +689,36 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Removes the balance-sheet <c>SHARES_DILUTED</c> line item from the given instruments'
+    /// statements (models the real dev-stack shape, where no share-count facts exist at all:
+    /// the parameterless call drops every constituent's share count). The rest of the FU
+    /// fact world — prices, previous closes, index levels, income, dividends — is untouched.
+    /// </summary>
+    private async Task DeleteSharesAsync(params string[] symbols)
+    {
+        await using var db = _postgres.CreateContext();
+        if (symbols.Length == 0)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM fin_line_items WHERE item_code = 'SHARES_DILUTED'");
+            return;
+        }
+
+        var ids = await db.Instruments
+            .Where(i => symbols.Contains(i.Symbol))
+            .Select(i => i.Id)
+            .ToListAsync();
+
+        foreach (var id in ids)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM fin_line_items WHERE item_code = 'SHARES_DILUTED' AND statement_id IN "
+                + "(SELECT id FROM financial_statements WHERE instrument_id = {0})",
+                id);
+        }
     }
 
     /// <summary>
