@@ -59,12 +59,13 @@ public sealed class MacroEvdsAdapterTests
         // Discovery: the catalog, then one serieList per requested datagroup (anonymous GETs).
         Assert.Contains(CatalogPath, client.Gets);
         Assert.Contains(client.Gets, p => p.Contains("bie_dkdovytl", StringComparison.Ordinal));
-        Assert.Contains(client.Gets, p => p.Contains("bie_mkaltytl", StringComparison.Ordinal));
         Assert.Contains(client.Gets, p => p.Contains("bie_bispolfaiz", StringComparison.Ordinal));
         Assert.Contains(client.Gets, p => p.Contains("bie_tukfiy2025", StringComparison.Ordinal));
 
-        // Two value requests: the FX/gold/repo group and the CPI index.
-        Assert.Equal(2, client.Posts.Count);
+        // Three value requests, one per cadence: business-day FX/gold, the monthly policy
+        // rate, and the CPI index over the wider YoY window. A mixed-frequency body would be
+        // collapsed by the platform to monthly rows (R2-F3).
+        Assert.Equal(3, client.Posts.Count);
         var daily = client.Posts.Single(p => p.Path == ValuesPath && p.Body.Contains("TP.DK.USD.S.YTL", StringComparison.Ordinal));
         Assert.Equal(ValuesPath, daily.Path);
 
@@ -72,11 +73,11 @@ public sealed class MacroEvdsAdapterTests
         var root = body.RootElement;
         Assert.Equal("json", root.GetProperty("type").GetString());
         Assert.Equal(
-            "TP.DK.USD.S.YTL-TP.DK.EUR.S.YTL-TP.ALTINPIYASA.KAP03-TP.BISPOLFAIZ.TUR",
+            "TP.DK.USD.S.YTL-TP.DK.EUR.S.YTL-TP.ALTINPIYASA.KAP03",
             root.GetProperty("series").GetString());
         // Aggregation methods are resolved from each datagroup's serieList DEFAULT_AGG_METHOD.
-        Assert.Equal("avg-avg-last-last", root.GetProperty("aggregationTypes").GetString());
-        Assert.Equal("0-0-0-0", root.GetProperty("formulas").GetString());
+        Assert.Equal("avg-avg-last", root.GetProperty("aggregationTypes").GetString());
+        Assert.Equal("0-0-0", root.GetProperty("formulas").GetString());
         Assert.Equal("2", root.GetProperty("frequency").GetString());
         Assert.Equal("0", root.GetProperty("dateFormat").GetString());
         Assert.Equal("0", root.GetProperty("yon").GetString());
@@ -91,13 +92,24 @@ public sealed class MacroEvdsAdapterTests
         Assert.Equal("06-10-2026", root.GetProperty("endDate").GetString());
         Assert.Equal("08-07-2026", root.GetProperty("startDate").GetString());
 
-        // The CPI index is requested separately over a year-plus window (YoY derivation).
+        // The monthly policy rate rides its own request over the same bounded window, so the
+        // platform cannot collapse the FX/gold response to its frequency.
+        var repo = client.Posts.Single(p => p.Body.Contains("TP.BISPOLFAIZ.TUR", StringComparison.Ordinal));
+        using var repoBody = JsonDocument.Parse(repo.Body);
+        Assert.Equal("TP.BISPOLFAIZ.TUR", repoBody.RootElement.GetProperty("series").GetString());
+        Assert.Equal("last", repoBody.RootElement.GetProperty("aggregationTypes").GetString());
+        Assert.Equal("2", repoBody.RootElement.GetProperty("frequency").GetString());
+        Assert.Equal("06-10-2026", repoBody.RootElement.GetProperty("endDate").GetString());
+        Assert.Equal("08-07-2026", repoBody.RootElement.GetProperty("startDate").GetString());
+
+        // The CPI index is requested separately over the wider window derived from the output
+        // bound (output start − 12 months = 2026-07-08 − 12 months).
         var cpi = client.Posts.Single(p => p.Body.Contains("TP.TUKFIY2025.GENEL", StringComparison.Ordinal));
         using var cpiBody = JsonDocument.Parse(cpi.Body);
         Assert.Equal("TP.TUKFIY2025.GENEL", cpiBody.RootElement.GetProperty("series").GetString());
         Assert.Equal("avg", cpiBody.RootElement.GetProperty("aggregationTypes").GetString());
         Assert.Equal("06-10-2026", cpiBody.RootElement.GetProperty("endDate").GetString());
-        Assert.Equal("01-09-2025", cpiBody.RootElement.GetProperty("startDate").GetString());
+        Assert.Equal("08-07-2025", cpiBody.RootElement.GetProperty("startDate").GetString());
 
         // No credential ever travels in either request (the endpoint is anonymous).
         Assert.All(client.Gets, p => Assert.DoesNotContain("key=", p, StringComparison.Ordinal));
@@ -171,6 +183,126 @@ public sealed class MacroEvdsAdapterTests
 
         Assert.Empty(payload.Series!);
         Assert.Empty(client.Posts); // nothing to request
+    }
+
+    /// <summary>
+    /// TKT_foundation_027 (criterion (ii), R2-F2) — GOLD is discovered through the datagroup
+    /// that actually publishes <c>TP.ALTINPIYASA.KAP03</c>: <c>bie_altinbistbul</c> (BIST gold,
+    /// <c>İŞ GÜNÜ</c>, <c>last</c> — live-verified 2026-10-19). The monthly
+    /// <c>bie_mkaltytl</c> datagroup publishes only <c>TP.MK.*</c> series and must never be the
+    /// gold datagroup, or the datagroup+serie pair can never match on a live serieList.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_027_Gold_resolves_through_the_bist_gold_datagroup()
+    {
+        var client = new V3FakeClient();
+
+        var payload = (await BuildV3(client).FetchAsync(Date)).Payload;
+
+        Assert.Contains(client.Gets, p => p.Contains("bie_altinbistbul", StringComparison.Ordinal));
+        Assert.DoesNotContain(client.Gets, p => p.Contains("bie_mkaltytl", StringComparison.Ordinal));
+
+        var gold = Assert.Single(payload.Series!, s => s.Code == MacroSeries.Gold);
+        Assert.Equal(4200.00m, gold.Value);
+
+        var daily = client.Posts.Single(p => p.Body.Contains("TP.DK.USD.S.YTL", StringComparison.Ordinal));
+        Assert.Contains("TP.ALTINPIYASA.KAP03", daily.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TKT_foundation_027 (criterion (ii), R2-F7 / DR-1) — a datagroup that is <b>present</b>
+    /// but does not publish the expected serie is skipped too: the pair must match on both
+    /// fields, never on the datagroup alone.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_027_A_datagroup_without_the_serie_is_skipped_never_guessed()
+    {
+        const string usdOnly = """
+            [{"SERIE_CODE":"TP.DK.USD.S.YTL","DATAGROUP_CODE":"bie_dkdovytl","SERIE_NAME":"(USD) ABD Doları (Döviz Satış)","FREQUENCY_STR":"GÜNLÜK","DEFAULT_AGG_METHOD":"avg"}]
+            """;
+        var client = new V3FakeClient(serieList: usdOnly);
+
+        var payload = (await BuildV3(client).FetchAsync(Date)).Payload;
+
+        Assert.Contains(MacroSeries.UsdTry, payload.Series!.Select(s => s.Code));
+        Assert.DoesNotContain(MacroSeries.Gold, payload.Series!.Select(s => s.Code));
+        Assert.DoesNotContain(MacroSeries.CbrtRepo, payload.Series!.Select(s => s.Code));
+
+        var request = Assert.Single(client.Posts);
+        Assert.Contains("TP.DK.USD.S.YTL", request.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("TP.ALTINPIYASA.KAP03", request.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TKT_foundation_027 (criterion (ii), R2-F6) — a catalog whose root is not a JSON array is
+    /// an invalid (payload) failure, not a silently empty datagroup set.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_027_A_non_array_catalog_is_a_payload_failure()
+    {
+        var client = new V3FakeClient(catalog: "{\"CATEGORIES\":[]}");
+
+        await Assert.ThrowsAsync<SourcePayloadException>(() => BuildV3(client).FetchAsync(Date));
+        Assert.Empty(client.Posts);
+    }
+
+    /// <summary>
+    /// TKT_foundation_027 (criterion (iii), R2-F4) — the CPI index window is derived from the
+    /// output bound, so a <b>real</b> run date still reaches every emitted month's year-prior
+    /// baseline. On 2026-10-19 the earliest output month is 2026-08 and its baseline is
+    /// 2025-08 (≈14.5 months back) — outside the old fixed 400-day window, which would have
+    /// emitted <b>zero</b> TUIK_CPI rows on the first live run.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_027_Cpi_window_reaches_the_year_prior_baseline_on_a_real_run_date()
+    {
+        // Two output months (2026-08, 2026-10) whose baselines are 12 and 24 months earlier.
+        const string levels = """
+            {"totalCount":4,"items":[
+              {"Tarih":"2026-10","TP_TUKFIY2025_GENEL":"140.00"},
+              {"Tarih":"2025-10","TP_TUKFIY2025_GENEL":"120.00"},
+              {"Tarih":"2026-08","TP_TUKFIY2025_GENEL":"138.00"},
+              {"Tarih":"2025-08","TP_TUKFIY2025_GENEL":"100.00"}]}
+            """;
+        var client = new V3FakeClient(values: levels);
+        var runDate = new DateOnly(2026, 10, 19);
+
+        var payload = (await BuildV3(client).FetchAsync(runDate)).Payload;
+
+        var cpi = client.Posts.Single(p => p.Body.Contains("TP.TUKFIY2025.GENEL", StringComparison.Ordinal));
+        using var cpiBody = JsonDocument.Parse(cpi.Body);
+        // Output window start 2026-07-21 minus 12 months.
+        Assert.Equal("21-07-2025", cpiBody.RootElement.GetProperty("startDate").GetString());
+
+        var yoy = payload.Series!.Where(s => s.Code == MacroSeries.TuikCpi).ToList();
+        Assert.Equal(
+            new[] { new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 1) },
+            yoy.Select(s => s.ValueDate).OrderBy(d => d).ToArray());
+        Assert.Equal(38.00m, yoy.Single(s => s.ValueDate == new DateOnly(2026, 8, 1)).Value);
+        Assert.Equal((140.00m / 120.00m - 1m) * 100m, yoy.Single(s => s.ValueDate == new DateOnly(2026, 10, 1)).Value);
+    }
+
+    /// <summary>
+    /// TKT_foundation_027 (R2-F10) — an upstream index pair whose ratio leaves the
+    /// <see cref="decimal"/> range is skipped, never an <see cref="OverflowException"/>
+    /// escaping the source-failure taxonomy.
+    /// </summary>
+    [Fact]
+    public void TKT_foundation_027_Cpi_yoy_skips_unrepresentable_ratios()
+    {
+        var levels = new List<MacroItem>
+        {
+            new(MacroSeries.TuikCpi, new DateOnly(2026, 8, 1), 79228162514264337593543950335m, null, null),
+            new(MacroSeries.TuikCpi, new DateOnly(2025, 8, 1), 0.0000000001m, null, null),
+            new(MacroSeries.TuikCpi, new DateOnly(2026, 9, 1), 120m, null, null),
+            new(MacroSeries.TuikCpi, new DateOnly(2025, 9, 1), 100m, null, null),
+        };
+
+        var result = EvdsCpiYoY.Compute(levels, new DateOnly(2026, 7, 1), new DateOnly(2026, 10, 1));
+
+        var row = Assert.Single(result);
+        Assert.Equal(new DateOnly(2026, 9, 1), row.ValueDate);
+        Assert.Equal(20m, row.Value);
     }
 
     /// <summary>
@@ -470,6 +602,24 @@ public sealed class MacroEvdsRealEnvelopeTests : IClassFixture<WireMockFixture>,
     }
 
     /// <summary>
+    /// TKT_foundation_027 (R2-F10) — an upstream JSON number outside the <c>decimal</c> range is
+    /// a missing observation, not a <see cref="FormatException"/> escaping the source-failure
+    /// taxonomy.
+    /// </summary>
+    [Fact]
+    public void TKT_foundation_027_Decoder_skips_out_of_range_json_numbers()
+    {
+        const string body = """{"totalCount":2,"items":[{"Tarih":"06-10-2026","TP_DK_USD_S_YTL":1e400},{"Tarih":"06-10-2026","TP_DK_EUR_S_YTL":"53.20"}]}""";
+        using var document = JsonDocument.Parse(body);
+
+        var rows = EvdsMacroDecoder.DecodeRows(document, T.AddDays(-90), T);
+
+        var row = Assert.Single(rows);
+        Assert.Equal(MacroSeries.EurTry, row.Code);
+        Assert.Equal(53.20m, row.Value);
+    }
+
+    /// <summary>
     /// TKT_foundation_027 — the bounded live capture (the anonymous v3 <c>POST /fe</c>,
     /// 2026-10-18) parses through the production adapter: the underscored USD/TRY + EUR/TRY
     /// selling columns resolve to their canonical codes and the values flow through unchanged.
@@ -612,7 +762,7 @@ public sealed class MacroEvdsRealEnvelopeTests : IClassFixture<WireMockFixture>,
     private void StubV3Discovery()
     {
         _wireMock.StubJson(CatalogPath, RealSourceCatalog.Get(RealSourceCatalog.MacroEvdsV3Catalog).Body);
-        foreach (var datagroup in new[] { "bie_dkdovytl", "bie_mkaltytl", "bie_bispolfaiz", "bie_tukfiy2025" })
+        foreach (var datagroup in new[] { "bie_dkdovytl", "bie_altinbistbul", "bie_bispolfaiz", "bie_tukfiy2025" })
         {
             _wireMock.StubJson(SerieListPath.Replace("{code}", datagroup, StringComparison.Ordinal),
                 RealSourceCatalog.Get(RealSourceCatalog.MacroEvdsV3SerieList).Body);

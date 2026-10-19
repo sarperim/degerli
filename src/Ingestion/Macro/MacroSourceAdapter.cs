@@ -45,14 +45,17 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     private const int LookbackDays = 90;
 
     /// <summary>
-    /// The wider CPI-index request window (days, ~13 months). The canonical TÜİK CPI measure
-    /// is the annual <b>% change</b>, which the EVDS 3.0 platform does not publish directly
-    /// (verified: the <c>bie_tukfiy2025</c> datagroup carries only index levels, 01 v1.5.6
-    /// §10.9.12), so the adapter fetches the index over a year-plus window and pairs each
-    /// month with the year-prior month to compute YoY deterministically. Only months inside
-    /// the standard 90-day output window are emitted.
+    /// The aggregation methods the adapter will forward from an untrusted serieList. The
+    /// <c>DEFAULT_AGG_METHOD</c> field is upstream input, so it is allowlisted (never forwarded
+    /// verbatim into the <c>/fe</c> body); an unknown value skips that series rather than
+    /// guessing — the job then reports it LATE, the honest unavailable state.
     /// </summary>
-    private const int CpiIndexLookbackDays = 400;
+    private static readonly HashSet<string> AllowedAggregationMethods =
+        new(StringComparer.OrdinalIgnoreCase) { "avg", "last", "first", "min", "max", "sum" };
+
+    /// <summary>The aggregation used when a serieList omits the field (the platform's own
+    /// default for the FX series).</summary>
+    private const string DefaultAggregation = "avg";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -124,46 +127,86 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
 
     /// <summary>
     /// The EVDS 3.0 transport (01 v1.5.6 §10.9.12): discover the series from the anonymous
-    /// catalog + serieList, then issue the anonymous <c>POST /fe</c> values request. The
-    /// FX/gold/repo series ride the bounded 90-day request window (DR-2); the CPI index rides
-    /// a year-plus window and is converted to the canonical YoY measure.
+    /// catalog + serieList, then issue the anonymous <c>POST /fe</c> values requests.
+    /// <para>
+    /// <b>One request per cadence, never mixed.</b> The platform collapses a response to the
+    /// <em>lowest common</em> frequency of the series in the body (live-verified 2026-10-19:
+    /// adding the monthly repo to the daily FX/gold request turned 65 business-day rows into
+    /// 4 monthly ones), and the decoder accepts <c>yyyy-MM</c> rows — so a mixed body would
+    /// store monthly averages as daily observations. The business-day series (FX/gold) ride
+    /// one request, the monthly policy rate its own, and the CPI index a third over the wider
+    /// YoY window; all three cover the same bounded 90-day output window (DR-2), and the
+    /// responses are merged into one payload.
+    /// </para>
     /// </summary>
     private async Task<SourcePayload<MacroPayload>> FetchV3Async(DateOnly date, CancellationToken cancellationToken)
     {
         var resolved = await DiscoverSeriesAsync(cancellationToken).ConfigureAwait(false);
 
         var items = new List<MacroItem>();
-        var raw = string.Empty;
-
-        var dailySeries = resolved.Where(r => !string.Equals(r.Definition.CanonicalCode, MacroSeries.TuikCpi, StringComparison.Ordinal)).ToList();
-        if (dailySeries.Count > 0)
-        {
-            var body = BuildV3Body(dailySeries, date.AddDays(-LookbackDays), date);
-            raw = await PostValuesAsync(body, cancellationToken).ConfigureAwait(false);
-            using var document = ParseDocument(raw);
-            items.AddRange(EvdsMacroDecoder.DecodeRows(
-                document,
-                date.AddDays(-LookbackDays),
-                date,
-                dailySeries.Select(r => r.Definition.CanonicalCode).ToHashSet(StringComparer.Ordinal)));
-        }
+        // RawJson keeps the first values response verbatim (the business-day group's, the
+        // primary series body); later responses are merged into the payload but never
+        // overwrite this snapshot.
+        string? raw = null;
+        var windowStart = date.AddDays(-LookbackDays);
 
         var cpi = resolved.FirstOrDefault(r => string.Equals(r.Definition.CanonicalCode, MacroSeries.TuikCpi, StringComparison.Ordinal));
-        if (cpi is not null)
+        var values = resolved.Where(r => !string.Equals(r.Definition.CanonicalCode, MacroSeries.TuikCpi, StringComparison.Ordinal)).ToList();
+
+        var businessDay = values.Where(r => !r.Definition.Monthly).ToList();
+        if (businessDay.Count > 0)
         {
-            var body = BuildV3Body([cpi], date.AddDays(-CpiIndexLookbackDays), date);
-            var cpiRaw = await PostValuesAsync(body, cancellationToken).ConfigureAwait(false);
-            raw = cpiRaw;
-            using var document = ParseDocument(cpiRaw);
-            var levels = EvdsMacroDecoder.DecodeRows(
-                document,
-                date.AddDays(-CpiIndexLookbackDays),
-                date,
-                new HashSet<string>(StringComparer.Ordinal) { MacroSeries.TuikCpi });
-            items.AddRange(EvdsCpiYoY.Compute(levels, date.AddDays(-LookbackDays), date));
+            var body = BuildV3Body(businessDay, windowStart, date);
+            var response = await PostValuesAsync(body, cancellationToken).ConfigureAwait(false);
+            raw ??= response;
+            items.AddRange(DecodeValues(response, windowStart, date, businessDay));
         }
 
-        return new SourcePayload<MacroPayload>(EvdsSource, new MacroPayload(EvdsSource, items), raw);
+        var monthly = values.Where(r => r.Definition.Monthly).ToList();
+        if (monthly.Count > 0)
+        {
+            var body = BuildV3Body(monthly, windowStart, date);
+            var response = await PostValuesAsync(body, cancellationToken).ConfigureAwait(false);
+            raw ??= response;
+            items.AddRange(DecodeValues(response, windowStart, date, monthly));
+        }
+
+        if (cpi is not null)
+        {
+            var cpiStart = CpiWindowStart(date);
+            var body = BuildV3Body([cpi], cpiStart, date);
+            var cpiRaw = await PostValuesAsync(body, cancellationToken).ConfigureAwait(false);
+            raw ??= cpiRaw;
+            var levels = DecodeValues(cpiRaw, cpiStart, date, [cpi]);
+            items.AddRange(EvdsCpiYoY.Compute(levels, windowStart, date));
+        }
+
+        return new SourcePayload<MacroPayload>(EvdsSource, new MacroPayload(EvdsSource, items), raw ?? string.Empty);
+    }
+
+    /// <summary>
+    /// The start of the CPI-index request window: the output window's first day minus twelve
+    /// months. The canonical measure is the annual <b>% change</b>, which the EVDS 3.0 platform
+    /// does not publish (verified: <c>bie_tukfiy2025</c> carries only index levels, 01 v1.5.6
+    /// §10.9.12), so <see cref="EvdsCpiYoY"/> needs each emitted month's year-prior baseline —
+    /// i.e. <c>date − 90 days − 12 months</c> (≈15 months), <b>derived from the output bound</b>
+    /// so the boundary can never silently fall short of the baseline.
+    /// </summary>
+    private static DateOnly CpiWindowStart(DateOnly date) => date.AddDays(-LookbackDays).AddMonths(-12);
+
+    /// <summary>Posts one values request and decodes only the series it asked for.</summary>
+    private static IReadOnlyList<MacroItem> DecodeValues(
+        string raw,
+        DateOnly from,
+        DateOnly to,
+        IReadOnlyList<ResolvedSeries> series)
+    {
+        using var document = ParseDocument(raw);
+        return EvdsMacroDecoder.DecodeRows(
+            document,
+            from,
+            to,
+            series.Select(r => r.Definition.CanonicalCode).ToHashSet(StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -171,7 +214,9 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
     /// §10.9.12). The catalog fetch confirms each target datagroup still exists; the serieList
     /// fetch resolves the concrete series code and its default aggregation method. A datagroup
     /// or series absent from a live discovery response is <b>skipped</b> (never guessed): the
-    /// job then marks that series LATE and the last-known value keeps being served.
+    /// job then marks that series LATE and the last-known value keeps being served. The
+    /// aggregation method is upstream input, so it is <b>allowlisted</b> — an unrecognised value
+    /// skips the series rather than travelling verbatim into the <c>/fe</c> body.
     /// </summary>
     private async Task<IReadOnlyList<ResolvedSeries>> DiscoverSeriesAsync(CancellationToken cancellationToken)
     {
@@ -196,15 +241,24 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
                 continue;
             }
 
-            var agg = string.IsNullOrWhiteSpace(entry.DefaultAggMethod) ? "avg" : entry.DefaultAggMethod!;
-            resolved.Add(new ResolvedSeries(definition, agg));
+            var agg = string.IsNullOrWhiteSpace(entry.DefaultAggMethod) ? DefaultAggregation : entry.DefaultAggMethod!;
+            if (!AllowedAggregationMethods.Contains(agg))
+            {
+                continue;
+            }
+
+            resolved.Add(new ResolvedSeries(definition, agg.ToLowerInvariant()));
         }
 
         return resolved;
     }
 
-    /// <summary>Parses the catalog and collects the datagroup codes it publishes. A malformed
-    /// catalog is an invalid (payload) failure so the job quarantines it.</summary>
+    /// <summary>
+    /// Parses the catalog and collects the datagroup codes it publishes. A root that is not a
+    /// JSON array is an invalid (payload) failure so the job quarantines it. A valid catalog
+    /// array that publishes no datagroups yields an empty set — every series is then absent
+    /// from discovery and reported LATE, never guessed.
+    /// </summary>
     private static HashSet<string> ParseDatagroups(string raw)
     {
         using var document = ParseDocument(raw);
@@ -212,7 +266,8 @@ public sealed class MacroSourceAdapter : ISourceAdapter<MacroPayload>
 
         if (document.RootElement.ValueKind != JsonValueKind.Array)
         {
-            return codes;
+            throw new SourcePayloadException(raw, new JsonException(
+                "The EVDS 3.0 catalog root is not a JSON array."));
         }
 
         foreach (var category in document.RootElement.EnumerateArray())

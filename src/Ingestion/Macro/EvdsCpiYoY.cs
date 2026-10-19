@@ -51,10 +51,33 @@ public static class EvdsCpiYoY
                 continue;
             }
 
-            var yoy = (byMonth[month] / priorYear - 1m) * 100m;
-            result.Add(new MacroItem(MacroSeries.TuikCpi, month, yoy, Unit: null, RecordedAt: null));
+            var yoy = ComputeYoY(byMonth[month], priorYear);
+            if (yoy is null)
+            {
+                continue;
+            }
+
+            result.Add(new MacroItem(MacroSeries.TuikCpi, month, yoy.Value, Unit: null, RecordedAt: null));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// <c>(indexₘ / indexₘ₋₁₂ − 1) × 100</c> for two untrusted upstream index levels. A
+    /// ratio outside the <see cref="decimal"/> range (a near-zero baseline against a huge
+    /// index) yields <c>null</c> — the month is skipped rather than crashing the run with an
+    /// <see cref="OverflowException"/> outside the source-failure taxonomy.
+    /// </summary>
+    private static decimal? ComputeYoY(decimal current, decimal priorYear)
+    {
+        try
+        {
+            return (current / priorYear - 1m) * 100m;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }
