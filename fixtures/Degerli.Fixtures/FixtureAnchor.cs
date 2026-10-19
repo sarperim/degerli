@@ -1,37 +1,54 @@
 namespace Degerli.Fixtures;
 
 /// <summary>
-/// The time anchor a fixture set is built against (FU §1.4 / §8.3). Exactly two
+/// The time anchor a fixture set is built against (FU §1.4 / §7 / §8.3). Exactly two
 /// variants exist and both load through <see cref="FixtureUniverse.Build"/>:
 /// <list type="bullet">
 ///   <item><see cref="L2"/> — absolute dates with reference date R = 2026-10-06
 ///   (Tuesday); assertions may name absolute dates.</item>
-///   <item><see cref="NowAnchored"/> — T = the seed day (container start); every
-///   fresh row is placed relative to T and tests assert offsets/flags, never
-///   wall-clock dates.</item>
+///   <item><see cref="NowAnchored"/> — T = the latest trading day at or before the seed
+///   day (container start); every fresh row is placed relative to T and tests assert
+///   offsets/flags, never wall-clock dates.</item>
 /// </list>
+/// <para>
+/// A weekend (<see cref="NowAnchored"/>) start has <see cref="SeedDate"/> ≠
+/// <see cref="TradingDate"/>: <c>T</c> is backed to the preceding Friday, while the
+/// "now" rows (the daily macro ingests, FU §7) belong to the real seed day — they are
+/// measured against the runtime clock, not against the fixture trading calendar.
+/// </para>
 /// </summary>
 public sealed record FixtureAnchor
 {
     /// <summary>The latest fixture trading day, <c>T</c>.</summary>
     public required DateOnly TradingDate { get; init; }
 
+    /// <summary>
+    /// The real seed (container-start) day, before any weekend backing. Equal to
+    /// <see cref="TradingDate"/> on a trading-day start and for <see cref="L2"/>; later
+    /// when a weekend start backs <c>T</c> to the preceding Friday. <see cref="NowAnchored"/>
+    /// daily ingests are placed on this day so "fresh" matches the runtime clock on any
+    /// seed day (FU §7, TKT-foundation-030).
+    /// </summary>
+    public required DateOnly SeedDate { get; init; }
+
     /// <summary>True for the L4 now-anchored variant.</summary>
     public required bool IsNowAnchored { get; init; }
 
     /// <summary>The L2 absolute-date anchor: R = 2026-10-06 (FU §2).</summary>
     public static FixtureAnchor L2 { get; } =
-        new() { TradingDate = new DateOnly(2026, 10, 6), IsNowAnchored = false };
+        new() { TradingDate = new DateOnly(2026, 10, 6), SeedDate = new DateOnly(2026, 10, 6), IsNowAnchored = false };
 
     /// <summary>The L4 anchor: T = the latest trading day at or before the seed day.</summary>
     public static FixtureAnchor NowAnchored(TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         var now = timeProvider.GetUtcNow();
-        var date = DateOnly.FromDateTime(now.UtcDateTime);
+        var seedDate = DateOnly.FromDateTime(now.UtcDateTime);
+        var date = seedDate;
 
         // FU §2 — the fixture calendar is Mon–Fri; a weekend container start anchors T
         // to the latest trading day (the preceding Friday) rather than a non-trading day.
+        // The seed day itself is preserved separately: see <see cref="SeedDate"/>.
         while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
         {
             date = date.AddDays(-1);
@@ -40,6 +57,7 @@ public sealed record FixtureAnchor
         return new FixtureAnchor
         {
             TradingDate = date,
+            SeedDate = seedDate,
             IsNowAnchored = true,
         };
     }
