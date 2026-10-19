@@ -20,6 +20,14 @@ x-api-environment: &api-environment
   # it off here so copying .env.example (whose VPS-oriented default is true) is safe.
   Smtp__UseStartTls: "false"
   Evren__ApiKey: ${Evren__ApiKey:-}
+  # KAP VYK API credentials (MKK "KAP Data Dissemination Services", Ingestion:Kap:ApiKey /
+  # ApiSecret). Reach the api service only through this passthrough; never baked into an image.
+  Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}
+  Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}
+  # Macro source (TCMB EVDS 3.0, Ingestion:Macro:*). The v3 BaseUrl/Path/CatalogPath/
+  # SerieListPath ship in appsettings.json; the /fe values endpoint is anonymous, so only
+  # the optional key slot is passed through (leave empty; never baked into an image).
+  Ingestion__Macro__EvdsApiKey: ${Ingestion__Macro__EvdsApiKey:-}
   APP_URL: ${APP_URL:-http://localhost:5173}
   ALERT_EMAIL: ${ALERT_EMAIL:-builder@degerli.local}
 

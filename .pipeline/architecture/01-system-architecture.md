@@ -592,6 +592,13 @@ on not-yet-covered real stocks are FR-RES-016 working as pinned.
 
 #### 10.9.10 Statements — company-scoped fetch and the statements bound (TKT-foundation-024, FR-MDF-002/008/010/011/012)
 
+> **Superseded by replacement (orchestrator record, TKT-foundation-026, merged PR #99, 2026-10-18):**
+> this section's *blocked live-discovery block* (the `www.kap.org.tr` website-proxy candidate, §13.1
+> v1.5.3) is **superseded by the MKK VYK API source contract in §10.9.11** — the company-scoped loop,
+> per-company isolation and the keyed `IKapSourceClient` are reused unchanged; only the **source** is
+> rewired. TKT-foundation-024's open live criterion is **closed by replacement** (recorded in 024's
+> ticket; no attempt fabricated).
+
 **Why (the defect this closes).** The §10.9.5 KAP XBRL fact envelope has decoded in the product
 since TKT-foundation-017 and `StatementsJob` persists versioned statements idempotently, but no
 `Ingestion:Kap` / `Ingestion:Statements` sections existed in `src/Api/appsettings.json`: the KAP
@@ -668,6 +675,203 @@ harness *binding* delta is the only permitted change to the existing statements-
 (TC-MDF-065/067/071 and the versioning/normalization/accounting-profile lanes re-run green
 unchanged). The new loop tests reuse the TC-MDF-072/073/074 lane shapes for companies.
 
+#### 10.9.11 The KAP VYK API source contract — company mapping, list/detail envelopes, cursor and pacing (TKT-foundation-026, FR-MDF-002/008/010/011/012)
+
+**Why (the defect this closes).** §10.9.10 wired the company-scoped statements loop but shipped a
+**discovered-but-unverified** `Ingestion:Statements:Path` against `www.kap.org.tr`: KAP's Next.js
+redesign had killed the former per-company route, every probe returned 500/404, and no real capture
+could be obtained — so the loop could never fetch real financial statements. **The blocker was
+resolved the proper way: MKK's official "KAP Data Dissemination Services" REST API (the "KAP VYK
+API", an Apinizer gateway), with a free-plan API key obtained by the user.** This subsection records
+the new source contract and **supersedes §10.9.10's blocked live-discovery block** (the loop, the
+per-company isolation and the keyed `IKapSourceClient` are reused unchanged; only the **source** is
+rewired).
+
+**Gateway and auth (live-verified 2026-10-18).** `Ingestion:Kap:BaseUrl` targets the VYK gateway.
+The **dev** gateway `https://apigwdev.mkk.com.tr/api/vyk` is spec-verified (live-reachable) and is
+what ships; the **production** host (`apigw.mkk.com.tr`) did not resolve from this environment, so
+pinning it is a **live-verification step recorded in the PR — never an assumed/verified guess** (the
+018–025 honesty posture; the candidate is blocked until a live run pins it). Auth was **pinned
+live**: an HTTP **Basic** credential, attached to the KAP `HttpClient` as a request header (never in
+the URL) **iff** `Ingestion:Kap:ApiKey` (env `Ingestion__Kap__ApiKey`) or its paired
+`Ingestion:Kap:ApiSecret` (env `Ingestion__Kap__ApiSecret`) is non-empty — the API **Key** is the
+Basic *username*, the API **Secret** the *password* (the gateway returns HTTP 200 only for the pair;
+a lone key, an `X-API-KEY` header and a raw `Authorization` value all 401). The key/secret are never
+committed (`appsettings.json` ships empty defaults, mirroring `Ingestion:Macro:EvdsApiKey`) and every
+configured secret is redacted from any message that could echo it (`KapSourceOptions.Redact`,
+`KapHttpSourceClient`).
+
+**Company mapping (structural pin).** The loop is company-scoped by BIST symbol; the gateway
+identifies companies by `companyId`. One paced `GET /members` (Şirket Listesi) per run builds an
+in-memory symbol→`companyId` map (`MemberInfo.stockCode` carries the ticker directly) reused for the
+whole run (`VykCompanyDirectory`, lazy + cached). A bound symbol with no mapping is **marked failed
+with the named reason `COMPANY_IDENTITY_UNRESOLVED`** — no rows written, no fabricated mapping,
+counted in the run-ledger per-company stats, loop continues (FR-MDF-008/012). A `/members` transport
+failure degrades honestly: the snapshot is `Failed`, every company is marked
+`SOURCE_FETCH_FAILED`, one aggregate alert, no fabricated mapping.
+
+**List + detail envelopes (live-verified 2026-10-18).** Statements are disclosures of class
+**`FR`** (Finansal Raporlar): `GET /disclosures?disclosureIndex={cursor}&disclosureClass=FR&companyId={id}`
+returns the `DisclosureInfoResponse` list; each new disclosure is fetched via
+`GET /disclosureDetail/{disclosureIndex}?fileType=data` → `DisclosureByIdResponse`. **The gateway
+does not return the OpenAPI's declared `flatData`** for `fileType=data` (live-verified: that member
+is absent, and `fileType=html` returns `htmlMessages` instead) — the structured payload is the
+XBRL-style **`presentation`** array, one entry per sub-report: `content.ContextList.Context[]` binds
+context ids to periods (`Period.instant`, or `Period.startDate`/`endDate`) under keys
+`CURR`/`PREV`/`CURR3`/`PREV3`, and `content.ReportItem` is a tree whose leaves carry a **bare IFRS
+taxonomy `name`** and a `Values.Value[]` list of `{contextId, currency, rounding, value}`. The
+`presentation` tree becomes a **first-class real envelope** alongside the §10.9.5 XBRL fact envelope
+and the canonical double (envelope detection in the adapter): fiscal `year`/`period` map to the group
+coordinates, each sub-report's root report-item name selects the statement type (`BalanceSheet`→`BS`,
+`ProfitOrLoss`→`IS`, `CashFlows`→`CF`, `ChangesInEquity`→`EQ`), each leaf's **`CURR`** value collapses
+onto `02` §6.1 through the shared `KapXbrlStatementDecoder.ConceptMap` (extended with the bare-name
+spellings)/`StatementMapper` path, and the grouping + duplicate-concept rule carry over verbatim;
+provenance stays `kap`. **The identity guard adapts:** a listed disclosure whose `companyId` does not
+match the requested company is **skipped before decode** (empty statement set, no detail fetch, never
+another company's facts quarantined). **Bounded live capture:** the shape is pinned by the
+`RealSourceCatalog` `kap-vyk-disclosure-detail` entry (disclosure 1226255, live 2026-10-18, trimmed to
+a representative real-report-item subset with real CURR/PREV values) — **no capture fabricated**; the
+CI member/list doubles are shape-faithful constructed bodies. **Honest scope notes:** `consolidation`
+(a detail field with no `02` §3.1 home) is **not persisted**; the attachment-file layer
+(`/downloadAttachment/{id}` PDF/XBRL) is a **separate follow-up ticket** — never silently scoped in
+(no PDF/XBRL-file parsing here).
+
+**Pacing + throttle (structural pin).** The free plan allows ~6 calls/min, so the VYK source is
+paced at ~10 s per call: the shipped `Ingestion:Statements:RequestDelayMs` flips **500 → 10000** and
+**every** gateway call in the run (members, anchor, list, detail) is paced by a scoped
+`KapRequestPacer` (on top of the loop's per-company pace, §10.9.10). An HTTP 429, or a
+`VykErrorResponse`/Apinizer throttle fault, is a **retryable transport failure** through the
+existing retry ladder with backoff — a source-down, not a parse event: no quarantine row, the
+company marked failed, one aggregate alert, loop continues; a parse failure of a real VYK body
+quarantines `UNPARSEABLE_PAYLOAD` and continues.
+
+**Incremental cursor (structural pin).** The per-company incremental cursor is the **last-processed
+`disclosureIndex`**, persisted in the **existing `coverage_metadata` table** (Scope `instrument`, a
+`kap-disclosure-cursor` data type, the value in `Notes`) — **no schema migration**. The data type is
+deliberately **outside `CoverageDataTypes.InstrumentScoped`**, so the no-silent-gaps reconcile never
+clobbers the cursor row. A cursor-less company starts from the configurable
+`Ingestion:Statements:EarlyDisclosureIndex` (the first live pass **is** the backfill — the achieved
+depth is what the source returned, recorded honestly per FR-MDF-010/011); a re-run resumes from the
+persisted cursor and writes nothing new (idempotent). `GET /lastDisclosureIndex` is the run's global
+anchor (secondary; its unavailability does not fail the directory).
+
+**Config (`Ingestion:Kap` / `Ingestion:Statements`, §10.4).** Shipped in `src/Api/appsettings.json`:
+`Ingestion:Kap = { BaseUrl = https://apigwdev.mkk.com.tr/api/vyk, ApiKey = "", ApiSecret = "",
+MembersPath = /members, LastDisclosureIndexPath = /lastDisclosureIndex }`;
+`Ingestion:Statements = { Path = /disclosures, DetailPath = /disclosureDetail/{disclosureIndex},
+DisclosureClass = FR, EarlyDisclosureIndex = 0, UniverseIndex = XU030, RequestDelayMs = 10000 }`.
+`compose.dev.yml` passes `Ingestion__Kap__ApiKey` through to the api service; `.env.example`
+documents the slot.
+
+**Test-double posture (§10.9.7).** No golden changed. The VYK seam is exercised through the L2
+harness's own stub routes (members/list/detail), with only the permitted deltas: the harness
+*bindings* for the new routes, the shipped config values above (the 024 config-wiring test's two
+shipped-value assertions amended), and new honestly-labeled `RealSourceCatalog` entries
+(`kap-vyk-members`/`kap-vyk-disclosures` constructed, `kap-vyk-disclosure-detail` a bounded live
+capture) for the TC-MDF-063 lane. Every existing statements-path golden (TC-MDF-065/067/071 + the
+versioning/normalization/accounting-profile lanes) re-runs green unchanged.
+
+#### 10.9.12 The TCMB EVDS 3.0 source contract — anonymous catalog + `/fe` values (TKT-foundation-027, FR-MOV-014)
+
+**Why (the defect this closes).** §10.9.6 verified the macro envelope against the old **EVDS v2**
+REST API (`evds2.tcmb.gov.tr/service/evds`) with the `TP.*` series identifiers it served. That host
+now **blanket-redirects (302) to `evds3.tcmb.gov.tr`**, the v2 REST paths return an SPA shell / 404,
+and the v2 adapter could never fetch a live value. This section **supersedes §10.9.6's live-source
+wiring by replacement** — the macro adapter, jobs, store, freshness/alerting and the `evds`
+provenance are reused unchanged; only the **source transport** and its series-code discovery are
+rewired to the new platform. The owner-supplied `.env` key is **not** required for the new endpoint.
+
+**The `/fe` values endpoint is anonymous (live-verified 2026-10-18).** A plain
+`POST https://evds3.tcmb.gov.tr/igmevdsms-dis/fe` with `Content-Type: application/json` and the body
+below returns **HTTP 200 + real data with no cookie, no key, no login** (re-verified at
+implementation: `TP.DK.USD.S.YTL` 49.42 / `TP.DK.EUR.S.YTL` 55.41 on `16-10-2026`). The earlier 400s
+were purely a wrong body shape, not an auth failure. **No credential travels in the v3 request**
+(the `EvdsApiKey` setting is retained only as an optional redaction surface and for the legacy
+canonical-double GET; empty default; never committed). The standing SEC-1 query-string-leak follow-up
+therefore does **not** apply to the v3 lane: there is no key on the wire at all.
+
+**Discovery (anonymous GETs).** Series codes are resolved, never assumed:
+`GET /igmevdsms-dis/categories/withDatagroups/type=json` (the full catalog — confirms each target
+datagroup still exists; 154 categories / 680+ datagroups) then
+`GET /igmevdsms-dis/serieList/fe/type=json&code=<datagroup>` (resolves `SERIE_CODE` +
+`DEFAULT_AGG_METHOD`). A datagroup or series absent from a live discovery response is **skipped**
+(the job marks the series LATE; the last-known value keeps serving), never guessed.
+
+**The request body (verbatim from the site's own `getSeriVerileri` + an owner-captured cURL).**
+`series`/`aggregationTypes`/`formulas` are `-`-joined per selected series; dates are `dd-MM-yyyy`;
+`frequency:"2"` = business day; `dateFormat:"0"`/`yon:"0"`/`sira:"0"` are numeric codes;
+`ozelFormuller:[]` is an array:
+
+```json
+{"type":"json","series":"TP.DK.USD.S.YTL-TP.DK.EUR.S.YTL","aggregationTypes":"avg-avg",
+ "formulas":"0-0","startDate":"15-10-2026","endDate":"16-10-2026","frequency":"2",
+ "decimalSeperator":".","decimal":"2","dateFormat":"0","lang":"tr","yon":"0","sira":"0",
+ "ozelFormuller":[],"groupSeperator":true,"isRaporSayfasi":false}
+```
+
+**The response shape.** `{"totalCount":N,"items":[{"Tarih":"dd-MM-yyyy","<CODE_underscored>":"<value>",
+…,"UNIXTIME":{"$numberLong":"<epoch>"}}],"transposedItems":[…],"seriesNames":{…}}`. Two honest
+gotchas the decoder handles: **(a)** column keys underscore the dotted identifier
+(`TP.DK.USD.S.YTL` → `TP_DK_USD_S_YTL`), decoded by normalising `_`→`.`, so **both** spellings resolve
+through the union map; **(b)** values are **strings carrying thousands-grouping commas** regardless
+of `decimalSeperator` (`"6,622,000.00"`), so grouping is stripped before the invariant parse. Monthly
+rows (`yyyy-MM`, CPI + policy rate) resolve to the month's first day.
+
+**Series set (union mapping, not replacement — §10.9.7).** The five official series map to the
+live-verified v3 identifiers, **alongside** the fixture-era identifiers the L2 canonical double keeps.
+The **datagroup + serie pair must both match** the live serieList: `TP.ALTINPIYASA.KAP03` is
+published by `bie_altinbistbul` (BIST gold, `İŞ GÜNÜ`, `last`), **not** by `bie_mkaltytl` — the
+latter carries only the monthly Ankara Chamber of Jewelers series (`TP.MK.CUM/KUL/LON/RES.YTL`) and
+publishes no `TP.ALTINPIYASA.*` identifier at all (live-verified 2026-10-19).
+
+| Canonical | v3 identifier (live) | Datagroup | Aggregation |
+|---|---|---|---|
+| `USD_TRY` | `TP.DK.USD.S.YTL` (selling) | `bie_dkdovytl` | avg |
+| `EUR_TRY` | `TP.DK.EUR.S.YTL` (selling) | `bie_dkdovytl` | avg |
+| `GOLD` | `TP.ALTINPIYASA.KAP03` (USD/oz — matches the seeded unit) | `bie_altinbistbul` | last |
+| `CBRT_REPO` | `TP.BISPOLFAIZ.TUR` | `bie_bispolfaiz` | last |
+| `TUIK_CPI` | `TP.TUKFIY2025.GENEL` (index, 2025=100) → **computed YoY** | `bie_tukfiy2025` | avg |
+
+`INDEP_CPI` stays admin-entered (ENAG is not on EVDS). Brent (`TP.BRENTPETROL.EUBP`) carries no V1
+series, so it is not requested. **Code-pin resolutions recorded here (never guessed):**
+**(1) CPI YoY** — the platform publishes the CPI only as an **index** (the `bie_tukfiy2025` datagroup
+has 349 monthly index series and no published annual-change series), so the adapter fetches the index
+over a window **derived from the output bound** — `output start − 12 months`
+(`date − (90 days + 12 months)` ≈ 15 months, not a fixed day count) — and emits the canonical
+**`YoY = (indexₘ/indexₘ₋₁₂ − 1) × 100`** for months inside the standard 90-day output window
+(`EvdsCpiYoY`). Every emitted month's year-prior baseline is therefore inside the fetch by
+construction; a fixed 400-day window did not reach it and emitted zero `TUIK_CPI` rows on a real run
+(R2-F4). A deterministic derivation from two real index observations, never an invented value. **(2) `CBRT_REPO`** — resolved from the catalog's
+"Merkez Bankaları Politika Faiz Oranı" datagroup as `TP.BISPOLFAIZ.TUR` (the plan's candidate list
+did not name it; confirmed via the datagroup's serieList, not assumed).
+
+**Two transports, one adapter.** When the additive `CatalogPath`/`SerieListPath` are configured
+(`MacroSourceOptions.UsesV3Discovery`) the adapter drives v3 discovery + `POST /fe`; the FX/gold/repo
+series ride the bounded **90-day value-date window** (DR-2) and the CPI index the derived wider window
+above. **One values request per cadence, never a mixed one:** the platform collapses a response to the
+*lowest common* frequency of the body's series (live-verified 2026-10-19 — adding the monthly repo to
+the daily FX/gold request returned **4 monthly rows** instead of **65 business-day rows**, and the
+decoder's `yyyy-MM` support would have stored monthly averages as daily observations), so the adapter
+issues **three** requests — business-day (USD/EUR/GOLD), monthly (`CBRT_REPO`), and the CPI index —
+and merges their decoded rows into one payload.
+The **code-level defaults keep discovery OFF** (empty paths) so the **L2 golden lane** — the legacy
+single-GET canonical `sourceRef`/`series` double — is unchanged; the shipped `appsettings.json`
+enables discovery. Persistence, validation, `source_ref = evds`, the per-job cadence mapping and the
+API-key redaction posture are all untouched.
+
+**Config (`Ingestion:Macro`, §10.4).** Shipped in `src/Api/appsettings.json`:
+`Ingestion:Macro = { BaseUrl = https://evds3.tcmb.gov.tr, Path = /igmevdsms-dis/fe,
+CatalogPath = /igmevdsms-dis/categories/withDatagroups/type=json,
+SerieListPath = /igmevdsms-dis/serieList/fe/type=json&code={code}, EvdsApiKey = "" }`.
+`compose.dev.yml` passes the optional `Ingestion__Macro__EvdsApiKey` through to the api service
+(empty default; never baked into an image); `.env.example` documents the v3 BaseUrl/Path + the
+additive discovery routes and the now-optional key.
+
+**Test-double posture (§10.9.7).** No golden changed. `RealSourceCatalog` gains four honestly-labeled
+entries: `evds-v3-values` (constructed, POST), `evds-v3-capture` (a bounded **live capture**, POST),
+`evds-v3-catalog` and `evds-v3-serie-list` (constructed, GET) — **no capture fabricated**. The
+canonical double re-runs green through the same production adapter (legacy lane); the FU fixture
+world keeps its `TP.*` codes via the union map.
 #### 10.9.13 Market snapshot — latest-stored-trading-day target selection (TKT-foundation-028, FR-MOV-001..006/010, NFR-MOV-001, BR-MOV-001/009)
 
 **Why (the defect this closes).** The `market-snapshot` job computed only for `request.Date`
@@ -758,4 +962,6 @@ Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets 
 | v1.5.2 | 2026-10-18 | **Real-only dev-stack data posture** (TKT-foundation-023, new §10.9.9): pins the dev data-world decision after the user-reported mixed 116-stock dev list (100 real + 16 FU fixture, a *data condition*, not a read-path defect). **Option A (recorded):** the real-only dev stack is a fresh database built by the real chain only — `down -v` → `up` → `run --rm migrate` → admin-trigger `universe-sync` → prices backfill — documented end to end in README "Dev-stack data"; the FU fixture seed stays the L2/L4 CI world and an opt-in dev/demo bootstrap. §10.9.3's deliberate FU/real coexistence in CI is the *reason* a reset path (not an exclusion switch) is the fix. Rejected: fixture-exclusion switch (a read-path filter existing only to undo a seed; `StockListEndpoints` is right — FR-RES-001) and "dev keeps both, only production is real" (leaves the reported mixed list as the dev default and lets T-anchored derived data pose as real). `FixtureSeedEntry.RunAsync` gains one honesty warning line on the seed path (log only — exit code, idempotency, L4 contract unchanged). | FR-RES-001 (dev browsing experience fixed by data posture, not read-path change); FR-MDF-006/007/011; FU §1 (fixture universe kept intact as the CI world); NFR-MDF-005 (reproducible documented bootstrap); `02` §8 (application seed the migrate step runs — unchanged) | No TCs needed (docs + one log line; foundation convention — explicit criteria). README + §10.9.9 + `FixtureSeedEntry` only; nothing under `src/Api`/`src/Ingestion`/`tests/` changes. Live criterion (018–022 honesty posture): the orchestrator runs the documented reset path on a fresh dev volume post-merge and verifies the stock list serves exactly the real covered universe |
 | v1.5.3 | 2026-10-18 | **KAP statements company-scoped wiring** (TKT-foundation-024, new §10.9.10): the `statements` job is wired to a real per-company KAP resource — the §10.9.5 envelope carries one `companyCode` per payload, so §10.9.2's seam doctrine applies verbatim to companies: company-scoped `StatementsSourceAdapter.FetchCompanyAsync` (`{symbol}`-templated path), the loop stays in the job over the bound index's current constituents, strictly sequential + paced (`Ingestion:Statements:RequestDelayMs`, default 500 ms), per-company failure isolation (a transport failure marks the company failed, writes **no** quarantine, raises one aggregate alert, continues the loop; a parse failure quarantines `UNPARSEABLE_PAYLOAD` and continues; terminal `Failed`/`Partial`/`Succeeded`). Its **own bound key `Ingestion:Statements:UniverseIndex`, default `XU030`, independent of `Ingestion:Prices:UniverseIndex`** (AD-14). Ships `Ingestion:Kap:BaseUrl = https://www.kap.org.tr` + an `Ingestion:Statements` section in `src/Api/appsettings.json`. **Live discovery honestly blocked** (2026-10-18): `www.kap.org.tr` is behind a Next.js front end, the former `kapsitebackend.mkk.com.tr` backend no longer resolves, and the candidate route returned 500/404 on every probe — **no capture fabricated**, no `RealSourceCatalog` entry; the shipped `Path` is a discovered-but-unverified candidate and live verification is the orchestrator's post-merge criterion. No golden churn: the company seam needed only an L2 harness *binding* delta (test-local `StatementBound` index `STMT`). | FR-MDF-002 (activated); FR-MDF-008 (per-company identity guard + provenance); FR-MDF-010/011 (backfill depth via existing `CoverageRecorder`); FR-MDF-012 (per-company isolation); unblocks FR-RES-006/008/009/010/011, FR-VAL-001, FR-MOV-006; AD-14 | Existing statements-path goldens (TC-MDF-065/067/071 + versioning/normalization/accounting-profile lanes) re-run green unchanged; new loop tests reuse TC-MDF-072/073/074 lane shapes for companies; statements-loop TC derivation remains a test-planner follow-up (flagged by 021) |
 | v1.5.4 | 2026-10-18 | **XU100 price coverage + index levels for both BIST indexes** (TKT-foundation-025): closes the two remaining gaps from the user's 2026-10-18 live check. (1) **Prices bound flipped** `XU030` → `XU100` in the shipped `src/Api/appsettings.json` (the §10.9.2 "XU100 later = a config flip, not new code"; valid now that the XU100 membership seed of §10.9.3 v1.5.1 supplies the rows) — the initial run backfills the ~70 newly-covered members through the existing per-ticker backfill path; pacing stays the pinned sequential `RequestDelayMs` 500 ms posture. (2) **Index levels for both BIST indexes** (FR-MDF-006 "including BIST 100 and BIST 30"): `Ingestion:Universe:IndexLevelsIndex` becomes the set **`IndexLevelsIndices`** (production default `[XU100, XU030]`; the pre-025 single-value key is removed — no shipped config used it), the sync loops the set sequentially through the templated route, and degradation is **per index** — a failing index quarantines `SOURCE_FETCH_FAILED` + alerts + `Partial` while the other index's levels still store (§10.9.8). (3) **`MarketSnapshotEngine` BIST 30 spelling fix**: the index-move lookup resolves both the real `XU030` and the FU `XU30` spellings, so a real-only DB never silently degrades the BIST 30 move to (0, 0) (FLG-08); the FU world has no `XU030` row, so every existing golden re-runs unchanged (§10.9.7). No new FRs. | FR-MDF-001/010 (prices coverage + backfill over the covered universe); FR-MDF-006 (both BIST indexes' levels); FR-MDF-008 (provenance on synced levels); FR-MOV-001 (both index moves non-degenerate); FR-RES-016/BR-RES-008 (price-less members' honest no-data posture deliberately unchanged — the fix is coverage, never a read-path change); BR-MDF-005 (covered universe = BIST 100); AD-14 | Test-plan delta: TC-MDF-075's "no override → production default" expectation amended `XU030` → `XU100` (planner-applied, test-planner confirmation pending; L2 harness bindings + goldens untouched); new universe-lane tests in `UniverseSyncTests`/`UniverseRealEnvelopeTests` (multi-index loop, per-index degradation) and a `MarketSnapshotTests` both-spellings test carry the `TKT_foundation_025` tag; TC-MDF-063 re-runs green with the new honestly-labeled XU100 capture; FU goldens (TC-MOV-001, EodChainTests, MarketEndpointsTests) re-run unchanged. Live criteria (orchestrator post-merge, the 021/023/024 precedent): a real prices run at `UniverseIndex=XU100` covers all current XU100 members + backfills; the index-levels sync stores real XU100 **and** XU030 levels; the snapshot recomputes over the real universe (market P/E / sector medians wait on 024's statements) |
+| v1.5.5 | 2026-10-18 | **KAP statements source rewired to MKK's official "KAP VYK API"** (TKT-foundation-026, new §10.9.11): supersedes 024's blocked website-proxy live criterion **by replacement** — the company-scoped `StatementsJob` loop, per-company isolation, envelope detection and keyed `IKapSourceClient` of v1.5.3 are reused unchanged; only the **source** is rewired to MKK's Apinizer gateway. The dev gateway **`https://apigwdev.mkk.com.tr/api/vyk`** is spec-verified and ships; the production host (`apigw.mkk.com.tr`) did not resolve from this environment and is **pinned by live verification, never assumed**. Auth = HTTP **Basic** on the KAP `HttpClient`, attached **iff** `Ingestion:Kap:ApiKey`/`ApiSecret` is present (env `Ingestion__Kap__ApiKey`/`Ingestion__Kap__ApiSecret`; `appsettings.json` ships empty defaults, the `EvdsApiKey` precedent; **live-verified**: the API Key is the Basic username, the API Secret the password), never in the URL, always redacted. Company mapping is a paced `GET /members` (`stockCode`→`companyId`, lazy+cached); a bound symbol with no mapping is marked failed with the named reason **`COMPANY_IDENTITY_UNRESOLVED`** (no rows, no fabricated mapping, counted in per-company stats, loop continues); a `/members` transport failure degrades honestly (snapshot `Failed`, every company `SOURCE_FETCH_FAILED`, one aggregate alert). Statements are class **`FR`** disclosures: `GET /disclosures?disclosureIndex={cursor}&disclosureClass=FR&companyId={id}` then `GET /disclosureDetail/{disclosureIndex}?fileType=data`; the detail's XBRL-style **`presentation`** tree (live-verified — the OpenAPI's declared `flatData` is **not** returned) joins the §10.9.5 decode doctrine (first-class real envelope, each sub-report's root name selects `BS`/`IS`/`CF`/`EQ`, each leaf's `CURR`-context value collapses onto `02` §6.1 via the shared concept map extended with the bare-name spellings, grouping + duplicate-concept rule verbatim, provenance `kap`), the identity guard skips a mismatched-`companyId` disclosure **before decode**. The per-company incremental cursor is the last-processed `disclosureIndex`, persisted in the existing `coverage_metadata` (`kap-disclosure-cursor`, outside `InstrumentScoped` — no migration, no reconcile clobber); a cursor-less company starts from `Ingestion:Statements:EarlyDisclosureIndex`. Pacing flips `Ingestion:Statements:RequestDelayMs` **500 → 10000** and every gateway call is paced by a scoped `KapRequestPacer`; an HTTP 429 / Apinizer throttle fault is a retryable transport failure (existing retry ladder, no quarantine), a real-body parse failure quarantines `UNPARSEABLE_PAYLOAD`. **Honest shape notes:** the `presentation` shape is pinned by a bounded **live capture** (`RealSourceCatalog` `kap-vyk-disclosure-detail`, disclosure 1226255, 2026-10-18, real CURR/PREV values — **no capture fabricated**); the member/list CI doubles are shape-faithful constructed bodies; `consolidation` (detail field with no `02` §3.1 home) is **not persisted** (flagged); the attachment-file layer (PDF/XBRL) is a **separate follow-up ticket**, never silently scoped in. | FR-MDF-002 (per-instrument per-period statement ingest activated live); FR-MDF-008 (provenance `kap` + company identity guard); FR-MDF-010 (backfill via `EarlyDisclosureIndex` + achieved depth recorded honestly); FR-MDF-011 (coverage metadata downstream); FR-MDF-012 (per-company isolation, unmapped-symbol named reason); unblocks FR-RES-006/008/009/010/011, FR-VAL-001, FR-MOV-006; BR-MDF-006; AD-14 | No statements-live TC exists (the 021/024 test-planner follow-up flags stand) — explicit CI criteria per the foundation convention: a 12-case suite in `tests/Api.IntegrationTests/VykStatementsSourceTests.cs` carrying the `TKT_foundation_026` tag (config wiring + Basic-auth iff credential + redaction; members mapping + real-shape detail decode/ingest; unmapped-symbol named reason; members transport failure; identity guard pre-decode skip; duplicate-concept rule; cursor persist/resume/idempotency; pacing across all VYK calls; throttle 200-fault + 429; the bounded capture through the production decoders). `RealSourceCatalog` gains two constructed VYK list entries + one bounded captured detail entry; canonical goldens untouched; the 024 config-wiring test's two shipped-value assertions updated minimally in place (BaseUrl + `/disclosures`). Live criteria (orchestrator post-merge): the credential pair now works against the dev gateway (HTTP 200 verified 2026-10-18) — a live run must pin the **production** BaseUrl (`apigw.mkk.com.tr` did not resolve at implementation time) before the statements-source live criterion closes; the dev-gateway list/detail decode is already capture-verified. Known consequence to flag: `DisclosuresSourceAdapter` shares `IKapSourceClient`, so the disclosures job now also targets the VYK gateway (out of scope; its live activation was already blocked). |
+| v1.5.6 | 2026-10-18 | **TCMB EVDS macro source migrated to the EVDS 3.0 platform** (TKT-foundation-027, new §10.9.12): supersedes §10.9.6's live-source wiring **by replacement** — `evds2.tcmb.gov.tr` now 302-blanket-redirects to **`evds3.tcmb.gov.tr`** and the v2 REST paths + some v2 `TP.*` datagroup codes are gone. The macro adapter, jobs, store, `MacroFreshnessService`, alerting and `source_ref = evds` are reused unchanged; only the **source transport** is rewired. The v3 values endpoint **`POST https://evds3.tcmb.gov.tr/igmevdsms-dis/fe` is ANONYMOUS** (live-verified 2026-10-18: HTTP 200 + real data with no key/cookie/login — the earlier 400s were a wrong body shape, not auth), so **no credential travels**; the `EvdsApiKey` setting is retained only as an optional redaction surface + the legacy canonical-double GET (empty default; never committed) and the SEC-1 query-string-leak follow-up does **not** apply to v3. Series codes are **discovered** (anonymous catalog `GET …/categories/withDatagroups/type=json` + `GET …/serieList/fe/type=json&code=<datagroup>`) and resolved to the live-verified identifiers — a datagroup/series absent from discovery is **skipped** (job LATE), never guessed. The request body is pinned verbatim from the site's own `getSeriVerileri` (hyphen-joined `series`/`aggregationTypes`/`formulas`, `frequency:"2"`, `dateFormat:"0"`/`yon:"0"`/`sira:"0"`, `ozelFormuller:[]`); the response underscores column keys (`TP_DK_USD_S_YTL`) and serialises values as **strings with thousands-grouping commas** — the decoder normalises `_`→`.` and strips grouping. **Code-pin resolutions recorded (never guessed):** (1) **CPI YoY** — the platform publishes the CPI only as an **index** (`bie_tukfiy2025` has 349 monthly index series, no published annual-change series), so the adapter fetches `TP.TUKFIY2025.GENEL` over a window derived from the output bound (`output start − 12 months`) and emits deterministic `YoY = (indexₘ/indexₘ₋₁₂ − 1) × 100` (`EvdsCpiYoY`) for months in the 90-day output window; (2) **`CBRT_REPO` = `TP.BISPOLFAIZ.TUR`** (from the "Merkez Bankaları Politika Faiz Oranı" datagroup — the plan's candidate list didn't name it; confirmed via serieList). Values are requested **one request per cadence** (business-day FX/gold, monthly repo, CPI index) because the platform collapses a mixed-frequency body to its lowest common frequency (live-verified 2026-10-19: 4 monthly rows vs 65 business-day rows). Series map (union, not replacement): `USD_TRY`←`TP.DK.USD.S.YTL`, `EUR_TRY`←`TP.DK.EUR.S.YTL`, `GOLD`←`TP.ALTINPIYASA.KAP03` (USD/oz, matches the seeded unit; published by `bie_altinbistbul`, live-verified 2026-10-19), `CBRT_REPO`←`TP.BISPOLFAIZ.TUR`, `TUIK_CPI`←CPI index→YoY; `INDEP_CPI` stays admin-entered; the fixture-era identifiers stay mapped so the L2 canonical double parses unchanged (discovery **off** by code default; the shipped `appsettings.json` enables it). `Ingestion:Macro` ships `BaseUrl=https://evds3.tcmb.gov.tr`, `Path=/igmevdsms-dis/fe`, additive `CatalogPath`/`SerieListPath`, `EvdsApiKey=""`; `compose.dev.yml` passes the optional key through; `.env.example` documents the v3 wiring. `RealSourceCatalog` gains four honestly-labeled entries (`evds-v3-values`/`evds-v3-catalog`/`evds-v3-serie-list` constructed, `evds-v3-capture` a bounded **live capture** — **no capture fabricated**). | FR-MOV-014 (macro ingest live-activated on the new platform); FR-MOV-007 (macro strip incl. USD/TRY unblocked); FR-MOV-016 (last-known/stale when v3 is down — LATE-on-missing-series posture preserved); FR-MOV-009 (per-series as-of); FR-MDF-008 (provenance `evds` + key-never-logged posture re-verified); OQ-MOV-005 re-resolved; AD-14; §10.4 (config) | No macro TC covers a live v3 shape yet (the real-envelope lane anticipated the v2 capture; TC-MOV-028's posture transfers). Explicit CI criteria per the foundation convention: the adapter suite + the real-envelope/ingest suite in `tests/Api.IntegrationTests/MacroEvdsAdapterTests.cs` and a deployment-wiring test in `LiveActivationTests.cs`, all carrying the `TKT_foundation_027` tag (v3 discovery + `/fe` body shape; underscored/comma decode → canonical; CPI YoY; missing-datagroup skip; provenance stamp + malformed quarantine; key-never-on-wire + redaction; appsettings + `.env.example` + `compose.dev.yml` wiring; real v3 envelope decode/ingest into `macro_values` with `source_ref=evds`; bounded 90-day window; bounded live capture; canonical double re-parses unchanged). TC-MOV-026 canonical goldens untouched (legacy lane unchanged). Live criterion (orchestrator post-merge): the anonymous `POST /fe` returns real values for all five series (USD/TRY + EUR/TRY verified live 2026-10-18) and a macro run stores them |
 | v1.5.7 | 2026-10-18 | **Market snapshot targets the latest stored trading day** (TKT-foundation-028, new §10.9.13): the `market-snapshot` job's date selection changes from "always `request.Date` (UTC today)" to **"the latest trading day ≤ `request.Date` that has stored prices for the covered universe"** — the max `daily_prices.price_date` ≤ `request.Date` over the current XU100 membership (`index_constituents`, `effective_to IS NULL`), the same covered-universe filter the engine uses; **stored prices are the truth, never a weekday/holiday rule** (`LatestTradingDayOnOrBefore` helpers are pure weekday-backing and `TradingCalendar.Holidays` ships empty). This closes the weekend/cold-start gap (the overview must show Friday on Saturday/Sunday) and self-heals a missed EOD run. Trading-day behaviour unchanged (requested day resolves exactly); **idempotent no-op** when the resolved day already has a `market_snapshots` row (a completed day is never recomputed/rewritten — the TC-MOV-005 one-row-per-day contract); the honest empty rule is unchanged (no stored price ≤ `request.Date` → `Succeeded`/0 written, no fabricated row, overview `state: unavailable`). **No `appsettings.json` change** — a config flag is rejected while the behaviour is simply "latest stored trading day"; the `prices` job is deliberately untouched. The serving contract of `03` §3 (latest-row + `stale`) is the unchanged consumer. | FR-MOV-001..006 (equity blocks materialized for the latest completed day); FR-MOV-010/NFR-MOV-001 (freshness: the dashboard reflects the latest completed trading day — weekend/cold-start case); BR-MOV-001 (latest-completed-trading-day posture); BR-MOV-009 (formulas unchanged — only which day they run over); `03` §3 (`GET /market/overview` latest-row + stale — unchanged consumer); `02` §3.2 (`market_snapshots` one-row-per-trading-day idempotency — unchanged) | New L2 date-selection tests in `MarketSnapshotTests` (`TKT_foundation_028` tag: Sat→Fri pick + `GET /market/overview` `asOf`/`stale:false`; already-snapshotted → no-op; trading-day → as-now; no-prices → no row + overview `unavailable`); existing TC-MOV-001..005 goldens and the EOD chain (`EodChainTests`) re-run green unchanged (fixture anchor T is a trading day with prices, so the selection resolves T exactly); TC-MOV-012 payload `asOf`/`stale` unaffected. Live criterion (orchestrator post-merge, the 021/023/024 precedent): an admin-triggered `market-snapshot` run on a Saturday records a real row at **2026-10-16 (Friday)** from the stored real prices and `GET /api/v1/market/overview` serves it (`asOf 2026-10-16`, `stale:false`); a trading-day run records the run day as now — attempt/result recorded on the ticket, never fabricated |

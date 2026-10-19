@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.CorporateActions;
@@ -98,11 +99,29 @@ public static class IngestionServiceCollectionExtensions
         {
             var options = provider.GetRequiredService<IOptions<KapSourceOptions>>().Value;
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
-            return new KapHttpSourceClient(new HttpClient
+            var http = new HttpClient
             {
                 BaseAddress = new Uri(baseUrl, UriKind.Absolute),
                 Timeout = TimeSpan.FromSeconds(30),
-            });
+            };
+
+            // The VYK gateway authenticates with an HTTP Basic credential (01 v1.5
+            // §10.9.11): ApiKey as the username, ApiSecret as the password, attached as a
+            // request header — never in the URL — and only when a credential is actually
+            // configured (empty in local/test wiring, where the WireMock double ignores it).
+            // The secret list feeds the client's redaction guard so no configured credential
+            // can leak into a thrown message.
+            var secrets = options.Secrets.ToList();
+            if (options.HasCredential)
+            {
+                var (username, password) = options.BasicCredential();
+                var basic = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
+                // The base64 token placed on the wire is itself redaction surface (SEC-2).
+                secrets.Add(basic);
+            }
+
+            return new KapHttpSourceClient(http, secrets);
         });
 
         services.Configure<StatementsSourceOptions>(configuration.GetSection(StatementsSourceOptions.SectionName));
@@ -159,6 +178,13 @@ public static class IngestionServiceCollectionExtensions
                 provider.GetRequiredService<IOptions<UniverseSourceOptions>>()));
         services.AddScoped<UniverseSyncStore>();
 
+        // The VYK company-scoped source (01 v1.5 §10.9.11): one per-run directory snapshot,
+        // a run-wide request pacer and the per-company disclosure cursor store. Each is
+        // scoped to one run so the read-only statements pacing never leaks onto the other
+        // KAP jobs sharing the client.
+        services.AddScoped<KapRequestPacer>();
+        services.AddScoped<VykCompanyDirectory>();
+        services.AddScoped<KapDisclosureCursorStore>();
         services.AddScoped<StatementsSourceAdapter>();
         services.AddScoped<ISourceAdapter<StatementsPayload>>(provider => provider.GetRequiredService<StatementsSourceAdapter>());
         services.AddScoped<FinancialStatementStore>();
