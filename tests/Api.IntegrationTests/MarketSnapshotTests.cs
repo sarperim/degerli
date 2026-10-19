@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Degerli.Api.IntegrationTests.Harness;
@@ -7,6 +8,7 @@ using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -276,6 +278,161 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-028 — target-day selection = latest stored trading day (01 §10.9.13)
+    //
+    // Weekend UX / cold-start catch-up: the day the snapshot formulas run over is the
+    // latest trading day <= request.Date that has stored prices for the covered universe
+    // — stored prices are the truth, never request.Date and never a weekday rule. The
+    // serving contract of GET /market/overview is unchanged (latest row + stale), so once
+    // a real Friday row exists the weekend overview serves it with stale:false (TC-MOV-012).
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TKT-foundation-028 — a Saturday request (2026-10-17) with stored prices through
+    /// Friday (2026-10-16) writes exactly one row at <c>SnapshotDate = 2026-10-16</c>
+    /// computed from the stored Friday prices, and the weekend overview then serves it
+    /// (<c>asOf = 2026-10-16</c>, <c>stale: false</c>).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_028_weekend_request_snapshots_latest_stored_trading_day()
+    {
+        await ResetAsync();
+        var thursday = new DateOnly(2026, 10, 15);
+        var friday = new DateOnly(2026, 10, 16);
+        var saturday = new DateOnly(2026, 10, 17);
+        await SeedStoredPriceWindowAsync(thursday, friday);
+
+        IngestResult result;
+        await using (var host = BuildHost())
+        {
+            result = await RunSnapshotAsync(host, saturday);
+        }
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(1, result.Written);
+        Assert.Equal(0, result.Unchanged);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var snapshot = await db.MarketSnapshots.SingleAsync();
+            Assert.Equal(friday, snapshot.SnapshotDate);
+            Assert.Equal(friday, snapshot.AsOfTradingDate);
+        }
+
+        // The weekend overview serves the real Friday row — Friday resolves as the latest
+        // trading day on Saturday, so the row is not stale (the weekend UX).
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(new DateTimeOffset(saturday.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+        });
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("2026-10-16", root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+        Assert.Equal("available", root.GetProperty("state").GetString());
+    }
+
+    /// <summary>
+    /// TKT-foundation-028 (TC-MOV-005 one-row-per-trading-day) — re-running the same weekend
+    /// request after Friday is already snapshotted is a no-op: nothing recomputed/rewritten
+    /// and still exactly one row.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_028_weekend_rerun_after_snapshotted_is_noop()
+    {
+        await ResetAsync();
+        var thursday = new DateOnly(2026, 10, 15);
+        var friday = new DateOnly(2026, 10, 16);
+        var saturday = new DateOnly(2026, 10, 17);
+        await SeedStoredPriceWindowAsync(thursday, friday);
+
+        await using var host = BuildHost();
+        var first = await RunSnapshotAsync(host, saturday);
+        Assert.Equal(1, first.Written);
+
+        var second = await RunSnapshotAsync(host, saturday);
+        Assert.Equal("succeeded", second.Status);
+        Assert.Equal(0, second.Written);
+        Assert.Equal(0, second.Unchanged);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(1, await db.MarketSnapshots.CountAsync());
+        Assert.Equal(1, await db.MarketSnapshots.CountAsync(s => s.SnapshotDate == friday));
+    }
+
+    /// <summary>
+    /// TKT-foundation-028 — when <c>request.Date</c> is itself a trading day with stored
+    /// prices the row lands on that day (behaviour unchanged: the day resolved from stored
+    /// facts is the requested day).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_028_trading_day_request_snapshots_that_day()
+    {
+        await ResetAsync();
+        var thursday = new DateOnly(2026, 10, 15);
+        var friday = new DateOnly(2026, 10, 16);
+        await SeedStoredPriceWindowAsync(thursday, friday);
+
+        IngestResult result;
+        await using (var host = BuildHost())
+        {
+            result = await RunSnapshotAsync(host, friday);
+        }
+
+        Assert.Equal(1, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        var snapshot = await db.MarketSnapshots.SingleAsync();
+        Assert.Equal(friday, snapshot.SnapshotDate);
+        Assert.Equal(friday, snapshot.AsOfTradingDate);
+    }
+
+    /// <summary>
+    /// TKT-foundation-028 — a request with no stored price ≤ it (for the covered universe)
+    /// writes no row: <c>Succeeded</c>, 0 written, and the overview keeps serving the honest
+    /// <c>state: unavailable</c> (the empty rule, unchanged).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_028_no_stored_price_writes_no_row_and_overview_unavailable()
+    {
+        await ResetAsync();
+        // Earlier than every stored price (the FU world's earliest row is EPSL 2025-05-30).
+        var beforeAnyPrice = new DateOnly(2024, 1, 1);
+
+        IngestResult result;
+        await using (var host = BuildHost())
+        {
+            result = await RunSnapshotAsync(host, beforeAnyPrice);
+        }
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(0, result.Written);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.MarketSnapshots.CountAsync());
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+        });
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("unavailable", document.RootElement.GetProperty("state").GetString());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -320,6 +477,51 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
         await using var db = _postgres.CreateContext();
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE indices SET code = {0} WHERE code = {1}", to, from);
+    }
+
+    /// <summary>
+    /// Seeds a stored-price window on each of <paramref name="dates"/> for the covered
+    /// universe by copying the anchor day's rows (TKT-foundation-028 weekend/cold-start
+    /// scenario: real prices exist through a Friday and nothing after). Idempotent across
+    /// the shared class fixture.
+    /// </summary>
+    private async Task SeedStoredPriceWindowAsync(params DateOnly[] dates)
+    {
+        await using var db = _postgres.CreateContext();
+        var anchorPrices = await db.DailyPrices.Where(p => p.PriceDate == T).ToListAsync();
+        var existing = (await db.DailyPrices
+                .Where(p => dates.Contains(p.PriceDate))
+                .Select(p => new { p.InstrumentId, p.PriceDate })
+                .ToListAsync())
+            .Select(p => (p.InstrumentId, p.PriceDate))
+            .ToHashSet();
+
+        foreach (var date in dates)
+        {
+            foreach (var price in anchorPrices)
+            {
+                if (!existing.Add((price.InstrumentId, date)))
+                {
+                    continue;
+                }
+
+                db.DailyPrices.Add(new DailyPrice
+                {
+                    InstrumentId = price.InstrumentId,
+                    PriceDate = date,
+                    Open = price.Open,
+                    High = price.High,
+                    Low = price.Low,
+                    CloseRaw = price.CloseRaw,
+                    CloseAdjusted = price.CloseAdjusted,
+                    Volume = price.Volume,
+                    SourceRef = "test:tkt-foundation-028-window",
+                    RecordedAt = price.RecordedAt,
+                });
+            }
+        }
+
+        await db.SaveChangesAsync();
     }
 
     /// <summary>
