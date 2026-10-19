@@ -45,6 +45,40 @@ public interface IKapSourceClient
     Task<string> GetStringAsync(string path, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Base+path composition for the KAP gateways (01 v1.5 §10.9.11). A configured base such as
+/// <c>https://apigwdev.mkk.com.tr/api/vyk</c> carries a <b>path prefix</b>, and a request path
+/// such as <c>/members</c> is <b>root-relative</b> to .NET's URI resolution — so the naive
+/// <c>HttpClient</c> join silently drops <c>/api/vyk</c> and every real-gateway request 404s.
+/// Both halves are required: the base must end with a directory separator <b>and</b> the path's
+/// leading slashes must be trimmed, so the path always resolves inside the base's directory.
+/// </summary>
+internal static class KapUri
+{
+    /// <summary>
+    /// Ensures <paramref name="baseAddress"/> ends with a directory separator, so a relative
+    /// request path is appended to (never substitutes) the configured path prefix. Idempotent;
+    /// any query/fragment on the configured base is preserved.
+    /// </summary>
+    public static Uri WithDirectorySeparator(Uri baseAddress)
+    {
+        var builder = new UriBuilder(baseAddress);
+        if (!builder.Path.EndsWith('/'))
+        {
+            builder.Path += "/";
+        }
+
+        return builder.Uri;
+    }
+
+    /// <summary>
+    /// Strips the leading slashes from a configured request path so it stays a
+    /// <b>relative</b> URI — a leading slash would make it root-relative (host-root) and drop
+    /// the base's path prefix.
+    /// </summary>
+    public static string ToRelativePath(string path) => path.TrimStart('/');
+}
+
 /// <summary>Default <see cref="IKapSourceClient"/>. Mirrors <see cref="HttpSourceClient"/>:
 /// a non-success status surfaces as <see cref="SourceFetchException"/> so the job can treat
 /// it as a source failure. The VYK gateway requires an HTTP <c>Basic</c> credential, which
@@ -60,6 +94,13 @@ public sealed class KapHttpSourceClient : IKapSourceClient
     {
         _http = http;
         _secrets = (secrets ?? []).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+
+        // Half one of the prefix-preserving join (§10.9.11): the base carries a directory
+        // separator, so the configured path prefix (`/api/vyk`) survives resolution.
+        if (_http.BaseAddress is not null)
+        {
+            _http.BaseAddress = KapUri.WithDirectorySeparator(_http.BaseAddress);
+        }
     }
 
     /// <inheritdoc />
@@ -67,7 +108,9 @@ public sealed class KapHttpSourceClient : IKapSourceClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        // Half two: a leading-slash path is root-relative to URI resolution and would drop the
+        // base's path prefix — always resolve inside the base's directory instead.
+        using var response = await _http.GetAsync(KapUri.ToRelativePath(path), cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             throw new SourceFetchException(
