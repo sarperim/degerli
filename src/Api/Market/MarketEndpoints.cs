@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Degerli.Api.Infrastructure;
 using Degerli.Ingestion.Macro;
+using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +17,8 @@ namespace Degerli.Api.Market;
 /// daily change, breadth, total volume, market P/E (+ loss-maker excluded count) &
 /// dividend yield, gainers/losers with volume, and cap-weighted sector performance —
 /// served anonymously under the honest-data envelope. The latest row is the served one;
-/// rows trailing the latest trading day carry <c>stale: true</c> (last-known-good,
+/// it carries <c>stale: true</c> only when a newer completed session's prices exist in
+/// the store and the row lacks them (stored-prices freshness, last-known-good,
 /// FR-MOV-010/016).</item>
 /// <item><c>GET /api/v1/market/macro</c> — the six V1 macro series, each
 /// <c>{code, value, unit, source, asOf, stale, state}</c>, resolved through the same
@@ -58,7 +60,9 @@ public static class MarketEndpoints
 
     /// <summary>
     /// The equity blocks in one payload (TC-MOV-012): the latest completed snapshot row,
-    /// or an honest <c>unavailable</c> state when no snapshot exists at all.
+    /// or an honest <c>unavailable</c> state when no snapshot exists at all. The
+    /// <c>stale</c> flag is resolved from the stored prices (TC-MOV-032): fresh unless a
+    /// newer completed trading day has prices the served row does not cover.
     ///
     /// <paramref name="period"/> is the Could-level sector-performance period selector
     /// (FR-MOV-017/UXR-MOV-012, TC-MOV-015): <c>1w</c>/<c>1m</c>/<c>ytd</c> are the
@@ -71,6 +75,7 @@ public static class MarketEndpoints
     /// </summary>
     private static async Task<IResult> OverviewAsync(
         DegerliDbContext db,
+        MarketSnapshotStore store,
         TimeProvider clock,
         CancellationToken cancellationToken,
         string? period = null)
@@ -116,8 +121,16 @@ public static class MarketEndpoints
             });
         }
 
-        // Last-known-good: the served row trails the latest trading day (FR-MOV-010/016).
-        var stale = snapshot.SnapshotDate < LatestTradingDayOnOrBefore(today);
+        // Last-known-good (FR-MOV-010/016) — display freshness is stored-prices-based,
+        // the same doctrine the write path applies (`01` §10.9.13, TKT-foundation-028):
+        // the served row is stale only when a NEWER completed session's prices exist in
+        // the store and the row lacks them (a genuinely missed `market-snapshot` run).
+        // Stored prices are the truth, never a weekday rule: on a Tuesday whose EOD has
+        // not landed, Monday IS the freshest completed session, so Monday's row is fresh.
+        var latestStoredTradingDay = await store
+            .ResolveLatestStoredTradingDayAsync(today, cancellationToken);
+        var stale = latestStoredTradingDay is not null
+            && snapshot.SnapshotDate < latestStoredTradingDay.Value;
 
         // Daily (no period) reads the locked cap-weighted daily aggregate; a supported
         // period serves its precomputed aggregate — empty until the feature is promoted
@@ -262,16 +275,5 @@ public static class MarketEndpoints
 
         return JsonSerializer.Deserialize<Dictionary<string, decimal>>(json)
             ?? new Dictionary<string, decimal>(StringComparer.Ordinal);
-    }
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
     }
 }
