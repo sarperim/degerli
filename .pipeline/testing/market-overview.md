@@ -1,6 +1,6 @@
 # Market Overview & Macro Indicators Test Plan
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.2 — §8 real-source EVDS case added 2026-10-17 (architecture v1.5 §10.9.6; test-planner-applied at the delivery planner's request, builder-directed); §7 v1.4 post-board cases (delivery-planner-applied 2026-10-15; test-planner confirmation pending); v1.1 approved (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — TC-MOV-029/030 added 2026-10-20 (TKT-foundation-031, `01` §10.9.14); v1.2 — §8 real-source EVDS case added 2026-10-17 (architecture v1.5 §10.9.6; test-planner-applied at the delivery planner's request, builder-directed); §7 v1.4 post-board cases (delivery-planner-applied 2026-10-15; test-planner confirmation pending); v1.1 approved (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
 **Derives from:** `analysis/market-overview.md` (FR-MOV-001..021, UC-MOV-001..005, NFR-MOV-001..006) · `ux/market-overview.md` (SCR-001, UXR-MOV-001..012) · `architecture/` v1.2 (`02` §3.2/§6.3, `03` §3, `01` §8–§9) · strategy (approved) · fixture contract `01-fixture-universe.md` (FU).
 **TC ID convention:** `TC-MOV-NNN`, permanent. Levels: L1 unit · L2 integration · L3 web component · L4 e2e.
 
@@ -41,6 +41,20 @@
 **TC-MOV-005 — One snapshot per trading day; latest completed served**
 - Traces: NFR-MOV-001, BR-MOV-009, `02` §3.2 · Level: L2 · Design: EP — repeated computation; recency class
 - Expected: re-running the snapshot job for T produces a single row (idempotent by snapshot_date); GET overview always serves the latest completed snapshot — after a T+1 run, payload reflects T+1 with its own asOf.
+- Dependencies: —
+
+**TC-MOV-029 — Snapshot serves price-derived blocks with zero share data (honest nulls)**
+- Traces: FR-MOV-001..006, 021, BR-MOV-009/010/011, NFR-MOV-001 · Level: L2 · Design: EP — the real dev-stack shape (prices + index levels, no `SHARES_DILUTED`) · Architecture: `01` §10.9.14
+- Preconditions: seeded FU fact world with every `SHARES_DILUTED` line item removed (prices, previous closes, index levels, income and dividends intact).
+- Steps: run the `market-snapshot` job for T; read the stored row and `GET /api/v1/market/overview`.
+- Expected: exactly one row written at T; the overview serves `state: available`, `asOf: T`, `stale: false`; index levels 10200.00/+2.00 and 30600.00/+2.00; breadth 10/5/1; `volumeTotal` 174,500,000; gainers 9 entries ETA…DELTA and losers 5 entries THETA…UNSEC (price facts, independent of any share count); `marketPe: null`, `marketPeExcludedCount` 16 (every constituent disclosed as non-P/E), `marketDivYield: null`, `sectorPerformance: {}` (omitted sectors, never `0.0`).
+- Dependencies: —
+
+**TC-MOV-030 — Partial share data: share-derived aggregates over the share-bearing subset**
+- Traces: FR-MOV-002/003/004/005/006/021, BR-MOV-010/011 · Level: L2 · Design: decision table — mixed share-bearing / no-share constituents · Architecture: `01` §10.9.14
+- Preconditions: as TC-MOV-029 but only the sector-A members (ALFA, BETA, GAMA, DELTA, REST) keep their `SHARES_DILUTED` rows.
+- Steps: run the `market-snapshot` job for T; read the stored row and the served payload.
+- Expected: price-derived blocks unchanged (breadth 10/5/1, `volumeTotal` 174,500,000, gainers/losers as TC-MOV-029) — no-share members still participate; market P/E = 3,750 / 325 = 11.5385 over the share-bearing profitable members only; `marketPeExcludedCount` 13 (11 no-share + BETA/GAMA loss-makers); `marketDivYield` = 150 / 5,030 = 0.029821 over the share-bearing members; `sectorPerformance` = `{"A": 0.002530}` with B and C omitted (no share-bearing member); payload `state: available`.
 - Dependencies: —
 
 ### Group B — Macro ingestion (UC-MOV-002)
@@ -243,4 +257,4 @@
 - Traces: FR-MOV-014, UC-MOV-002 main, `01` v1.5 §10.9.6, FU §10b · Level: L2 · Design: EP — real-envelope valid class; fidelity pins capture-recorded (never derived numbers)
 - Dependencies: TC-MOV-026.
 
-*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged.*
+*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged. v1.3 2026-10-20 — TC-MOV-029/030 added to Group A for the price-derived vs share-derived aggregate decoupling (architecture v1.5.9 §10.9.14; TKT-foundation-031, user-authorized product change): TC-MOV-029 pins the zero-share-count world (price-derived blocks served, `marketPe`/`marketDivYield` null, `marketPeExcludedCount` = constituent count, `sectorPerformance` `{}`) and TC-MOV-030 pins the partial-shares world (share-derived aggregates over the share-bearing subset, no-share members still counted in breadth/movers/volume and in the disclosed exclusion count). TC-MOV-001..005 goldens untouched — the FU world has share counts for every constituent, so every decoupling branch is a no-op there. Applied by the ticket implementer under the 030 precedent (explicit foundation criteria; architecture authority).*
