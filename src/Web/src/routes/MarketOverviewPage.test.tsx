@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes, useParams } from 'react-router'
 
 import { MarketOverviewPage } from '@/routes/MarketOverviewPage'
+import type { MarketOverviewResponse } from '@/lib/api/contracts'
 import { catalogValue } from '@/test/i18n'
 import {
   API_BASE,
@@ -33,21 +34,25 @@ import { renderWithProviders } from '@/test/render'
 
 const tr = (key: string) => catalogValue('tr', key)
 
-/** Mirror the page's locale formatting (`tr`) independently of the app code. */
+/**
+ * Mirror the page's locale formatting independently of the app code. Percent
+ * payloads are **fractions** (`0.02` = +2%) — the helper scales, the page's
+ * formatter scales, and the literal assertions below pin the result.
+ */
 const num = (value: number, options: Intl.NumberFormatOptions = {}) =>
   new Intl.NumberFormat('tr', options).format(value)
-const signedPct = (value: number) =>
-  `${num(value, {
+const signedPct = (fraction: number) =>
+  `${num(fraction * 100, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
     signDisplay: 'always',
   })}%`
-const ratioPct = (value: number) =>
+const ratioPct = (fraction: number) =>
   new Intl.NumberFormat('tr', {
     style: 'percent',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value)
+  }).format(fraction)
 
 function StockPageStub() {
   const { symbol } = useParams()
@@ -79,11 +84,15 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     const xu100 = await within(indices).findByTestId('index-xu100')
     expect(xu100).toHaveTextContent(tr('marketOverview.blocks.indices.xu100'))
     expect(xu100).toHaveTextContent(num(10200, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-    expect(xu100).toHaveTextContent(signedPct(2))
+    // The payload's `changePct` is a fraction (0.02) — the row must show +2,00%,
+    // not +0,02% (TKT-foundation-036; TC-MOV-031).
+    expect(xu100).toHaveTextContent('+2,00%')
+    expect(xu100).toHaveTextContent(signedPct(0.02))
 
     const xu30 = within(indices).getByTestId('index-xu30')
     expect(xu30).toHaveTextContent(tr('marketOverview.blocks.indices.xu30'))
-    expect(xu30).toHaveTextContent(signedPct(2))
+    expect(xu30).toHaveTextContent('+2,00%')
+    expect(xu30).toHaveTextContent(signedPct(0.02))
   })
 
   it('renders sector performance entries linking to the filtered stock list', async () => {
@@ -92,7 +101,9 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     const sectors = await screen.findByTestId('market-block-sectors')
     const sectorA = await within(sectors).findByTestId('sector-entry-A')
     expect(sectorA).toHaveAttribute('href', '/stocks?sector=A')
-    expect(sectorA).toHaveTextContent(signedPct(0.253))
+    // Cap-weighted sector daily performance is a fraction (0.00253 = +0,25%).
+    expect(sectorA).toHaveTextContent('+0,25%')
+    expect(sectorA).toHaveTextContent(signedPct(0.00253))
     expect(sectorA).toHaveAccessibleName(
       tr('marketOverview.blocks.sectors.linkLabel').replace('{{sector}}', 'A'),
     )
@@ -113,12 +124,14 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     const movers = await screen.findByTestId('market-block-movers')
     const eta = await within(movers).findByTestId('mover-gainer-ETA')
     expect(eta).toHaveAttribute('href', '/stocks/ETA')
-    expect(eta).toHaveTextContent(signedPct(10))
+    expect(eta).toHaveTextContent('+10,00%')
+    expect(eta).toHaveTextContent(signedPct(0.1))
     expect(within(eta).getByTestId('mover-volume-ETA')).toHaveTextContent(num(2_000_000))
 
     const theta = within(movers).getByTestId('mover-loser-THETA')
     expect(theta).toHaveAttribute('href', '/stocks/THETA')
-    expect(theta).toHaveTextContent(signedPct(-10))
+    expect(theta).toHaveTextContent('-10,00%')
+    expect(theta).toHaveTextContent(signedPct(-0.1))
     expect(within(theta).getByTestId('mover-volume-THETA')).toHaveTextContent(num(2_100_000))
   })
 
@@ -134,9 +147,13 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     expect(await within(valuation).findByTestId('market-pe')).toHaveTextContent(
       num(28.1218, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     )
-    expect(within(valuation).getByTestId('market-div-yield')).toHaveTextContent(
-      ratioPct(0.011225),
-    )
+    // The dividend yield is already a fraction and is formatted by the
+    // fraction-aware `formatRatioPercent` — the 036 fix must not double-scale it
+    // (0.011225 → 1,12%, never 112,25%).
+    const divYield = within(valuation).getByTestId('market-div-yield')
+    expect(divYield).toHaveTextContent(ratioPct(0.011225))
+    expect(divYield).toHaveTextContent('1,12')
+    expect(divYield).not.toHaveTextContent(ratioPct(1.1225))
 
     const disclosure = within(valuation).getByTestId('market-pe-disclosure')
     const expectedDisclosure = tr('marketOverview.blocks.valuation.exclusion').replace(
@@ -171,7 +188,7 @@ describe('TC-MOV-015 sector performance period selector (Could, UXR-MOV-012)', (
         // under the same envelope; period values are deferred, so return a distinct
         // shape that proves the period response (not the daily one) is rendered.
         const sectorPerformance = period
-          ? { A: 0.5, B: 0.6, C: 0.7 }
+          ? { A: 0.005, B: 0.006, C: 0.007 }
           : MARKET_OVERVIEW_FIXTURE.sectorPerformance
         return HttpResponse.json({ ...MARKET_OVERVIEW_FIXTURE, sectorPerformance })
       }),
@@ -182,7 +199,7 @@ describe('TC-MOV-015 sector performance period selector (Could, UXR-MOV-012)', (
     const sectors = await screen.findByTestId('market-block-sectors')
     // Default is the daily view (no period parameter).
     expect(await within(sectors).findByTestId('sector-entry-A')).toHaveTextContent(
-      signedPct(0.253),
+      signedPct(0.00253),
     )
 
     // The selector is present with all period options; daily is the default.
@@ -208,7 +225,7 @@ describe('TC-MOV-015 sector performance period selector (Could, UXR-MOV-012)', (
     )
     await waitFor(() => expect(sectorRequests).toContain('1w'))
     expect(await within(sectors).findByTestId('sector-entry-A')).toHaveTextContent(
-      signedPct(0.5),
+      signedPct(0.005),
     )
 
     // The honest envelope (as-of date) survives the period switch.
@@ -251,5 +268,84 @@ describe('TC-MOV-025 blocks render and fail independently', () => {
       expect(within(movers).getByTestId('mover-gainer-ETA')).toBeInTheDocument(),
     )
     expect(within(movers).queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('TC-MOV-031 percentage surfaces render the API fraction ×100', () => {
+  /**
+   * The real served payload shape (user-verified live `GET /market/overview`,
+   * 2026-10-20): `changePct` is a decimal fraction — AGHOL `0.014735` = +1,47%,
+   * XU100/TCKRC `-0.024875`/`-0.1` = −2,49% / −10,00%. Rendering these through a
+   * non-scaling formatter shows "+0,01%" (the shipped home-screen defect); these
+   * assertions are red on that code and green only when every percentage surface
+   * scales the fraction by 100 (TKT-foundation-036).
+   */
+  const FRACTION_PAYLOAD: MarketOverviewResponse = {
+    ...MARKET_OVERVIEW_FIXTURE,
+    indices: {
+      xu100: { level: 10234.56, changePct: 0.014735 },
+      xu30: { level: 30123.45, changePct: -0.1 },
+    },
+    gainers: [{ symbol: 'AGHOL', changePct: 0.014735, volume: 12_345_678 }],
+    losers: [{ symbol: 'TCKRC', changePct: -0.1, volume: 2_100_000 }],
+    sectorPerformance: { B: 0.022409 },
+  }
+
+  beforeEach(() => {
+    server.use(marketOverviewHandler(FRACTION_PAYLOAD))
+  })
+
+  it('renders a fractional index change as +1,47% (never +0,01%)', async () => {
+    renderPage()
+
+    const xu100 = await screen.findByTestId('index-xu100')
+    expect(xu100).toHaveTextContent('+1,47%')
+    expect(xu100).not.toHaveTextContent('+0,01%')
+
+    // −0.1 is −10,00%, not −0,10%.
+    const xu30 = screen.getByTestId('index-xu30')
+    expect(xu30).toHaveTextContent('-10,00%')
+    expect(xu30).not.toHaveTextContent('-0,10%')
+  })
+
+  it('renders a fractional mover change (visible text and aria-label)', async () => {
+    renderPage()
+
+    const movers = await screen.findByTestId('market-block-movers')
+    const aghol = await within(movers).findByTestId('mover-gainer-AGHOL')
+    expect(aghol).toHaveTextContent('+1,47%')
+    expect(aghol).not.toHaveTextContent('+0,01%')
+    // The link's accessible name carries the same corrected value.
+    expect(aghol).toHaveAccessibleName(/AGHOL \+1,47%/)
+    expect(aghol).not.toHaveAccessibleName(/\+0,01%/)
+
+    const tckrc = within(movers).getByTestId('mover-loser-TCKRC')
+    expect(tckrc).toHaveTextContent('-10,00%')
+    expect(tckrc).toHaveAccessibleName(/TCKRC -10,00%/)
+  })
+
+  it('renders a fractional sector entry as +2,24% (never +0,02%)', async () => {
+    renderPage()
+
+    const sectors = await screen.findByTestId('market-block-sectors')
+    const sectorB = await within(sectors).findByTestId('sector-entry-B')
+    expect(sectorB).toHaveTextContent('+2,24%')
+    expect(sectorB).not.toHaveTextContent('+0,02%')
+  })
+
+  it('renders the same fraction in EN locale formatting (+1.47%)', async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<MarketOverviewPage />} />
+          <Route path="/stocks" element={<div data-testid="stock-list-page" />} />
+          <Route path="/stocks/:symbol" element={<StockPageStub />} />
+        </Routes>
+      </MemoryRouter>,
+      { language: 'en' },
+    )
+
+    expect(await screen.findByTestId('index-xu100')).toHaveTextContent('+1.47%')
+    expect(screen.getByTestId('index-xu30')).toHaveTextContent('-10.00%')
   })
 })
