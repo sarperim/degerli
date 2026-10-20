@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-037: overview display-freshness rule is weekday-based — Monday's row (the freshest completed session) shows "Bayat" all Tuesday; apply the 028 stored-prices day resolution to the serving rule
 
-- Status: todo
+- Status: in-review — **PR #107** (https://github.com/sarperim/degerli/pull/107), branch `feature/TKT-foundation-037`, base `dev`.
 - Size: S–M
 - **Priority: P2 — dispatch immediately after/alongside 036.** User morning check 2026-10-20: the overview row (asOf 2026-10-19, Monday) carries a **Bayat** badge on Tuesday, and the user read it as another data error ("it shows stale which is another error it should have access to live data"). This is the divergence already recorded verbatim on TKT-foundation-031's live verification (2026-10-20 ~00:40 UTC): the criterion pinned `stale=false`; the served flag is `stale: true` — **the data is the freshest that exists; the badge is wrong.**
 - Root cause (planner-verified): `src/Api/Market/MarketEndpoints.cs:120` computes display freshness with a weekday rule — `stale = snapshot.SnapshotDate < LatestTradingDayOnOrBefore(today)` (a pure weekday-backing helper; `TradingCalendar.Holidays` ships empty). On a Tuesday morning/afternoon, `LatestTradingDayOnOrBefore(Tuesday)` = Tuesday, so Monday's completed session is flagged stale even though Tuesday's EOD only ingests at 20:30 Istanbul tonight — **no newer completed session's data exists**. This is the exact class of weekday-assumption the 028 target-day fix (`01` §10.9.13, "stored prices are the truth, never a weekday/holiday rule") removed from the write path; the serving path kept the old rule.
