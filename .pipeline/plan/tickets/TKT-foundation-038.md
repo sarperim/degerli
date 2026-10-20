@@ -12,7 +12,8 @@ scope:
 
 # TKT-foundation-038: macro freshness lies about monthly series — a `partial` run never counts as success, so TÜFE/Politika Faizi show "Bayat" on their latest PUBLISHED value; make staleness per-series and publication-frequency-aware
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/109
 - Size: M
 - **Priority: P2 — dispatch immediately after/alongside 036.** User morning check 2026-10-20: TÜİK TÜFE "Veri 1 Eyl 2026 itibarıyla — **Bayat**" and TCMB Politika Faizi "Veri 1 Ağu 2026 itibarıyla — **Bayat**" while showing their latest published values; the daily series (USD/TRY "Veri 20 Eki") correctly show no badge — the daily rule works, the monthly rule doesn't.
 - Root cause (planner-verified 2026-10-20 against the live dev database — read-only queries, evidence recorded):
