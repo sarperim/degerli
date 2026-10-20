@@ -81,19 +81,19 @@ public sealed class DividendsSourceOptions
 /// <para>
 /// <b>Failure posture (fail-fast, honest)</b> — identical to the corporate-actions rewire: a
 /// transport failure/HTTP error/gateway fault is a <see cref="SourceFetchException"/> (the run is
-/// recorded <c>failed</c>, never a fabricated empty success); a malformed detail body is a
+/// recorded <c>failed</c>, never a fabricated empty success), except a <c>400</c> whose body is
+/// the gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
+/// malformed detail body is a
 /// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); an
 /// unmapped bound symbol is a <see cref="CompanyIdentityUnresolvedException"/>. Cursors are
-/// persisted only once the whole loop succeeded.
+/// persisted at the end of the adapter loop, before the job's store write (§10.9.15's accepted
+/// residual: a post-fetch store failure can skip the indexes the cursor covers).
 /// </para>
 /// </summary>
 public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-dividends-cursor";
-
-    /// <summary>The VYK disclosure-list page size (01 v1.5 §10.9.11).</summary>
-    private const int VykPageSize = 50;
 
     private const string InstrumentScope = "instrument";
 
@@ -215,9 +215,9 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
     }
 
     /// <summary>
-    /// One company's walk (cursor <b>inclusive</b>: the gateway answers HTTP 400 <c>ER005</c> for an
-    /// index past the company's last disclosure — live-verified 2026-10-20 — so a caught-up company
-    /// re-reads its tail page instead of failing).
+    /// One company's walk (cursor <b>inclusive</b>; the shared
+    /// <see cref="VykDisclosureWalker"/> owns the ER005 honest-empty, stale-cursor reset, non-list
+    /// body and strict-cursor semantics — 01 v1.5 §10.9.15).
     /// </summary>
     private async Task<(List<DividendFact> Dividends, string? Cursor, string Raw)> FetchCompanyAsync(
         string symbol,
@@ -225,64 +225,20 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
         string? cursor,
         CancellationToken cancellationToken)
     {
-        var dividends = new List<DividendFact>();
-        var raw = new StringBuilder();
-        var processed = ParseIndex(cursor) ?? ParseIndex(_options.EarlyDisclosureIndex) ?? 0;
-        var from = processed;
-        string? nextCursor = null;
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact);
+        var walk = await walker.WalkAsync(
+                symbol,
+                companyId,
+                cursor,
+                _options.EarlyDisclosureIndex,
+                _options.Path,
+                _options.DetailPath,
+                IsFamily,
+                (detailRaw, walkedSymbol, _) => DecodeDetail(detailRaw, walkedSymbol),
+                cancellationToken)
+            .ConfigureAwait(false);
 
-        while (true)
-        {
-            var listRaw = await GetVykAsync(BuildListPath(from, companyId), cancellationToken).ConfigureAwait(false);
-            raw.AppendLine(listRaw);
-            var listed = ParseDisclosureList(listRaw);
-            if (listed.Count == 0)
-            {
-                break;
-            }
-
-            long maxIndex = -1;
-            foreach (var disclosure in listed)
-            {
-                var index = ParseIndex(disclosure.DisclosureIndex);
-                if (index is null)
-                {
-                    continue;
-                }
-
-                if (!string.Equals(disclosure.CompanyId, companyId, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                maxIndex = Math.Max(maxIndex, index.Value);
-                if (index <= processed || !IsFamily(disclosure))
-                {
-                    continue;
-                }
-
-                var detailRaw = await GetVykAsync(BuildDetailPath(disclosure.DisclosureIndex!), cancellationToken)
-                    .ConfigureAwait(false);
-                raw.AppendLine(detailRaw);
-                dividends.AddRange(DecodeDetail(detailRaw, symbol));
-            }
-
-            var advanced = maxIndex > from;
-            if (maxIndex > processed)
-            {
-                processed = maxIndex;
-                nextCursor = maxIndex.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (listed.Count < VykPageSize || maxIndex < 0 || !advanced)
-            {
-                break;
-            }
-
-            from = maxIndex;
-        }
-
-        return (dividends, nextCursor, raw.ToString());
+        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw);
     }
 
     /// <summary>
@@ -510,42 +466,6 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
         return null;
     }
 
-    private async Task<string> GetVykAsync(string path, CancellationToken cancellationToken)
-    {
-        if (_pacer is not null)
-        {
-            await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        return await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
-    }
-
-    private string BuildListPath(long from, string companyId)
-    {
-        var path = AppendQuery(_options.Path, "disclosureIndex", from.ToString(CultureInfo.InvariantCulture));
-        return AppendQuery(path, "companyId", companyId);
-    }
-
-    private string BuildDetailPath(string disclosureIndex)
-    {
-        var path = _options.DetailPath.Replace("{disclosureIndex}", Uri.EscapeDataString(disclosureIndex), StringComparison.Ordinal);
-        return AppendQuery(path, "fileType", "data");
-    }
-
-    private IReadOnlyList<DisclosureInfo> ParseDisclosureList(string raw)
-    {
-        using var document = ParseDocument(raw);
-        var root = document.RootElement;
-
-        var fault = VykFault.TryRead(root);
-        if (fault is not null)
-        {
-            throw new SourceFetchException($"VYK /disclosures returned a fault ({fault.Code}): {Redact(fault.Message)}");
-        }
-
-        return VykEnvelopes.Elements(root).Select(DisclosureInfo.From).ToList();
-    }
-
     private bool IsFamily(DisclosureInfo disclosure) =>
         string.IsNullOrWhiteSpace(_options.DisclosureType)
         || string.Equals(disclosure.DisclosureType, _options.DisclosureType, StringComparison.OrdinalIgnoreCase);
@@ -607,9 +527,6 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
 
     private string Redact(string? message) => _kapOptions?.Redact(message) ?? message ?? string.Empty;
 
-    private static long? ParseIndex(string? value) =>
-        long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var index) ? index : null;
-
     private static DateOnly? ParseDate(string? value) =>
         DateOnly.TryParseExact(value?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             ? date
@@ -621,12 +538,6 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>
         && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
-
-    private static string AppendQuery(string path, string key, string value)
-    {
-        var separator = path.Contains('?', StringComparison.Ordinal) ? '&' : '?';
-        return $"{path}{separator}{key}={Uri.EscapeDataString(value)}";
-    }
 
     private static JsonDocument ParseDocument(string raw)
     {

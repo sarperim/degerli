@@ -81,21 +81,21 @@ public sealed class CorporateActionsSourceOptions
 /// swallowed per-company failure would let a run report <c>succeeded</c> while silently skipping
 /// companies. Therefore: a transport failure, an HTTP error or a gateway fault is a
 /// <see cref="SourceFetchException"/> (the run is recorded <c>failed</c> — the failure ledger, no
-/// fabricated empty success); a structurally malformed detail body is a
+/// fabricated empty success), except a <c>400</c> whose body is the gateway's <c>ER005</c>
+/// envelope, which is end-of-list (an honest empty, §10.9.15); a structurally malformed detail
+/// body is a
 /// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); a bound
 /// symbol the directory cannot map is a <see cref="CompanyIdentityUnresolvedException"/> (never
-/// written under a fabricated identity). Per-company cursors are persisted <b>only after the whole
-/// loop succeeded</b>, so a failed run never advances a cursor past facts it did not emit.
+/// written under a fabricated identity). Per-company cursors are persisted <b>at the end of the
+/// adapter loop, before the job's store write</b>: a failed fetch never advances a cursor, but a
+/// post-fetch store failure can skip the indexes that cursor covers (accepted residual, §10.9.15;
+/// the next run's stale-cursor reset recovers it).
 /// </para>
 /// </summary>
 public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-corporate-actions-cursor";
-
-    /// <summary>The VYK disclosure-list page size (01 v1.5 §10.9.11): the service returns up to 50
-    /// rows from the requested index, so a full page means the walk continues from its tail.</summary>
-    private const int VykPageSize = 50;
 
     private const string InstrumentScope = "instrument";
 
@@ -226,10 +226,10 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     }
 
     /// <summary>
-    /// One company's walk: list its disclosures from <paramref name="cursor"/> (inclusive — the
-    /// gateway answers <b>HTTP 400 <c>ER005</c></b> when the requested index is past the company's
-    /// last disclosure, live-verified 2026-10-20, so a caught-up company re-reads its tail page
-    /// instead of failing), keep the <c>CA</c> rows, and decode each new row's detail.
+    /// One company's walk: list its disclosures from <paramref name="cursor"/> (inclusive), keep
+    /// the <c>CA</c> rows and decode each new row's detail. The shared
+    /// <see cref="VykDisclosureWalker"/> owns the ER005 honest-empty / stale-cursor-reset /
+    /// non-list-body / strict-cursor semantics (01 v1.5 §10.9.15).
     /// </summary>
     private async Task<(List<CorporateActionFact> Actions, string? Cursor, string Raw)> FetchCompanyAsync(
         string symbol,
@@ -237,68 +237,20 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         string? cursor,
         CancellationToken cancellationToken)
     {
-        var actions = new List<CorporateActionFact>();
-        var raw = new StringBuilder();
-        var processed = ParseIndex(cursor) ?? ParseIndex(_options.EarlyDisclosureIndex) ?? 0;
-        var from = processed;
-        string? nextCursor = null;
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact);
+        var walk = await walker.WalkAsync(
+                symbol,
+                companyId,
+                cursor,
+                _options.EarlyDisclosureIndex,
+                _options.Path,
+                _options.DetailPath,
+                IsFamily,
+                (detailRaw, walkedSymbol, _) => DecodeDetail(detailRaw, walkedSymbol),
+                cancellationToken)
+            .ConfigureAwait(false);
 
-        while (true)
-        {
-            var listRaw = await GetVykAsync(BuildListPath(from, companyId), cancellationToken).ConfigureAwait(false);
-            raw.AppendLine(listRaw);
-            var listed = ParseDisclosureList(listRaw);
-            if (listed.Count == 0)
-            {
-                break;
-            }
-
-            long maxIndex = -1;
-            foreach (var disclosure in listed)
-            {
-                var index = ParseIndex(disclosure.DisclosureIndex);
-                if (index is null)
-                {
-                    continue;
-                }
-
-                // The identity guard runs before the detail fetch: a disclosure naming another
-                // company is skipped, never decoded under this company's identity (FR-MDF-008).
-                if (!string.Equals(disclosure.CompanyId, companyId, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                maxIndex = Math.Max(maxIndex, index.Value);
-                if (index <= processed || !IsFamily(disclosure))
-                {
-                    continue;
-                }
-
-                var detailRaw = await GetVykAsync(BuildDetailPath(disclosure.DisclosureIndex!), cancellationToken)
-                    .ConfigureAwait(false);
-                raw.AppendLine(detailRaw);
-                actions.AddRange(DecodeDetail(detailRaw, symbol));
-            }
-
-            var advanced = maxIndex > from;
-            if (maxIndex > processed)
-            {
-                processed = maxIndex;
-                nextCursor = maxIndex.ToString(CultureInfo.InvariantCulture);
-            }
-
-            // A short page ends the walk; so does a full page that does not advance the cursor (a
-            // gateway that ignored the offset and re-served the same page must not loop us).
-            if (listed.Count < VykPageSize || maxIndex < 0 || !advanced)
-            {
-                break;
-            }
-
-            from = maxIndex;
-        }
-
-        return (actions, nextCursor, raw.ToString());
+        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw);
     }
 
     /// <summary>
@@ -362,44 +314,6 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         }
 
         return default;
-    }
-
-    /// <summary>Paced VYK GET: every gateway call waits for the run's pacer (§10.9.2/§10.9.11).</summary>
-    private async Task<string> GetVykAsync(string path, CancellationToken cancellationToken)
-    {
-        if (_pacer is not null)
-        {
-            await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        return await _client.GetStringAsync(path, cancellationToken).ConfigureAwait(false);
-    }
-
-    private string BuildListPath(long from, string companyId)
-    {
-        var path = AppendQuery(_options.Path, "disclosureIndex", from.ToString(CultureInfo.InvariantCulture));
-        return AppendQuery(path, "companyId", companyId);
-    }
-
-    private string BuildDetailPath(string disclosureIndex)
-    {
-        var path = _options.DetailPath.Replace("{disclosureIndex}", Uri.EscapeDataString(disclosureIndex), StringComparison.Ordinal);
-        return AppendQuery(path, "fileType", "data");
-    }
-
-    /// <summary>Parses the disclosure list, classifying a gateway fault as a source failure.</summary>
-    private IReadOnlyList<DisclosureInfo> ParseDisclosureList(string raw)
-    {
-        using var document = ParseDocument(raw);
-        var root = document.RootElement;
-
-        var fault = VykFault.TryRead(root);
-        if (fault is not null)
-        {
-            throw new SourceFetchException($"VYK /disclosures returned a fault ({fault.Code}): {Redact(fault.Message)}");
-        }
-
-        return VykEnvelopes.Elements(root).Select(DisclosureInfo.From).ToList();
     }
 
     /// <summary>True when the listed row belongs to this adapter's disclosure family.</summary>
@@ -467,9 +381,6 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
 
     private string Redact(string? message) => _kapOptions?.Redact(message) ?? message ?? string.Empty;
 
-    private static long? ParseIndex(string? value) =>
-        long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var index) ? index : null;
-
     /// <summary>The disclosure publish stamp <c>dd.MM.yyyy HH:mm:ss</c> (live-verified 2026-10-20).</summary>
     private static DateOnly? ParseDisclosureDate(string? value)
     {
@@ -490,12 +401,6 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
-
-    private static string AppendQuery(string path, string key, string value)
-    {
-        var separator = path.Contains('?', StringComparison.Ordinal) ? '&' : '?';
-        return $"{path}{separator}{key}={Uri.EscapeDataString(value)}";
-    }
 
     private static JsonDocument ParseDocument(string raw)
     {

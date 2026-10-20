@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
@@ -14,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
 using WireMock.Types;
 
 namespace Degerli.Api.IntegrationTests;
@@ -270,7 +273,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     {
         await ResetAsync();
         StubVykDirectory();
-        StubDisclosureList(("1138986", "CA"), ("1138987", "ODA"));
+        StubDisclosureList("1001", 0, ("1138986", "CA"), ("1138987", "ODA"));
         StubDetail("1138986", DividendDetailBody());
         _wireMock.StubJson(DetailPath("1138987"), DisclosureDetailBody("1138987", "ODA"));
         await using var provider = BuildIngestion(vyk: true);
@@ -278,6 +281,10 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         var result = await RunAsync(provider, "dividends");
 
         Assert.Equal(IngestResult.Succeeded, result.Status);
+
+        // The verified route is really called with this company's identity and from index 0 — a
+        // BuildListPath that dropped or mis-spelled `companyId` cannot pass this test (R4).
+        AssertDisclosureQuery("1001", "0");
 
         await using var db = _postgres.CreateContext();
         var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
@@ -315,13 +322,14 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     {
         await ResetAsync();
         StubVykDirectory();
-        StubDisclosureList(("1138796", "CA"));
+        StubDisclosureList("1001", 0, ("1138796", "CA"));
         StubDetail("1138796", CapitalIncreaseDetailBody());
         await using var provider = BuildIngestion(vyk: true);
 
         var result = await RunAsync(provider, "corporate-actions");
 
         Assert.Equal(IngestResult.Succeeded, result.Status);
+        AssertDisclosureQuery("1001", "0");
 
         await using var db = _postgres.CreateContext();
         var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
@@ -355,13 +363,14 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     {
         await ResetAsync();
         StubVykDirectory();
-        StubDisclosureList(("1138986", "CA"));
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
         StubDetail("1138986", DividendDetailBody());
         await using var provider = BuildIngestion(vyk: true);
 
         var result = await RunAsync(provider, "disclosures");
 
         Assert.Equal(IngestResult.Succeeded, result.Status);
+        AssertDisclosureQuery("1001", "0");
 
         await using var db = _postgres.CreateContext();
         var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
@@ -381,6 +390,8 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     /// source failure, never a fabricated empty success: the run is recorded <c>failed</c> in
     /// the run ledger, the exception surfaces, no fact row is written and nothing is
     /// quarantined as a parse event (the <c>statements</c> postures of §10.9.10/§10.9.11).
+    /// The body is a plain 404 body: only a <b>400</b> whose body is the <c>ER005</c> envelope is
+    /// the end-of-list answer (see the honest-empty tests below).
     /// </summary>
     [Theory]
     [InlineData("dividends", "dividends")]
@@ -390,7 +401,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     {
         await ResetAsync();
         StubVykDirectory();
-        _wireMock.StubJson(DisclosuresPath, """{"code":"ER005","message":"Bildirim bulunamadı. Disclosure not found."}""", statusCode: 404);
+        _wireMock.StubJson(DisclosuresPath, """{"message":"Resource not found."}""", statusCode: 404);
         await using var provider = BuildIngestion(vyk: true);
 
         await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, jobCode));
@@ -430,6 +441,219 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
+    /// TKT-foundation-034 (criterion (i), honest empty, R1) — HTTP <b>400</b> whose body is the
+    /// gateway's <c>ER005</c> envelope is the list route's "no disclosure at/after this index"
+    /// answer, not a source failure: a zero-disclosure company's first pass ends cleanly
+    /// (succeeded run, 0 rows, 0 quarantine) and its cursor is not advanced.
+    /// </summary>
+    [Theory]
+    [InlineData("dividends", "dividends")]
+    [InlineData("corporate-actions", "corporate_actions")]
+    [InlineData("disclosures", "kap_disclosures")]
+    public async Task TKT_foundation_034_er005_end_of_list_is_an_honest_empty(string jobCode, string table)
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureListError("1001", 0, 400, Status400Er005);
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, jobCode);
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(0, result.Written);
+        Assert.Equal(0, result.Quarantined);
+        AssertDisclosureQuery("1001", "0");
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await CountRowsAsync(db, table));
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "succeeded",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == jobCode).ToListAsync()).Status);
+        Assert.Empty(await db.CoverageMetadata.Where(c => c.Scope == "instrument").ToListAsync());
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (honest empty, R2) — a genuine <c>200 []</c> list is an empty list too:
+    /// succeeded run, 0 rows. (A <i>non-list</i> 200 body is the quarantine case below.)
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_empty_array_list_is_an_honest_empty()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0);
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(0, result.Written);
+        AssertDisclosureQuery("1001", "0");
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R1) — a <b>stale persisted cursor</b> (a company whose tail the gateway
+    /// no longer serves, e.g. after the R3 post-fetch store-failure window) answers 400
+    /// <c>ER005</c> on the first request; the walk resets once to <c>EarlyDisclosureIndex</c> and
+    /// ingests honestly instead of failing every future run.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_stale_cursor_resets_instead_of_poisoning_the_family()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        await SeedCursor("ALFA", "kap-dividends-cursor", "1231018");
+        StubDisclosureListError("1001", 1231018, 400, Status400Er005);
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        StubDetail("1138986", DividendDetailBody());
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "dividends");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(2, result.Written);
+
+        // Requested the stale cursor first, then reset to the early index (exactly once).
+        AssertDisclosureQuery("1001", "1231018", "0");
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(2, await db.Dividends.CountAsync(d => d.InstrumentId == alfa));
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-dividends-cursor");
+        Assert.Equal("1138986", cursor.Notes);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R1) — the <c>ER005</c> discrimination is narrow: a <b>400</b> carrying
+    /// another code still fails the run honestly (no honest-empty swallow).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_400_with_another_code_is_still_a_source_failure()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureListError("1001", 0, 400, """{"code":"ER001","message":"Beklenmeyen bir hata oluştu."}""");
+        await using var provider = BuildIngestion(vyk: true);
+
+        await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "corporate-actions"));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.CorporateActions.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "failed",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync()).Status);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R2) — a <c>200</c> list body that is <b>not</b> a JSON array of rows
+    /// (here <c>{}</c>) is an unparseable payload, never a fabricated empty success: the job
+    /// quarantines it as <c>UNPARSEABLE_PAYLOAD</c> and the run is <c>failed</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"disclosureIndex":"1138986"}""")]
+    [InlineData("""[{"title":"ALFA"},{"disclosureIndex":"1138987"}]""")]
+    public async Task TKT_foundation_034_non_list_200_body_is_quarantined(string body)
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, body);
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Equal(1, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        var quarantine = Assert.Single(await db.QuarantinedFacts.ToListAsync());
+        Assert.Equal("UNPARSEABLE_PAYLOAD", quarantine.ReasonCode);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R5) — a <b>404 on the detail route mid-walk</b> is a source failure:
+    /// failed run, no fact rows (the payload is never persisted), no quarantine.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_detail_404_mid_walk_is_an_honest_source_failure()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), ("1138987", "CA"));
+        StubDetail("1138796", CapitalIncreaseDetailBody());
+        StubDetailError("1138987", 404, """{"message":"Resource not found."}""");
+        await using var provider = BuildIngestion(vyk: true);
+
+        await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "corporate-actions"));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.CorporateActions.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "failed",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync()).Status);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R5/R6) — a malformed detail body (<c>200</c>, truncated JSON) is a
+    /// payload quarantine (<c>UNPARSEABLE_PAYLOAD</c>), not a skipped row and not a success.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_malformed_detail_body_is_quarantined()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        _wireMock.StubJson(DetailPath("1138986"), """{"disclosureIndex":"1138986","subject":{"tr":"Kar""");
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Equal(1, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        var quarantine = Assert.Single(await db.QuarantinedFacts.ToListAsync());
+        Assert.Equal("UNPARSEABLE_PAYLOAD", quarantine.ReasonCode);
+        Assert.Equal("disclosures", quarantine.JobCode);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R6) — the disclosures detail's contract names <c>time</c>,
+    /// <c>subject</c> and <c>link</c>; a detail missing one is quarantined rather than stored as a
+    /// row with null metadata (the corporate-actions posture, applied consistently).
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_detail_without_publish_metadata_is_quarantined()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        _wireMock.StubJson(
+            DetailPath("1138986"),
+            """{"disclosureIndex":"1138986","disclosureType":"CA","subject":{"tr":"Kar Payı"},"link":"https://www.kap.org.tr/Bildirim/1138986"}""");
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Equal(1, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        Assert.Equal("UNPARSEABLE_PAYLOAD", Assert.Single(await db.QuarantinedFacts.ToListAsync()).ReasonCode);
+    }
+
+    /// <summary>
     /// TKT-foundation-034 (criterion (ii)) — the per-instrument disclosure cursor is persisted in
     /// the existing <c>coverage_metadata</c> table and the next run resumes <b>inclusively</b> at
     /// the last-seen index: the gateway answers HTTP 400 <c>ER005</c> for an index <i>past</i> a
@@ -441,7 +665,8 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     {
         await ResetAsync();
         StubVykDirectory();
-        StubDisclosureList(("1138986", "CA"));
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        StubDisclosureList("1001", 1138986, ("1138986", "CA"));
         StubDetail("1138986", DividendDetailBody());
         await using var provider = BuildIngestion(vyk: true);
 
@@ -449,7 +674,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         var first = await RunAsync(provider, "dividends");
         Assert.Equal(IngestResult.Succeeded, first.Status);
         Assert.Equal(2, first.Written);
-        Assert.Equal("0", DisclosureRequestIndexes().Single());
+        AssertDisclosureQuery("1001", "0");
 
         await using (var db = _postgres.CreateContext())
         {
@@ -475,7 +700,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
                 && e.RequestMessage.Path.StartsWith("/disclosureDetail", StringComparison.Ordinal));
 
         // Resumed at the last-seen index itself (inclusive), never at index+1 (which 400s).
-        Assert.Equal("1138986", DisclosureRequestIndexes().Single());
+        AssertDisclosureQuery("1001", "1138986");
     }
 
     /// <summary>
@@ -491,27 +716,44 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         using var document = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
         var ingestion = document.RootElement.GetProperty("Ingestion");
 
-        foreach (var section in new[] { "Dividends", "CorporateActions", "Disclosures" })
+        // Every shipped key of every family is compared against that family's code default, so
+        // config and code cannot drift on any route/bound key (R10).
+        var dividends = new DividendsSourceOptions();
+        var corporateActions = new CorporateActionsSourceOptions();
+        var disclosures = new DisclosuresSourceOptions();
+
+        AssertFamily(ingestion.GetProperty("Dividends"), dividends.Path, dividends.DetailPath, dividends.UniverseIndex, dividends.EarlyDisclosureIndex, dividends.DisclosureType);
+        AssertFamily(ingestion.GetProperty("CorporateActions"), corporateActions.Path, corporateActions.DetailPath, corporateActions.UniverseIndex, corporateActions.EarlyDisclosureIndex, corporateActions.DisclosureType);
+        AssertFamily(ingestion.GetProperty("Disclosures"), disclosures.Path, disclosures.DetailPath, disclosures.UniverseIndex, disclosures.EarlyDisclosureIndex, disclosures.DisclosureType);
+
+        Assert.Equal(
+            dividends.DividendEventType,
+            ingestion.GetProperty("Dividends").GetProperty("DividendEventType").GetString());
+
+        // The code defaults themselves are the live-verified values.
+        Assert.Equal("/disclosures", dividends.Path);
+        Assert.Equal("/disclosureDetail/{disclosureIndex}", dividends.DetailPath);
+        Assert.Equal("XU030", dividends.UniverseIndex);
+        Assert.Equal("0", dividends.EarlyDisclosureIndex);
+        Assert.Equal("CA", dividends.DisclosureType);
+        Assert.Equal("KP", dividends.DividendEventType);
+        Assert.Equal("CA", corporateActions.DisclosureType);
+        Assert.Equal(string.Empty, disclosures.DisclosureType);
+
+        static void AssertFamily(
+            JsonElement family,
+            string path,
+            string detailPath,
+            string universeIndex,
+            string earlyDisclosureIndex,
+            string disclosureType)
         {
-            var family = ingestion.GetProperty(section);
-            Assert.Equal("/disclosures", family.GetProperty("Path").GetString());
-            Assert.Contains(
-                "{disclosureIndex}",
-                family.GetProperty("DetailPath").GetString()!,
-                StringComparison.Ordinal);
-            Assert.Equal("XU030", family.GetProperty("UniverseIndex").GetString());
-            Assert.Equal("0", family.GetProperty("EarlyDisclosureIndex").GetString());
+            Assert.Equal(path, family.GetProperty("Path").GetString());
+            Assert.Equal(detailPath, family.GetProperty("DetailPath").GetString());
+            Assert.Equal(universeIndex, family.GetProperty("UniverseIndex").GetString());
+            Assert.Equal(earlyDisclosureIndex, family.GetProperty("EarlyDisclosureIndex").GetString());
+            Assert.Equal(disclosureType, family.GetProperty("DisclosureType").GetString());
         }
-
-        Assert.Equal("CA", ingestion.GetProperty("Dividends").GetProperty("DisclosureType").GetString());
-        Assert.Equal("KP", ingestion.GetProperty("Dividends").GetProperty("DividendEventType").GetString());
-        Assert.Equal("CA", ingestion.GetProperty("CorporateActions").GetProperty("DisclosureType").GetString());
-        Assert.Equal(string.Empty, ingestion.GetProperty("Disclosures").GetProperty("DisclosureType").GetString());
-
-        // The code defaults are the same verified routes (config and code cannot drift).
-        Assert.Equal("/disclosures", new DividendsSourceOptions().Path);
-        Assert.Equal("CA", new CorporateActionsSourceOptions().DisclosureType);
-        Assert.Equal(string.Empty, new DisclosuresSourceOptions().DisclosureType);
     }
 
     // ---------------------------------------------------------------------------------
@@ -581,6 +823,10 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
 
     private async Task ResetAsync()
     {
+        // The request log is class-scoped (shared WireMock fixture); each test asserts only its
+        // own gateway calls.
+        _wireMock.Server.ResetLogEntries();
+
         await using var db = _postgres.CreateContext();
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM fin_line_items");
@@ -650,14 +896,20 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         _wireMock.StubJson(AnchorPath, """{"lastDisclosureIndex":"1231017"}""");
     }
 
+    private const string Status400Er005 =
+        """{"code":"ER005","message":"Bildirim bulunamadı. Disclosure not found."}""";
+
     /// <summary>
     /// The <c>/disclosures</c> list double: the live-verified row shape (identity, type/class,
     /// owning <c>companyId</c>, the accepted file types) — <b>no</b> date and a <c>title</c> that
-    /// is the company name, exactly as the gateway returns it. Ascending by index.
+    /// is the company name, exactly as the gateway returns it. Ascending by index. The mapping
+    /// <b>binds both query parameters</b> (<c>companyId</c>, <c>disclosureIndex</c>): a
+    /// <c>BuildListPath</c> that omitted or mis-spelled either cannot be answered (R4).
     /// </summary>
-    private void StubDisclosureList(params (string Index, string Type)[] rows) =>
-        _wireMock.StubJson(
-            DisclosuresPath,
+    private void StubDisclosureList(string companyId, long disclosureIndex, params (string Index, string Type)[] rows) =>
+        StubDisclosureList(
+            companyId,
+            disclosureIndex,
             JsonSerializer.Serialize(rows.Select(row => new
             {
                 disclosureIndex = row.Index,
@@ -665,12 +917,66 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
                 disclosureClass = "ODA",
                 subReportIds = Array.Empty<string>(),
                 title = "ALFA",
-                companyId = "1001",
+                companyId,
                 acceptedDataFileTypes = new[] { "html", "flat" },
             })));
 
+    /// <summary>A <c>/disclosures</c> mapping for one exact (company, index) with a raw body.</summary>
+    private void StubDisclosureList(string companyId, long disclosureIndex, string body)
+    {
+        var request = Request.Create()
+            .WithPath(DisclosuresPath)
+            .UsingGet()
+            .WithParam("companyId", companyId)
+            .WithParam("disclosureIndex", disclosureIndex.ToString(CultureInfo.InvariantCulture));
+
+        _wireMock.Server
+            .Given(request)
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(body));
+    }
+
+    /// <summary>A <c>/disclosures</c> mapping for one exact (company, index) returning a failure status.</summary>
+    private void StubDisclosureListError(string companyId, long disclosureIndex, int statusCode, string body)
+    {
+        var request = Request.Create()
+            .WithPath(DisclosuresPath)
+            .UsingGet()
+            .WithParam("companyId", companyId)
+            .WithParam("disclosureIndex", disclosureIndex.ToString(CultureInfo.InvariantCulture));
+
+        _wireMock.Server
+            .Given(request)
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(statusCode)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(body));
+    }
+
     private void StubDetail(string disclosureIndex, string body) =>
         _wireMock.StubJson(DetailPath(disclosureIndex), body);
+
+    private void StubDetailError(string disclosureIndex, int statusCode, string body) =>
+        _wireMock.StubJson(DetailPath(disclosureIndex), body, statusCode: statusCode);
+
+    /// <summary>Seeds a per-instrument cursor row as an earlier run would have left it.</summary>
+    private async Task SeedCursor(string symbol, string dataType, string notes)
+    {
+        await using var db = _postgres.CreateContext();
+        var instrumentId = await db.Instruments.Where(i => i.Symbol == symbol).Select(i => i.Id).SingleAsync();
+        db.CoverageMetadata.Add(new Degerli.Persistence.Entities.CoverageMetadata
+        {
+            Scope = "instrument",
+            InstrumentId = instrumentId,
+            DataType = dataType,
+            Notes = notes,
+        });
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>
     /// A dividend (<c>eventType=KP</c>) detail body, trimmed from the <b>real</b> capture of BİM
@@ -915,11 +1221,28 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
 
     /// <summary>The disclosure indexes the run requested from <c>/disclosures</c>, in call order.</summary>
     private List<string?> DisclosureRequestIndexes() =>
+        DisclosureRequests().Select(r => r.Index).ToList();
+
+    /// <summary>The exact (index, companyId) pairs the run sent to <c>/disclosures</c>, in call order.</summary>
+    private List<(string? Index, string? CompanyId)> DisclosureRequests() =>
         _wireMock.Server.LogEntries
             .Where(e => e.RequestMessage is not null && e.RequestMessage.Path == DisclosuresPath)
             .OrderBy(e => e.RequestMessage!.DateTime)
-            .Select(e => FirstValue(e.RequestMessage!.Query, "disclosureIndex"))
+            .Select(e => (
+                Index: FirstValue(e.RequestMessage!.Query, "disclosureIndex"),
+                CompanyId: FirstValue(e.RequestMessage!.Query, "companyId")))
             .ToList();
+
+    /// <summary>
+    /// Asserts the walk really requested the verified route for this company, from these indexes
+    /// in order. A path builder that drops or mis-spells <c>companyId</c> fails here (R4).
+    /// </summary>
+    private void AssertDisclosureQuery(string companyId, params string[] indexes)
+    {
+        var requests = DisclosureRequests();
+        Assert.Equal(indexes, requests.Select(r => r.Index).ToArray());
+        Assert.All(requests, r => Assert.Equal(companyId, r.CompanyId));
+    }
 
     private static string? FirstValue(IDictionary<string, WireMockList<string>>? map, string key)
     {

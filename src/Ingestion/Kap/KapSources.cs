@@ -110,14 +110,56 @@ public sealed class KapHttpSourceClient : IKapSourceClient
 
         // Half two: a leading-slash path is root-relative to URI resolution and would drop the
         // base's path prefix — always resolve inside the base's directory instead.
-        using var response = await _http.GetAsync(KapUri.ToRelativePath(path), cancellationToken).ConfigureAwait(false);
+        using var response = await _http
+            .GetAsync(KapUri.ToRelativePath(path), HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
+            // The body decides whether a non-success is a *source failure* or one of the gateway's
+            // documented not-a-failure answers (HTTP 400 `ER005` = "no disclosure here", §10.9.15),
+            // so it must travel with the exception — bounded and redacted, never a credential.
             throw new SourceFetchException(
-                Redact($"KAP source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'."));
+                Redact($"KAP source '{_http.BaseAddress}' returned HTTP {(int)response.StatusCode} for '{path}'."),
+                (int)response.StatusCode,
+                await ReadBodyExcerptAsync(response, cancellationToken).ConfigureAwait(false));
         }
 
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The maximum number of response-body bytes carried on a <see cref="SourceFetchException"/>.</summary>
+    private const int MaxErrorBodyBytes = 2048;
+
+    /// <summary>
+    /// Reads at most <see cref="MaxErrorBodyBytes"/> of a non-success body (UTF-8, the gateway's
+    /// encoding) and redacts every configured secret. A body that cannot be read yields <c>null</c>
+    /// — the status alone still fails the run.
+    /// </summary>
+    private async Task<string?> ReadBodyExcerptAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var buffer = new byte[MaxErrorBodyBytes];
+            var read = 0;
+            while (read < buffer.Length)
+            {
+                var chunk = await stream.ReadAsync(buffer.AsMemory(read, buffer.Length - read), cancellationToken)
+                    .ConfigureAwait(false);
+                if (chunk == 0)
+                {
+                    break;
+                }
+
+                read += chunk;
+            }
+
+            return Redact(Encoding.UTF8.GetString(buffer, 0, read));
+        }
+        catch (Exception exception) when (exception is IOException or HttpRequestException or ObjectDisposedException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Replaces every configured secret with <c>***</c> in a message that could echo it.</summary>
