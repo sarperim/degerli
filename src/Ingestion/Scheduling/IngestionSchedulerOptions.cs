@@ -2,9 +2,11 @@ namespace Degerli.Ingestion.Scheduling;
 
 /// <summary>
 /// Configuration for the C3c scheduler (FR-MDF-009, NFR-MDF-001; architecture §3 C3c,
-/// §5 background jobs). Defaults encode the production contract — 20:30 Europe/Istanbul,
-/// the 5/15/60-minute retry ladder — so a host that configures nothing still behaves
-/// per the requirement.
+/// §5 background jobs). The EOD stream and the retry ladder keep the production contract as
+/// their code defaults — 20:30 Europe/Istanbul, the 5/15/60-minute ladder — so a host that
+/// configures nothing still behaves per the requirement. The morning stream is the one
+/// exception: its empty code default is a <b>composition/test</b> contract (no morning stream
+/// is created), and production gets the 08:30 cron from the shipped <c>appsettings.json</c>.
 /// </summary>
 public sealed class IngestionSchedulerOptions
 {
@@ -19,6 +21,23 @@ public sealed class IngestionSchedulerOptions
     /// applied separately by the calendar (FR-MDF-009).
     /// </summary>
     public string Cron { get; set; } = "0 30 20 * * *";
+
+    /// <summary>
+    /// Cronos expression (six fields) for the <b>morning chain</b> trigger — the
+    /// EOD-repair safety net + incremental KAP freshness pass (01 v1.5 §10.9.16,
+    /// TKT-foundation-040). The shipped <c>appsettings.json</c> carries
+    /// <c>0 30 8 * * *</c> (08:30 Europe/Istanbul); the morning stream is trading-day
+    /// gated, resolves its run date to the <b>previous trading day</b> (BIST price data
+    /// is EOD — a Tuesday 08:30 pass can only ever repair Monday's session) and runs the
+    /// pinned <see cref="MorningIngestChain"/> with the stored-prices repair gate.
+    /// <para>
+    /// Empty (the code template default) means <b>no morning stream is created</b>, so a
+    /// host or test composition that configures nothing keeps the pre-040 single-stream
+    /// behaviour byte-compatible (the acceptance contract of TKT-foundation-040 (iv));
+    /// production behaviour comes from the shipped configuration value.
+    /// </para>
+    /// </summary>
+    public string MorningCron { get; set; } = string.Empty;
 
     /// <summary>IANA (or Windows) time-zone id the cron is evaluated in. FR-MDF-009 fixes
     /// this at Europe/Istanbul.</summary>

@@ -19,6 +19,60 @@ public sealed class DailyPriceStore
 
     public DailyPriceStore(DegerliDbContext db) => _db = db;
 
+    /// <summary>
+    /// How much of one bound index's current membership already has a stored
+    /// <c>daily_prices</c> row for a given day. This is the read side of the morning chain's
+    /// repair gate (01 v1.5 §10.9.16): <c>daily_prices</c> is the truth about what the market
+    /// has published, so a day whose current constituents are <b>all</b> stored is a
+    /// completed day and is never re-fetched (the §10.9.13 stored-prices-as-truth doctrine,
+    /// which keeps a normal morning at zero İş Yatırım calls and zero
+    /// <c>CONFLICTING_VALUE</c> quarantine noise).
+    /// <para>
+    /// The membership filter is the same one <c>PricesJob</c> fetches over
+    /// (<c>index_constituents</c> with <c>effective_to IS NULL</c>), so the gate and the job
+    /// never disagree about the bound. An unknown/empty bound reports
+    /// <c>Constituents == 0</c> — <see cref="PriceDayCoverage.IsComplete"/> is then false, so
+    /// the caller runs the job (never silently skipping a cold start that still has to seed
+    /// or fetch).
+    /// </para>
+    /// </summary>
+    public async Task<PriceDayCoverage> GetDayCoverageAsync(
+        string indexCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(index => index.Code == indexCode)
+            .Select(index => (long?)index.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (indexId is null)
+        {
+            return new PriceDayCoverage(0, 0);
+        }
+
+        var constituents = _db.IndexConstituents
+            .Where(constituent => constituent.IndexId == indexId.Value && constituent.EffectiveTo == null)
+            .Select(constituent => constituent.InstrumentId);
+
+        var total = await constituents.Distinct().CountAsync(cancellationToken).ConfigureAwait(false);
+        if (total == 0)
+        {
+            return new PriceDayCoverage(0, 0);
+        }
+
+        var covered = await _db.DailyPrices
+            .Where(price => price.PriceDate == date && constituents.Contains(price.InstrumentId))
+            .Select(price => price.InstrumentId)
+            .Distinct()
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new PriceDayCoverage(total, covered);
+    }
+
     public Task<PriceWriteResult> UpsertAsync(
         DateOnly date,
         string sourceRef,
@@ -150,4 +204,15 @@ public sealed class DailyPriceStore
         && stored.Low == fact.Low
         && stored.CloseRaw == fact.Close
         && stored.Volume == fact.Volume;
+}
+
+/// <summary>
+/// Stored-price coverage of one bound index's current membership on one day (01 v1.5
+/// §10.9.16) — the morning chain's repair-gate input. <see cref="IsComplete"/> is true only
+/// for a non-empty bound whose every current constituent has a stored row for the day.
+/// </summary>
+public sealed record PriceDayCoverage(int Constituents, int Covered)
+{
+    /// <summary>Whether the day is fully covered for this bound (a completed day).</summary>
+    public bool IsComplete => Constituents > 0 && Covered >= Constituents;
 }
