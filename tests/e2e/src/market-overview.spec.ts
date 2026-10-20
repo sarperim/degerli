@@ -45,12 +45,19 @@ test.describe('TC-MOV-016 dashboard renders anonymously, TR default, equity bloc
         .getByRole('button', { name: TR('header.turkish') }),
     ).toHaveAttribute('aria-pressed', 'true')
 
-    // Index levels with a directional (signed) daily change.
+    // Index levels with a directional (signed) daily change — and the change is
+    // the known FU fixture VALUE, not just a sign: the API serves `changePct` as
+    // a fraction (0.02 = +2%), so a formatter that forgets the ×100 renders
+    // "+0,02%" and fails here (TKT-foundation-036 / TC-MOV-031).
     const xu100 = page.getByTestId('index-xu100')
     await expect(xu100).toBeVisible()
     await expect(xu100).toContainText(TR('marketOverview.blocks.indices.xu100'))
-    await expect(xu100).toContainText(/[+−-]/)
-    await expect(page.getByTestId('index-xu30')).toBeVisible()
+    await expect(xu100).toContainText('+2,00%')
+    await expect(xu100).not.toContainText('+0,02%')
+    await expect(page.getByTestId('index-xu30')).toContainText('+2,00%')
+
+    // The top gainer (FU fixture ETA) shows its known +10,00% value.
+    await expect(page.getByTestId('mover-gainer-ETA')).toContainText('+10,00%')
 
     // Sector performance, breadth, volume, valuation.
     await expect(page.getByTestId('sector-entry-A')).toBeVisible()

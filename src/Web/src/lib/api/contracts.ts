@@ -104,7 +104,10 @@ export interface MacroResponse extends HonestDataEnvelope {
  * Equity blocks (`03` §3) — SCR-001 (TKT-mov-005).
  * ------------------------------------------------------------------ */
 
-/** One index level + its daily % change (`changePct` is already a percentage). */
+/**
+ * One index level + its daily % change. `changePct` is a **decimal fraction**
+ * (`0.02` = +2%), never an already-scaled percentage (`03` §2/§4).
+ */
 export interface IndexLevel {
   level: number
   changePct: number
@@ -117,14 +120,21 @@ export interface MarketBreadth {
   unchanged: number
 }
 
-/** One top-mover entry — symbol, daily % change, traded share volume. */
+/**
+ * One top-mover entry — symbol, daily % change, traded share volume.
+ * `changePct` is a **decimal fraction** (`0.10` = +10%), like the index change.
+ */
 export interface MoverEntry {
   symbol: string
   changePct: number
   volume: number
 }
 
-/** Per-sector daily performance keyed by the sector's stable code. */
+/**
+ * Per-sector daily performance keyed by the sector's stable code. The values are
+ * **decimal fractions** of daily change (`0.0224` = +2,24%), the same unit class
+ * as `changePct` (`03` §2/§4).
+ */
 export type SectorPerformance = Record<string, number>
 
 /**
