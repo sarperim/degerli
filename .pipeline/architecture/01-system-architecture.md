@@ -984,6 +984,141 @@ by block:
 honest unavailable state). UI: no change — `MarketOverviewPage` already renders those nulls with
 the honest unavailable treatment.
 
+#### 10.9.15 The events families on the VYK gateway — dividends, corporate actions, disclosures (TKT-foundation-034, FR-MDF-003/004/005, FR-MOV-006 downstream)
+
+**Why (the defect this closes).** TKT-foundation-026 rewired **`statements` only**; the
+`dividends`, `corporate-actions` and `disclosures` adapters still fetched the placeholder
+single-resource paths (`/dividends`, `/corporate-actions`, a `/disclosures` body that does not
+exist as such). Every one of those routes 404s on the VYK gateway, so the three jobs could never
+ingest a real row, and `§10.9.11`'s shared `IKapSourceClient` (v1.5.5's flagged consequence) made
+that failure live. This subsection records the **verified** event-family routes and their decode
+contracts. No family is blocked: all three are served by the gateway's two disclosure routes.
+
+**The routes (live-verified 2026-10-20, dev gateway `https://apigwdev.mkk.com.tr/api/vyk`).**
+Evidence: ~30 paced (≥12 s/call) probes plus real response captures kept outside the repo; the
+OpenAPI alone was **not** trusted (its `disclosureTypes`/`disclosureClass` examples are ambiguous,
+026's lesson).
+
+| Family | List route | Family selector | Detail route |
+|---|---|---|---|
+| `corporate-actions` | `GET /disclosures?disclosureIndex={n}&companyId={id}` | listed row `disclosureType == "CA"` | `GET /disclosureDetail/{index}?fileType=data` |
+| `dividends` | same | `disclosureType == "CA"`, then detail `eventType == "KP"` | same |
+| `disclosures` | same | **every** listed type (the general surface) | same |
+
+**What the gateway actually returns (pinned shapes, never invented).**
+
+- **List rows** carry `disclosureIndex`, `disclosureType`, `disclosureClass`, `subReportIds`,
+  `title`, `companyId`, `acceptedDataFileTypes` — and **no date**. `title` is the **company name**,
+  *not* the disclosure subject (so the disclosures job must read the detail for its title/date/
+  link). Rows are **ascending by index**, at most **50 per page**, starting at the requested index
+  (a company-scoped page is often shorter — e.g. 26/39/40 rows for a whole company archive).
+- **The `disclosureTypes` filter works** (verified: `?disclosureIndex=1160000&disclosureTypes=CA`
+  → 50 all-`CA` rows), but a **filtered empty set answers HTTP 400
+  `{"code":"ER005","message":"Bildirim bulunamadı. Disclosure not found."}`**, not `200 []`.
+  **Same for an index past a company's last disclosure** (verified:
+  `?companyId=1406&disclosureIndex=1231018` → 400 `ER005`). This decides two adapter rules:
+  the family filter is applied **client-side on the listed row** (the unfiltered company list
+  always returns that company's rows), and the per-company cursor is read **inclusively** (the
+  walk re-requests from the last-seen index instead of `index + 1`), so a caught-up company
+  re-reads its tail page rather than tripping `ER005`. A filtered list is therefore never used,
+  and an honest empty is never turned into a source failure.
+- **Detail bodies** carry `disclosureIndex`, `disclosureType`, `disclosureClass`,
+  `subject{tr,en}`, `period{tr,en}`, `summary{tr,en}`, `time` (`dd.MM.yyyy HH:mm:ss`), `link`
+  (`https://www.kap.org.tr/Bildirim/{index}`), `attachmentUrls[]`, `eventType`, `eventId`,
+  `relatedStocks[]` and — **for `CA` bodies, unlike `FR` (026), `flatData` IS returned**:
+  `flatData[0] = { id: "tr.com.mkk.kap.client.dto.KPY5xDTO", content: { object: { void: [ …named
+  fields… ] } } }`.
+- **`eventType` vocabulary observed** (every value below is from a real body): `KP` dividend
+  (`KPY51DTO`, `subProcessName=NKP`, `useCaseMethodName=karPayi`, subject "Kar Payı Dağıtım
+  İşlemlerine İlişkin Bildirim"), `SA` capital increase/decrease (`KPY52DTO`), `GAI` buy-back,
+  `SPAF` debt issue, `IT` issue limit, `GK` general assembly (`KPY50DTO`).
+- **Dividend body shape** (real capture: BİM disclosure `1138986`, 14.04.2023): `currency` is a
+  keyed `{key,text}` list (`TRY`); `cashDividendList` rows (nested
+  `object.void[] → object.void[]`) carry `exchCode`, `groupCode`, `installmentOrder`
+  (`1`, `2`, … and `T` = total), `grossTry`, `netTry`, `grossPercentage`, `netPercentage`;
+  `cashDividendPaymentDateList` rows carry `installmentOrder` and the date wrappers
+  `advisedUsageDate.date.object.string` (**ex-date**), `recordDate`, `paymentDate`.
+
+**Mapping onto the canonical contracts (downstream unchanged).** Every stored field is a real
+source field; nothing is synthesized.
+
+- `corporate-actions` → `CorporateActionFact`: `ActionType` = the gateway `eventType` code
+  (`SA`, `GAI`, `SPAF`, `KP`, …) — the engine's `ToDatedAction` recognises only
+  `split`/`bonus_issue`/`rights_issue`, so **no adjustment factor is invented** from an
+  unrecognised code (honest, BR-MDF-010 untouched); `ActionDate` = the disclosure's publish date
+  (`time`); `Terms` = the detail's `flatData[0].content.object` retained verbatim as `terms_json`
+  (`NULL` when the gateway sent none — never an invented `{}`).
+- `dividends` → `DividendFact`: **one fact per cash instalment** (`installmentOrder != "T"`;
+  the aggregate row is a summary, not a fact), `AmountPerShare` = `grossTry`,
+  `ExDate` = the instalment's `advisedUsageDate`, `PayDate` = its `paymentDate` (nullable),
+  `Currency` = the detail's `currency.key` (none when absent — never an assumed `TRY`). A row
+  without an ex-date is left out rather than dated by guesswork; a row naming another
+  `exchCode` is skipped (FR-MDF-008). Downstream consumer: FR-MOV-006's TTM DPS (unchanged).
+- `disclosures` → `DisclosureFact`: `Id` = `disclosureIndex`, `DisclosureType` = the detail's
+  `disclosureType`, `PublishDate` = `time`, `Title` = `subject.tr` (fallback `subject.en`),
+  `SourceUrl` = `link`. Metadata only — the attachment/document layer stays a separate follow-up
+  (026's scope note); `document_path` remains the configured-volume path.
+
+**Where the loop lives (why the adapter, not the job).** The three job files are outside this
+ticket's scope and ask `ISourceAdapter.FetchAsync(date)` for **one** payload, so the
+company-scoped loop that §10.9.10/§10.9.11 place in the statements job lives in the adapters:
+resolve `Ingestion:{Family}:UniverseIndex`'s current constituents
+(`UniverseSyncStore.GetCurrentConstituentSymbolsAsync`), map each symbol through the run's
+`/members` `VykCompanyDirectory`, walk that company's list from its cursor, fetch each new
+detail, and aggregate into the one payload the job persists. Pacing is the shared scoped
+`KapRequestPacer` (bound to `Ingestion:Statements:RequestDelayMs`) — **every** gateway call,
+including `/members` and the anchor, is paced (shipped 10 000 ms; free plan ≈6 calls/min).
+Provenance is `kap` on every row (FR-MDF-008).
+
+**Failure posture (fail-fast, honest).** An adapter has no per-company ledger channel, so a
+swallowed per-company failure would let a run report `succeeded` while silently skipping
+companies. Therefore a transport failure, an HTTP error (404/400/429) or a gateway fault
+(`fault`/`code+message` envelope) is a **`SourceFetchException`** — the job does not catch it, the
+runner records the run `failed` in `ingest_runs` (the failure ledger) and no row is written; a
+structurally malformed body is a **`SourcePayloadException`** (quarantine
+`UNPARSEABLE_PAYLOAD`); a bound symbol the directory cannot map is a
+**`CompanyIdentityUnresolvedException`**; an empty bound index is a failure, never an empty
+success. **Cursors are persisted only after the whole loop succeeded**, so a failed run can never
+advance a cursor past facts it did not emit. (Residual, flagged: the window between that
+persistence and the job's store write is the one place a crash could skip rows on the next run —
+the statements precedent persists per-company *after* its write, which the adapter cannot see.)
+
+**Incremental cursor (structural pin).** Per family per instrument, the last-seen
+`disclosureIndex` is stored in the **existing `coverage_metadata`** table (Scope `instrument`,
+data types **`kap-dividends-cursor`**, **`kap-corporate-actions-cursor`**,
+**`kap-disclosures-cursor`**, the value in `Notes`) — no schema migration. These data types are
+deliberately **outside** `CoverageDataTypes.InstrumentScoped`, so the no-silent-gaps reconcile
+never clobbers them. A cursor-less company starts from `Ingestion:{Family}:EarlyDisclosureIndex`
+(the first pass **is** the backfill: achieved depth is what the source returned, FR-MDF-010/011).
+
+**Config (`Ingestion:Dividends` / `Ingestion:CorporateActions` / `Ingestion:Disclosures`, §10.4).**
+Shipped in `src/Api/appsettings.json`: each family declares `Path = /disclosures`,
+`DetailPath = /disclosureDetail/{disclosureIndex}`, `EarlyDisclosureIndex = 0`,
+`UniverseIndex = XU030` (its own bound key, AD-14); `Dividends`/`CorporateActions` add
+`DisclosureType = CA` (`Dividends` also `DividendEventType = KP`); `Disclosures` ships
+`DisclosureType = ""` (every type). The code defaults are the same verified values, so config and
+code cannot drift. The pacer keeps using `Ingestion:Statements:RequestDelayMs`.
+
+**Operator note — first-pass cost (flagged, not hidden).** The first live pass of each family is
+its backfill, and `disclosures` is the expensive one: every listed disclosure needs its own detail
+call (the list carries neither the title subject nor a date), so a full XU030 pass over the dev
+archive is on the order of a thousand paced calls (~10 s each ⇒ hours on the free plan). One
+consequence of the fail-fast posture above: the walk advances cursors only when the **whole** run
+succeeded, so the first pass must complete inside a single run — a failure repeats it from the
+start rather than resuming mid-pass. The honest lever for the operator is therefore a narrower
+`Ingestion:{Family}:UniverseIndex` for the first pass (each family has its own bound key, AD-14),
+not a silent depth cap: no disclosure index is ever skipped past a company whose facts were not
+emitted.
+
+**Test-double posture (§10.9.7).** The legacy single-resource branch is kept **verbatim** for
+compositions with the VYK source disabled (`MembersPath` unset), so the canonical doubles —
+including `EodChainTests`/`EodStaleServingTests`, which set the three canned `Path` values — are
+byte-identical and the TC-MDF-003..006 goldens re-run unchanged (**no permitted delta**). The
+verified routes are exercised by new L2 tests in `StatementsAndEventsIngestionTests` against
+shape-faithful doubles of the verified routes (trimmed real captures: BİM `KP`, Tüpraş `SA`, and
+the real list/detail metadata shapes) plus 404/fault honest-failure cases, the inclusive-cursor
+resume, and a config-wiring assertion.
+
 ## 11. Architecture decision log (summary)
 
 | AD | Decision | One-line rationale (full text in sections above) |
@@ -1040,3 +1175,4 @@ Amendments to these documents must list affected FRs/UCs/UXRs, TCs, and tickets 
 | v1.5.8 | 2026-10-18 | **Data-source provenance disclosure** (TKT-foundation-029): an honest per-data-class source disclosure is added to the product — a site-wide `DataSourceDisclaimer` footer element in the shell (`AppShell.tsx`, every route, not only research routes; a plain text block, **not** a second `complementary` landmark, so it never collides with the informational-only `Disclaimer` of FR-MOV-020/UXR-G-016) plus one tiny anonymous read endpoint `GET /api/v1/meta/data-sources` returning the per-class source catalog (`id, class, source, state: live\|unavailable, nature`) from a **small static product-side catalog** (`src/Api/Metadata`). Honesty is server-owned (§10.7): whether a class is live changes as the real-source work lands, so liveness lives in the server payload, not a build-time web bundle. The disclosed classes are exactly the AD-14 real sources (no new source): İş Yatırım public EOD endpoints (prices / index levels / universe) **live**; MKK "KAP Data Dissemination Services" (statements, via 026) and TCMB EVDS (macro, pending 027) honestly **unavailable** until their live activation. Every class states its EOD/as-of nature (not real-time) and the free public-source caveat; a class with no live values renders the honest `unavailable` marker — never a claim of a live source, never fabricated live data. No DB, no migration, no new model; `fixtures/Degerli.Fixtures/RealSourceCatalog.cs` stays the test-only parsing-fidelity lane and is never referenced by product code. | FR-MDF-008 (class-level provenance of the per-fact lineage); FR-MOV-020 (+ FR-SCR-016/FR-RES-017/FR-VAL-008 covered in one place by the site-wide footer); FR-MOV-009 (as-of nature); §10.7 honest-state (`state: unavailable`, never blank-as-zero); §10.6 i18n (tr/en catalogs + required parity); §10.9/AD-14 (the disclosed classes); §3 component C1 (footer shell surface); `03` §3 (new public read endpoint under the §11 additive rule), §12/§13 | Explicit foundation criteria (no TC covers a provenance disclosure; the XC disclaimer sweep TC-XC-006 covers only the informational-only component): component tests `DataSourceDisclaimer.test.tsx` (shell-footer render, TR default/EN toggle, per-class source + as-of nature, honest `unavailable` marker, no live claim for a fixture-only class, no duplicate landmark, a11y clean), backend `DataSourcesEndpointsTests` (anonymous 200, no DB, honest per-class catalog), i18n parity green; existing `Disclaimer` + TC-XC-006 unaffected. **Flow-back (UXR-G-016 disclaimer lane):** the ux-designer records this surface/placement in the UX spec per the flow-back standard. |
 | v1.5.9 | 2026-10-20 | **Market snapshot: price-derived vs share-derived aggregate decoupling** (TKT-foundation-031, new §10.9.14; user-authorized product change 2026-10-19/20 — "make something so it will be showing live data in the morning"): the `market-snapshot` engine no longer requires a balance-sheet `SHARES_DILUTED > 0` for every covered-universe constituent. A member without a usable share count carries no market cap and splits by block: it **is included** in breadth (FR-MOV-003), top movers + volume eligibility (FR-MOV-004/021, BR-MOV-011) and total volume (FR-MOV-005); it **is excluded and counted** from market P/E (FR-MOV-006, BR-MOV-010, D-05 — `market_pe_excluded_count` now counts every non-P/E constituent: loss-makers, missing income and no-share members) and from the market dividend yield (ΣDIV_TTM/Σmcap over share-bearing members only — `null` when none); and it carries no cap weight in cap-weighted sector performance (FR-MOV-002), where a sector with no share-bearing member is **omitted** from the dictionary (`{}` in a zero-shares world — an explicit `0.0` would be fabricated). The engine-level null return survives only for its original meanings (no XU100 membership / no stored prices for the covered universe on the resolved day); the row is written and the overview serves `state: available` whenever the price-derived blocks are computable. **FU fixture world byte-identical** (every FU constituent has shares, so every branch is a no-op); `02` §3.2 and `03` §3 unchanged (nullable P/E columns + null serving already contracted); UI unchanged (`MarketOverviewPage` already renders the honest unavailable valuation state). No pacing constraint — stored facts only, no external source call. | FR-MOV-001..006, 021 (price-derived blocks materialize with zero share data); NFR-MOV-001; BR-MOV-009 (canonical facts only — unchanged inputs); BR-MOV-010 (P/E exclusion doctrine extended to no-share members); BR-MOV-011; `03` §3 (payload shape unchanged — nulls already contracted); `02` §3.2 (one row per trading day, nullable P/E columns — unchanged) | New L2 cases in `MarketSnapshotTests` (`TKT_foundation_031` tag): zero-shares world → one row written + `GET /market/overview` `state: available` with real indices/breadth/movers/volumeTotal, `marketPe: null`, `marketPeExcludedCount` = constituent count, `marketDivYield: null`, `sectorPerformance: {}`; partial-shares world → P/E, div yield and sector weights over the share-bearing subset only, no-share members still in breadth/movers/volume and in the exclusion count; documented as TC-MOV-029/030 in the MOV test plan. TC-MOV-001..005 goldens, `MarketEndpointsTests`, `EodChainTests`, the `MarketAggregatesTests` unit cases and the L4 overview spec re-run green unchanged (no permitted golden delta — the fix branches only when shares are absent). Live criterion (orchestrator post-merge, the 028 precedent): an admin-triggered `market-snapshot` run on the real dev stack records `WRITTEN=1` at `snapshot_date=2026-10-19` and `GET /api/v1/market/overview` serves `state: available`, `asOf=2026-10-19`, `stale=false`, real XU100 11,430.14 / XU030 14,221.62 and real breadth/movers/volume with `marketPe: null`, `marketDivYield: null`, `sectorPerformance: {}` — attempt/result recorded on the ticket, never fabricated. |
 | v1.5.10 | 2026-10-20 | **KAP VYK URI composition fixed at the client seam** (TKT-foundation-032, §10.9.11 amendment): the shipped VYK base `https://apigwdev.mkk.com.tr/api/vyk` (no trailing slash) plus its leading-slash path options (`/members`, `/lastDisclosureIndex`, `/disclosures`, `/disclosureDetail/{disclosureIndex}`) made .NET resolve every request **root-relative**, silently dropping the `/api/vyk` prefix — every real-gateway call 404'd (live-verified 2026-10-19/20: the unprefixed URL 404s, `…/api/vyk/members` returns 200 with the same HTTP Basic pair); CI could not catch it because the L2 doubles bind at the server root, where root-relative and base-relative resolution coincide. Fix is **code-side, not config discipline**: `KapHttpSourceClient` normalizes the base to a directory separator **and** trims the path's leading slashes (`KapUri`, shared with the `IKapSourceClient` registration), so every spelling resolves under the configured prefix; `appsettings.json` values stay unchanged, redaction/Basic-auth untouched (header, never URL). **Doctrine:** a double for a prefix-carrying gateway must bind **under the prefix**; root-bound doubles cannot catch this class. | FR-MDF-002..005 (statements/dividends/actions/disclosures read through this client); FR-MDF-008 (provenance carries the correctly-resolved URL); §10.9.11; TKT-foundation-026 heritage; unblocks TKT-foundation-033/034 | Explicit foundation criteria (no TC lane — a post-merge defect fix, the 030 precedent): new `KapUriResolutionTests` (prefixed double + the exact shipped spellings, red→green; the base×path spelling matrix; the full VYK company fetch across all four routes) carries the `TKT_foundation_032` tag; `VykStatementsSourceTests`, `StatementsAndEventsIngestionTests`, `RealSourceStatementsTests`, the statements loop/normalization/versioning lanes and the canned-catalog contract tests re-run green unchanged (root base + normalized path = the same root routes); no `appsettings.json` diff; CI green required. Live criterion (orchestrator post-merge, paced ≥12 s/call): the dev stack rebuilt from merged `dev` **without** the interim `/tmp/opencode/dev-overrides.yml` env overrides answers HTTP 200 on one paced KAP VYK statements fetch. |
+| v1.5.11 | 2026-10-20 | **The three event families rewired from placeholder KAP paths to the verified VYK gateway routes** (TKT-foundation-034, new §10.9.15): `dividends`, `corporate-actions` and `disclosures` still fetched `/dividends` / `/corporate-actions` / a non-existent `/disclosures` single-resource body, so all three 404'd on the gateway and could never ingest a real row (026 rewired `statements` only). **Investigation-first, live-verified 2026-10-20 (~30 paced probes + real captures; never guessed from the ambiguous OpenAPI):** all three families are served by `GET /disclosures?disclosureIndex={n}&companyId={id}` (ascending, ≤50/page, rows carry `disclosureIndex`/`disclosureType`/`disclosureClass`/`title`=<i>company name</i>/`companyId`, **no date**) plus `GET /disclosureDetail/{index}?fileType=data` (real `subject{tr,en}`, `time` `dd.MM.yyyy HH:mm:ss`, `link`, `eventType`, `eventId`, and — unlike 026's `FR` bodies — **`flatData` IS returned**: `content.object.void[]` with `currency{key}`, `cashDividendList` (`exchCode`/`installmentOrder` incl. `T`/`grossTry`/`netTry`) and `cashDividendPaymentDateList` (`advisedUsageDate`/`recordDate`/`paymentDate`)). `corporate-actions` = listed `disclosureType=CA`; `dividends` = `CA` + detail `eventType=KP` (observed vocabulary `KP`/`SA`/`GAI`/`SPAF`/`IT`/`GK`); `disclosures` = every listed type. **No family is blocked.** Two live-verified gateway quirks decide the adapter rules: a *filtered* empty list and an index past a company's last disclosure both answer **HTTP 400 `ER005`** (not `200 []`), so the family filter is applied **client-side on the listed row** and the per-company cursor is read **inclusively** (re-request from the last-seen index) — an honest empty never becomes a source failure. Because the job files are outside the ticket, the company-scoped loop of §10.9.10/§10.9.11 lives **in the adapters** (universe → `/members` → per-company list/detail), paced by the shared `KapRequestPacer`; per-family per-instrument cursors (`kap-dividends-cursor`, `kap-corporate-actions-cursor`, `kap-disclosures-cursor`) reuse `coverage_metadata` outside `InstrumentScoped` (no migration) and persist **only after the whole loop succeeded**; failure posture is **fail-fast and honest** (transport/404/400/fault → `SourceFetchException` → run recorded `failed`, malformed body → `UNPARSEABLE_PAYLOAD`, unmapped symbol → `COMPANY_IDENTITY_UNRESOLVED`, empty bound → failure). Mapping keeps every canonical contract: `ActionType` = the gateway `eventType` code (no adjustment factor invented), `ActionDate` = publish date, `Terms` = the verbatim flatData terms document; one dividend fact per instalment (the `T` row is skipped), `AmountPerShare` = `grossTry`, `ExDate` = `advisedUsageDate`; disclosure `Title` = `subject.tr`, `SourceUrl` = `link`, `PublishDate` = `time`. Config: `Ingestion:{Dividends,CorporateActions,Disclosures}` ship `Path=/disclosures`, `DetailPath=/disclosureDetail/{disclosureIndex}`, `UniverseIndex=XU030`, `EarlyDisclosureIndex=0`, `DisclosureType=CA` (empty for disclosures), `DividendEventType=KP`; code defaults identical. The legacy single-resource branch is kept verbatim for VYK-disabled compositions, so no golden changes. | FR-MDF-003/004/005 (all three jobs activated on a real source); FR-MDF-008 (provenance `kap`, identity guard, cross-`exchCode` guard); FR-MDF-010/011 (backfill via `EarlyDisclosureIndex` + honest achieved depth); FR-MDF-012 (malformed → quarantine, transport → failure ledger); FR-MOV-006 (TTM DPS now has a real dividend supply); §10.9.11 (shared client/cursor/pacing seams reused), §10.9.10 (company-scoped loop doctrine); AD-14 | No golden delta: `StatementsAndEventsIngestionTests` TC-MDF-003..006 re-run byte-identical on their canonical doubles (VYK stays disabled there), and `EodChainTests`/`EodStaleServingTests` are unchanged. New L2 tests carrying the `TKT_foundation_034` tag cover the three verified routes against shape-faithful doubles built from real captures (BİM `KP` 1138986, Tüpraş `SA` 1138796), 404 + Apinizer-fault honest failures (failed ledger, no rows, no quarantine), inclusive-cursor resume/idempotency, and the shipped config ↔ code-default agreement. `VykStatementsSourceTests`, `KapUriResolutionTests`, `EodChainTests`, `EodStaleServingTests`, `AdminEndpointsTests`, `CannedSourceCatalogTests` re-run green. Live criteria (orchestrator post-merge, paced ≥12 s/call, 401-penalty-box aware): one paced run per family against the reachable dev gateway ingests real rows with `provenance=kap`, or records the honest result — attempt and outcome on the ticket, never fabricated. |
