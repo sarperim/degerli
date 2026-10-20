@@ -3,6 +3,7 @@ scope:
   - src/Ingestion/Dividends/DividendsSourceAdapter.cs
   - src/Ingestion/CorporateActions/CorporateActionsSourceAdapter.cs
   - src/Ingestion/Disclosures/DisclosuresSourceAdapter.cs
+  - src/Ingestion/Kap/KapSources.cs
   - src/Api/appsettings.json
   - tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs
   - .pipeline/architecture/01-system-architecture.md
@@ -10,7 +11,7 @@ scope:
 
 # TKT-foundation-034: rewire `dividends` / `corporate-actions` / `disclosures` jobs from the placeholder KAP paths to the VYK gateway
 
-- Status: in-review
+- Status: in-review (PR #106 at `7e0aa34`, round-1 ESCALATED → **USER DECISION 2026-10-20: Option A** — scope amended to include `src/Ingestion/Kap/KapSources.cs` so the R1 honesty fix is in-scope: status-aware 400+ER005 → end-of-list mapping, cursor-reset on a 400ing cursor, one paced probe at `disclosureIndex=0`; R2/R4-R7/R10 fixes ride the same fixer round; artifact reviews/TKT-foundation-034-round-1.md)
 - Size: M
 - **Priority: QUEUED — later lane. Do NOT dispatch tonight** (explicit 2026-10-19/20 routing: findings 5/6/7/8 are queued for later runs unless trivial; this is not trivial — it is investigation + three adapter rewires).
 - Finding (live-run session finding 6): the `dividends`, `corporate-actions` and `disclosures` jobs still fetch the old placeholder KAP paths (`/dividends`, `/corporate-actions`-class defaults in `DividendsSourceOptions`/`CorporateActionsSourceOptions`/`DisclosuresSourceOptions`) — they were never VYK-rewired (TKT-foundation-026 rewired `statements` only). Every path 404s on the VYK gateway, so these three jobs can never ingest real data. Note: the market snapshot's TTM dividend yield already degrades honestly without dividends (TKT-foundation-031's null state); this ticket is what eventually supplies real dividend facts.
