@@ -2,9 +2,11 @@ namespace Degerli.Ingestion.Scheduling;
 
 /// <summary>
 /// Configuration for the C3c scheduler (FR-MDF-009, NFR-MDF-001; architecture §3 C3c,
-/// §5 background jobs). Defaults encode the production contract — 20:30 Europe/Istanbul,
-/// the 5/15/60-minute retry ladder — so a host that configures nothing still behaves
-/// per the requirement.
+/// §5 background jobs). The EOD stream and the retry ladder keep the production contract as
+/// their code defaults — 20:30 Europe/Istanbul, the 5/15/60-minute ladder — so a host that
+/// configures nothing still behaves per the requirement. The morning stream is the one
+/// exception: its empty code default is a <b>composition/test</b> contract (no morning stream
+/// is created), and production gets the 08:30 cron from the shipped <c>appsettings.json</c>.
 /// </summary>
 public sealed class IngestionSchedulerOptions
 {

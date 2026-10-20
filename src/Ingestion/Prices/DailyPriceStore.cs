@@ -215,7 +215,4 @@ public sealed record PriceDayCoverage(int Constituents, int Covered)
 {
     /// <summary>Whether the day is fully covered for this bound (a completed day).</summary>
     public bool IsComplete => Constituents > 0 && Covered >= Constituents;
-
-    /// <summary>Current constituents with no stored row for the day.</summary>
-    public int Missing => Math.Max(0, Constituents - Covered);
 }

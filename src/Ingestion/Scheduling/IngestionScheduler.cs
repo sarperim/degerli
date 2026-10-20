@@ -82,6 +82,19 @@ public sealed class IngestionScheduler
         _logger = logger;
         _timeZone = ResolveTimeZone(_options.TimeZone);
         _streams = BuildStreams(_options);
+
+        // The one line an operator greps to answer "is the 08:30 safety net on?": the
+        // configured cron streams, the time zone, and — explicitly — an absent morning
+        // stream, which is otherwise indistinguishable from a healthy scheduler (DR-02).
+        _logger.LogInformation(
+            "Ingestion scheduler streams: EOD cron '{EodCron}'; morning cron '{MorningCron}' ({MorningState}); time zone {TimeZone}; {PerJobStreams} per-job schedule(s).",
+            _options.Cron,
+            _options.MorningCron,
+            string.IsNullOrWhiteSpace(_options.MorningCron)
+                ? "DISABLED — no morning stream is created"
+                : "enabled",
+            _options.TimeZone,
+            _options.JobSchedules.Count);
     }
 
     /// <summary>Whether the scheduler is enabled in configuration.</summary>
@@ -241,19 +254,18 @@ public sealed class IngestionScheduler
             return occurrenceDate;
         }
 
-        var candidate = occurrenceDate.AddDays(-1);
-        for (var back = 1; back < PreviousTradingDayLookbackDays; back++)
+        var candidate = occurrenceDate;
+        for (var back = 1; back <= PreviousTradingDayLookbackDays; back++)
         {
+            candidate = occurrenceDate.AddDays(-back);
             if (_calendar.IsTradingDay(candidate))
             {
                 return candidate;
             }
-
-            candidate = candidate.AddDays(-1);
         }
 
         _logger.LogWarning(
-            "No trading day found in the {Days} days before {Date}; the morning run targets {Candidate}.",
+            "No trading day found in the {Days} days before {Date}; the morning run falls back to {Candidate}, the last candidate tested.",
             PreviousTradingDayLookbackDays,
             occurrenceDate,
             candidate);

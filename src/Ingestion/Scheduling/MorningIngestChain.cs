@@ -54,18 +54,6 @@ public static class MorningIngestChain
     };
 
     /// <summary>
-    /// The phase-2 event-family jobs (dividends, corporate-actions, disclosures) — members of
-    /// the morning chain only after TKT-foundation-034 lands. Not wired into
-    /// <see cref="JobCodes"/> today (see the class remarks).
-    /// </summary>
-    public static IReadOnlyList<string> EventFamilyJobCodes { get; } = new[]
-    {
-        DividendsJob.Code,
-        CorporateActionsJob.Code,
-        DisclosuresJob.Code,
-    };
-
-    /// <summary>
     /// The phase-2 composition (the post-TKT-foundation-034 order): the three event families
     /// spliced between statements and metrics-recompute, exactly as
     /// <see cref="EodIngestChain"/> orders them. Deliberately not the scheduler's wired list

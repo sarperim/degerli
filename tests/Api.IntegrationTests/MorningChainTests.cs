@@ -209,6 +209,10 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
     public async Task TC_MDF_078_covered_day_skips_prices_and_runs_the_rest()
     {
         await ResetAsync();
+        // The L2 fixture already stores 2026-10-05's prices (T−1 of its anchor T). Clear them
+        // so the night genuinely writes the day — otherwise the gate would be "covered" by the
+        // seed and a night→morning regression could hide behind it.
+        await DeleteStoredPricesAsync(PreviousTradingDay);
         StubChainSources();
 
         await using var host = BuildScheduler();
@@ -221,6 +225,10 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         var nightRuns = await LedgerAsync();
         Assert.Equal(8, nightRuns.Count);
         Assert.All(nightRuns, run => Assert.Equal(IngestResult.Succeeded, run.Status));
+
+        // The night is the writer: the day starts uncovered and ends with 16 stored rows.
+        Assert.Equal("prices", nightRuns[0].JobCode);
+        Assert.Equal(16, Stat(nightRuns[0], "written"));
 
         DateTimeOffset nightComputedAt;
         await using (var before = _postgres.CreateContext())
@@ -274,7 +282,12 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
     public async Task TC_MDF_078_failed_night_is_repaired_by_the_morning_pass()
     {
         await ResetAsync();
-        await DeleteStoredPricesAsync(PreviousTradingDay);
+        // A faithful failed-night world: neither the previous session (the repair target) nor
+        // the 08:30 occurrence day's own session is in the store. The L2 anchor T = 2026-10-06
+        // leaves T's prices seeded, so the occurrence day must be cleared too — otherwise the
+        // served row would be "stale" only because of a session that a Tuesday morning cannot
+        // have ingested yet.
+        await DeleteStoredPricesAsync(PreviousTradingDay, MorningOccurrenceDay);
         StubChainSources();
 
         await using var host = BuildScheduler();
@@ -317,8 +330,65 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         var root = document.RootElement;
         Assert.Equal("2026-10-05", root.GetProperty("asOf").GetString());
         Assert.Equal("available", root.GetProperty("state").GetString());
-        // Honest freshness: Tuesday morning serves Monday's session (never a newer price).
-        Assert.True(root.GetProperty("stale").GetBoolean());
+        // Honest freshness (01 §10.9.13, v1.5.13): on a Tuesday morning Monday is the latest
+        // stored trading day, so serving Monday's repaired session is FRESH. `stale: true`
+        // means a newer *stored* session exists that the served row lacks — never "the clock
+        // has moved past a weekday".
+        Assert.False(root.GetProperty("stale").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-MDF-078 (c) — partial coverage is not "covered": the decision table's third
+    /// missing/<b>partial</b> prices row (the ticket's criterion (ii)(b)). With one of the
+    /// sixteen XU100 constituents missing from an otherwise completed day, the morning gate
+    /// must run the prices job (the ledger row is the runner's, carrying no <c>gateOutcome</c>)
+    /// and the day must end complete.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_078_partially_covered_day_runs_prices_and_completes()
+    {
+        await ResetAsync();
+        // As in 078(a): the night writes the day, so coverage comes from this run, not the seed.
+        await DeleteStoredPricesAsync(PreviousTradingDay);
+        StubChainSources();
+
+        await using var host = BuildScheduler();
+        var clock = host.Clock;
+
+        // A fully succeeded night, then one constituent's row is lost: 15 of 16 stored.
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
+        var nightRuns = await LedgerAsync();
+        Assert.Equal(8, nightRuns.Count);
+
+        await DeleteOneConstituentsPricesAsync(PreviousTradingDay);
+
+        await using (var before = _postgres.CreateContext())
+        {
+            Assert.Equal(15, await before.DailyPrices.CountAsync(p => p.PriceDate == PreviousTradingDay));
+        }
+
+        // From here on, every source call is the morning pass's.
+        _wireMock.Server.ResetLogEntries();
+
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 6, 8, 30));
+
+        var runs = await LedgerAsync();
+        var morning = runs.Skip(nightRuns.Count).ToList();
+        Assert.Equal(MorningChain, morning.Select(run => run.JobCode).ToArray());
+
+        // The gate did NOT skip: the prices job ran for real. Its row is the job runner's —
+        // no `gate`/`gateOutcome` keys — and it reached the source. The current
+        // implementation re-fetches the whole bound at the existing pacing and writes only
+        // the missing name, so the exact request count is deliberately not pinned here.
+        var pricesRun = morning[0];
+        Assert.Equal(IngestResult.Succeeded, pricesRun.Status);
+        Assert.False(pricesRun.StatsJson!.Contains("gateOutcome", StringComparison.Ordinal));
+        Assert.NotEmpty(PriceRequests());
+
+        // The boundary the partial case exists to catch: the day ends complete, not "mostly".
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(16, await db.DailyPrices.CountAsync(p => p.PriceDate == PreviousTradingDay));
     }
 
     // ---------------------------------------------------------------------------------
@@ -423,12 +493,37 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         await StatementBound.ReplaceAsync(db, "ALFA");
     }
 
-    /// <summary>Models an uncovered/failed session: the stored prices for one day are absent.</summary>
-    private async Task DeleteStoredPricesAsync(DateOnly date)
+    /// <summary>Models an uncovered/failed session: the stored prices for the given day(s) are absent.</summary>
+    private async Task DeleteStoredPricesAsync(params DateOnly[] dates)
     {
         await using var db = _postgres.CreateContext();
-        await db.Database.ExecuteSqlRawAsync(
-            "DELETE FROM daily_prices WHERE price_date = {0}", date);
+        foreach (var date in dates)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM daily_prices WHERE price_date = {0}", date);
+        }
+    }
+
+    /// <summary>
+    /// Models a <b>partially</b> covered day: one current XU100 constituent's stored row is
+    /// absent while the other fifteen remain.
+    /// </summary>
+    private async Task DeleteOneConstituentsPricesAsync(DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var xu100Id = await db.Indices
+            .Where(index => index.Code == "XU100")
+            .Select(index => index.Id)
+            .SingleAsync();
+        var instrumentId = await db.IndexConstituents
+            .Where(c => c.IndexId == xu100Id && c.EffectiveTo == null)
+            .Select(c => c.InstrumentId)
+            .OrderBy(id => id)
+            .FirstAsync();
+
+        await db.DailyPrices
+            .Where(p => p.PriceDate == date && p.InstrumentId == instrumentId)
+            .ExecuteDeleteAsync();
     }
 
     private async Task<List<IngestRun>> LedgerAsync()

@@ -1068,9 +1068,11 @@ re-derivation. Post-034 the morning pass stays **incremental, never a full-unive
 ride `KapRequestPacer` (≥12 s, 401-penalty-box aware) — unchanged.
 
 **Backward compatibility.** The EOD stream's construction, the per-job streams (`JobSchedules`),
-the retry ladder, the alert machinery and the run-ledger shape are untouched; the only new ledger
-writer is the gate-skip row on the morning stream. `02-data-model.md` needs no change — the gate
-reads existing `daily_prices`/`index_constituents`/`indices`.
+the retry ladder and the alert machinery are untouched, and the **job runner's** run-ledger shape
+is untouched — the only new ledger writer is the gate-skip row on the morning stream, which
+carries its own `gate*` keys (`stats_json.gate: "prices-coverage"`, `gateOutcome: "skipped"`,
+`constituents`/`covered`). `02-data-model.md` needs no change — the gate reads existing
+`daily_prices`/`index_constituents`/`indices`.
 
 ## 11. Architecture decision log (summary)
 
