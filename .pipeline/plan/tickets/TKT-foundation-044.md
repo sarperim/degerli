@@ -1,0 +1,24 @@
+---
+scope:
+  - src/Ingestion/Funds/
+  - src/Ingestion/Jobs/Jobs.cs
+  - tests/Api.IntegrationTests/FundIngestionTests.cs
+  - tests/Api.IntegrationTests/FundSchedulingCoverageTests.cs
+  - .pipeline/testing/fund-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-044: fund jobs failing instantly all evening with `symbols: []` and an EMPTY error field — root-cause the source fault and make failed ledger rows carry their reason
+
+- Status: todo
+- Size: S–M
+- **Priority: P2 — dispatch-ready, investigation-first** (separate lane from the market chain, per the routing).
+- Verified evidence (dev stack ledger, 2026-10-20): `fund-nav` / `fund-performance` / `fund-holdings` failed repeatedly from ~16:15 UTC through at least 17:25 UTC (attempts 2-5 of maxAttempts 7), each failure **instant (~4-30 ms)**, `stats_json: {"mode": "incremental", "symbols": [], "written": 0, ...}` — the jobs resolved **zero fund symbols** before failing — and, compounding the diagnosis problem, the `error` column on every failed row is **EMPTY**: the ledger records the failure but not its reason. This is a source-level or universe-resolution fault, not pacing (4 ms is no network call) and not the scheduler (the streams fired and retried correctly).
+- Planner's reading (hypotheses for the investigation, not claims): (a) the fund-universe resolution returned empty (`symbols: []` — TEFAS fund list empty/unreachable → the job fails fast on an empty bound, the `empty bound → failure` posture 034 pinned for its lanes); (b) a TEFAS source-level fault (endpoint changed/down for the list call); (c) a config/env regression in the dev stack. The **empty `error` field is itself a defect** regardless of root cause: a failed run with no recorded reason is a mild silent hole in a ledger whose contract is honesty (FR-MDF-009 — the runner "records failed run before propagating"; the message is evidently being lost on this path).
+- Scope: **(a)** root-cause the instant failures (investigation-first; doubles-only reproduction — a double that mimics the failing list call must reproduce `symbols: []` + fast failure); **(b)** fix per root cause (source adapter, universe resolution, or config — scope amendment per the 034 Option-A precedent if the fix lands outside `src/Ingestion/Funds/`); **(c)** **failed-run reason honesty:** the run ledger's `error` field carries the failure reason on every failed path (runner-level fix in `Jobs.cs` and/or job-level — whichever the root cause indicates; an operator must never need the console to know why a run failed); **(d)** docs: `01` §13.1 **v1.5.20**; test plan `fund-data-foundation.md` gains the failure-reason criteria (delivery-planner-applied, test-planner confirmation pending).
+- Traces to: FR-FDF-001/002 (fund ingest), FR-MDF-009 (run-ledger completeness — the error field is part of the honest record), FR-MDF-012 (failure isolation), NFR-MDF-001; foundation pseudo-domain convention (post-merge defect — explicit criteria; the 030 precedent).
+- Acceptance: **explicit criteria; L2 doubles only.** **(i) Reproduction:** a double reproducing the fault (empty/unreachable fund list) yields the observed signature — and the fix changes the outcome per the root cause (either an honest, REASON-CARRYING failure — some faults are the source's, not ours — or a recovered successful run); **(ii) red→green reason honesty:** every failed `ingest_runs` row written by the fund lane (and, where the fix is runner-level, generally) carries a non-empty `error` (red today: empty on the observed rows); **(iii) golden stability:** the existing `FundIngestionTests` / `FundSchedulingCoverageTests` / `FundHoldingsGapTests` re-run green (pre-listed deltas only); **(iv) CI green.** **Live criterion (orchestrator post-merge, honest, never fabricated):** the next 19:00-19:10 Istanbul fund-job window on the dev stack — a succeeded run with real TEFAS rows, or a failed run whose ledger row names the real reason (e.g. the source still down) — recorded verbatim on the ticket; if the fault was environment-specific and does not reproduce, that is recorded as the result with the reason-honesty fix still verified via (ii).
+- Architecture refs: `01-system-architecture.md` §13.1 v1.5.20 (row lands with the fix); `02-data-model.md` unchanged (`ingest_runs.error` column already exists — the defect is that it is left empty); test plan: `.pipeline/testing/fund-data-foundation.md` (failure-reason criteria).
+- UX refs: none.
+- Dependencies: none hard (Funds lane + `Jobs.cs`). **Serialize notes:** `src/Ingestion/Jobs/Jobs.cs` is ALSO a plausible 041 file (chain-step ledger context) — if 041's root cause lands there, this ticket's runner-level edit serializes behind it (rebase; the edits are small and different); `01` §13.1 v1.5.20 behind v1.5.15-19 — single-row append, last-lander rebases.
+- Parallel group: none.
