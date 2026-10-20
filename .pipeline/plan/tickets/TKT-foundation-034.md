@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-034: rewire `dividends` / `corporate-actions` / `disclosures` jobs from the placeholder KAP paths to the VYK gateway
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: QUEUED — later lane. Do NOT dispatch tonight** (explicit 2026-10-19/20 routing: findings 5/6/7/8 are queued for later runs unless trivial; this is not trivial — it is investigation + three adapter rewires).
 - Finding (live-run session finding 6): the `dividends`, `corporate-actions` and `disclosures` jobs still fetch the old placeholder KAP paths (`/dividends`, `/corporate-actions`-class defaults in `DividendsSourceOptions`/`CorporateActionsSourceOptions`/`DisclosuresSourceOptions`) — they were never VYK-rewired (TKT-foundation-026 rewired `statements` only). Every path 404s on the VYK gateway, so these three jobs can never ingest real data. Note: the market snapshot's TTM dividend yield already degrades honestly without dividends (TKT-foundation-031's null state); this ticket is what eventually supplies real dividend facts.
@@ -21,3 +21,5 @@ scope:
 - UX refs: none directly (no screen change; downstream surfaces already render honest-empty states).
 - Dependencies: TKT-foundation-032 (URI resolution — the placeholder-path 404s make every current run a no-op); possibly TKT-foundation-033's unblock condition if route verification needs the production gateway (record at dispatch).
 - Parallel group: none (queued).
+- PR: https://github.com/sarperim/degerli/pull/106
+- Implementation notes (2026-10-20): route verification is complete and documented in `01-system-architecture.md` §10.9.15 — all three families are served by the verified `GET /disclosures` + `GET /disclosureDetail/{index}?fileType=data` pair (`corporate-actions` = listed `disclosureType=CA`; `dividends` = `CA` + detail `eventType=KP`; `disclosures` = every listed type), so **no family is blocked**. Two live-verified gateway quirks shaped the adapters: a filtered empty list and an index past a company's tail both answer **HTTP 400 `ER005`**, so the family filter is applied client-side on the listed row and the per-company cursor is read inclusively (never `index+1`). The company-scoped loop lives in the adapters (the job files are outside this ticket's scope), paced by the shared `KapRequestPacer`; per-family cursors reuse `coverage_metadata` outside `InstrumentScoped`; failure posture is fail-fast and honest (transport/404/fault → failed run ledger; malformed body → `UNPARSEABLE_PAYLOAD`; unmapped symbol → `COMPANY_IDENTITY_UNRESOLVED`). Live criteria remain the orchestrator's post-merge step (paced ≥12 s/call), with the disclosures first pass flagged as the expensive backfill (~1k paced calls over the dev archive; honest lever = a narrower per-family `UniverseIndex`).
