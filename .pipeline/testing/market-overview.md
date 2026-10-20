@@ -1,6 +1,6 @@
 # Market Overview & Macro Indicators Test Plan
 
-**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.3 — TC-MOV-029/030 added 2026-10-20 (TKT-foundation-031, `01` §10.9.14); v1.2 — §8 real-source EVDS case added 2026-10-17 (architecture v1.5 §10.9.6; test-planner-applied at the delivery planner's request, builder-directed); §7 v1.4 post-board cases (delivery-planner-applied 2026-10-15; test-planner confirmation pending); v1.1 approved (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
+**Prepared by:** test-planner · **Date:** 2026-10-06 · **Status:** v1.4 — TC-MOV-032 added 2026-10-20 (TKT-foundation-037, `01` §10.9.13 serve-path extension); v1.3 — TC-MOV-029/030 added 2026-10-20 (TKT-foundation-031, `01` §10.9.14); v1.2 — §8 real-source EVDS case added 2026-10-17 (architecture v1.5 §10.9.6; test-planner-applied at the delivery planner's request, builder-directed); §7 v1.4 post-board cases (delivery-planner-applied 2026-10-15; test-planner confirmation pending); v1.1 approved (builder final review 2026-10-07 — F-MOV-1 accepted, stays Could/contract-only; §6 interpretations upheld)
 **Derives from:** `analysis/market-overview.md` (FR-MOV-001..021, UC-MOV-001..005, NFR-MOV-001..006) · `ux/market-overview.md` (SCR-001, UXR-MOV-001..012) · `architecture/` v1.2 (`02` §3.2/§6.3, `03` §3, `01` §8–§9) · strategy (approved) · fixture contract `01-fixture-universe.md` (FU).
 **TC ID convention:** `TC-MOV-NNN`, permanent. Levels: L1 unit · L2 integration · L3 web component · L4 e2e.
 
@@ -112,6 +112,15 @@
 - Status: **specified, blocked-on-formula** (§6 flag F-MOV-1): the 1W/1M/YTD aggregate formula is undefined in the architecture. When the feature is promoted: recommended formula = cap-weighted total return over the period (mirroring the locked daily formula); the fixture doc gains a period-history table and goldens at that time. The API contract itself is testable now: `period=1w|1m|ytd` returns the precomputed aggregate for that period with the same envelope; invalid period → 400 VALIDATION_FAILED.
 - Dependencies: —
 
+**TC-MOV-032 — Overview display freshness is stored-prices-based**
+- Traces: FR-MOV-010, FR-MOV-016, NFR-MOV-001, BR-MOV-001, UXR-MOV-010; architecture `01` §10.9.13 (doctrine extended from the write path to the serve path) · Level: L2 · Design: decision table — {served row} × {latest stored trading day}
+- Preconditions: L2 fixture universe (Tuesday anchor T = 2026-10-06, Monday 2026-10-05 the preceding session); snapshot rows produced by the real `market-snapshot` job, never hand-written; the stored-prices world is controlled by deleting/re-seeding fixture price rows (never a live source).
+- Steps / Expected (decision table):
+  1. Monday snapshot row + **Monday-only** stored prices, Tuesday clock → `state: available`, `asOf` = Monday, **`stale: false`** (Monday is the freshest completed session that exists; Tuesday's EOD has not landed) — red on a weekday-based rule that compares against Tuesday.
+  2. The same world plus **Tuesday prices stored** (a completed newer session the row lacks — a missed `market-snapshot` run), still a Monday snapshot, Tuesday clock → `asOf` = Monday (last-known-good still served) but **`stale: true`** — the honest missed-run direction survives the fix.
+  3. Tuesday snapshot row over Tuesday prices, Tuesday clock → `asOf` = Tuesday, `stale: false` (ordinary trading-day case, unchanged).
+- Dependencies: —
+
 ### Group D — SCR-001 rendering (L3/L4)
 
 **TC-MOV-016 — Dashboard renders anonymously, TR default, all blocks**
@@ -191,13 +200,13 @@
 | FR-MOV-007 | main | TC-013, 016, 017 | planned |
 | FR-MOV-008 | main | TC-013, 017, 018, 027 | planned |
 | FR-MOV-009 | main | TC-013, 016, 017 | planned |
-| FR-MOV-010 | main | TC-012, 013, 016, 024 | planned |
+| FR-MOV-010 | main | TC-012, 013, 016, 024, 032 | planned |
 | FR-MOV-011 | main | TC-019 | planned |
 | FR-MOV-012 | main | TC-019 | planned |
 | FR-MOV-013 | main | TC-019 | planned |
 | FR-MOV-014 | main | TC-006, 007, 008, 026, 027, 028 | planned |
 | FR-MOV-015 | main | TC-009, 011 | planned |
-| FR-MOV-016 | main | TC-009, 013, 024 | planned |
+| FR-MOV-016 | main | TC-009, 013, 024, 032 | planned |
 | FR-MOV-017 | Could | TC-015 (blocked-on-formula F-MOV-1) | flagged — accepted (2026-10-07) |
 | FR-MOV-020 | main | TC-016 (+ XC sweep) | planned |
 | FR-MOV-021 | main | TC-001, 020; ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
@@ -206,7 +215,7 @@
 | UC-MOV-003 | main; alt a (independent unavailable) | TC-017; TC-018, 013 | planned |
 | UC-MOV-004 | main; alt a (no stock page) | TC-019; covered by construction — movers are computed over the current universe only (TC-001/002 assert entries are universe stocks) | planned |
 | UC-MOV-005 | main; alt a (permanent source death — builder decision) | TC-009, 011, 014; manual ledger | planned |
-| NFR-MOV-001 | freshness | TC-001, 005, 009, 010 | planned |
+| NFR-MOV-001 | freshness | TC-001, 005, 009, 010, 032 | planned |
 | NFR-MOV-002 | bilingual | TC-023; XC i18n parity + TR default | planned |
 | NFR-MOV-003 | public availability | TC-012, 013, 016 (anonymous); 99.0% figure → operational ledger | planned |
 | NFR-MOV-004 | plain language | TC-016, 017 (units/asOf presence); builder review ledger | planned |
@@ -217,7 +226,7 @@
 | UXR-MOV-007 | macro strip | TC-016, 017 | planned |
 | UXR-MOV-008 | inflation pair | TC-017, 018 | planned |
 | UXR-MOV-009 | unavailable state | TC-013, 018 | planned |
-| UXR-MOV-010 | as-of + stale | TC-012, 013, 016, 024 | planned |
+| UXR-MOV-010 | as-of + stale | TC-012, 013, 016, 024, 032 | planned |
 | UXR-MOV-011 | navigation | TC-019 | planned |
 | UXR-MOV-012 | period selector (Could) | TC-015 | flagged — accepted (2026-10-07) |
 
@@ -257,4 +266,4 @@
 - Traces: FR-MOV-014, UC-MOV-002 main, `01` v1.5 §10.9.6, FU §10b · Level: L2 · Design: EP — real-envelope valid class; fidelity pins capture-recorded (never derived numbers)
 - Dependencies: TC-MOV-026.
 
-*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged. v1.3 2026-10-20 — TC-MOV-029/030 added to Group A for the price-derived vs share-derived aggregate decoupling (architecture v1.5.9 §10.9.14; TKT-foundation-031, user-authorized product change): TC-MOV-029 pins the zero-share-count world (price-derived blocks served, `marketPe`/`marketDivYield` null, `marketPeExcludedCount` = constituent count, `sectorPerformance` `{}`) and TC-MOV-030 pins the partial-shares world (share-derived aggregates over the share-bearing subset, no-share members still counted in breadth/movers/volume and in the disclosed exclusion count). TC-MOV-001..005 goldens untouched — the FU world has share counts for every constituent, so every decoupling branch is a no-op there. Applied by the ticket implementer under the 030 precedent (explicit foundation criteria; architecture authority).*
+*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged. v1.3 2026-10-20 — TC-MOV-029/030 added to Group A for the price-derived vs share-derived aggregate decoupling (architecture v1.5.9 §10.9.14; TKT-foundation-031, user-authorized product change): TC-MOV-029 pins the zero-share-count world (price-derived blocks served, `marketPe`/`marketDivYield` null, `marketPeExcludedCount` = constituent count, `sectorPerformance` `{}`) and TC-MOV-030 pins the partial-shares world (share-derived aggregates over the share-bearing subset, no-share members still counted in breadth/movers/volume and in the disclosed exclusion count). TC-MOV-001..005 goldens untouched — the FU world has share counts for every constituent, so every decoupling branch is a no-op there. Applied by the ticket implementer under the 030 precedent (explicit foundation criteria; architecture authority). v1.4 2026-10-20 — **TC-MOV-032 added to Group C** for the overview's display-freshness rule (architecture §10.9.13 doctrine extended from the write path to the serve path; TKT-foundation-037, user-reported 2026-10-20 "Bayat badge on the freshest completed session"): pins the stored-prices decision table — Monday snapshot over Monday-only prices on a Tuesday clock serves `stale: false`; the same world plus a newer stored session the snapshot lacks serves `stale: true` (the honest missed-run direction survives); a Tuesday snapshot over Tuesday prices serves `stale: false`. §5 matrix: FR-MOV-010/016, NFR-MOV-001 and UXR-MOV-010 rows extended with TC-032. TC-MOV-001..005/012/014/015 goldens untouched — the FU anchor T is a trading day with prices, so the resolution is a no-op there (no permitted golden delta; `MarketEndpointsTests`, `EodChainTests`, `EodStaleServingTests` and `MarketSnapshotTests` re-run green unchanged). Applied by the ticket implementer under the 030/031 precedent (explicit foundation criteria; architecture authority; test-planner confirmation pending).*
