@@ -23,6 +23,7 @@
 - **Caching:** public GETs → `Cache-Control: public, max-age=300` + strong `ETag` (data changes daily; 5 min is generous). `/me/*`, `/auth/*` → `Cache-Control: no-store`.
 - **CORS:** same-origin only (Caddy serves SPA + API under one host); no CORS headers in V1. A future non-web client adds explicit allowed origins — config change, not redesign.
 - **Content:** `application/json; charset=utf-8`; dates ISO-8601; all monetary/decimal values as JSON numbers.
+- **Percentage units:** **every ratio/percentage metric — request bounds and response values alike — travels as a decimal fraction** (`0.02` = +2%; a screener `roe` of `0.20` = 20%, an index `changePct` of `-0.024875` = −2,49%). Never an already-scaled percentage. The API is language- and display-neutral: the client is the single place that multiplies by 100 for display (`03` §4, `01` §10.6). This is a hard contract, not a convention of convenience — a client that renders a served `changePct` verbatim shows a 100×-wrong number (the TKT-foundation-036 home-screen defect).
 - **Language:** API responses are language-neutral (codes, numbers). Transactional **e-mails are bilingual** (both languages in one message) — server does not guess locale.
 
 ## 3. Public read endpoints
@@ -55,11 +56,13 @@ Request (AND logic, BR-SCR-003; bounds per FR-SCR-003; window per FR-SCR-015):
 {
   "criteria": [
     { "metricCode": "pe",    "bound": "max",  "maxValue": 15 },
-    { "metricCode": "roe",   "bound": "min",  "minValue": 15 },
-    { "metricCode": "rev_cagr", "bound": "min", "minValue": 10, "window": 5 }
+    { "metricCode": "roe",   "bound": "min",  "minValue": 0.15 },
+    { "metricCode": "rev_cagr", "bound": "min", "minValue": 0.10, "window": 5 }
   ]
 }
 ```
+
+`%`-unit bounds are decimal fractions (`0.15` = 15%; `03` §2); ratio metrics stay raw (`pe` `15`).
 
 Response (always `200` on a well-formed run — emptiness and exclusions are data, not errors):
 
@@ -71,7 +74,7 @@ Response (always `200` on a well-formed run — emptiness and exclusions are dat
   "droppedCriteria": [],
   "rows": [
     { "symbol": "ASELS", "name": "Aselsan", "sector": "Savunma",
-      "values": { "pe": 12.4, "roe": 18.2, "rev_cagr": 24.1 },
+      "values": { "pe": 12.4, "roe": 0.182, "rev_cagr": 0.241 },
       "metricFlags": { "rev_cagr": { "windowYears": 5, "regimeBreak": true, "isAdjusted": false, "isRestated": false } } }
   ]
 }
@@ -79,6 +82,7 @@ Response (always `200` on a well-formed run — emptiness and exclusions are dat
 
 - **Metric flags (v1.4):** `metricFlags` is an additive companion map (keyed by the same metric codes as `values`) carrying the per-metric basis markers — `windowYears` (actual CAGR window), `regimeBreak` (TMS 29 spanning-window warning, `02` §6.2), `isAdjusted` (corporate-action-adjusted basis) and `isRestated`. A metric with no marker may be omitted. The same flags object is served by the stock-page growth/valuation sections so the regime-break and adjusted/restated markers render consistently (UXR-G-011 consistency). Absent flags ⇒ no marker.
 
+- **Units:** `%`-unit `values` are decimal fractions (`roe` `0.182` = 18,2%), matching the request bounds and `03` §2; ratio metrics (`pe`) stay raw. The client scales for display.
 - Stocks missing data for a criterion are excluded and counted (`excludedCount`, BR-SCR-009/FR-SCR-014); never pass, never zero-filled.
 - **Re-run of a saved screen** referencing a since-hidden metric: the criterion is dropped, run proceeds, `droppedCriteria[]` names it (UC-SCR-003a → UXR-SCR-015). **Ad-hoc** submission of a hidden/unknown metric: `400 VALIDATION_FAILED` (`code: METRIC_NOT_AVAILABLE`) — the builder never offered it (UXR-SCR-011).
 - Results are computed on demand from current `derived_metrics`; nothing is persisted (UC-SCR-003).

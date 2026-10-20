@@ -52,12 +52,20 @@ export function formatDecimal(
 }
 
 /**
- * A signed percentage for a daily change (the payload's `changePct` is already a
- * percentage, e.g. `2.00` → `+2,00%` in TR). The explicit sign is what conveys
- * direction non-colour-only (UXR-MOV-001/003/004, SCR-001 §9).
+ * A signed daily-change percentage from the API's **fraction** unit: `0.014735`
+ * → `+1,47%` in TR (`-0.1` → `-10,00%`, `0.02` → `+2,00%`).
+ *
+ * The API serves every ratio/percentage metric as a decimal fraction
+ * (`03` §2/§4: `0.02` = +2%; a screener `roe` of `0.20` = 20%), so the ×100
+ * happens here — this formatter is the unit boundary, and no caller may pass an
+ * already-scaled percentage (TKT-foundation-036: the pre-036 code skipped the
+ * scaling and rendered every home-screen change 100× too small).
+ *
+ * The explicit sign is what conveys direction non-colour-only
+ * (UXR-MOV-001/003/004, SCR-001 §9).
  */
-export function formatSignedPercent(locale: string, value: number): string {
-  const digits = formatNumber(locale, value, {
+export function formatSignedPercent(locale: string, fraction: number): string {
+  const digits = formatNumber(locale, fraction * 100, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
     signDisplay: 'always',
