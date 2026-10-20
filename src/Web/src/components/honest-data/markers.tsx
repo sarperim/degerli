@@ -47,7 +47,10 @@ export function AsOfDate({
  * TKT-foundation-039 (finding B3): a truthful stale flag is only useful if it
  * explains itself — the badge carries its catalog explanation to assistive tech
  * (accessible name) and to sighted users (title), so "Bayat" is never read as
- * "this number is wrong".
+ * "this number is wrong". `role="note"` makes the author-supplied name legal:
+ * on a role-generic `<span>` naming is prohibited and only the tooltip is
+ * exposed, so the label+explanation would not reliably reach assistive tech
+ * (review round 1, DR-3). `note` is not a landmark — no second landmark.
  */
 export function StaleBadge({
   className,
@@ -62,6 +65,7 @@ export function StaleBadge({
   return (
     <Badge
       data-slot="stale-badge"
+      role="note"
       variant="stale"
       className={className}
       title={explanation}

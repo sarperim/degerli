@@ -172,6 +172,50 @@ describe('TC-MOV-024 stale marker component', () => {
     expect(usd.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
     expect(usd.querySelector('[data-slot="stale-badge"]')).toBeNull()
   })
+
+  /**
+   * TKT-foundation-039 review round 1 (DR-1): a stale series' badge says a newer
+   * completed session/publication has not arrived, so the cadence note's "latest
+   * completed day / latest published value" recency claim cannot stand beside it.
+   * The badge alone explains the state; the as-of date remains.
+   */
+  it('suppresses the cadence recency claim on a stale series, leaving the badge to explain it', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
+    renderStrip()
+
+    const gold = await screen.findByTestId('macro-GOLD')
+    const badge = gold.querySelector('[data-slot="stale-badge"]')
+    expect(badge).not.toBeNull()
+    expect(badge).toHaveAttribute('title', tr('honestData.staleExplanation'))
+    expect(badge).toHaveAccessibleName(
+      `${tr('honestData.stale')} — ${tr('honestData.staleExplanation')}`,
+    )
+    expect(gold.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    expect(gold.querySelector('[data-slot="macro-cadence"]')).toBeNull()
+
+    // The condition is per series: fresh siblings keep their cadence note.
+    expect(
+      screen
+        .getByTestId('macro-USD_TRY')
+        .querySelector('[data-slot="macro-cadence"]'),
+    ).not.toBeNull()
+  })
+
+  it('suppresses the stale cadence claim in English too', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
+    renderStrip('en')
+
+    const gold = await screen.findByTestId('macro-GOLD')
+    const badge = gold.querySelector('[data-slot="stale-badge"]')
+    expect(badge).toHaveAttribute(
+      'title',
+      catalogValue('en', 'honestData.staleExplanation'),
+    )
+    expect(badge).toHaveAccessibleName(
+      `${catalogValue('en', 'honestData.stale')} — ${catalogValue('en', 'honestData.staleExplanation')}`,
+    )
+    expect(gold.querySelector('[data-slot="macro-cadence"]')).toBeNull()
+  })
 })
 
 describe('macro strip failure domain', () => {

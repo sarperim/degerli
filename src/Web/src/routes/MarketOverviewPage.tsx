@@ -537,13 +537,18 @@ export function MarketOverviewPage() {
             </div>
             {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
                 completed session" — stated, so a fresh-but-not-today row is never
-                read as a data error (FR-MOV-010/020, UXR-MOV-010). */}
-            <p
-              data-testid="market-asof-explanation"
-              className="text-xs text-muted-foreground"
-            >
-              {t('screens.marketOverview.asOfExplanation')}
-            </p>
+                read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
+                suppresses the recency claim: 037's stale means a newer stored
+                session exists that this row lacks, so the badge beside it is the
+                honest statement (review round 1, DR-1). */}
+            {envelope.stale ? null : (
+              <p
+                data-testid="market-asof-explanation"
+                className="text-xs text-muted-foreground"
+              >
+                {t('screens.marketOverview.asOfExplanation')}
+              </p>
+            )}
           </div>
         ) : null}
       </header>
