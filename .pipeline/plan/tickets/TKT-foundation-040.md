@@ -15,7 +15,8 @@ scope:
 
 # TKT-foundation-040: morning-cadence ingest chain (~08:30 Istanbul, trading days) — EOD-repair safety net + incremental KAP freshness; never newer market prices
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/110
 - Size: M
 - **Priority: P2 — dispatch-ready; user-approved product change (2026-10-20 morning check: "we can take data morning and night").** Code-disjoint from the 036–039 wave and from PR #106's `KapSources.cs` lane; may dispatch in parallel with them.
 - User intent (recorded): a morning chain alongside the existing 20:30 EOD chain that (a) **retries/repairs the previous night's EOD** if it failed or partially ran — today's retry ladder is +5/+15/+60 min (scheduler `RetryDelays`), exhausting by ~21:50, so a failed night currently leaves the site serving yesterday-before-yesterday until the next 20:30; (b) refreshes the **KAP lanes** (statements now; dividends/corporate-actions/disclosures once TKT-foundation-034 lands — disclosures are published intraday, so a morning pass catches overnight/early-morning ones); (c) leaves macro alone (macro-daily already runs 08:00; macro-cpi 09:30).
