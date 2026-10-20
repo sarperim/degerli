@@ -116,7 +116,7 @@
 
 **TC-MOV-016 — Dashboard renders anonymously, TR default, all blocks**
 - Traces: UXR-MOV-001..005, 007, 010, FR-MOV-020, UC-MOV-001 critical flow 1, NFR-MOV-004 · Level: L4 · Design: EP — populated class
-- Expected: anonymous visit to root renders all blocks with values; every macro value shows unit, source, and as-of date (NFR-MOV-004 proxy); index/sector/mover change directions conveyed non-color-only; disclaimer visible (FR-MOV-020); initial language Turkish (TR default); language toggle present; equity as-of date displayed.
+- Expected: anonymous visit to root renders all blocks with values; every macro value shows unit, source, and as-of date (NFR-MOV-004 proxy); index/sector/mover change directions conveyed non-color-only; disclaimer visible (FR-MOV-020); initial language Turkish (TR default); language toggle present; equity as-of date displayed. **v1.6 amendment (TKT-foundation-036):** the index/mover change assertions pin the known FU fixture **values**, not just a sign — `index-xu100` shows "+2,00%" (payload fraction `0.02`) and the mover ETA shows "+10,00%" (`0.10`); a formatter that renders the served fraction verbatim fails ("+0,02%" / "+0,10%"), which is why a sign-only regex let the 100× display defect ship.
 - Dependencies: —
 
 **TC-MOV-017 — Inflation pair displayed side by side**
@@ -182,12 +182,12 @@
 
 | Requirement | Flows covered | Test Cases | Status |
 |---|---|---|---|
-| FR-MOV-001 | main | TC-001, 012, 016 | planned |
-| FR-MOV-002 | main | TC-001, 012, 016, 019 | planned |
+| FR-MOV-001 | main | TC-001, 012, 016, 031 (v1.6 — fraction-unit change rendering) | planned |
+| FR-MOV-002 | main | TC-001, 012, 016, 019, 031 (v1.6 — sector entry change rendering) | planned |
 | FR-MOV-003 | main | TC-001, 012, 016 | planned |
-| FR-MOV-004 | main | TC-001, 002, 003, 012, 016, 019, 020 | planned |
+| FR-MOV-004 | main | TC-001, 002, 003, 012, 016, 019, 020, 031 (v1.6 — mover change + `aria-label`) | planned |
 | FR-MOV-005 | main | TC-001, 012, 016; ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
-| FR-MOV-006 | main | TC-001, 004, 012, 016, 021 | planned |
+| FR-MOV-006 | main | TC-001, 004, 012, 016, 021; TC-031 div-yield regression guard (v1.6) | planned |
 | FR-MOV-007 | main | TC-013, 016, 017 | planned |
 | FR-MOV-008 | main | TC-013, 017, 018, 027 | planned |
 | FR-MOV-009 | main | TC-013, 016, 017 | planned |
@@ -200,7 +200,7 @@
 | FR-MOV-016 | main | TC-009, 013, 024 | planned |
 | FR-MOV-017 | Could | TC-015 (blocked-on-formula F-MOV-1) | flagged — accepted (2026-10-07) |
 | FR-MOV-020 | main | TC-016 (+ XC sweep) | planned |
-| FR-MOV-021 | main | TC-001, 020; ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
+| FR-MOV-021 | main | TC-001, 020; TC-031 (v1.6 — mover change rendering); ₺ volume-semantic pin MDF-064/069 (v1.5 — values unchanged) | planned |
 | UC-MOV-001 | main; alt a (macro stale); alt b (equity stale) | TC-016; TC-009, 013, 018; TC-014, 024 | planned |
 | UC-MOV-002 | main; alt a (indep unreachable); alt b (revision) | TC-006, 007, 008; TC-009; TC-007 | planned |
 | UC-MOV-003 | main; alt a (independent unavailable) | TC-017; TC-018, 013 | planned |
@@ -212,7 +212,7 @@
 | NFR-MOV-004 | plain language | TC-016, 017 (units/asOf presence); builder review ledger | planned |
 | NFR-MOV-005 | cost $0 | manual ledger | manual |
 | NFR-MOV-006 | regulatory | TC-016; XC disclaimer sweep + advice grep | planned |
-| UXR-MOV-001..005 | blocks | TC-016 (+ 001/012 payload) | planned |
+| UXR-MOV-001..005 | blocks | TC-016 (+ 001/012 payload); TC-031 (v1.6 — signed magnitude truthful) | planned |
 | UXR-MOV-006 | exclusion disclosure | TC-021 | planned |
 | UXR-MOV-007 | macro strip | TC-016, 017 | planned |
 | UXR-MOV-008 | inflation pair | TC-017, 018 | planned |
@@ -257,4 +257,17 @@
 - Traces: FR-MOV-014, UC-MOV-002 main, `01` v1.5 §10.9.6, FU §10b · Level: L2 · Design: EP — real-envelope valid class; fidelity pins capture-recorded (never derived numbers)
 - Dependencies: TC-MOV-026.
 
-*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged. v1.3 2026-10-20 — TC-MOV-029/030 added to Group A for the price-derived vs share-derived aggregate decoupling (architecture v1.5.9 §10.9.14; TKT-foundation-031, user-authorized product change): TC-MOV-029 pins the zero-share-count world (price-derived blocks served, `marketPe`/`marketDivYield` null, `marketPeExcludedCount` = constituent count, `sectorPerformance` `{}`) and TC-MOV-030 pins the partial-shares world (share-derived aggregates over the share-bearing subset, no-share members still counted in breadth/movers/volume and in the disclosed exclusion count). TC-MOV-001..005 goldens untouched — the FU world has share counts for every constituent, so every decoupling branch is a no-op there. Applied by the ticket implementer under the 030 precedent (explicit foundation criteria; architecture authority).*
+---
+
+## 9. Percentage display-unit case — v1.6 (delivery planner applied for TKT-foundation-036, 2026-10-20; test-planner confirmation pending)
+
+**Home decision:** the fraction-unit display contract is MOV-owned (§2 Groups A/D) — the served numbers themselves are already pinned by TC-MOV-001/012; what was missing was a case pinning **the unit the client renders**. It lives here, not in the UX/global plans, because the affected surfaces are exactly SCR-001's percentage surfaces.
+
+**TC-MOV-031 — A fractional percentage payload renders the correct value on every SCR-001 percentage surface**
+- Preconditions: L3 — MSW doubles serving the **API golden units** (`03` §2: every ratio/percentage metric is a decimal fraction). Payload under test carries the user-verified live shape `changePct: 0.014735` (AGHOL, +1,47%), `-0.1` (TCKRC, −10,00%), `0.02` (index, +2,00%) and a sector entry `0.022409` (+2,24%); the double for `marketDivYield` stays `0.011225` (`%` fraction, correct path).
+- Steps: render SCR-001 in TR and in EN; read each percentage surface.
+- Expected: (a) index rows render "+1,47%"/"−10,00%" in TR and "+1.47%" in EN — never "+0,01%" (the 100× defect); (b) mover entries render the same in visible text **and** in the link's `aria-label` (the accessible name carries the corrected magnitude, UXR-MOV-001/004); (c) sector-performance entries render "+2,24%"; (d) the already-correct paths are unchanged and never double-scaled: `marketDivYield` 0.011225 → 1,12% (`formatRatioPercent`), a stock/DCF `%` metric 0.182 → 18,2% (`formatPercent`); (e) at the formatter level `formatSignedPercent` scales every fraction by 100 with an explicit sign, including a flat `0` → "+0,00%". Every audit-table row (field → surface → unit → formatter) has at least one assertion.
+- Traces: FR-MOV-001/002/004/021, FR-MOV-006 (regression guard), UXR-MOV-001/003/004, NFR-MOV-004, `01` §10.7 (a wrong number is a fabricated number), `03` §2/§4 fraction-units convention · Level: L3 · Design: EP — fraction-unit payload class (plus the live-shaped boundary values the defect shipped on)
+- Dependencies: TC-MOV-016 (its L4 counterpart; the sign-only assertion is now value-pinned).
+
+*Change record: v1.0 2026-10-06 — initial MOV test plan, batch mode. v1.1 2026-10-07 — builder final review: F-MOV-1 accepted (stays Could; TC-MOV-015 contract-only; golden deferred to promotion); interpretations I-MOV-1..3 upheld; plan approved. v1.2 2026-10-17 — §8 real-source parsing-fidelity case TC-MOV-028 added (real EVDS envelope through the hardened macro adapter; architecture v1.5 §10.9.6; serves TKT-foundation-019; home decision recorded in §8 — MOV owns FR-MOV-014, the lane is shared via FU §10b). §5 matrix: FR-MOV-008/014 rows extended (also recording the v1.4 TC-MOV-026/027 rows the v1.4 pass left out of this plan's own matrix), FR-MOV-005/021 rows note the ₺ volume-semantic pin (FLG-09 — values unchanged, no golden re-derivation). Goldens untouched. Applied by the test-planner at the delivery planner's request, builder-directed (architecture v1.5 §10.9 authority); the v1.4 §7 pending-confirmation note is unchanged. v1.3 2026-10-20 — TC-MOV-029/030 added to Group A for the price-derived vs share-derived aggregate decoupling (architecture v1.5.9 §10.9.14; TKT-foundation-031, user-authorized product change): TC-MOV-029 pins the zero-share-count world (price-derived blocks served, `marketPe`/`marketDivYield` null, `marketPeExcludedCount` = constituent count, `sectorPerformance` `{}`) and TC-MOV-030 pins the partial-shares world (share-derived aggregates over the share-bearing subset, no-share members still counted in breadth/movers/volume and in the disclosed exclusion count). TC-MOV-001..005 goldens untouched — the FU world has share counts for every constituent, so every decoupling branch is a no-op there. Applied by the ticket implementer under the 030 precedent (explicit foundation criteria; architecture authority). v1.4 2026-10-20 — §9 percentage display-unit case TC-MOV-031 added and TC-MOV-016's L4 expectation amended to known-fixture **values** (TKT-foundation-036, the morning-check 100× home-screen display defect; architecture v1.5.12 `03` §2/§4 fraction-units pin). Applied by the delivery planner for the ticket (explicit foundation criteria; test-planner confirmation pending, the v1.2/v1.3 precedent). §5 matrix rows FR-MOV-001/002/004/006/021 and UXR-MOV-001..005 gain TC-031. No L2 golden changes: the API and every FU golden were already correct — the missing assertion was on the client surface.*
