@@ -280,6 +280,7 @@ Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-a
 | Operation (component) | Cadence/trigger | UC trace |
 |---|---|---|
 | EOD ingest chain: prices → statements/dividends/actions/disclosures → metrics-recompute → snapshot → medians (C3a/C3b/C3c) | cron 20:30 TRT trading days; retries ×3; run ledger; validation failures → `quarantined_facts` (never into fact tables); alerts (C3d) | UC-MDF-001 (incl. alternates a/b), UC-MDF-003 |
+| Morning chain: prices (repair-gated) → statements → metrics-recompute → snapshot → medians (C3a/C3b/C3c) | cron 08:30 TRT trading days (`Ingestion:Scheduler:MorningCron`); **run date = previous trading day** (BIST prices are EOD — catch-up + KAP freshness, never newer market prices); the prices step is **skipped when the day is already fully covered** by stored `daily_prices` for the bound universe (one run-ledger row records `gateOutcome: skipped`, zero source calls); statements incremental via per-company cursors; same ×3 retry ladder, `RETRIES_EXHAUSTED` alert and fail-stop as the EOD chain; dividends/actions/disclosures join only after TKT-foundation-034 (§10.9.16) | UC-MDF-001 (alternate a — failed-run recovery), UC-MOV-001 |
 | Backfill mode of the same chain | admin trigger (`POST /admin/ingest/{job}/run`) | UC-MDF-002 |
 | Macro ingest jobs `macro-daily` / `macro-cpi` (+ per-release repo rate) | cron per cadence | UC-MOV-002 |
 | Macro failure detection + staleness marking + builder alert | inside macro jobs | UC-MOV-005 |
