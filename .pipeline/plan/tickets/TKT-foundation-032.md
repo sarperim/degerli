@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-032: KAP VYK URI-resolution defect — the `/api/vyk` base prefix is dropped and every real-gateway request 404s
 
-- Status: in-review
+- Status: done (PR #104 merged 2026-10-20 as `26867b6` after a serialize-rebase of the §13.1 row to v1.5.10 behind #105; review round-1 MERGEABLE — no fixer dispatch; live criterion MET, recorded below)
 - PR: https://github.com/sarperim/degerli/pull/104
 - Size: S
 - **Priority: P2 — dispatch tonight (after/alongside TKT-foundation-031; serialized only on the architecture change-record).** Small, independent, unblocks every real KAP usage and obsoletes the interim operational workaround.
@@ -20,3 +20,4 @@ scope:
 - UX refs: none (no screen change).
 - Dependencies: none.
 - Parallel group: none (code-disjoint from TKT-foundation-031 but both append to `01-system-architecture.md` §13.1 — serialize the two PRs on that file; whichever lands second rebases). **Unblocks** TKT-foundation-033 (production-gateway share-count work requires correct URI resolution) and TKT-foundation-034 (the dividends/actions/disclosures VYK rewire).
+- Live verification (2026-10-20 ~00:38–01:04 UTC, orchestrator, dev stack on merged `26867b6` + pacing-only overrides at `/tmp/opencode/dev-overrides.yml` — **no KAP URI env overrides**, shipped `appsettings.json` values as committed): admin-triggered `statements` run (ledger run 102) with the operational pacing `RequestDelayMs=12000` (≥12 s/call, within the free plan's 6 calls/min) → **`succeeded`-as-`partial`, `written=56, unchanged=7, quarantined=21`** over 1501 s — real MKK VYK dev-gateway fetches through the fixed prefix-preserving join. **`docker logs` over the 30-minute run window show ZERO `returned HTTP 404` lines** (the pre-fix signature was an immediate 404 on `/members` on every call). The deeper list walk surfaced a second wave of real disclosures: `financial_statements` 61 → **117** rows, `fin_line_items` 2,970 → **5,622** rows. The 21 quarantined rows are `CONFLICTING_VALUE` honesty cases on the frozen dev-gateway archive (same known class as the 032-adjacent prices hygiene finding), not fetch failures.
