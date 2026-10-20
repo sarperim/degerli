@@ -1,0 +1,23 @@
+---
+scope:
+  - src/Ingestion/Dividends/DividendsSourceAdapter.cs
+  - src/Ingestion/CorporateActions/CorporateActionsSourceAdapter.cs
+  - src/Ingestion/Disclosures/DisclosuresSourceAdapter.cs
+  - src/Api/appsettings.json
+  - tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-034: rewire `dividends` / `corporate-actions` / `disclosures` jobs from the placeholder KAP paths to the VYK gateway
+
+- Status: todo
+- Size: M
+- **Priority: QUEUED — later lane. Do NOT dispatch tonight** (explicit 2026-10-19/20 routing: findings 5/6/7/8 are queued for later runs unless trivial; this is not trivial — it is investigation + three adapter rewires).
+- Finding (live-run session finding 6): the `dividends`, `corporate-actions` and `disclosures` jobs still fetch the old placeholder KAP paths (`/dividends`, `/corporate-actions`-class defaults in `DividendsSourceOptions`/`CorporateActionsSourceOptions`/`DisclosuresSourceOptions`) — they were never VYK-rewired (TKT-foundation-026 rewired `statements` only). Every path 404s on the VYK gateway, so these three jobs can never ingest real data. Note: the market snapshot's TTM dividend yield already degrades honestly without dividends (TKT-foundation-031's null state); this ticket is what eventually supplies real dividend facts.
+- Scope: **investigation-first, then rewire each of the three adapters onto the VYK gateway's real routes** (likely the `/disclosures` list with the appropriate `disclosureClass` per event family — e.g. dividend distributions vs capital actions vs general disclosures — resolved against the gateway's OpenAPI/real responses; NEVER guessed and hard-coded from assumption). Each adapter keeps the company-scoped loop, pacing (`KapRequestPacer`, ≥12 s), provenance, quarantine and honest-empty conventions of the 026 statements rewiring; the old placeholder path defaults are replaced with the verified VYK routes (appsettings + code defaults stay consistent). Downstream consumers (`Dividends` table feeding the snapshot's TTM DPS, disclosure surfaces) keep their contracts. **Blocked-shape warning:** the dev gateway is a frozen March-2023 archive (finding 2) — route/class verification may require the production host (see TKT-foundation-033's blocked reason); if so, record the dependency honestly rather than shipping constructed-only routes.
+- Traces to: FR-MDF-004/005 (dividends / corporate actions / disclosures ingestion), FR-MOV-006 (TTM dividend yield — downstream consumer), FR-MDF-008 (provenance); the statements L2 lane's 026 precedent for conventions; foundation pseudo-domain (explicit criteria below).
+- Acceptance: **explicit criteria per the foundation convention.** **(i)** For each rewired job, an L2 test against a shape-faithful double of the VERIFIED route (documented source: OpenAPI + a real response observation) ingests real-shaped payloads onto the canonical tables with provenance, and a 404/fault from the gateway surfaces as an honest source failure (quarantine/failure ledger, never a fabricated empty success). **(ii)** Existing `StatementsAndEventsIngestionTests` goldens re-run green (the old-path doubles are replaced with the new-route doubles — pre-list every permitted delta in the PR). **(iii)** CI green (all three jobs). **Live criteria (orchestrator post-merge, paced ≥12 s per KAP call, 401-penalty-box awareness):** one paced run per rewired job against the reachable gateway ingests real rows with `provenance=kap`, or records the honest blocked/frozen-archive result — attempt and result recorded on the ticket, never fabricated.
+- Architecture refs: `01-system-architecture.md` §10.9.11 (KAP VYK gateway), §10.9.10 (single-resource per-company seam), §13.1 change-record row; `03-api-design.md` (unchanged serving contracts); test plan: the statements-and-events L2 lane.
+- UX refs: none directly (no screen change; downstream surfaces already render honest-empty states).
+- Dependencies: TKT-foundation-032 (URI resolution — the placeholder-path 404s make every current run a no-op); possibly TKT-foundation-033's unblock condition if route verification needs the production gateway (record at dispatch).
+- Parallel group: none (queued).
