@@ -110,8 +110,11 @@ public sealed class KapHttpSourceClient : IKapSourceClient
 
         // Half two: a leading-slash path is root-relative to URI resolution and would drop the
         // base's path prefix — always resolve inside the base's directory instead.
+        // Buffered completion on purpose: `ResponseHeadersRead` would return before the body
+        // arrives, putting the success body outside `HttpClient.Timeout` and letting a gateway
+        // that sends headers then stalls hang the run (there is no job-level timeout).
         using var response = await _http
-            .GetAsync(KapUri.ToRelativePath(path), HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .GetAsync(KapUri.ToRelativePath(path), HttpCompletionOption.ResponseContentRead, cancellationToken)
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {

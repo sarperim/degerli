@@ -81,9 +81,9 @@ public sealed class CorporateActionsSourceOptions
 /// swallowed per-company failure would let a run report <c>succeeded</c> while silently skipping
 /// companies. Therefore: a transport failure, an HTTP error or a gateway fault is a
 /// <see cref="SourceFetchException"/> (the run is recorded <c>failed</c> — the failure ledger, no
-/// fabricated empty success), except a <c>400</c> whose body is the gateway's <c>ER005</c>
-/// envelope, which is end-of-list (an honest empty, §10.9.15); a structurally malformed detail
-/// body is a
+/// fabricated empty success), except a <c>400</c> on a <b>list</b> request whose body is the
+/// gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
+/// structurally malformed detail body is a
 /// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); a bound
 /// symbol the directory cannot map is a <see cref="CompanyIdentityUnresolvedException"/> (never
 /// written under a fabricated identity). Per-company cursors are persisted <b>at the end of the

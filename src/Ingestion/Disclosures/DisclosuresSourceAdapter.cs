@@ -84,9 +84,9 @@ public sealed class DisclosuresSourceOptions
 /// <para>
 /// <b>Failure posture (fail-fast, honest)</b> — identical to the corporate-actions rewire: a
 /// transport failure/HTTP error/gateway fault is a <see cref="SourceFetchException"/> (the run is
-/// recorded <c>failed</c>, never a fabricated empty success), except a <c>400</c> whose body is
-/// the gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
-/// malformed body is a
+/// recorded <c>failed</c>, never a fabricated empty success), except a <c>400</c> on a <b>list</b>
+/// request whose body is the gateway's <c>ER005</c> envelope, which is end-of-list (an honest
+/// empty, §10.9.15); a malformed body is a
 /// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); an
 /// unmapped bound symbol is a <see cref="CompanyIdentityUnresolvedException"/>. Cursors are
 /// persisted at the end of the adapter loop, before the job's store write (§10.9.15's accepted

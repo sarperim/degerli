@@ -209,7 +209,7 @@ public sealed class VykDisclosureWalker
             }
             catch (SourceFetchException exception) when (VykDisclosureList.IsEndOfList(exception))
             {
-                if (!resetAttempted && persisted is not null && from == processed && nextCursor is null)
+                if (!resetAttempted && persisted is not null && nextCursor is null)
                 {
                     // The cursor persisted by an earlier run is past a tail the gateway no longer
                     // serves (or a post-fetch store failure left it ahead of the facts). Re-walk

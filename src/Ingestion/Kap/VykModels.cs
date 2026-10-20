@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Degerli.Ingestion.Kap;
@@ -45,11 +46,33 @@ public sealed record DisclosureInfo(
     string? CompanyId)
 {
     public static DisclosureInfo From(JsonElement element) => new(
-        ReadString(element, "disclosureIndex"),
+        ReadIndex(element, "disclosureIndex"),
         ReadString(element, "disclosureType"),
         ReadString(element, "disclosureClass"),
         ReadString(element, "title"),
         ReadString(element, "companyId"));
+
+    /// <summary>
+    /// Reads the disclosure index, tolerating a numeric JSON value: the gateway sends a string,
+    /// but <see cref="VykDisclosureList.Parse"/> accepts a numeric index too — the two must agree,
+    /// or an accepted row would arrive with a null index and be skipped (a fabricated empty
+    /// success). A number is normalized to its invariant string form.
+    /// </summary>
+    private static string? ReadIndex(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number when value.TryGetInt64(out var index) =>
+                index.ToString(CultureInfo.InvariantCulture),
+            _ => null,
+        };
+    }
 
     private static string? ReadString(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object

@@ -417,6 +417,30 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
+    /// TKT-foundation-034 (R1, narrow rule) — the status <i>and</i> the body both decide: a
+    /// <b>404</b> carrying the <c>ER005</c> envelope is still a source failure (only a <b>400</b>
+    /// is end-of-list), so it is never misread as an honest empty: the run is recorded
+    /// <c>failed</c>, the exception surfaces, no row is written and nothing is quarantined.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_404_with_er005_body_is_still_a_source_failure()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureListError("1001", 0, 404, Status400Er005);
+        await using var provider = BuildIngestion(vyk: true);
+
+        await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "disclosures"));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "failed",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "disclosures").ToListAsync()).Status);
+    }
+
+    /// <summary>
     /// TKT-foundation-034 (criterion (i), honest failure) — the Apinizer <b>fault envelope</b>
     /// (HTTP 200 with a <c>fault</c> body, which is what the live gateway returns on an
     /// auth/throttle failure) is likewise a transport failure: failed run, no rows, no
@@ -530,6 +554,35 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
+    /// TKT-foundation-034 (R7) — a persisted cursor that does not parse fails the run <b>loudly</b>
+    /// (naming the value) instead of silently re-walking the whole archive: no list request is
+    /// made, the run is recorded <c>failed</c>, no rows and no quarantine.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_unparseable_cursor_fails_loudly()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        await SeedCursor("ALFA", "kap-dividends-cursor", "abc");
+        await using var provider = BuildIngestion(vyk: true);
+
+        var exception = await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "dividends"));
+
+        Assert.Contains("not a disclosure index", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("abc", exception.Message, StringComparison.Ordinal);
+
+        // The archive is never re-walked on a corrupt cursor: the list route is not called.
+        AssertDisclosureQuery("1001");
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.Dividends.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "failed",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "dividends").ToListAsync()).Status);
+    }
+
+    /// <summary>
     /// TKT-foundation-034 (R1) — the <c>ER005</c> discrimination is narrow: a <b>400</b> carrying
     /// another code still fails the run honestly (no honest-empty swallow).
     /// </summary>
@@ -576,6 +629,47 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.Equal(0, await db.KapDisclosures.CountAsync());
         var quarantine = Assert.Single(await db.QuarantinedFacts.ToListAsync());
         Assert.Equal("UNPARSEABLE_PAYLOAD", quarantine.ReasonCode);
+    }
+
+    /// <summary>
+    /// TKT-foundation-034 (R2, parse tolerance) — the list parse accepts a <b>numeric</b>
+    /// <c>disclosureIndex</c> and the row model must read it too (normalized to its invariant
+    /// string): otherwise the accepted row arrives with a null index, is skipped, and the run
+    /// reports <c>succeeded</c> with 0 rows — the fabricated-empty class R2 exists to kill.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_034_numeric_disclosure_index_is_ingested_not_silently_dropped()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList(
+            "1001",
+            0,
+            """
+            [{"disclosureIndex":1138986,"disclosureType":"CA","disclosureClass":"ODA","title":"ALFA","companyId":"1001"}]
+            """);
+        StubDetail("1138986", DividendDetailBody());
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(1, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapDisclosures.ToListAsync());
+        Assert.Equal("CA", row.DisclosureType);
+        Assert.Equal("https://www.kap.org.tr/Bildirim/1138986", row.SourceUrl);
+
+        // The listed index (not just the detail) drove the walk: the detail was fetched and the
+        // cursor advanced to the numeric index exactly as for a string-bodied row.
+        Assert.Contains(
+            _wireMock.Server.LogEntries,
+            e => e.RequestMessage is not null
+                && e.RequestMessage.Path == DetailPath("1138986"));
+        var cursor = Assert.Single(
+            await db.CoverageMetadata.Where(c => c.DataType == "kap-disclosures-cursor").ToListAsync());
+        Assert.Equal("1138986", cursor.Notes);
     }
 
     /// <summary>
