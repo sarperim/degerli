@@ -216,6 +216,12 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
             Assert.Equal(47.10m, fresh.Value);
         }
 
+        // TKT-foundation-038: macro staleness is per series, so the failure must genuinely
+        // postdate the series' last recorded ingest. FU §7 dates the seeded daily ingest at
+        // the T-evening EOD (21:30), after this harness's T-noon clock; advance one day so
+        // the failed run is newer than the stored data — a real missed ingest.
+        host.Clock.SetUtcNow(new DateTimeOffset(T.AddDays(1).ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero));
+
         // A fresh series' source fails (HTTP 500) for the daily job.
         _wireMock.Server.ResetMappings();
         _wireMock.StubJson(MacroPath, """{"error":"source unavailable"}""", statusCode: 500);
@@ -441,6 +447,11 @@ public sealed class MacroIngestionTests : IClassFixture<PostgresFixture>, IClass
     {
         await ResetAsync(clearMacroValues: false);
         await using var host = BuildIngestion();
+
+        // TKT-foundation-038: the failed run must postdate the series' own recorded ingest
+        // (FU §7 stamps the seeded daily value at the T-evening EOD, after this harness's
+        // T-noon clock) — otherwise the data itself is newer than the failure.
+        host.Clock.SetUtcNow(new DateTimeOffset(T.AddDays(1).ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero));
 
         _wireMock.Server.ResetMappings();
         _wireMock.StubJson(MacroPath, """{"error":"evds unavailable"}""", statusCode: 500);
