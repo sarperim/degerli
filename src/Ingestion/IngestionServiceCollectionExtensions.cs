@@ -101,7 +101,9 @@ public static class IngestionServiceCollectionExtensions
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
             var http = new HttpClient
             {
-                BaseAddress = new Uri(baseUrl, UriKind.Absolute),
+                // The VYK base URL carries a path prefix (`/api/vyk`) and ships without a
+                // trailing slash; the join must preserve it (01 v1.5 §10.9.11).
+                BaseAddress = KapUri.WithDirectorySeparator(new Uri(baseUrl, UriKind.Absolute)),
                 Timeout = TimeSpan.FromSeconds(30),
             };
 
