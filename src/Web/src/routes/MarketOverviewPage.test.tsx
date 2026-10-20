@@ -59,7 +59,7 @@ function StockPageStub() {
   return <div data-testid="stock-page-symbol">{symbol}</div>
 }
 
-function renderPage() {
+function renderPage(language: 'tr' | 'en' = 'tr') {
   return renderWithProviders(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
@@ -68,6 +68,7 @@ function renderPage() {
         <Route path="/stocks/:symbol" element={<StockPageStub />} />
       </Routes>
     </MemoryRouter>,
+    { language },
   )
 }
 
@@ -171,6 +172,29 @@ describe('TC-MOV-016 equity blocks render with values', () => {
       expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
     })
     expect(document.querySelector('[data-slot="as-of-date"]')).toHaveTextContent('2026')
+  })
+
+  /**
+   * TKT-foundation-039 (TC-MOV-016, finding B3): the as-of line states what the
+   * date means — the latest completed session — so a fresh-but-not-today row is
+   * never read as a data error.
+   */
+  it('explains that the as-of date is the latest completed session', async () => {
+    renderPage()
+
+    const explanation = await screen.findByTestId('market-asof-explanation')
+    expect(explanation).toHaveTextContent(
+      tr('screens.marketOverview.asOfExplanation'),
+    )
+  })
+
+  it('explains the as-of date in English when English is active', async () => {
+    renderPage('en')
+
+    const explanation = await screen.findByTestId('market-asof-explanation')
+    expect(explanation).toHaveTextContent(
+      catalogValue('en', 'screens.marketOverview.asOfExplanation'),
+    )
   })
 })
 

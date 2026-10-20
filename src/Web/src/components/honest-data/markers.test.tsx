@@ -52,6 +52,36 @@ describe('honest-data markers', () => {
     ).toBeInTheDocument()
   })
 
+  /**
+   * TKT-foundation-039 (TC-MOV-024, finding B3): the badge must explain its own
+   * semantics — a truthful stale flag that reads as "this number is wrong" is a
+   * comprehension defect. The explanation is catalog copy and is programmatically
+   * determinable (title + accessible name), never colour- or hover-only.
+   */
+  it('explains what stale means instead of leaving the flag unexplained', () => {
+    renderWithProviders(<StaleBadge />)
+
+    const badge = screen.getByText(catalogValue('tr', 'honestData.stale'))
+    const explanation = catalogValue('tr', 'honestData.staleExplanation')
+
+    expect(badge).toHaveAttribute('title', explanation)
+    expect(badge).toHaveAccessibleName(
+      `${catalogValue('tr', 'honestData.stale')} — ${explanation}`,
+    )
+    // A bare label is not an explanation: the two must not collapse into one string.
+    expect(explanation).not.toBe(catalogValue('tr', 'honestData.stale'))
+  })
+
+  it('explains the stale badge in English when English is active', () => {
+    renderWithProviders(<StaleBadge />, { language: 'en' })
+
+    const badge = screen.getByText(catalogValue('en', 'honestData.stale'))
+    expect(badge).toHaveAttribute(
+      'title',
+      catalogValue('en', 'honestData.staleExplanation'),
+    )
+  })
+
   it('renders an explicit not-meaningful state, not a value (UXR-RES-025)', () => {
     renderWithProviders(<NotMeaningful />)
     const node = screen.getByText(catalogValue('tr', 'honestData.notMeaningful'))

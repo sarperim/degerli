@@ -50,12 +50,38 @@ function isUnavailable(series: MacroSeries): boolean {
   return series.state === 'unavailable' || series.value === null
 }
 
+/**
+ * Publication cadence per series (TKT-foundation-039, finding B3). Mirrors the
+ * seeded `macro_series.cadence` column (`DegerliSeed.MacroSeriesSql`): the CPI
+ * pair is monthly, the policy rate is published per decision, FX and gold daily.
+ * A series is never labelled more current than its source publishes, so an older
+ * monthly figure reads as "latest published value", not as a stale feed
+ * (TKT-foundation-038's publication-aware freshness, made self-explanatory).
+ */
+type Cadence = 'monthly' | 'perRelease' | 'daily'
+
+const SERIES_CADENCE: Record<string, Cadence> = {
+  TUIK_CPI: 'monthly',
+  INDEP_CPI: 'monthly',
+  CBRT_REPO: 'perRelease',
+  USD_TRY: 'daily',
+  EUR_TRY: 'daily',
+  GOLD: 'daily',
+}
+
+const CADENCE_LABEL_KEYS: Record<Cadence, string> = {
+  monthly: 'marketOverview.macro.cadence.monthly',
+  perRelease: 'marketOverview.macro.cadence.perRelease',
+  daily: 'marketOverview.macro.cadence.daily',
+}
+
 function MacroIndicator({ series }: { series: MacroSeries }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
   const unavailable = isUnavailable(series)
   const labelKey = SERIES_LABEL_KEYS[series.code]
   const label = labelKey ? t(labelKey) : series.code
+  const cadence = SERIES_CADENCE[series.code] ?? 'daily'
 
   return (
     <div data-testid={`macro-${series.code}`} className="flex flex-col gap-1">
@@ -94,7 +120,19 @@ function MacroIndicator({ series }: { series: MacroSeries }) {
             {t('marketOverview.macro.source', { source: series.source })}
           </span>
         ) : null}
-        {series.asOf ? <AsOfDate asOf={series.asOf} /> : null}
+        {series.asOf ? (
+          <span className="flex flex-col gap-0.5">
+            <AsOfDate asOf={series.asOf} />
+            {/* The as-of date says what it qualifies: this cadence's latest
+                published value (TKT-foundation-039, UXR-MOV-010). */}
+            <span
+              data-slot="macro-cadence"
+              className="text-xs text-muted-foreground"
+            >
+              {t(CADENCE_LABEL_KEYS[cadence])}
+            </span>
+          </span>
+        ) : null}
         {series.stale ? <StaleBadge /> : null}
       </dd>
     </div>

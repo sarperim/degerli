@@ -42,8 +42,8 @@ const SERIES_CODES = [
   'GOLD',
 ] as const
 
-function renderStrip() {
-  return renderWithProviders(<MacroStrip />)
+function renderStrip(language: 'tr' | 'en' = 'tr') {
+  return renderWithProviders(<MacroStrip />, { language })
 }
 
 beforeEach(() => {
@@ -105,6 +105,51 @@ describe('TC-MOV-018 degraded macro — unavailable independent measure', () => 
     // The pair is never silently reduced to one unlabeled figure.
     expect(screen.getByTestId('macro-independent-unavailable')).toHaveTextContent(
       tr('marketOverview.macro.independentUnavailable'),
+    )
+  })
+})
+
+describe('TC-MOV-016 macro as-of lines carry publication-cadence semantics', () => {
+  /**
+   * TKT-foundation-039 (finding B3): a monthly series' as-of date is its latest
+   * PUBLISHED value, a per-release series' its latest published decision, and a
+   * daily series' its latest completed day — the strip says which, so an older
+   * monthly figure is never read as a stale feed (TKT-foundation-038 semantics).
+   */
+  it('states the publication cadence of each series next to its as-of date', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip()
+
+    const expectations: Record<string, string> = {
+      TUIK_CPI: 'monthly',
+      INDEP_CPI: 'monthly',
+      CBRT_REPO: 'perRelease',
+      USD_TRY: 'daily',
+      EUR_TRY: 'daily',
+      GOLD: 'daily',
+    }
+
+    for (const [code, cadence] of Object.entries(expectations)) {
+      const indicator = await screen.findByTestId(`macro-${code}`)
+      const note = indicator.querySelector('[data-slot="macro-cadence"]')
+      expect(note).not.toBeNull()
+      expect(note).toHaveTextContent(
+        tr(`marketOverview.macro.cadence.${cadence}`),
+      )
+      // The cadence note accompanies the as-of date it qualifies.
+      expect(indicator.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    }
+  })
+
+  it('states the publication cadence in English when English is active', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip('en')
+
+    const cpi = await screen.findByTestId('macro-TUIK_CPI')
+    expect(
+      cpi.querySelector('[data-slot="macro-cadence"]'),
+    ).toHaveTextContent(
+      catalogValue('en', 'marketOverview.macro.cadence.monthly'),
     )
   })
 })
