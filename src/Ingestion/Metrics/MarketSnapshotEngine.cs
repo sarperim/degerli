@@ -26,6 +26,13 @@ public sealed class MarketSnapshotEngine
     }
 
     /// <summary>Computes the snapshot for <paramref name="date"/>, or NULL when no price exists.</summary>
+    /// <remarks>
+    /// Price-derived blocks (indices, breadth, movers, total volume) and share-derived blocks
+    /// (market P/E, dividend yield, cap-weighted sector performance) are decoupled
+    /// (<c>01</c> §10.9.14; TKT-foundation-031): a constituent without a usable
+    /// <c>SHARES_DILUTED</c> still contributes its price move and volume, while the
+    /// market-cap-dependent aggregates exclude it and report the exclusion honestly.
+    /// </remarks>
     public async Task<MarketSnapshotResult?> ComputeAsync(
         DateOnly date,
         CancellationToken cancellationToken = default)
@@ -156,16 +163,20 @@ public sealed class MarketSnapshotEngine
                 continue;
             }
 
+            // A member without a usable share count is NOT dropped (01 §10.9.14): it joins the
+            // price-derived aggregates with no market cap, and the share-derived aggregates
+            // exclude it while reporting the exclusion. Null stays null — no fabricated cap.
             var shares = LineFor(instrument.Id, "BS", SharesDiluted);
-            if (shares is null or <= 0m)
+            decimal? marketCap = null;
+            var divTtm = 0m;
+            if (shares is > 0m)
             {
-                continue;
+                marketCap = quote.CloseRaw * shares.Value;
+                divTtm = dividendPerShare.TryGetValue(instrument.Id, out var dps) ? dps * shares.Value : 0m;
             }
 
-            var marketCap = quote.CloseRaw * shares.Value;
             var change = quote.CloseRaw / previousClose - 1m;
             var ni = LineFor(instrument.Id, "IS", NetIncome);
-            var divTtm = dividendPerShare.TryGetValue(instrument.Id, out var dps) ? dps * shares.Value : 0m;
             var sector = instrument.SectorId is long sectorId && sectorCodes.TryGetValue(sectorId, out var code)
                 ? code
                 : null;
@@ -182,6 +193,11 @@ public sealed class MarketSnapshotEngine
 
         if (constituents.Count == 0)
         {
+            // The engine-level null survives only for its original meanings (01 §10.9.14):
+            // no covered universe / no XU100 membership, no stored price for the covered
+            // universe on the resolved day (guarded above), or no member with a previous
+            // close to measure a daily change against. Missing share counts are NOT such a
+            // reason — those members still feed the price-derived aggregates.
             return null;
         }
 

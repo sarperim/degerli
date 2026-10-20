@@ -7,15 +7,19 @@ namespace Degerli.Core.Metrics;
 /// </summary>
 /// <param name="Symbol">Instrument ticker.</param>
 /// <param name="SectorCode">Sector bucket; NULL when unclassified (excluded from sector performance).</param>
-/// <param name="MarketCap">close_raw × shares_diluted (FU §2 money units).</param>
+/// <param name="MarketCap">
+/// close_raw × shares_diluted (FU §2 money units); NULL when the constituent has no usable
+/// share count (null or ≤ 0) — the price-derived aggregates still count it, the
+/// market-cap-derived aggregates exclude it and report the exclusion (01 §10.9.14).
+/// </param>
 /// <param name="ChangePct">Daily price change as a decimal fraction (0.05 = +5%).</param>
 /// <param name="Volume">Traded shares on the snapshot day.</param>
 /// <param name="NetIncome">Trailing net income; NULL = not available (treated as a loss-maker exclusion).</param>
-/// <param name="DividendTtm">Trailing-twelve-month dividends (Σ DPS_TTM × shares).</param>
+/// <param name="DividendTtm">Trailing-twelve-month dividends (Σ DPS_TTM × shares); 0 when not computable.</param>
 public sealed record MarketConstituent(
     string Symbol,
     string? SectorCode,
-    decimal MarketCap,
+    decimal? MarketCap,
     decimal ChangePct,
     long Volume,
     decimal? NetIncome,
@@ -84,19 +88,26 @@ public static class MarketAggregates
         var volumeTotal = constituents.Sum(c => c.Volume);
 
         // FR-MOV-006 / BR-MOV-010 / D-05 — market P/E = Σmcap / ΣNI over constituents
-        // with NI > 0; loss-makers (and missing income) are excluded and counted.
-        var profitable = constituents.Where(c => c.NetIncome is > 0m).ToList();
+        // with a share count and NI > 0; loss-makers, missing income AND members without a
+        // usable share count (no mcap) are excluded and counted — the exclusion is
+        // reported, never silently dropped (01 §10.9.14).
+        var profitable = constituents
+            .Where(c => c.NetIncome is > 0m && c.MarketCap is not null)
+            .ToList();
         var excludedCount = constituents.Count - profitable.Count;
         var totalIncome = profitable.Sum(c => c.NetIncome!.Value);
-        var profitableCap = profitable.Sum(c => c.MarketCap);
+        var profitableCap = profitable.Sum(c => c.MarketCap!.Value);
         decimal? marketPe = profitable.Count > 0 && totalIncome > 0m
             ? Round(profitableCap / totalIncome)
             : null;
 
-        // FR-MOV-006 — market dividend yield = Σ DIV_TTM / Σ mcap over all constituents.
-        var totalCap = constituents.Sum(c => c.MarketCap);
+        // FR-MOV-006 — market dividend yield = Σ DIV_TTM / Σ mcap over the share-bearing
+        // constituents; NULL when none carries a share count (DPS × shares is not
+        // computable without shares — never fabricated).
+        var capBearing = constituents.Where(c => c.MarketCap is not null).ToList();
+        var totalCap = capBearing.Sum(c => c.MarketCap!.Value);
         decimal? marketDivYield = totalCap > 0m
-            ? Round(constituents.Sum(c => c.DividendTtm) / totalCap)
+            ? Round(capBearing.Sum(c => c.DividendTtm) / totalCap)
             : null;
 
         // FR-MOV-004 / FR-MOV-021 / BR-MOV-011 — top movers among volume-eligible stocks.
@@ -117,19 +128,22 @@ public static class MarketAggregates
             .ToList();
 
         // FR-MOV-002 — sector daily performance: cap-weighted average of members' daily
-        // changes, Σ(mcap_i × chg_i)/Σmcap_i over the sector's members (locked Q2).
-        // Unclassified instruments (NULL sector) belong to no bucket.
+        // changes, Σ(mcap_i × chg_i)/Σmcap_i over the sector's share-bearing members
+        // (locked Q2). A member without a usable share count carries no weight and is
+        // excluded; a sector with no share-bearing member at all is OMITTED rather than
+        // emitted as a fabricated 0.0 reading (01 §10.9.14). Unclassified instruments
+        // (NULL sector) belong to no bucket.
         var sectorPerformance = constituents
-            .Where(c => !string.IsNullOrEmpty(c.SectorCode))
+            .Where(c => c.MarketCap is not null && !string.IsNullOrEmpty(c.SectorCode))
             .GroupBy(c => c.SectorCode!, StringComparer.Ordinal)
             .ToDictionary(
                 g => g.Key,
                 g =>
                 {
-                    var cap = g.Sum(c => c.MarketCap);
+                    var cap = g.Sum(c => c.MarketCap!.Value);
                     return cap == 0m
                         ? 0m
-                        : Round(g.Sum(c => c.MarketCap * c.ChangePct) / cap);
+                        : Round(g.Sum(c => c.MarketCap!.Value * c.ChangePct) / cap);
                 },
                 StringComparer.Ordinal);
 
