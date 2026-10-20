@@ -154,6 +154,29 @@ public sealed class SourceFetchException : Exception
     public SourceFetchException(string message) : base(message) { }
 
     public SourceFetchException(string message, Exception inner) : base(message, inner) { }
+
+    /// <summary>
+    /// A non-success response carrying the HTTP status and a size-bounded, secret-redacted excerpt
+    /// of the body. The status/body travel with the exception so a caller can classify a
+    /// <b>gateway</b> response that is semantically not a failure (the VYK gateway answers HTTP 400
+    /// <c>ER005</c> for "no disclosure here" — an honest empty, 01 v1.5 §10.9.15) without parsing
+    /// the human-readable message.
+    /// </summary>
+    public SourceFetchException(string message, int? statusCode, string? body, Exception? inner = null)
+        : base(message, inner)
+    {
+        StatusCode = statusCode;
+        Body = body;
+    }
+
+    /// <summary>The response status code, when the failure came from an HTTP response.</summary>
+    public int? StatusCode { get; }
+
+    /// <summary>
+    /// The response body excerpt (bounded, configured secrets redacted), when one was read. Never a
+    /// credential: KAP auth travels only in the <c>Authorization</c> header.
+    /// </summary>
+    public string? Body { get; }
 }
 
 /// <summary>
