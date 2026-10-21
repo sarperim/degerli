@@ -7,13 +7,26 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Ingestion.Metrics;
 
-/// <summary>Outcome of a snapshot write pass (rides the run ledger's stats).</summary>
-public sealed record MarketSnapshotWriteResult(int Written, int Unchanged);
+/// <summary>
+/// Outcome of a snapshot write pass (rides the run ledger's stats): a fresh insert
+/// (<see cref="Written"/>), an identical recompute (<see cref="Unchanged"/>) or an
+/// in-place repair of the resolved day's row with changed inputs (<see cref="Rewritten"/>).
+/// </summary>
+public sealed record MarketSnapshotWriteResult(int Written, int Unchanged, int Rewritten);
 
 /// <summary>
 /// Fact storage for the market snapshot (02 §3.2). One row per trading day, idempotent
-/// by <c>snapshot_date</c>: a re-run for the same date updates the existing row in place
-/// rather than inserting a duplicate, and never touches another date's row (TC-MOV-005).
+/// by <c>snapshot_date</c>: a re-run for the same date never inserts a duplicate and
+/// never touches another date's row (TC-MOV-005).
+/// <para>
+/// <b>Input-aware recompute (<c>01</c> §10.9.13; TKT-foundation-042).</b> A completed day
+/// is never *blindly* rewritten — the recomputed aggregate is compared to the stored row
+/// first: identical inputs give an honest <c>unchanged: 1</c>, and changed inputs (index
+/// levels or prices landing after the first compute) repair the row in place and count as
+/// a repair. Operational repair therefore needs no SQL surgery. Days other than
+/// the resolved one are never addressed by this store at all, so historical rows stay
+/// immutable.
+/// </para>
 /// </summary>
 public sealed class MarketSnapshotStore
 {
@@ -65,15 +78,11 @@ public sealed class MarketSnapshotStore
     }
 
     /// <summary>
-    /// True when a completed snapshot row already exists for <paramref name="date"/> — the
-    /// idempotency guard that makes a re-run for an already-snapshotted trading day a no-op
-    /// (`01` §10.9.13; TC-MOV-005 one-row-per-trading-day): the job never recomputes or
-    /// rewrites a completed day.
+    /// Writes the snapshot row for <paramref name="date"/>: insert when the day has no row,
+    /// leave an identical row untouched (honest <c>unchanged</c>), and repair a row whose
+    /// stored values no longer match the current facts (<c>rewritten</c>) — always exactly
+    /// one row per trading day (`01` §10.9.13; TC-MOV-005).
     /// </summary>
-    public Task<bool> HasSnapshotAsync(DateOnly date, CancellationToken cancellationToken = default) =>
-        _db.MarketSnapshots.AnyAsync(s => s.SnapshotDate == date, cancellationToken);
-
-    /// <summary>Upserts the snapshot row for <paramref name="date"/>.</summary>
     public async Task<MarketSnapshotWriteResult> UpsertAsync(
         DateOnly date,
         MarketSnapshotResult result,
@@ -86,7 +95,35 @@ public sealed class MarketSnapshotStore
             .SingleOrDefaultAsync(s => s.SnapshotDate == date, cancellationToken)
             .ConfigureAwait(false);
 
-        var row = existing ?? new MarketSnapshot { SnapshotDate = date };
+        var computed = new MarketSnapshot { SnapshotDate = date };
+        Apply(computed, date, result, computedAt);
+
+        if (existing is null)
+        {
+            _db.MarketSnapshots.Add(computed);
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return new MarketSnapshotWriteResult(Written: 1, Unchanged: 0, Rewritten: 0);
+        }
+
+        if (HasSameValues(existing, computed))
+        {
+            // The recompute agrees with the stored row: nothing to write, and the run
+            // reports the honest unchanged count instead of the pre-042 silent 0/0.
+            return new MarketSnapshotWriteResult(Written: 0, Unchanged: 1, Rewritten: 0);
+        }
+
+        Apply(existing, date, result, computedAt);
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return new MarketSnapshotWriteResult(Written: 0, Unchanged: 0, Rewritten: 1);
+    }
+
+    /// <summary>Copies one computed aggregate onto a snapshot row (the single mapping).</summary>
+    private static void Apply(
+        MarketSnapshot row,
+        DateOnly date,
+        MarketSnapshotResult result,
+        DateTimeOffset computedAt)
+    {
         row.Xu100Level = result.Xu100Level;
         row.Xu100ChangePct = result.Xu100ChangePct;
         row.Xu30Level = result.Xu30Level;
@@ -100,20 +137,65 @@ public sealed class MarketSnapshotStore
         row.MarketDivYield = result.MarketDivYield;
         row.GainersJson = SerializeMovers(result.Gainers);
         row.LosersJson = SerializeMovers(result.Losers);
-        row.SectorPerfJson = JsonSerializer.Serialize(result.SectorPerformance, JsonOptions);
-        row.AsOfTradingDate = date;
-        row.ComputedAt = computedAt;
-
-        if (existing is null)
+        // Ordered keys: the sector dictionary's iteration order follows the (unordered)
+        // fact query, so pinning it keeps the stored bytes deterministic across runs.
+        var orderedSectors = new SortedDictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var entry in result.SectorPerformance)
         {
-            _db.MarketSnapshots.Add(row);
+            orderedSectors[entry.Key] = entry.Value;
         }
 
-        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return existing is null
-            ? new MarketSnapshotWriteResult(Written: 1, Unchanged: 0)
-            : new MarketSnapshotWriteResult(Written: 0, Unchanged: 1);
+        row.SectorPerfJson = JsonSerializer.Serialize(orderedSectors, JsonOptions);
+        row.AsOfTradingDate = date;
+        row.ComputedAt = computedAt;
     }
+
+    /// <summary>
+    /// True when the stored row already carries the computed aggregate. Compares the
+    /// input-derived values semantics only — never <c>computed_at</c> (which stamps the
+    /// write, not the facts) and never raw JSON text (rows written before the sector keys
+    /// were pinned carry a different, equally valid key order).
+    /// </summary>
+    private static bool HasSameValues(MarketSnapshot stored, MarketSnapshot computed) =>
+        stored.Xu100Level == computed.Xu100Level
+        && stored.Xu100ChangePct == computed.Xu100ChangePct
+        && stored.Xu30Level == computed.Xu30Level
+        && stored.Xu30ChangePct == computed.Xu30ChangePct
+        && stored.BreadthAdvancing == computed.BreadthAdvancing
+        && stored.BreadthDeclining == computed.BreadthDeclining
+        && stored.BreadthUnchanged == computed.BreadthUnchanged
+        && stored.VolumeTotal == computed.VolumeTotal
+        && stored.MarketPe == computed.MarketPe
+        && stored.MarketPeExcludedCount == computed.MarketPeExcludedCount
+        && stored.MarketDivYield == computed.MarketDivYield
+        && MoversEqual(stored.GainersJson, computed.GainersJson)
+        && MoversEqual(stored.LosersJson, computed.LosersJson)
+        && SectorsEqual(stored.SectorPerfJson, computed.SectorPerfJson)
+        && stored.AsOfTradingDate == computed.AsOfTradingDate;
+
+    /// <summary>Movers are ranked, so both the entries and their order must match.</summary>
+    private static bool MoversEqual(string? stored, string? computed) =>
+        DeserializeMovers(stored).SequenceEqual(DeserializeMovers(computed));
+
+    /// <summary>Sector performance is a keyed object: the key order is not meaningful.</summary>
+    private static bool SectorsEqual(string? stored, string? computed)
+    {
+        var left = DeserializeSectors(stored);
+        var right = DeserializeSectors(computed);
+        return left.Count == right.Count
+            && left.All(entry => right.TryGetValue(entry.Key, out var value) && value == entry.Value);
+    }
+
+    private static List<MoverJson> DeserializeMovers(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? []
+            : JsonSerializer.Deserialize<List<MoverJson>>(json, JsonOptions) ?? [];
+
+    private static Dictionary<string, decimal> DeserializeSectors(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? new Dictionary<string, decimal>(StringComparer.Ordinal)
+            : JsonSerializer.Deserialize<Dictionary<string, decimal>>(json, JsonOptions)
+                ?? new Dictionary<string, decimal>(StringComparer.Ordinal);
 
     private static string SerializeMovers(IReadOnlyList<MoverEntry> movers) =>
         JsonSerializer.Serialize(

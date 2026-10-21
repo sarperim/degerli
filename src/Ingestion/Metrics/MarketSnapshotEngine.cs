@@ -32,6 +32,9 @@ public sealed class MarketSnapshotEngine
     /// (<c>01</c> §10.9.14; TKT-foundation-031): a constituent without a usable
     /// <c>SHARES_DILUTED</c> still contributes its price move and volume, while the
     /// market-cap-dependent aggregates exclude it and report the exclusion honestly.
+    /// A resolved day whose index levels have not landed yet yields NULL index moves —
+    /// an honest empty block, never a fabricated <c>0.0000</c> (<c>01</c> §10.9.14;
+    /// TKT-foundation-042).
     /// </remarks>
     public async Task<MarketSnapshotResult?> ComputeAsync(
         DateOnly date,
@@ -206,7 +209,14 @@ public sealed class MarketSnapshotEngine
         return MarketAggregates.Compute(xu100, xu30, constituents, _options.VolumeEligibilityThreshold);
     }
 
-    private async Task<(IndexMove Xu100, IndexMove Xu30)> ReadIndexMovesAsync(
+    /// <summary>
+    /// Reads the day's BIST 100 / BIST 30 index moves. A move is NULL when the index's
+    /// level for <paramref name="date"/> has not landed yet — a missing index fact must
+    /// degrade to an honest empty state, never to a fabricated <c>0.0000</c> level
+    /// (<c>01</c> §10.9.14; TKT-foundation-042). The FU world always stores both levels,
+    /// so its goldens are unchanged.
+    /// </summary>
+    private async Task<(IndexMove? Xu100, IndexMove? Xu30)> ReadIndexMovesAsync(
         DateOnly date,
         CancellationToken cancellationToken)
     {
@@ -241,7 +251,8 @@ public sealed class MarketSnapshotEngine
             var current = levels.FirstOrDefault(l => l.IndexId == indexId && l.LevelDate == date);
             if (current is null)
             {
-                return new IndexMove(0m, 0m);
+                // No level stored for the resolved day: honest empty, never (0, 0).
+                return null;
             }
 
             var previousDate = levels
@@ -259,8 +270,6 @@ public sealed class MarketSnapshotEngine
             return new IndexMove(current.Close, change);
         }
 
-        return (
-            Move("XU100") ?? new IndexMove(0m, 0m),
-            Move("XU030", "XU30") ?? new IndexMove(0m, 0m));
+        return (Move("XU100"), Move("XU030", "XU30"));
     }
 }

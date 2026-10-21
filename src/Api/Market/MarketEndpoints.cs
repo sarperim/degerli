@@ -139,16 +139,25 @@ public static class MarketEndpoints
             ? ReadSectors(snapshot.SectorPerfJson)
             : new Dictionary<string, decimal>(StringComparer.Ordinal);
 
+        // FR-MOV-001 / UC-MOV-001 — the index block is served only when it is honestly
+        // complete: a resolved day whose index levels had not landed when the row was
+        // computed carries NULL levels, and the overview serves `indices: null` for the
+        // Web's Unavailable treatment rather than a fabricated 0,00 reading
+        // (01 §10.9.14; TKT-foundation-042). The price-derived blocks are unaffected.
+        var indicesAvailable = snapshot.Xu100Level is not null && snapshot.Xu30Level is not null;
+
         return Results.Ok(new
         {
             asOf = snapshot.SnapshotDate,
             stale,
             state = "available",
-            indices = new
-            {
-                xu100 = new { level = snapshot.Xu100Level, changePct = snapshot.Xu100ChangePct },
-                xu30 = new { level = snapshot.Xu30Level, changePct = snapshot.Xu30ChangePct },
-            },
+            indices = indicesAvailable
+                ? new
+                {
+                    xu100 = new { level = snapshot.Xu100Level, changePct = snapshot.Xu100ChangePct },
+                    xu30 = new { level = snapshot.Xu30Level, changePct = snapshot.Xu30ChangePct },
+                }
+                : null,
             breadth = new
             {
                 advancing = snapshot.BreadthAdvancing,
