@@ -87,13 +87,17 @@ public sealed class DisclosuresSourceOptions
 /// recorded <c>failed</c>, never a fabricated empty success), except a <c>400</c> on a <b>list</b>
 /// request whose body is the gateway's <c>ER005</c> envelope, which is end-of-list (an honest
 /// empty, §10.9.15); a malformed body is a
-/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); an
-/// unmapped bound symbol is a <see cref="CompanyIdentityUnresolvedException"/>. Cursors are
+/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>). A bound
+/// symbol the directory cannot map is <b>isolated per constituent</b> (01 v1.5 §10.9.15, the
+/// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): the loop names it
+/// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>, skips it and continues, and the
+/// job records it in the run's per-symbol stats (see <see cref="IVykIdentityIsolationReporter"/>) —
+/// never written under a fabricated identity, never a whole-run fail-stop. Cursors are
 /// persisted at the end of the adapter loop, before the job's store write (§10.9.15's accepted
 /// residual: a post-fetch store failure can skip the indexes the cursor covers).
 /// </para>
 /// </summary>
-public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload>
+public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload>, IVykIdentityIsolationReporter
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-disclosures-cursor";
@@ -108,6 +112,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private readonly UniverseSyncStore? _universe;
     private readonly DegerliDbContext? _db;
     private readonly ILogger<DisclosuresSourceAdapter>? _logger;
+    private readonly List<string> _unresolvedSymbols = [];
 
     public DisclosuresSourceAdapter(IKapSourceClient client, IOptions<DisclosuresSourceOptions> options)
         : this(client, options, kapOptions: null, directory: null, pacer: null, universe: null, db: null, logger: null)
@@ -139,6 +144,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
     /// <inheritdoc />
     public string SourceName => "kap";
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> UnresolvedSymbols => _unresolvedSymbols;
 
     /// <inheritdoc />
     public async Task<SourcePayload<DisclosuresPayload>> FetchAsync(
@@ -183,12 +191,18 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         var disclosures = new List<DisclosureFact>();
         var raw = new StringBuilder();
         var cursors = new List<(string Symbol, string Cursor)>();
+        _unresolvedSymbols.Clear();
 
         foreach (var symbol in symbols)
         {
             if (!snapshot.BySymbol.TryGetValue(symbol, out var companyId))
             {
-                throw new CompanyIdentityUnresolvedException(symbol);
+                // Per-constituent identity isolation (FR-MDF-008/FR-MDF-012, §10.9.10/§10.9.11):
+                // the unmapped bound symbol is named, counted and skipped — never written under a
+                // fabricated identity, and never a fail-stop that aborts the whole family walk.
+                LogIdentityUnresolved(symbol);
+                _unresolvedSymbols.Add(symbol);
+                continue;
             }
 
             var cursor = await GetCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
@@ -310,6 +324,17 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private bool IsFamily(DisclosureInfo disclosure) =>
         string.IsNullOrWhiteSpace(_options.DisclosureType)
         || string.Equals(disclosure.DisclosureType, _options.DisclosureType, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Logs one isolated bound symbol with the named reason (FR-MDF-008/FR-MDF-012): the symbol is
+    /// listed and the run continues, so the skip is visible in the run's log trail even before the
+    /// job folds it into the per-symbol stats.
+    /// </summary>
+    private void LogIdentityUnresolved(string symbol) =>
+        _logger?.LogWarning(
+            "disclosures: company {Symbol} could not be mapped to a VYK companyId; isolated and the loop continues ({ReasonCode})",
+            symbol,
+            VykCompanyDirectory.CompanyIdentityUnresolved);
 
     private async Task<string?> GetCursorAsync(string symbol, CancellationToken cancellationToken)
     {
