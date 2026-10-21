@@ -32,17 +32,34 @@ namespace Degerli.Ingestion.Scheduling;
 /// A second chain stream — the <b>morning chain</b> (01 v1.5 §10.9.16, TKT-foundation-040) — is
 /// created only when <see cref="IngestionSchedulerOptions.MorningCron"/> is configured (the
 /// shipped `appsettings.json` sets 08:30 Europe/Istanbul). It is trading-day gated like the EOD
-/// stream, resolves its run date to the <b>previous trading day</b> (BIST prices are EOD, so a
-/// 08:30 pass can only repair the last completed session) and runs the pinned
+/// stream, resolves its run date to the <b>previous trading day</b> (BIST prices are EOD — a
+/// Tuesday 08:30 pass can only ever repair Monday's session) and runs the pinned
 /// <see cref="MorningIngestChain"/> with the <b>stored-prices repair gate</b>: when every
 /// current constituent of the prices bound already has a stored row for the run date, the
 /// prices job is skipped (one ledger row records the gate outcome) and the chain continues —
 /// a fully covered day is never re-fetched.
 /// </para>
+/// <para>
+/// <b>No attempt is unbounded</b> (01 v1.5 §10.9.17, TKT-foundation-041). A tick runs a stream's
+/// chain sequentially, so one step whose await never completes used to starve every stream
+/// silently — the live 2026-10-19/20 signature. Each attempt now races
+/// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> on the injected clock; on expiry the
+/// attempt is cancelled, an honest <c>RUN_HUNG</c> run-ledger row and alert name the step, and
+/// the ordinary retry ladder resumes. Every step logs its start and its outcome, and a
+/// cancellation that is not the host's stopping token is a failed attempt, never an escape from
+/// the loop.
+/// </para>
 /// </remarks>
 public sealed class IngestionScheduler
 {
     private static readonly JsonSerializerOptions StatsJsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The named reason code of the hung-run watchdog's alert and ledger row (01 v1.5
+    /// §10.9.17, TKT-foundation-041): a scheduled attempt exceeded
+    /// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> and was cancelled.
+    /// </summary>
+    public const string RunHungReasonCode = "RUN_HUNG";
 
     /// <summary>
     /// How far the morning stream's run date back-walks to find a trading day. Generous enough
@@ -56,6 +73,7 @@ public sealed class IngestionScheduler
     private readonly IIngestionCalendar _calendar;
     private readonly IIngestionAlerter _alerter;
     private readonly IngestionSchedulerOptions _options;
+    private readonly TimeProvider _clock;
     private readonly ILogger<IngestionScheduler> _logger;
     private readonly TimeZoneInfo _timeZone;
     private readonly IReadOnlyList<ScheduleStream> _streams;
@@ -67,18 +85,21 @@ public sealed class IngestionScheduler
         IIngestionCalendar calendar,
         IIngestionAlerter alerter,
         IOptions<IngestionSchedulerOptions> options,
+        TimeProvider clock,
         ILogger<IngestionScheduler> logger)
     {
         ArgumentNullException.ThrowIfNull(scopeFactory);
         ArgumentNullException.ThrowIfNull(calendar);
         ArgumentNullException.ThrowIfNull(alerter);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(logger);
 
         _scopeFactory = scopeFactory;
         _calendar = calendar;
         _alerter = alerter;
         _options = options.Value;
+        _clock = clock;
         _logger = logger;
         _timeZone = ResolveTimeZone(_options.TimeZone);
         _streams = BuildStreams(_options);
@@ -86,15 +107,20 @@ public sealed class IngestionScheduler
         // The one line an operator greps to answer "is the 08:30 safety net on?": the
         // configured cron streams, the time zone, and — explicitly — an absent morning
         // stream, which is otherwise indistinguishable from a healthy scheduler (DR-02).
+        // The watchdog bound rides along: "the chain can stall invisibly" is exactly the
+        // question an operator asks while standing in front of a silent ledger (§10.9.17).
         _logger.LogInformation(
-            "Ingestion scheduler streams: EOD cron '{EodCron}'; morning cron '{MorningCron}' ({MorningState}); time zone {TimeZone}; {PerJobStreams} per-job schedule(s).",
+            "Ingestion scheduler streams: EOD cron '{EodCron}'; morning cron '{MorningCron}' ({MorningState}); time zone {TimeZone}; {PerJobStreams} per-job schedule(s); hung-run watchdog {Watchdog}.",
             _options.Cron,
             _options.MorningCron,
             string.IsNullOrWhiteSpace(_options.MorningCron)
                 ? "DISABLED — no morning stream is created"
                 : "enabled",
             _options.TimeZone,
-            _options.JobSchedules.Count);
+            _options.JobSchedules.Count,
+            _options.MaxRunDuration > TimeSpan.Zero
+                ? $"bounded at {_options.MaxRunDuration} per attempt (RUN_HUNG)"
+                : "DISABLED — a hung step can hold every stream silently");
     }
 
     /// <summary>Whether the scheduler is enabled in configuration.</summary>
@@ -281,43 +307,91 @@ public sealed class IngestionScheduler
     {
         var attempt = run.Attempts + 1;
         run.Attempts = attempt;
+        run.AttemptStartedAt = now;
+
+        var step = new ChainStepProgress();
+        var scope = _scopeFactory.CreateScope();
+        var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         IReadOnlyList<string> jobCodes = [];
         Exception? failure = null;
+        var hung = false;
+
+        // The hung-run watchdog (01 v1.5 §10.9.17): the attempt races a deadline on the
+        // injected clock, so the bound is deterministic under a fake clock exactly like every
+        // other scheduling decision here. A step that never completes can no longer hold the
+        // loop — and with it every other stream — in silence.
+        var deadline = _options.MaxRunDuration > TimeSpan.Zero
+            ? Task.Delay(_options.MaxRunDuration, _clock, deadlineCts.Token)
+            : null;
+
+        var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, attemptCts.Token);
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
-            jobCodes = ResolveJobCodes(stream, runner);
-            var request = new IngestionRequest(run.TradingDate);
-            var context = new IngestionRunContext(attempt, _options.MaxAttempts);
-
-            foreach (var jobCode in jobCodes)
+            if (deadline is null)
             {
-                var gateSkipped = await SkipPricesForCoveredDayAsync(
-                        stream,
-                        scope.ServiceProvider,
-                        jobCode,
-                        request.Date,
-                        attempt,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (gateSkipped)
+                var outcome = await work.ConfigureAwait(false);
+                jobCodes = outcome.JobCodes;
+                failure = outcome.Failure;
+            }
+            else
+            {
+                var winner = await Task.WhenAny(work, deadline).ConfigureAwait(false);
+                if (ReferenceEquals(winner, work))
                 {
-                    continue;
+                    var outcome = await work.ConfigureAwait(false);
+                    jobCodes = outcome.JobCodes;
+                    failure = outcome.Failure;
+                    await deadlineCts.CancelAsync().ConfigureAwait(false);
                 }
-
-                var result = await runner.RunAsync(jobCode, request, context, cancellationToken).ConfigureAwait(false);
-                if (result.Status == IngestResult.Failed)
+                else
                 {
-                    failure = new InvalidOperationException($"Job '{jobCode}' reported a failed run.");
-                    break;
+                    hung = true;
+                    attemptCts.Cancel();
+                    await deadlineCts.CancelAsync().ConfigureAwait(false);
+
+                    // The step cannot be killed (a hung await is not interruptible); the scope is
+                    // handed to the abandoned task so it is disposed only when that task ends,
+                    // and its terminal exception is observed rather than left unobserved.
+                    var abandonedScope = scope;
+                    var abandonedAttempt = attemptCts;
+                    var abandonedDeadline = deadlineCts;
+                    var abandonedWork = work;
+                    _ = work.ContinueWith(
+                        completed =>
+                        {
+                            _ = completed.Exception;
+                            abandonedScope.Dispose();
+                            abandonedAttempt.Dispose();
+                            abandonedDeadline.Dispose();
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+
+                    failure = await HandleHungAttemptAsync(run, attempt, step, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The host is stopping: unwind without pretending the run failed.
+            throw;
+        }
+        catch (Exception exception)
         {
             failure = exception;
+        }
+        finally
+        {
+            if (!hung)
+            {
+                scope.Dispose();
+                attemptCts.Dispose();
+                deadlineCts.Dispose();
+            }
         }
 
         if (failure is null)
@@ -351,7 +425,10 @@ public sealed class IngestionScheduler
             return;
         }
 
-        var nextAttemptAt = now + _options.RetryDelays[attempt - 1];
+        // Measured from the instant the attempt actually ended, not from the instant it was
+        // due: a watchdog-bounded attempt ends up to MaxRunDuration after `now`, and a retry
+        // computed from `now` would already be overdue the moment it is scheduled.
+        var nextAttemptAt = _clock.GetUtcNow() + _options.RetryDelays[attempt - 1];
         lock (_gate)
         {
             run.NextAttemptAt = nextAttemptAt;
@@ -362,6 +439,215 @@ public sealed class IngestionScheduler
             attempt,
             run.TradingDate,
             nextAttemptAt);
+    }
+
+    /// <summary>
+    /// Runs one attempt's chain, step by step, and reports the attempt's outcome instead of
+    /// throwing — except for a cancellation, which means the attempt is over regardless of the
+    /// reason (the watchdog's own bound, or the host stopping).
+    /// <para>
+    /// Every step announces itself before it is awaited (<b>chain-step progress</b>, 01 v1.5
+    /// §10.9.17). That one log line is what the 2026-10-19/20 incident lacked: the ledger rows
+    /// are written at <i>completion</i>, so the first failing night looked like "prices, then
+    /// nothing at all".
+    /// </para>
+    /// </summary>
+    private async Task<ChainAttemptOutcome> ExecuteChainAsync(
+        ScheduleStream stream,
+        ActiveRun run,
+        IServiceProvider provider,
+        int attempt,
+        ChainStepProgress step,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> jobCodes = [];
+        try
+        {
+            var runner = provider.GetRequiredService<IIngestionJobRunner>();
+            jobCodes = ResolveJobCodes(stream, runner);
+            var request = new IngestionRequest(run.TradingDate);
+            var context = new IngestionRunContext(attempt, _options.MaxAttempts);
+
+            for (var index = 0; index < jobCodes.Count; index++)
+            {
+                var jobCode = jobCodes[index];
+                step.Begin(jobCode, index + 1, jobCodes.Count);
+                _logger.LogInformation(
+                    "Chain step {Step}/{Total} '{JobCode}' starting for {Date} (attempt {Attempt}).",
+                    index + 1,
+                    jobCodes.Count,
+                    jobCode,
+                    run.TradingDate,
+                    attempt);
+
+                var gateSkipped = await SkipPricesForCoveredDayAsync(
+                        stream,
+                        provider,
+                        jobCode,
+                        request.Date,
+                        attempt,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (gateSkipped)
+                {
+                    _logger.LogInformation(
+                        "Chain step {Step}/{Total} '{JobCode}' skipped by the prices coverage gate for {Date}.",
+                        index + 1,
+                        jobCodes.Count,
+                        jobCode,
+                        run.TradingDate);
+                    continue;
+                }
+
+                var result = await runner.RunAsync(jobCode, request, context, cancellationToken).ConfigureAwait(false);
+
+                _logger.LogInformation(
+                    "Chain step {Step}/{Total} '{JobCode}' finished for {Date} with {Status} (written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, skipped {Skipped}).",
+                    index + 1,
+                    jobCodes.Count,
+                    jobCode,
+                    run.TradingDate,
+                    result.Status,
+                    result.Written,
+                    result.Unchanged,
+                    result.Quarantined,
+                    result.Skipped);
+
+                if (result.Status == IngestResult.Failed)
+                {
+                    return new ChainAttemptOutcome(
+                        jobCodes,
+                        new InvalidOperationException($"Job '{jobCode}' reported a failed run."));
+                }
+            }
+
+            return new ChainAttemptOutcome(jobCodes, Failure: null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Our own bound fired (the watchdog path) or the host is stopping: not a job failure.
+            throw;
+        }
+        catch (OperationCanceledException exception)
+        {
+            // A cancellation that is NOT ours — a job-level timeout, a source adapter's own CTS.
+            // Before this guard it escaped the tick entirely: no retry ladder, no honest retry
+            // log, and the loop re-fired the same due attempt forever (01 v1.5 §10.9.17).
+            return new ChainAttemptOutcome(jobCodes, exception);
+        }
+        catch (Exception exception)
+        {
+            return new ChainAttemptOutcome(jobCodes, exception);
+        }
+    }
+
+    /// <summary>
+    /// The watchdog's terminal report (01 v1.5 §10.9.17): an honest run-ledger row naming the
+    /// step that held the attempt, the attempt's bound, and a <c>RUN_HUNG</c> alert. Returns the
+    /// failure the attempt reports, so the ordinary retry ladder takes over from here.
+    /// </summary>
+    private async Task<Exception> HandleHungAttemptAsync(
+        ActiveRun run,
+        int attempt,
+        ChainStepProgress step,
+        CancellationToken cancellationToken)
+    {
+        var hungJob = step.CurrentJobCode ?? "scheduler-chain";
+
+        _logger.LogError(
+            "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} bound and was cancelled ({ReasonCode}); the retry ladder takes over.",
+            run.TradingDate,
+            attempt,
+            step.Index,
+            step.Total,
+            hungJob,
+            _options.MaxRunDuration,
+            RunHungReasonCode);
+
+        await RecordHungRunAsync(run, attempt, step, hungJob, cancellationToken).ConfigureAwait(false);
+        await RaiseHungAsync(run, attempt, step, hungJob, cancellationToken).ConfigureAwait(false);
+
+        return new TimeoutException(
+            $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {_options.MaxRunDuration} bound in chain step '{hungJob}' ({RunHungReasonCode}).");
+    }
+
+    /// <summary>
+    /// The durable record of a hung attempt (NFR-MDF-001 — the ledger must never have a silent
+    /// hole): one <c>ingest_runs</c> row whose job code is the hung step, with the watchdog's own
+    /// fields (<c>reasonCode</c>/<c>hungJob</c>/<c>step</c>/<c>maxRunDurationSeconds</c>) so the
+    /// class is filterable from the admin run list.
+    /// </summary>
+    private async Task RecordHungRunAsync(
+        ActiveRun run,
+        int attempt,
+        ChainStepProgress step,
+        string hungJob,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DegerliDbContext>();
+
+            db.IngestRuns.Add(new IngestRun
+            {
+                JobCode = hungJob,
+                StartedAt = run.AttemptStartedAt,
+                FinishedAt = _clock.GetUtcNow(),
+                Status = IngestResult.Failed,
+                Error = $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {_options.MaxRunDuration} bound.",
+                StatsJson = JsonSerializer.Serialize(new
+                {
+                    written = 0,
+                    unchanged = 0,
+                    quarantined = 0,
+                    skipped = 0,
+                    mode = "incremental",
+                    reasonCode = RunHungReasonCode,
+                    hungJob,
+                    step = step.Index,
+                    stepCount = step.Total,
+                    runDate = run.TradingDate.ToString("yyyy-MM-dd"),
+                    attempt,
+                    retries = attempt - 1,
+                    maxAttempts = _options.MaxAttempts,
+                    maxRunDurationSeconds = (int)_options.MaxRunDuration.TotalSeconds,
+                }, StatsJsonOptions),
+            });
+
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // The alert below is the backstop: an unwritable ledger row must not also lose the
+            // alarm, and must not turn a hung run into a crashed tick.
+            _logger.LogError(
+                exception,
+                "Could not write the {ReasonCode} run-ledger row for {Date} (chain step '{JobCode}').",
+                RunHungReasonCode,
+                run.TradingDate,
+                hungJob);
+        }
+    }
+
+    private Task RaiseHungAsync(
+        ActiveRun run,
+        int attempt,
+        ChainStepProgress step,
+        string hungJob,
+        CancellationToken cancellationToken)
+    {
+        var subject = $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded {_options.MaxRunDuration} for {run.TradingDate:yyyy-MM-dd}";
+
+        return _alerter.RaiseAsync(
+            new IngestionAlert(
+                JobCode: hungJob,
+                ReasonCode: RunHungReasonCode,
+                Subject: subject,
+                BodyTr: $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {_options.MaxRunDuration} boyunca ilerlemedi ve durduruldu ({attempt}. deneme); son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi.",
+                BodyEn: $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} made no progress in step {step.Index}/{step.Total} ('{hungJob}') for {_options.MaxRunDuration} and was cancelled (attempt {attempt}); last-known-good data continues to be served and the retry ladder has taken over.",
+                SourceRef: null),
+            cancellationToken);
     }
 
     /// <summary>
@@ -556,5 +842,38 @@ public sealed class IngestionScheduler
         public int Attempts { get; set; }
 
         public DateTimeOffset NextAttemptAt { get; set; }
+
+        /// <summary>When the in-flight attempt started (the hung-run row's <c>startedAt</c>).</summary>
+        public DateTimeOffset AttemptStartedAt { get; set; }
+    }
+
+    /// <summary>
+    /// One attempt's outcome: the chain it was asked to run and the failure it hit, if any
+    /// (<see langword="null"/> means the attempt succeeded). Failures are values, not thrown
+    /// exceptions, so the watchdog can race the attempt without swallowing anything.
+    /// </summary>
+    private sealed record ChainAttemptOutcome(IReadOnlyList<string> JobCodes, Exception? Failure);
+
+    /// <summary>
+    /// The chain's step cursor (01 v1.5 §10.9.17): what the attempt is currently running. The
+    /// watchdog reads it to name the step that held the run in both the ledger row and the
+    /// <c>RUN_HUNG</c> alert, and it is what makes a stalled chain legible instead of silent.
+    /// </summary>
+    private sealed class ChainStepProgress
+    {
+        private volatile string? _currentJobCode;
+
+        public string? CurrentJobCode => _currentJobCode;
+
+        public int Index { get; private set; }
+
+        public int Total { get; private set; }
+
+        public void Begin(string jobCode, int index, int total)
+        {
+            _currentJobCode = jobCode;
+            Index = index;
+            Total = total;
+        }
     }
 }

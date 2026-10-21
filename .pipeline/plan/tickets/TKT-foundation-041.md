@@ -14,7 +14,7 @@ scope:
 
 # TKT-foundation-041: EOD chain silently stalls after `prices` (second consecutive night) — root-cause the inter-job stall, add a hung-run watchdog, and close the universe-sync nightly-chain gap
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P1 — dispatch as soon as 040 (PR #110) merges** (shared scheduling files; see Dependencies). The nightly chain has now failed to deliver the overview row TWO consecutive nights without a single ledger row, log line, or alert — the front page exists only because the orchestrator manually repaired it each time (Monday run 101, Tuesday runs 118-124).
 - Verified evidence (dev stack, 2026-10-20 ~20:30-23:50 Istanbul; planner-corroborated against the scheduler source):
