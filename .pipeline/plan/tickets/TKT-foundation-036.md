@@ -14,7 +14,7 @@ scope:
 
 # TKT-foundation-036: percentage display 100× defect — every `changePct`-class fraction rendered through the no-×100 formatter; fix the unit contract systematically across the Web layer
 
-- Status: in-review (PR #108 — Web-side fraction×100 fix; Web unit 23/23 + formatter red→green recorded in the PR; E2E value assertions land in the CI e2e job; live criterion pending orchestrator post-merge)
+- Status: done (PR #108 — Web-side fraction×100 fix; Web unit 23/23 + formatter red→green recorded in the PR; E2E value assertions land in the CI e2e job; live criterion pending orchestrator post-merge)
 - PR: https://github.com/sarperim/degerli/pull/108
 - Size: M
 - **Priority: P1 — dispatch immediately.** Home-screen, user-visible wrong numbers (user morning check 2026-10-20, `run-report.md` §"Morning check"): the overview ("Piyasa Genel Görünümü") renders AGHOL "+0,01%" (real: +1,47%), TCKRC "−0,10%" (real: −10% limit-down), BIST 100 "−0,02%" (real: −2,49%), BIST 30 "−0,02%" (real: −2,31%). The user concluded "the data seems arbitrary — it's not live"; the DATA is correct (verified 100/100 stored Monday 2026-10-19 İş Yatırım EOD), the DISPLAY is wrong. Highest-visibility defect in the platform.
@@ -32,3 +32,5 @@ scope:
 - UX refs: SCR-001 §9 (signed daily change, non-colour-only — the values this ticket makes truthful), UXR-MOV-001/003/004. No structural/behavioral UX change: same components, same signs, correct magnitude.
 - Dependencies: none hard (Web + docs only; code-disjoint from open PR #106 / TKT-foundation-034, which touches `KapSources.cs` + ingestion tests). **Serialize note:** shares `01-system-architecture.md` §13.1 with #106's in-flight v1.5.11 row — single-row appends, whichever lands second rebases (the 026/027/029 convention); also shares `.pipeline/testing/market-overview.md` with TKT-foundation-037/038 (different sections; rebase behind whichever lands first).
 - Parallel group: none.
+### Live criteria — MET (2026-10-20/21)
+- Verified on the live stack and the user's screen: percentages render correctly (AGHOL +1,47%, TCKRC −10,00%, BIST 100 −2,49% on the 2026-10-19 row; KORDS +9,7%, TABGD +7,4% on the 2026-10-20 row post-repair). API serves fraction units; Web scales ×100.

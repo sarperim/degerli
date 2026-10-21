@@ -15,7 +15,7 @@ scope:
 
 # TKT-foundation-040: morning-cadence ingest chain (~08:30 Istanbul, trading days) — EOD-repair safety net + incremental KAP freshness; never newer market prices
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/110
 - Size: M
 - **Priority: P2 — dispatch-ready; user-approved product change (2026-10-20 morning check: "we can take data morning and night").** Code-disjoint from the 036–039 wave and from PR #106's `KapSources.cs` lane; may dispatch in parallel with them.
@@ -36,3 +36,5 @@ scope:
 - UX refs: none (no screen change; the user-visible effect is the SCR-001 overview row existing and being fresh by morning — already pinned by 037's semantics).
 - Dependencies: **none hard for phase 1** (code-disjoint from 036/037/038 — Web, `Api/Market`, `Ingestion/Macro` — and from PR #106's `KapSources.cs` + statements-test lane; verify at dispatch that #106's fixer round has not moved into `src/Ingestion/Scheduling`). **Phase 2 depends on TKT-foundation-034 (PR #106) merging** — the event families' VYK rewire + cursors are its lane; the phased note lives in this ticket, no second ticket. **Serialize notes:** `01` §13.1 single-row append v1.5.15 behind #106's in-flight v1.5.11 and 036/037/038's reserved v1.5.12/13/14 — last-lander rebases (the 026/027/029 convention); `03-api-design.md` §9 vs 036's §2/§4 edits — different sections, rebase behind whichever lands first; `.pipeline/testing/market-data-foundation.md` is disjoint from the 036–039 wave's `market-overview.md`.
 - Parallel group: none.
+### Live criteria — armed (2026-10-21)
+- Merged as aced949; stack pulled current 2026-10-21 ~03:00 Istanbul. Morning chain arms at 08:30 Istanbul 2026-10-21; the run itself is the live criterion — orchestrator observation scheduled. Note: 2026-10-20's scheduled 20:30 EOD chain stalled after `prices` (second consecutive night; root cause = TKT-foundation-041, in flight) — exactly the case this chain is the safety net for.
