@@ -530,9 +530,25 @@ export function MarketOverviewPage() {
           {t('screens.marketOverview.description')}
         </p>
         {envelope ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <AsOfDate asOf={envelope.asOf} />
-            {envelope.stale ? <StaleBadge /> : null}
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <AsOfDate asOf={envelope.asOf} />
+              {envelope.stale ? <StaleBadge /> : null}
+            </div>
+            {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
+                completed session" — stated, so a fresh-but-not-today row is never
+                read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
+                suppresses the recency claim: 037's stale means a newer stored
+                session exists that this row lacks, so the badge beside it is the
+                honest statement (review round 1, DR-1). */}
+            {envelope.stale ? null : (
+              <p
+                data-testid="market-asof-explanation"
+                className="text-xs text-muted-foreground"
+              >
+                {t('screens.marketOverview.asOfExplanation')}
+              </p>
+            )}
           </div>
         ) : null}
       </header>

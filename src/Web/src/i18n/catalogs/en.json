@@ -39,7 +39,8 @@
   "screens": {
     "marketOverview": {
       "title": "Market Overview",
-      "description": "Entry point for BIST 100/30 indices, sectors, market breadth, movers and macro indicators."
+      "description": "Entry point for BIST 100/30 indices, sectors, market breadth, movers and macro indicators.",
+      "asOfExplanation": "Prices are the closing values of the most recently completed session; intraday prices are not shown."
     },
     "stockList": {
       "title": "Stocks",
@@ -381,6 +382,7 @@
   "honestData": {
     "asOf": "Data as of {{date}}",
     "stale": "Stale",
+    "staleExplanation": "This is the last known-good value; a newer completed session or publication has not arrived yet. The value itself is not wrong.",
     "restated": "Restated",
     "restatedNotice": "Figures marked with * were restated by the company; the previously reported figures are superseded.",
     "adjusted": "Adjusted",
@@ -425,6 +427,11 @@
       "title": "Macro indicators",
       "inflationTitle": "Inflation",
       "eodNote": "Macro data are end-of-day (EOD) values; they are not real-time.",
+  "cadence": {
+    "monthly": "Latest published value — this series is published monthly.",
+    "perRelease": "Latest published value — this series is published per policy decision.",
+    "daily": "The latest completed day's value."
+  },
       "source": "Source: {{source}}",
       "independentUnavailable": "The independent inflation measure is currently unavailable.",
       "series": {

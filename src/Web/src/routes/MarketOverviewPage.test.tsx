@@ -35,6 +35,18 @@ import { renderWithProviders } from '@/test/render'
 const tr = (key: string) => catalogValue('tr', key)
 
 /**
+ * The overview envelope flagged stale (TKT-foundation-039 review round 1):
+ * 037's stale means a newer stored session exists that this row lacks, so the
+ * badge beside the as-of date is the honest statement and the "most recently
+ * completed session" recency claim is suppressed. Local to this suite so the
+ * shared MSW fixtures stay untouched.
+ */
+const STALE_OVERVIEW: MarketOverviewResponse = {
+  ...MARKET_OVERVIEW_FIXTURE,
+  stale: true,
+}
+
+/**
  * Mirror the page's locale formatting independently of the app code. Percent
  * payloads are **fractions** (`0.02` = +2%) — the helper scales, the page's
  * formatter scales, and the literal assertions below pin the result.
@@ -59,7 +71,24 @@ function StockPageStub() {
   return <div data-testid="stock-page-symbol">{symbol}</div>
 }
 
-function renderPage() {
+/**
+ * The overview envelope's stale badge — the one beside the page header's as-of
+ * date. Scoped through the `<header>` that carries the page `h1` (level 1, so
+ * language-independent) instead of a document-wide query, so a badge rendered by
+ * a child block could never satisfy the assertion. The header sits inside
+ * `<section data-screen="SCR-001">`, which makes it generic markup rather than a
+ * `banner` landmark, hence `closest` and not a role query.
+ */
+function headerStaleBadge(): Element | null {
+  return (
+    screen
+      .getByRole('heading', { level: 1 })
+      .closest('header')
+      ?.querySelector('[data-slot="stale-badge"]') ?? null
+  )
+}
+
+function renderPage(language: 'tr' | 'en' = 'tr') {
   return renderWithProviders(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
@@ -68,6 +97,7 @@ function renderPage() {
         <Route path="/stocks/:symbol" element={<StockPageStub />} />
       </Routes>
     </MemoryRouter>,
+    { language },
   )
 }
 
@@ -171,6 +201,65 @@ describe('TC-MOV-016 equity blocks render with values', () => {
       expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
     })
     expect(document.querySelector('[data-slot="as-of-date"]')).toHaveTextContent('2026')
+  })
+
+  /**
+   * TKT-foundation-039 (TC-MOV-016, finding B3): the as-of line states what the
+   * date means — the latest completed session — so a fresh-but-not-today row is
+   * never read as a data error.
+   */
+  it('explains that the as-of date is the latest completed session', async () => {
+    renderPage()
+
+    const explanation = await screen.findByTestId('market-asof-explanation')
+    expect(explanation).toHaveTextContent(
+      tr('screens.marketOverview.asOfExplanation'),
+    )
+  })
+
+  it('explains the as-of date in English when English is active', async () => {
+    renderPage('en')
+
+    const explanation = await screen.findByTestId('market-asof-explanation')
+    expect(explanation).toHaveTextContent(
+      catalogValue('en', 'screens.marketOverview.asOfExplanation'),
+    )
+  })
+
+  /**
+   * TKT-foundation-039 review round 1 (DR-1): when 037 marks the envelope stale a
+   * newer stored session exists that this row lacks, so the "most recently
+   * completed session" claim is false. The badge beside the as-of date states the
+   * honest meaning; the recency explanation must not contradict it.
+   */
+  it('does not claim the latest completed session when the envelope is stale', async () => {
+    server.use(marketOverviewHandler(STALE_OVERVIEW))
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(headerStaleBadge()).not.toBeNull()
+    })
+    expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
+    // The contradiction is impossible, not just reworded: the stale explanation
+    // travels with the badge in the same language.
+    expect(headerStaleBadge()).toHaveAccessibleName(
+      `${tr('honestData.stale')} — ${tr('honestData.staleExplanation')}`,
+    )
+  })
+
+  it('does not claim the latest completed session when stale, in English', async () => {
+    server.use(marketOverviewHandler(STALE_OVERVIEW))
+    renderPage('en')
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(headerStaleBadge()).not.toBeNull()
+    })
+    expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
+    expect(headerStaleBadge()).toHaveAccessibleName(
+      `${catalogValue('en', 'honestData.stale')} — ${catalogValue('en', 'honestData.staleExplanation')}`,
+    )
   })
 })
 

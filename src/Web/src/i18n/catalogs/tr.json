@@ -39,7 +39,8 @@
   "screens": {
     "marketOverview": {
       "title": "Piyasa Genel Görünümü",
-      "description": "BIST 100/30 endeksleri, sektörler, piyasa genişliği, hareket edenler ve makro göstergeler için giriş noktası."
+      "description": "BIST 100/30 endeksleri, sektörler, piyasa genişliği, hareket edenler ve makro göstergeler için giriş noktası.",
+      "asOfExplanation": "Fiyatlar en güncel tamamlanmış seansın kapanış değerleridir; gün içi fiyat gösterilmez."
     },
     "stockList": {
       "title": "Hisse Senetleri",
@@ -381,6 +382,7 @@
   "honestData": {
     "asOf": "Veri {{date}} itibarıyla",
     "stale": "Bayat",
+    "staleExplanation": "Bu değer en son bilinen geçerli veridir; daha güncel bir tamamlanmış seans veya yayım henüz ulaşmadı. Değerin kendisi hatalı değildir.",
     "restated": "Yeniden düzenlendi",
     "restatedNotice": "* ile işaretlenen tutarlar şirket tarafından yeniden düzenlenmiştir; daha önce bildirilen tutarlar geçersizdir.",
     "adjusted": "Düzeltilmiş",
@@ -425,6 +427,11 @@
       "title": "Makro göstergeler",
       "inflationTitle": "Enflasyon",
       "eodNote": "Makro veriler gün sonu (EOD) değerleridir; gerçek zamanlı değildir.",
+  "cadence": {
+    "monthly": "En güncel yayımlanmış değer — bu seri aylık yayımlanır.",
+    "perRelease": "En güncel yayımlanmış değer — bu seri karar bazında yayımlanır.",
+    "daily": "En güncel tamamlanmış günün değeri."
+  },
       "source": "Kaynak: {{source}}",
       "independentUnavailable": "Bağımsız enflasyon ölçüsü şu anda kullanılamıyor.",
       "series": {

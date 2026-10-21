@@ -42,8 +42,8 @@ const SERIES_CODES = [
   'GOLD',
 ] as const
 
-function renderStrip() {
-  return renderWithProviders(<MacroStrip />)
+function renderStrip(language: 'tr' | 'en' = 'tr') {
+  return renderWithProviders(<MacroStrip />, { language })
 }
 
 beforeEach(() => {
@@ -109,6 +109,51 @@ describe('TC-MOV-018 degraded macro — unavailable independent measure', () => 
   })
 })
 
+describe('TC-MOV-016 macro as-of lines carry publication-cadence semantics', () => {
+  /**
+   * TKT-foundation-039 (finding B3): a monthly series' as-of date is its latest
+   * PUBLISHED value, a per-release series' its latest published decision, and a
+   * daily series' its latest completed day — the strip says which, so an older
+   * monthly figure is never read as a stale feed (TKT-foundation-038 semantics).
+   */
+  it('states the publication cadence of each series next to its as-of date', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip()
+
+    const expectations: Record<string, string> = {
+      TUIK_CPI: 'monthly',
+      INDEP_CPI: 'monthly',
+      CBRT_REPO: 'perRelease',
+      USD_TRY: 'daily',
+      EUR_TRY: 'daily',
+      GOLD: 'daily',
+    }
+
+    for (const [code, cadence] of Object.entries(expectations)) {
+      const indicator = await screen.findByTestId(`macro-${code}`)
+      const note = indicator.querySelector('[data-slot="macro-cadence"]')
+      expect(note).not.toBeNull()
+      expect(note).toHaveTextContent(
+        tr(`marketOverview.macro.cadence.${cadence}`),
+      )
+      // The cadence note accompanies the as-of date it qualifies.
+      expect(indicator.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    }
+  })
+
+  it('states the publication cadence in English when English is active', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip('en')
+
+    const cpi = await screen.findByTestId('macro-TUIK_CPI')
+    expect(
+      cpi.querySelector('[data-slot="macro-cadence"]'),
+    ).toHaveTextContent(
+      catalogValue('en', 'marketOverview.macro.cadence.monthly'),
+    )
+  })
+})
+
 describe('TC-MOV-024 stale marker component', () => {
   it('renders a stale badge together with the as-of date for a stale series', async () => {
     server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
@@ -126,6 +171,50 @@ describe('TC-MOV-024 stale marker component', () => {
     const usd = await screen.findByTestId('macro-USD_TRY')
     expect(usd.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
     expect(usd.querySelector('[data-slot="stale-badge"]')).toBeNull()
+  })
+
+  /**
+   * TKT-foundation-039 review round 1 (DR-1): a stale series' badge says a newer
+   * completed session/publication has not arrived, so the cadence note's "latest
+   * completed day / latest published value" recency claim cannot stand beside it.
+   * The badge alone explains the state; the as-of date remains.
+   */
+  it('suppresses the cadence recency claim on a stale series, leaving the badge to explain it', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
+    renderStrip()
+
+    const gold = await screen.findByTestId('macro-GOLD')
+    const badge = gold.querySelector('[data-slot="stale-badge"]')
+    expect(badge).not.toBeNull()
+    expect(badge).toHaveAttribute('title', tr('honestData.staleExplanation'))
+    expect(badge).toHaveAccessibleName(
+      `${tr('honestData.stale')} — ${tr('honestData.staleExplanation')}`,
+    )
+    expect(gold.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    expect(gold.querySelector('[data-slot="macro-cadence"]')).toBeNull()
+
+    // The condition is per series: fresh siblings keep their cadence note.
+    expect(
+      screen
+        .getByTestId('macro-USD_TRY')
+        .querySelector('[data-slot="macro-cadence"]'),
+    ).not.toBeNull()
+  })
+
+  it('suppresses the stale cadence claim in English too', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
+    renderStrip('en')
+
+    const gold = await screen.findByTestId('macro-GOLD')
+    const badge = gold.querySelector('[data-slot="stale-badge"]')
+    expect(badge).toHaveAttribute(
+      'title',
+      catalogValue('en', 'honestData.staleExplanation'),
+    )
+    expect(badge).toHaveAccessibleName(
+      `${catalogValue('en', 'honestData.stale')} — ${catalogValue('en', 'honestData.staleExplanation')}`,
+    )
+    expect(gold.querySelector('[data-slot="macro-cadence"]')).toBeNull()
   })
 })
 
