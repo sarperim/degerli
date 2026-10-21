@@ -14,7 +14,8 @@ scope:
 
 # TKT-foundation-041: EOD chain silently stalls after `prices` (second consecutive night) — root-cause the inter-job stall, add a hung-run watchdog, and close the universe-sync nightly-chain gap
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/114
 - Size: M
 - **Priority: P1 — dispatch as soon as 040 (PR #110) merges** (shared scheduling files; see Dependencies). The nightly chain has now failed to deliver the overview row TWO consecutive nights without a single ledger row, log line, or alert — the front page exists only because the orchestrator manually repaired it each time (Monday run 101, Tuesday runs 118-124).
 - Verified evidence (dev stack, 2026-10-20 ~20:30-23:50 Istanbul; planner-corroborated against the scheduler source):
@@ -29,3 +30,42 @@ scope:
 - UX refs: none (no screen change; the user-visible effect is SCR-001's overview row existing nightly — the point of the chain).
 - Dependencies: **TKT-foundation-040 (PR #110, in review) MUST merge first** — it owns `IngestionScheduler.cs`/`IngestionSchedulerOptions.cs` (the morning chain); this ticket builds on the same files (serialize-rebase behind #110; do not dispatch concurrently). **Complementary, not duplicate:** 040's morning chain is the SAFETY NET (08:30 repair of a stalled night); this ticket removes the root cause and adds the watchdog — both are needed, neither replaces the other. Phase-2 note: once 041 lands, 040's morning chain inherits the universe-sync question (its composition may want universe-sync before its repair gate — a one-line chain-composition decision recorded on 040's phase-2 lane, not a new ticket).
 - Parallel group: none.
+
+## Implementation record
+
+- **Root cause (established by reproduction + the live log, not guessed).** The hosted loop awaits one
+  `TickAsync`; a tick runs a stream's attempt, and the attempt its chain's jobs, **sequentially**; the run
+  ledger is written by the job runner **at completion**. Any await that never completes inside a chain step
+  therefore freezes the whole scheduler — no further wakes, no retries on any stream, no exhausted alert, no
+  ledger row, process healthy. Live confirmation from the dev log (read-only): `prices` finished 17:37:03Z
+  `succeeded` on 2026-10-20 while the fund retry **already due at 17:30:00.026Z** never fired and the API kept
+  serving; the in-flight step was still running when the process was restarted at 20:15Z, so it never wrote a
+  row. No duration bound existed anywhere between the cron and the ledger.
+- **Fix.** Attempt-level bound `IngestionSchedulerOptions.MaxRunDuration` (default 90 min, `<= 0` disables),
+  raced on the injected `TimeProvider`; on expiry: cancel, defer the abandoned task's scope/CTS to a
+  continuation (exception observed), one `ingest_runs` row named for the hung step with
+  `stats_json.reasonCode = RUN_HUNG` (+`hungJob`/`step`/`stepCount`/`runDate`/`attempt`/`retries`/
+  `maxRunDurationSeconds`), one `RUN_HUNG` `IngestionAlert` through the existing seam, then the unchanged
+  retry ladder measured from the instant the attempt **ended**. Per-job `Chain step {Step}/{Total}` progress
+  logging. A cancellation that is not the host's stopping token is a failed attempt (previously escaped
+  `TickAsync`). `universe-sync` prepended to `EodIngestChain`; morning chain untouched.
+- **Red→green (doubles only, `FakeTimeProvider`, Testcontainers + WireMock).** Red with the fix stashed and the
+  final tests in place: `EodStallWatchdogTests` + `EodChainTests` → 1 passed / **4 failed** (hung tick never
+  returns; self-cancelling step escapes `TickAsync`; chain-order golden 8 vs 9). Green post-fix and post-rebase:
+  `SchedulerTests · EodChainTests · EodStallWatchdogTests · MorningChainTests · EodStaleServingTests ·
+  MacroIngestionTests · UniverseSyncTests · FundSchedulingCoverageTests` → **45/45**, build 0 warnings.
+- **Scope amendment (requested, not silent):** `tests/Api.IntegrationTests/EodStaleServingTests.cs` and
+  `tests/Api.IntegrationTests/MorningChainTests.cs` drive the production **default** chain, so the prepended
+  `universe-sync` step required the universe/index-levels source stubs and the +1 night ledger row there
+  (MorningChain additionally uses the FU snapshot with every instrument classified, because it pins a *silent*
+  night). No assertion weakened; 4–6 added lines per file. The planner's pre-listed delta covered only
+  `EodChainTests` — recorded here for the reviewer's approval/bounce (034 Option-A precedent).
+- **Version renumber at rebase:** §13.1 **v1.5.17** was consumed by TKT-foundation-039 (PR #111, v1.5.16 +
+  v1.5.17) while this lane was in flight; this PR's row landed as **v1.5.18**. Exact-note per the ticket's
+  "last-lander rebases" rule.
+- **Not fixed here (out of scope, flagged):** `src/Ingestion/Jobs/Jobs.cs` excludes `OperationCanceledException`
+  from its failed-row write, so a self-cancelling job still leaves no per-job `ingest_runs` row (the scheduler
+  now enters the ladder honestly). Belongs to the 044 ledger-error-honesty lane.
+- **Live criterion** (orchestrator post-merge, never fabricated): the next 20:30 Istanbul chain completes
+  end-to-end on its own (`universe-sync → … → market-snapshot` rows, overview serving the day with real index
+  levels, zero manual repair), or `RUN_HUNG` fires verbatim.
