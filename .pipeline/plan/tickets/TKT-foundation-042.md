@@ -17,7 +17,7 @@ scope:
 
 # TKT-foundation-042: market-snapshot honesty + repairability — same-day recompute must repair a broken row (no SQL surgery), and missing index levels must degrade to honest nulls (never fabricated 0.0000)
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P2 — dispatch-ready** (code lane disjoint from 039/040-in-review and 041's scheduling lane; see Dependencies for the §13.1 serialize note).
 - Verified evidence (dev stack, 2026-10-20 evening, orchestrator's repair sequence):
@@ -33,3 +33,13 @@ scope:
 - UX refs: SCR-001 (indices block — the honest `Unavailable` treatment for null indices already exists in `MarketOverviewPage`; no screen change).
 - Dependencies: none hard. **Serialize notes:** `01` §13.1 v1.5.18 behind in-flight v1.5.15 (040/PR #110) and v1.5.16 (039/PR in review), and 041's v1.5.17 — single-row appends, last-lander rebases (the 026/027/029 convention); `.pipeline/testing/market-overview.md` vs 036/037/038 (merged — rebase if needed) and any in-flight lane touching it. Code lane disjoint from 041 (Metrics/Persistence vs Scheduling) — but note 041's universe-sync-in-chain makes the missing-levels world rarer, not impossible (universe-sync can itself fail) — the honest-null path is still required.
 - Parallel group: none.
+
+## Delivery notes (2026-10-21, coder)
+
+- **PR:** https://github.com/sarperim/degerli/pull/112 (branch `feature/TKT-foundation-042`, based on dev `e19875d`).
+- **TC-MOV-034/035 red→green** in `tests/Api.IntegrationTests/MarketSnapshotTests.cs` (red first: `Expected: null / Actual: 0.0000` for the level columns; `Expected: 1 / Actual: 0` for the honest unchanged count). Focused run: 32/32 integration (`MarketSnapshotTests` incl. the 028 delta, `MarketEndpointsTests`, `MarketOverviewFreshnessTests`, `EodChainTests`) + 54/54 `Core.UnitTests`; `dotnet build -c Release` 0 warnings / 0 errors.
+- **Golden delta (pre-listed, clause iii):** only `TKT_foundation_028_weekend_rerun_after_snapshotted_is_noop` — a value-identical re-run now reports `unchanged: 1` (pre-fix: `0`). Every FU value is byte-identical (both FU levels are always stored).
+- **Migration (clause iv): none required and none added.** `02` §3.2's four index columns were already nullable (`InitialSchema`: `nullable: true`; entity `decimal?`), so the honest-null path needed no schema change; existing rows keep their values (TC-MOV-035 asserts the earlier day's row byte-identical).
+- **⚑ Scope gap flagged (acceptance ii, partial):** the distinct `rewritten` run-ledger stat needs a new `IngestResult` field plus one key in `IngestionJobRunner.RecordAsync`'s stats object — both in `src/Ingestion/Jobs/Jobs.cs`, **outside this ticket's scope**. Shipped instead: the store distinguishes insert/unchanged/repair (`MarketSnapshotWriteResult.Rewritten`) and a repair is counted in the ledger as `written: 1` (no longer the pre-fix silent `0/0`). Amendment requested in the PR body — precedent TKT-foundation-018 round-2 ("requires scope amendment adding `src/Ingestion/Jobs/`"); alternatively fold the key into **TKT-foundation-044**, which already owns the run-ledger honesty lane (parallel-safety reason not to touch it here). ~6 additive lines, default 0, no behaviour change for other jobs.
+- `§13.1` v1.5.18 is a single-row append placed behind the in-flight v1.5.15/16/17 lanes per the ticket's serialize note (last-lander rebases).
+- **Live criterion:** untouched by the coder (orchestrator, post-merge, read-only per the ticket).
