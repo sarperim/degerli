@@ -135,7 +135,7 @@ Append-only by date; the Metrics Engine writes one row per instrument × metric 
 | column | type | notes |
 |---|---|---|
 | snapshot_date | date PK | trading day |
-| xu100_level, xu100_change_pct, xu30_level, xu30_change_pct | numeric | FR-MOV-001 |
+| xu100_level, xu100_change_pct, xu30_level, xu30_change_pct | numeric (nullable) | FR-MOV-001. **Nullable by contract** (`01` §10.9.14, v1.5.18): a resolved day whose `index_levels` had not landed at compute time stores NULL — never a fabricated `0.0000` — and the overview serves `indices: null`. Existing rows keep their values; no migration is needed (the columns have always been nullable). |
 | breadth_advancing, breadth_declining, breadth_unchanged | int | FR-MOV-003 |
 | volume_total | numeric | FR-MOV-005 |
 | market_pe | numeric | cap-weighted aggregate, loss-makers excluded (D-05) |
@@ -144,6 +144,8 @@ Append-only by date; the Metrics Engine writes one row per instrument × metric 
 | gainers_json / losers_json | jsonb | top-10 arrays: symbol, change_pct, volume (BR-MOV-011 eligibility threshold applied at computation; FR-MOV-021) |
 | sector_perf_json | jsonb | sector → daily change (+ precomputed 1W/1M/YTD for FR-MOV-017 Could) |
 | as_of_trading_date, computed_at | | honesty stamps |
+
+One row per trading day, idempotent by `snapshot_date`. **Recompute semantics (`01` §10.9.13, v1.5.18):** the resolved day is recomputed from the current facts on every `market-snapshot` run and written input-aware — identical values leave the row untouched (`unchanged`), changed values **overwrite it in place** (counted as a repair), so a row computed before its inputs landed is repaired without SQL surgery. No other day's row is ever addressed, so historical rows stay immutable.
 
 JSON columns for the fixed-shape lists are deliberate: 1 row/day, read-only, no ad-hoc querying of mover rows — **rejected alternative:** normalized mover/sector tables (join ceremony for zero query benefit at this grain).
 
