@@ -22,6 +22,7 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     public DbSet<MarketIndex> Indices => Set<MarketIndex>();
     public DbSet<IndexConstituent> IndexConstituents => Set<IndexConstituent>();
     public DbSet<DailyPrice> DailyPrices => Set<DailyPrice>();
+    public DbSet<IntradayQuote> IntradayQuotes => Set<IntradayQuote>();
     public DbSet<IndexLevel> IndexLevels => Set<IndexLevel>();
     public DbSet<FinancialStatement> FinancialStatements => Set<FinancialStatement>();
     public DbSet<FinLineItem> FinLineItems => Set<FinLineItem>();
@@ -161,10 +162,20 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        builder.Entity<IntradayQuote>(b =>
+        {
+            // The intraday lane's own fact table (TKT-foundation-047, §10.9.17): one row per
+            // instrument per session, updated in place per sweep. It is deliberately NOT
+            // `daily_prices`: an intraday reading is never a close.
+            b.ToTable("intraday_quotes");
+            b.HasKey(x => new { x.InstrumentId, x.SessionDate });
+            b.Property(x => x.SourceRef).IsRequired();
+            b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         builder.Entity<IndexLevel>(b =>
         {
-            b.ToTable("index_levels");
-            b.HasKey(x => new { x.IndexId, x.LevelDate });
+            b.ToTable("index_levels");            b.HasKey(x => new { x.IndexId, x.LevelDate });
             b.Property(x => x.SourceRef).IsRequired();
             b.HasOne<MarketIndex>().WithMany().HasForeignKey(x => x.IndexId).OnDelete(DeleteBehavior.Restrict);
         });

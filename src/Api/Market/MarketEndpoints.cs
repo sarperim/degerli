@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Degerli.Api.Infrastructure;
+using Degerli.Ingestion.Intraday;
 using Degerli.Ingestion.Macro;
 using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
@@ -76,6 +77,7 @@ public static class MarketEndpoints
     private static async Task<IResult> OverviewAsync(
         DegerliDbContext db,
         MarketSnapshotStore store,
+        PriceStateService priceStates,
         TimeProvider clock,
         CancellationToken cancellationToken,
         string? period = null)
@@ -99,6 +101,14 @@ public static class MarketEndpoints
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
 
+        // The intraday/close price state (01 §10.9.18, TKT-foundation-047): while the session's
+        // EOD close is not stored the market's state is `intraday` with the last sweep's asOf
+        // ("not final"); once the close lands it is `close` of that session, and weekends /
+        // holidays serve the last completed session. The numeric block is NULL here — this lane
+        // ingests instrument quotes, not intraday index levels, and aggregating one would be
+        // computing (BR-MDF-009); the overview's own numbers ride the snapshot below.
+        var priceState = await priceStates.GetMarketStateAsync(clock.GetUtcNow(), cancellationToken);
+
         if (snapshot is null)
         {
             // No completed snapshot exists: the equity pipeline is unavailable. The
@@ -109,6 +119,7 @@ public static class MarketEndpoints
                 asOf = today,
                 stale = false,
                 state = DataStates.Unavailable,
+                priceState,
                 indices = (object?)null,
                 breadth = (object?)null,
                 volumeTotal = (decimal?)null,
@@ -151,6 +162,7 @@ public static class MarketEndpoints
             asOf = snapshot.SnapshotDate,
             stale,
             state = "available",
+            priceState,
             indices = indicesAvailable
                 ? new
                 {

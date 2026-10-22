@@ -15,7 +15,7 @@ scope:
 
 # TKT-foundation-047: Intraday price refresh lane — 2-hour session sweeps, probe-gated source, `intraday_quotes` storage, and the intraday/close price-state contract (user's auto-update requirement, part 1)
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P1 — dispatch-ready immediately. The user's stated top operational priority (2026-10-22, verbatim): "it should update the data in hour or 2 hour periods then so data is updated, and at close it should display close".**
 - Requirement source (user-directed 2026-10-22): periodic intraday refresh during the trading session; at/after close the displayed values become the session close; weekends/holidays display the last completed session (the holiday half lands in TKT-foundation-048; the Web display half in TKT-foundation-049 — this ticket is the backend lane + frozen API contract).
