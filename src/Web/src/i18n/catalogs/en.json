@@ -181,7 +181,9 @@
       },
       "ttm": "Trailing 12-month DPS",
       "neverPaidTitle": "No dividends paid",
-      "neverPaidBody": "This company has not paid any dividends."
+      "neverPaidBody": "This company has not paid any dividends.",
+      "unavailableTitle": "No dividend data",
+      "unavailableBody": "Dividend data for this company has not been ingested yet."
     }
   },
   "stockList": {

@@ -29,6 +29,7 @@ import {
   fetchStockGrowth,
   fetchStockOverview,
   fetchStockProfitability,
+  isDividendsMissing,
   isMissingData,
   stockPageQueryKeys,
 } from '@/screens/stock-page/api'
@@ -528,7 +529,7 @@ export function BalanceSheetSection({ symbol }: { symbol: string }) {
   )
 }
 
-/** SCR-005 §7 — Dividends (FR-RES-012), incl. the explicit never-paid state. */
+/** SCR-005 §7 — Dividends (FR-RES-012), with the three honest states (TKT-foundation-052). */
 export function DividendsSection({ symbol }: { symbol: string }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
@@ -539,14 +540,19 @@ export function DividendsSection({ symbol }: { symbol: string }) {
   })
 
   const data = query.data
-  const missingData = data !== undefined && isMissingData(data) ? data : null
-  const sectionData = data !== undefined && !isMissingData(data) ? data : null
+  const missingData = data !== undefined && isDividendsMissing(data) ? data : null
+  const sectionData = data !== undefined && !isDividendsMissing(data) ? data : null
 
   const coverageBoundary = missingData?.coverage?.availableFrom
     ? t('honestData.coverageBoundary', {
         date: formatAsOfDate(locale, missingData.coverage.availableFrom),
       })
     : undefined
+
+  // The server's availability signal decides which empty state is honest: the
+  // never-paid wording only over data the lane has actually covered. No signal (a
+  // pre-052 payload) degrades to the neutral state, never to the claim.
+  const dividendsAvailable = missingData?.dividendsAvailable === true
 
   return (
     <SectionShell section="dividends" titleKey="stockPage.sections.dividends">
@@ -557,7 +563,15 @@ export function DividendsSection({ symbol }: { symbol: string }) {
         onRetry={() => void query.refetch()}
       >
         {missingData ? (
-          missingData.state === 'no-data' ? (
+          missingData.state !== 'no-data' ? (
+            // Preparing / unavailable are the server's own honest states — rendered as-is.
+            <SectionMarkers
+              asOf={missingData.asOf}
+              stale={missingData.stale}
+              state={missingData.state}
+              coverage={missingData.coverage}
+            />
+          ) : dividendsAvailable ? (
             <EmptyState
               data-testid="dividends-never-paid"
               data-state={missingData.state}
@@ -567,11 +581,16 @@ export function DividendsSection({ symbol }: { symbol: string }) {
                 .join(' ')}
             />
           ) : (
-            <SectionMarkers
-              asOf={missingData.asOf}
-              stale={missingData.stale}
-              state={missingData.state}
-              coverage={missingData.coverage}
+            <EmptyState
+              data-testid="dividends-unavailable"
+              data-state={missingData.state}
+              title={t('stockPage.dividends.unavailableTitle')}
+              description={[
+                t('stockPage.dividends.unavailableBody'),
+                coverageBoundary,
+              ]
+                .filter(Boolean)
+                .join(' ')}
             />
           )
         ) : null}

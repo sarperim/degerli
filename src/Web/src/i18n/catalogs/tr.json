@@ -181,7 +181,9 @@
       },
       "ttm": "Son 12 ay hisse başına temettü",
       "neverPaidTitle": "Temettü ödenmedi",
-      "neverPaidBody": "Bu şirket hiç temettü ödemedi."
+      "neverPaidBody": "Bu şirket hiç temettü ödemedi.",
+      "unavailableTitle": "Temettü verisi yok",
+      "unavailableBody": "Bu şirket için temettü verisi henüz yüklenmedi."
     }
   },
   "stockList": {

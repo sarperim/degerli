@@ -6,13 +6,17 @@ import { http, HttpResponse } from 'msw'
 import type {
   MissingDataResponse,
   StockBalanceSheetResponse,
-  StockDividendsResponse,
   StockFinancialsResponse,
   StockGrowthResponse,
   StockOverviewResponse,
   StockProfitabilityResponse,
   StockValuationResponse,
 } from '@/lib/api/contracts'
+import type {
+  StockDividendsSectionData,
+  StockDividendsSectionMissing,
+  StockDividendsSectionResponse,
+} from '@/screens/stock-page/api'
 import { StockPage } from '@/screens/stock-page/StockPage'
 import {
   API_BASE,
@@ -186,9 +190,10 @@ export const BALANCE_SHEET_FIXTURE: StockBalanceSheetResponse = {
   bookValuePerShare: { value: 5, restated: false },
 }
 
-export const DIVIDENDS_FIXTURE: StockDividendsResponse = {
+export const DIVIDENDS_FIXTURE: StockDividendsSectionData = {
   asOf: '2026-10-06',
   stale: false,
+  dividendsAvailable: true,
   dividends: [
     { exDate: '2026-04-01', payDate: '2026-04-10', amountPerShare: 1.5, currency: 'TRY' },
   ],
@@ -196,6 +201,43 @@ export const DIVIDENDS_FIXTURE: StockDividendsResponse = {
 }
 
 export const NO_DIVIDENDS_FIXTURE: MissingDataResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  state: 'no-data',
+  coverage: { availableFrom: '2016-04-12', boundaryNote: 'no dividends paid' },
+}
+
+/**
+ * SCR-005 §7 dividends doubles (TKT-foundation-052): the three honest states the
+ * server's availability signal distinguishes. A zero-row table is only "never paid"
+ * when the lane reports the data available; otherwise it is the neutral "no data yet".
+ */
+export const ZERO_DIVIDENDS_FIXTURE: StockDividendsSectionMissing = {
+  asOf: '2026-10-06',
+  stale: false,
+  state: 'no-data',
+  dividendsAvailable: true,
+  coverage: { availableFrom: '2016-04-12', boundaryNote: 'no dividends paid' },
+}
+
+/** No rows and the dividends lane has not covered this instrument yet. */
+export const DIVIDENDS_UNAVAILABLE_FIXTURE: StockDividendsSectionMissing = {
+  asOf: '2026-10-06',
+  stale: false,
+  state: 'no-data',
+  dividendsAvailable: false,
+  coverage: {
+    availableFrom: '2016-04-12',
+    boundaryNote: 'dividends data not ingested yet',
+  },
+}
+
+/**
+ * A pre-052 payload: the missing-data envelope with **no** availability signal. The
+ * section must degrade to the neutral state — an absent signal never licenses the
+ * "never paid" claim.
+ */
+export const LEGACY_DIVIDENDS_FIXTURE: StockDividendsSectionMissing = {
   asOf: '2026-10-06',
   stale: false,
   state: 'no-data',
@@ -310,7 +352,9 @@ export function stockBalanceSheetHandler(
   )
 }
 
-export function stockDividendsHandler(body: StockDividendsResponse = DIVIDENDS_FIXTURE) {
+export function stockDividendsHandler(
+  body: StockDividendsSectionResponse = DIVIDENDS_FIXTURE,
+) {
   return http.get(`${API_BASE}/stocks/:symbol/dividends`, () =>
     HttpResponse.json(body),
   )

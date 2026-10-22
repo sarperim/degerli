@@ -3,9 +3,11 @@ using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
+using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -334,6 +336,98 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             root.GetProperty("coverage").GetProperty("availableFrom").GetString());
     }
 
+    // -- TC-RES-037 — Dividends availability signal (TKT-foundation-052) --------
+    //
+    // A zero-row dividends table is not evidence that the company never paid a
+    // dividend: it is equally the shape of "the dividends lane has not covered this
+    // instrument yet". The payload carries the server-side availability signal so the
+    // client can tell the three honest states apart (not-processed / processed-empty /
+    // populated) instead of reading "never paid" out of an empty list.
+
+    [Fact]
+    public async Task TC_RES_037_dividends_zero_rows_with_no_run_is_not_available()
+    {
+        await SeedAsync();
+        await SeedDividendsRunsAsync();
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/LAMDA/dividends");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        // No rows AND no completed dividends run: the data is simply not there yet —
+        // the neutral state, never a "never paid" claim.
+        Assert.False(root.GetProperty("dividendsAvailable").GetBoolean());
+        Assert.Equal("no-data", root.GetProperty("state").GetString());
+        Assert.False(root.TryGetProperty("dividends", out _));
+        Assert.False(root.TryGetProperty("ttmPerShare", out _));
+    }
+
+    [Fact]
+    public async Task TC_RES_037_dividends_zero_rows_after_a_succeeded_run_is_available()
+    {
+        await SeedAsync();
+        // A completed dividends pass walked LAMDA's disclosures and found no dividend
+        // notice: the empty table is now backed evidence.
+        await SeedDividendsRunsAsync((IngestResult.Succeeded, StatsWithSymbols()));
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/LAMDA/dividends");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("dividendsAvailable").GetBoolean());
+        Assert.Equal("no-data", root.GetProperty("state").GetString());
+        Assert.False(root.TryGetProperty("dividends", out _));
+        Assert.False(root.TryGetProperty("ttmPerShare", out _));
+    }
+
+    [Fact]
+    public async Task TC_RES_037_dividends_zero_rows_after_a_partial_run_that_isolated_the_instrument_is_not_available()
+    {
+        await SeedAsync();
+        // A partial pass (046's per-symbol isolation) never walked LAMDA — the symbol is
+        // named failed in the run's stats, so "no dividends" is still unbacked for it.
+        await SeedDividendsRunsAsync((IngestResult.Partial, StatsWithSymbols("LAMDA", failed: true)));
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/LAMDA/dividends");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.False(root.GetProperty("dividendsAvailable").GetBoolean());
+        Assert.Equal("no-data", root.GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task TC_RES_037_dividends_populated_payload_is_available()
+    {
+        await SeedAsync();
+        await SeedDividendsRunsAsync();
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/ALFA/dividends");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        // Rows in hand: the data is available by definition, and the history still serves.
+        Assert.True(root.GetProperty("dividendsAvailable").GetBoolean());
+        Assert.True(root.GetProperty("dividends").GetArrayLength() > 0);
+        Assert.Equal(1.00m, root.GetProperty("ttmPerShare").GetDecimal());
+    }
+
     // -- TC-RES-014 — Unknown symbol across all section endpoints --------------
 
     [Fact]
@@ -465,6 +559,45 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         var metrics = await runner.RunAsync(MetricsRecomputeJob.Code, new IngestionRequest(T));
         Assert.Equal("succeeded", metrics.Status);
     }
+
+    /// <summary>
+    /// Replaces the run ledger's <c>dividends</c> rows with the supplied terminal runs
+    /// (TKT-foundation-052). The ledger is shared across the class fixture, so the delete
+    /// makes each availability case order-independent (the <c>derived_metrics</c> reset in
+    /// <see cref="SeedAsync"/> is the same pattern). No args = the lane never ran.
+    /// </summary>
+    private async Task SeedDividendsRunsAsync(params (string Status, string? StatsJson)[] runs)
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs WHERE job_code = 'dividends'");
+        foreach (var (status, statsJson) in runs)
+        {
+            db.IngestRuns.Add(new IngestRun
+            {
+                JobCode = DividendsJob.Code,
+                StartedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                FinishedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddMinutes(5),
+                Status = status,
+                StatsJson = statsJson,
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>The run-ledger <c>stats_json</c> shape the runner writes (Jobs.cs).</summary>
+    private static string StatsWithSymbols(string? symbol = null, bool failed = false) =>
+        JsonSerializer.Serialize(new
+        {
+            written = 0,
+            unchanged = 0,
+            quarantined = 0,
+            skipped = 0,
+            symbols = symbol is null
+                ? Array.Empty<object>()
+                : [new { symbol, written = 0, unchanged = 0, quarantined = 0, failed }],
+            mode = "incremental",
+        });
 
     private static HttpClient CreateClient(DegerliAppFactory factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions

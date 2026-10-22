@@ -113,12 +113,44 @@ export function fetchStockBalanceSheet(
   )
 }
 
-/** `GET /api/v1/stocks/{symbol}/dividends` — dated history / never-paid (FR-RES-012). */
+/**
+ * `GET /api/v1/stocks/{symbol}/dividends` — dated history / the three honest states
+ * (FR-RES-012, TKT-foundation-052).
+ *
+ * A zero-row dividends table is not evidence that the company never paid a dividend:
+ * it is also the shape of "the dividends lane has not covered this instrument yet".
+ * The payload therefore carries the server's availability signal
+ * (`dividendsAvailable`, architecture §13.1 v1.5.32), and the section renders:
+ * data + rows → the history, the signal + zero rows → the backed "never paid" wording,
+ * no signal / `false` → the neutral "no data yet" state. An **absent** signal degrades
+ * to the neutral state: absence of evidence is never rendered as evidence of absence.
+ */
+export type StockDividendsSectionData = StockDividendsResponse & {
+  dividendsAvailable: boolean
+}
+
+/** The missing-data envelope, with the availability signal when the server sends one. */
+export type StockDividendsSectionMissing = MissingDataResponse & {
+  dividendsAvailable?: boolean
+}
+
+export type StockDividendsSectionResponse =
+  | StockDividendsSectionData
+  | StockDividendsSectionMissing
+
+/** True when a dividends response is the explicit missing-data envelope. */
+export function isDividendsMissing(
+  response: StockDividendsSectionResponse,
+): response is StockDividendsSectionMissing {
+  return 'state' in response
+}
+
+/** `GET /api/v1/stocks/{symbol}/dividends` — dated history / three honest states. */
 export function fetchStockDividends(
   symbol: string,
   signal?: AbortSignal,
-): Promise<SectionResponse<StockDividendsResponse>> {
-  return apiGet<SectionResponse<StockDividendsResponse>>(
+): Promise<StockDividendsSectionResponse> {
+  return apiGet<StockDividendsSectionResponse>(
     sectionPath(symbol, 'dividends'),
     signal,
   )
