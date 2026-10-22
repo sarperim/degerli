@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-046: VYK company-identity resolution breaks all three KAP family jobs — comma-joined stockCodes make one dictionary key, and an unresolved symbol fail-stops the whole run; fix the directory split and align the families with the statements lane's per-company isolation
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/113
 - Size: M
 - **Priority: P1 — dispatch-ready immediately. This gates the user's stated top priority ("make it functional first (KAP)") and the difference between TKT-foundation-034's live criteria passing and being permanently blocked.**
@@ -55,3 +55,8 @@ scope:
   record v1.7. **Live criterion (one paced run per family, ≥12 s/call) remains the orchestrator's
   post-merge step — not yet attempted.**
 - **Correction (2026-10-22, TKT-foundation-054 — 046 review round 1 **DR-3**; dated and transparent, the original wording above is kept verbatim and only annotated):** scope item 2's parenthetical — "the run terminates `succeeded` (or `partial` per the lane's existing aggregate posture if the lane's contract prefers it — follow the statements lane's rule)" — is **superseded by §10.9.15 (v1.5.22), which is the permanent record and wins.** The three family lanes terminate **`partial`** whenever any bound symbol is identity-isolated: **always `partial`, never `succeeded`**, and never `failed` for an identity skip. The statements lane's all-failed rule (`StatementsJob.CompleteAsync` → `failed` when every constituent failed) is deliberately **not** copied, because the dev frozen archive permanently lacks 5 constituents (GLRMK, PAHOL, TRALT, TRENJ, TRMET) — a family bound that happens to contain only them still ends honestly `partial` with zero rows written, rather than failing. Acceptance criterion (ii)'s "the run terminates non-failed" is read under this rule: it means `partial`, exactly as §10.9.15 and the shipped jobs do (`DividendsJob.cs:102`, `CorporateActionsJob.cs`, `DisclosuresJob.cs`). **No code change is implied or made** — the shipped behaviour matches the architecture authority; only this ticket's pre-amendment wording was stale.
+
+### Live criteria — MET (2026-10-22, dev stack, merged code)
+- **dividends — run 172** (11:01–12:14 UTC, paced 73 min, first-ever end-to-end completion past the old GARAN death point): `partial`, written 4, unchanged 2, quarantined 0; per-symbol stats show ONLY the archive-absent TRALT/TRMET as `failed:true, written:0` — all nine formerly comma-coded identities (GARAN, HALKB, ISCTR, VAKBN, YKBNK, TSKB, ALBRK, ISMEN, KRDMD) resolved and walked. Exactly the §10.9.15 always-partial honest shape.
+- **corporate-actions — run 173** (12:14–13:28 UTC): `partial`, written 302, unchanged 34, quarantined 0, same isolation shape (TRALT/TRMET only).
+- **disclosures**: first attempt (13:28–14:58 UTC) was killed by an external process death — NOT a pipeline defect: the orchestrator's `git pull` on the watch-mounted source triggered a Roslyn hot-reload crash (`BoundTreeToDifferentEnclosingContextRewriter` stack) that killed the API at 14:58:04 with the run in flight (no ledger row — the ledger writes at completion). Docker `unless-stopped` restored the process in 24 s. Disclosures' live criterion therefore rides tonight's 20:30 Istanbul EOD chain on the fully-merged code (API restarted 14:58:28 with everything through #117). Operational rule recorded: no source pulls on the main checkout while paced runs are in flight.
