@@ -1,0 +1,32 @@
+---
+scope:
+  - src/Ingestion/Statements/KapXbrlStatementDecoder.cs
+  - src/Ingestion/Statements/StatementMapper.cs
+  - tests/Api.IntegrationTests/CashFlowDecodingTests.cs
+  - tests/Api.IntegrationTests/StatementNormalizationTests.cs
+  - tests/Api.IntegrationTests/RealSourceStatementsTests.cs
+  - .pipeline/testing/market-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-051: Cash-flow decoder coverage — zero OCF/CAPEX line items decoded blocks FCF/SNA (DCF blocker); extend the ConceptMap from real captured shapes
+
+- Status: todo
+- Size: M
+- **Priority: P2 — capture-gated (see Dependencies): the implementation dispatches once the orchestrator's paced CF capture set is committed.** Gates the user's DCF goal together with share counts (TKT-foundation-033, still blocked on the prod-gateway NXDOMAIN — dependency recorded, not re-planned here).
+- **Planner-verified evidence (dev DB, read-only, 2026-10-22):**
+  - `fin_line_items` totals 11,441 rows; **`OCF` and `CAPEX`: zero rows each.** `CASH`: 84 rows — balance-sheet `CashAndCashEquivalents`-sourced, i.e. exactly the hedge-accounting XBRL noise the finding describes, not cash-flow-statement lines.
+  - `KapXbrlStatementDecoder.ConceptMap` (src/Ingestion/Statements/KapXbrlStatementDecoder.cs) contains **no cash-flow-statement concepts at all** — the map ends at income-statement/balance-sheet/equity concepts. The canonical chart of accounts (`StatementMapper`, incl. `OCF`/`CAPEX` codes) and the FCF formula (`Core/Metrics/CanonicalMetrics.cs`: FCF = OCF − |CAPEX|, NULL when either is missing — never zero-for-missing) already exist. **The blocker is purely the ConceptMap gap.**
+  - Statement mix: 72 IS / 84 BS / 74 EQ — **no CF-statement type is being produced at all**, consistent with no concepts mapping into one.
+  - Consequence: FCF can never compute; the stock pages' SNA column is empty for exactly this reason.
+- **Hasılat-code question (answered, recorded):** the stock page's Hasılat column is backed by canonical item code **`REV` — 72 rows, all from IS statements** — decoded from the map's three REV targets (`ifrs-full:Revenue`, `tr:Hasilat`, `kap:NetSatisTutari`). The per-concept split is **not persisted** (`fin_line_items` has no source-concept column), so which spelling dominates is unknowable from the DB; the "REVENUE-named codes have ~no rows" observation most plausibly refers to `ifrs-full:Revenue` specifically being rare while the tr/kap spellings carry the bulk. No action required for Hasılat (it works); this ticket records the answer and does not touch REV.
+- **Pinned approach (honest, capture-first — never guessed spellings):**
+  1. **Capture phase (orchestrator-run, paced, BEFORE implementation dispatch):** `kap_disclosures` stores metadata only (no raw payload — verified), so the real CF concept spellings must come from **paced live `disclosureDetail` fetches over a bounded set of FR disclosures whose statements include cash-flow tables** (the 046-post-fix family lane completes; the statements lane's cursor walk can nominate candidates). ~5–10 paced detail captures; shapes committed to the repo as shape-faithful doubles (the RealSourceCatalog / RealSourceStatementsTests convention — committed, never /tmp).
+  2. **Implementation:** extend `ConceptMap` with the OCF/CAPEX (and CF-statement companions the captures actually show — e.g. investing/financing aggregates only if genuinely present) concepts **exactly as captured**; the decoder then produces CF-statement `fin_line_items`; FCF computes via the existing formula (NULL-if-missing preserved); the SNA column populates where OCF+CAPEX exist. Unmapped CF concepts keep passing through as `OTHER_*` (the honest-gap doctrine — recorded, ignored by metrics).
+  3. **Backfill honesty:** already-stored statements re-decode only through the lane's existing re-decode/versioning path (`StatementVersioningTests` semantics — no silent rewrites of historical statement versions); if the existing path does not cover concept-map-extension re-decodes, the ticket records the honest choice (a versioned re-decode, never in-place mutation) and follows `01`'s statement-versioning section.
+- Traces to: FR-MDF-003/004 lane (statements ingest — decoding coverage), FR-RES-0xx financials lane (FR-RES-005–018, the SNA/FCF display supply), FR-VAL-001 lane (DCF baseline supply — FCF); §6.1 concept-map doctrine (`02` §6.1 / the ConceptMap header: "Inconsistent IFRS / Turkish-taxonomy / KAP spellings … share one canonical target"); CanonicalMetrics FCF v1.3; TKT-foundation-033 dependency (share counts — DCF completeness).
+- Acceptance: **explicit criteria; L2 doubles only (the committed capture set).** **(i) TC-MDF-089 — CF decoding:** a double built from each committed capture shape decodes OCF/CAPEX (and companions present in the captures) into `fin_line_items` with correct statement typing, units, and period coordinates (red today: zero CF rows). **(ii) TC-MDF-090 — FCF computation end-to-end:** with OCF+CAPEX decoded, FCF computes per the locked formula; missing-either → NULL (never zero); `StatementNormalizationTests` re-run green; unmapped CF concepts land as `OTHER_*` honestly. **(iii) Golden stability:** existing statement tests re-run green with pre-listed additive deltas only. **(iv) CI green.** **Live criterion (orchestrator post-merge):** one paced statements-lane run (or bounded re-decode) on the dev stack lands real OCF/CAPEX rows for captured companies and the stock pages' SNA column populates for them; symbols without CF coverage show the honest empty, never zero. Recorded verbatim.
+- Architecture refs: `01-system-architecture.md` §6.1-adjacent concept-map doctrine + the statements-lane section (§10.9.10 heritage) — the ticket's doc deliverable records the CF concept set and the re-decode posture; §13.1 **v1.5.31**; test plan: `.pipeline/testing/market-data-foundation.md` TC-MDF-089/090 (delivery-planner-applied, test-planner confirmation pending).
+- UX refs: none (decoder lane; the SNA column's presentation already exists).
+- Dependencies: **capture-gated** — the orchestrator's paced CF capture set must be committed first (item 1); no code dependencies (statements lane is post-046 healthy; `KapXbrlStatementDecoder`/`StatementMapper` are unowned by any open ticket). Coordination: `.pipeline/testing/market-data-foundation.md` rebase convention; records (does not gate on) TKT-foundation-033 for the DCF's share-count half.
+- Parallel group: none
