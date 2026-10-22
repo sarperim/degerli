@@ -77,22 +77,24 @@ public sealed class CorporateActionsSourceOptions
 /// rows. Every gateway call is paced by the run's <see cref="KapRequestPacer"/>.
 /// </para>
 /// <para>
-/// <b>Failure posture (fail-fast, honest).</b> The adapter has no per-company ledger channel, so a
-/// swallowed per-company failure would let a run report <c>succeeded</c> while silently skipping
-/// companies. Therefore: a transport failure, an HTTP error or a gateway fault is a
-/// <see cref="SourceFetchException"/> (the run is recorded <c>failed</c> — the failure ledger, no
-/// fabricated empty success), except a <c>400</c> on a <b>list</b> request whose body is the
-/// gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
+/// <b>Failure posture (fail-fast, honest).</b> A transport failure, an HTTP error or a gateway
+/// fault is a <see cref="SourceFetchException"/> (the run is recorded <c>failed</c> — the failure
+/// ledger, no fabricated empty success), except a <c>400</c> on a <b>list</b> request whose body is
+/// the gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
 /// structurally malformed detail body is a
-/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>); a bound
-/// symbol the directory cannot map is a <see cref="CompanyIdentityUnresolvedException"/> (never
-/// written under a fabricated identity). Per-company cursors are persisted <b>at the end of the
-/// adapter loop, before the job's store write</b>: a failed fetch never advances a cursor, but a
+/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>). A bound
+/// symbol the directory cannot map is <b>isolated per constituent</b> (01 v1.5 §10.9.15, the
+/// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): the loop names it
+/// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>, skips it and continues, and the
+/// job records it in the run's per-symbol stats (see <see cref="IVykIdentityIsolationReporter"/>) —
+/// never written under a fabricated identity, never a whole-run fail-stop. Per-company cursors are
+/// persisted <b>at the end of the adapter loop, before the job's store write</b>: a failed fetch
+/// never advances a cursor, but a
 /// post-fetch store failure can skip the indexes that cursor covers (accepted residual, §10.9.15;
 /// the next run's stale-cursor reset recovers it).
 /// </para>
 /// </summary>
-public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>
+public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>, IVykIdentityIsolationReporter
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-corporate-actions-cursor";
@@ -107,6 +109,7 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     private readonly UniverseSyncStore? _universe;
     private readonly DegerliDbContext? _db;
     private readonly ILogger<CorporateActionsSourceAdapter>? _logger;
+    private readonly List<string> _unresolvedSymbols = [];
 
     public CorporateActionsSourceAdapter(
         IKapSourceClient client,
@@ -144,6 +147,9 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
 
     /// <inheritdoc />
     public string SourceName => "kap";
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> UnresolvedSymbols => _unresolvedSymbols;
 
     /// <inheritdoc />
     public async Task<SourcePayload<CorporateActionsPayload>> FetchAsync(
@@ -194,12 +200,18 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         var actions = new List<CorporateActionFact>();
         var raw = new StringBuilder();
         var cursors = new List<(string Symbol, string Cursor)>();
+        _unresolvedSymbols.Clear();
 
         foreach (var symbol in symbols)
         {
             if (!snapshot.BySymbol.TryGetValue(symbol, out var companyId))
             {
-                throw new CompanyIdentityUnresolvedException(symbol);
+                // Per-constituent identity isolation (FR-MDF-008/FR-MDF-012, §10.9.10/§10.9.11):
+                // the unmapped bound symbol is named, counted and skipped — never written under a
+                // fabricated identity, and never a fail-stop that aborts the whole family walk.
+                LogIdentityUnresolved(symbol);
+                _unresolvedSymbols.Add(symbol);
+                continue;
             }
 
             var cursor = await GetCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
@@ -320,6 +332,17 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     private bool IsFamily(DisclosureInfo disclosure) =>
         string.IsNullOrWhiteSpace(_options.DisclosureType)
         || string.Equals(disclosure.DisclosureType, _options.DisclosureType, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Logs one isolated bound symbol with the named reason (FR-MDF-008/FR-MDF-012): the symbol is
+    /// listed and the run continues, so the skip is visible in the run's log trail even before the
+    /// job folds it into the per-symbol stats.
+    /// </summary>
+    private void LogIdentityUnresolved(string symbol) =>
+        _logger?.LogWarning(
+            "corporate-actions: company {Symbol} could not be mapped to a VYK companyId; isolated and the loop continues ({ReasonCode})",
+            symbol,
+            VykCompanyDirectory.CompanyIdentityUnresolved);
 
     /// <summary>The per-instrument disclosure cursor (01 v1.5 §10.9.15), stored in the existing
     /// <c>coverage_metadata</c> table — outside <c>CoverageDataTypes.InstrumentScoped</c>, so the

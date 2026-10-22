@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,12 @@ namespace Degerli.Ingestion.Dividends;
 /// <summary>
 /// The <c>dividends</c> job (FR-MDF-003, UC-MDF-001 step 2): fetch the KAP dividend
 /// payload, enforce provenance and store append-only dividend records.
+/// <para>
+/// The company-scoped VYK walk lives in the adapter (01 v1.5 §10.9.15), so the job's part of the
+/// §10.9.10/§10.9.11 per-company isolation doctrine (FR-MDF-012) is to carry the adapter's
+/// isolated bound symbols into the run ledger: an unmapped symbol is never a whole-run failure —
+/// the run ends <c>partial</c> with that symbol recorded (and named) in the per-symbol stats.
+/// </para>
 /// </summary>
 public sealed class DividendsJob : IIngestJob
 {
@@ -76,8 +83,27 @@ public sealed class DividendsJob : IIngestJob
             quarantined++;
         }
 
-        var status = quarantined > 0 ? IngestResult.Partial : IngestResult.Succeeded;
-        return new IngestResult(Code, result.Inserted, result.Unchanged, quarantined, status);
+        // The adapter's per-constituent identity isolation (01 v1.5 §10.9.15, FR-MDF-012): the
+        // symbols its loop skipped because the VYK directory could not map them. They ride the
+        // run's per-symbol stats with the named reason logged, so the run reports what it could
+        // not fetch instead of failing or silently looking complete.
+        var unresolved = _adapter is IVykIdentityIsolationReporter reporter
+            ? reporter.UnresolvedSymbols
+            : [];
+        if (unresolved.Count > 0)
+        {
+            _logger.LogWarning(
+                "dividends: {Count} bound symbol(s) isolated ({ReasonCode}): {Symbols}",
+                unresolved.Count,
+                VykCompanyDirectory.CompanyIdentityUnresolved,
+                string.Join(", ", unresolved));
+        }
+
+        var status = quarantined > 0 || unresolved.Count > 0 ? IngestResult.Partial : IngestResult.Succeeded;
+        return new IngestResult(Code, result.Inserted, result.Unchanged, quarantined, status)
+        {
+            SymbolStats = unresolved.Select(symbol => new SymbolRunStat(symbol, 0, 0, 0, Failed: true)).ToList(),
+        };
     }
 
     private Task QuarantineAsync(

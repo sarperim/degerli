@@ -23,10 +23,30 @@ public sealed record VykDirectorySnapshot(
 }
 
 /// <summary>
+/// The identity-isolation channel of a <b>company-scoped</b> VYK adapter (01 v1.5 §10.9.15; the
+/// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012). The three events families own
+/// their company loop inside the adapter, so they also own the isolation: a bound symbol the
+/// directory cannot map is <b>skipped and named here</b> (the loop continues), and the job turns
+/// that list into the run's per-symbol stats — never a whole-run fail-stop.
+/// </summary>
+public interface IVykIdentityIsolationReporter
+{
+    /// <summary>
+    /// The bound symbols the most recent walk isolated as
+    /// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>. Empty when every bound symbol
+    /// resolved (or when the run took the legacy single-resource branch).
+    /// </summary>
+    IReadOnlyList<string> UnresolvedSymbols { get; }
+}
+
+/// <summary>
 /// Resolves a BIST symbol to the VYK gateway's <c>companyId</c> through <b>one</b> paced
 /// <c>/members</c> fetch per run, cached in memory for the whole company-scoped loop
 /// (01 v1.5 §10.9.11). <c>MemberInfo.stockCode</c> carries the ticker directly, so no
-/// <c>/memberSecurities</c> consult is needed. The fetch is lazy — the members/anchor calls
+/// <c>/memberSecurities</c> consult is needed. A member may carry <b>several</b> tickers in one
+/// comma-joined code (<c>"GARAN, TGB"</c>), so the map registers every part as its own key
+/// (01 v1.5 §10.9.15); literal duplicate entries are last-wins with a logged warning when the
+/// ids differ. The fetch is lazy — the members/anchor calls
 /// happen only when the VYK company-scoped source is actually enabled and used, so the
 /// canonical/XBRL L2 doubles never reach them. <c>/memberSecurities</c>
 /// (<c>borsaKodu</c>/<c>isin</c>) remains an unneeded fallback: <c>stockCode</c> is unambiguous
@@ -34,6 +54,13 @@ public sealed record VykDirectorySnapshot(
 /// </summary>
 public sealed class VykCompanyDirectory
 {
+    /// <summary>
+    /// The named reason for a bound symbol the directory cannot map to a <c>companyId</c>
+    /// (FR-MDF-008/FR-MDF-012, 01 v1.5 §10.9.11) — the same code the <c>statements</c> lane
+    /// records (<c>StatementsJob.CompanyIdentityUnresolved</c>).
+    /// </summary>
+    public const string CompanyIdentityUnresolved = "COMPANY_IDENTITY_UNRESOLVED";
+
     private readonly IKapSourceClient _client;
     private readonly KapSourceOptions _options;
     private readonly KapRequestPacer _pacer;
@@ -108,9 +135,39 @@ public sealed class VykCompanyDirectory
         foreach (var element in VykEnvelopes.Elements(root).ToList())
         {
             var member = MemberInfo.From(element);
-            if (!string.IsNullOrWhiteSpace(member.StockCode) && !string.IsNullOrWhiteSpace(member.Id))
+            if (string.IsNullOrWhiteSpace(member.StockCode) || string.IsNullOrWhiteSpace(member.Id))
             {
-                map[member.StockCode.Trim()] = member.Id.Trim();
+                // Codeless members (auditors: FK/IGS/IGMS/YK memberTypes) carry no ticker and
+                // therefore no identity to resolve — skipped, never a fabricated mapping.
+                continue;
+            }
+
+            var id = member.Id.Trim();
+            foreach (var part in member.StockCode.Split(','))
+            {
+                // A member may carry several tickers in one comma-joined code (live-verified
+                // 2026-10-20: Türkiye Garanti Bankası = "GARAN, TGB", 77 of 1037 dev-gateway
+                // members). Registering the joined string as one key made every such symbol
+                // unresolvable, so each part is its own key (01 v1.5 §10.9.15).
+                var code = part.Trim();
+                if (code.Length == 0)
+                {
+                    continue;
+                }
+
+                if (map.TryGetValue(code, out var claimed)
+                    && !string.Equals(claimed, id, StringComparison.Ordinal))
+                {
+                    // Two member entries claim the same ticker with different ids (the live
+                    // payload carries literal duplicates too): last-wins, never silent.
+                    _logger.LogWarning(
+                        "VYK members directory: stock code {Code} is claimed by two members ({ExistingId} and {Id}); last-wins",
+                        code,
+                        claimed,
+                        id);
+                }
+
+                map[code] = id;
             }
         }
 

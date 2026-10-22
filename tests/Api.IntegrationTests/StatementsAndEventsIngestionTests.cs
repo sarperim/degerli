@@ -8,13 +8,18 @@ using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Disclosures;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using Serilog;
+using Serilog.Events;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Types;
@@ -851,6 +856,142 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-046 — VYK company-identity resolution (TC-MDF-082/083)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-082 (end-to-end composition) — the directory's comma-split reaches the family walk:
+    /// a constituent whose member row carries the live <c>"GARAN, TGB"</c> shape (01 v1.5 §10.9.15)
+    /// resolves to its <c>companyId</c> and its disclosures are ingested. Before the split the only
+    /// key was the joined string, so such a bound symbol was unresolvable.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_082_a_comma_coded_constituent_resolves_through_the_family_walk()
+    {
+        await ResetAsync();
+        await BindAsync("GARAN");
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(
+            MembersPath,
+            """[{"id":"1406","title":"TÜRKİYE GARANTİ BANKASI A.Ş.","stockCode":"GARAN, TGB","memberType":"stock"}]""");
+        _wireMock.StubJson(AnchorPath, """{"lastDisclosureIndex":"1231017"}""");
+        StubDisclosureList("1406", 0, ("1138796", "CA"));
+        StubDetail("1138796", CapitalIncreaseDetailBody());
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "corporate-actions");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(1, result.Written);
+        AssertDisclosureQuery("1406", "0");
+
+        await using var db = _postgres.CreateContext();
+        var garan = await db.Instruments.Where(i => i.Symbol == "GARAN").Select(i => i.Id).SingleAsync();
+        var action = Assert.Single(await db.CorporateActions.Where(a => a.InstrumentId == garan).ToListAsync());
+        Assert.Equal("SA", action.ActionType);
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+    }
+
+    /// <summary>
+    /// TC-MDF-083 — <b>per-constituent quarantine-and-continue</b> (01 v1.5 §10.9.15; the
+    /// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): a bound symbol the directory
+    /// cannot map is isolated — named with the reason <c>COMPANY_IDENTITY_UNRESOLVED</c>, counted in
+    /// the run's per-symbol stats, no rows and no cursor for it — while the rest of the bound is
+    /// ingested and the run terminates <c>partial</c>, never a whole-run failure.
+    /// </summary>
+    [Theory]
+    [InlineData("dividends", "dividends", "kap-dividends-cursor")]
+    [InlineData("corporate-actions", "corporate_actions", "kap-corporate-actions-cursor")]
+    [InlineData("disclosures", "kap_disclosures", "kap-disclosures-cursor")]
+    public async Task TC_MDF_083_an_unmapped_constituent_is_isolated_and_the_run_completes(
+        string jobCode,
+        string table,
+        string cursorDataType)
+    {
+        await ResetAsync();
+
+        // The bound carries one resolvable constituent (ALFA, in the directory double) and one the
+        // dev frozen archive genuinely does not list (GLRMK — the ticket's absent-member class).
+        await BindAsync("ALFA", "GLRMK");
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        StubFamilyDetail(jobCode);
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs);
+
+        var result = await RunAsync(provider, jobCode);
+
+        // The loop completed past the unmapped symbol: partial, never failed (never a whole-run 500).
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.True(result.Written > 0, "the resolvable constituent's facts were not written");
+
+        var stat = Assert.Single(result.SymbolStats);
+        Assert.Equal("GLRMK", stat.Symbol);
+        Assert.True(stat.Failed);
+        Assert.Equal(0, stat.Written);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        var glrmk = await db.Instruments.Where(i => i.Symbol == "GLRMK").Select(i => i.Id).SingleAsync();
+
+        // The resolvable constituent's rows and cursor are written…
+        Assert.True(
+            await RowsForAsync(db, table, alfa) > 0,
+            "the resolvable constituent's rows were not written");
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == cursorDataType);
+        Assert.Equal("1138986", cursor.Notes);
+
+        // …the isolated one has no rows and no cursor (never written under a fabricated identity)…
+        Assert.Equal(0, await RowsForAsync(db, table, glrmk));
+        Assert.False(
+            await db.CoverageMetadata.AnyAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == glrmk && c.DataType == cursorDataType));
+
+        // …identity isolation is not a parse event, so nothing is quarantined…
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == jobCode));
+
+        // …and the run ledger names the skip in the per-symbol stats, terminating non-failed.
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == jobCode).ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+        Assert.True(perSymbol["GLRMK"].GetProperty("failed").GetBoolean());
+        Assert.Equal(0, perSymbol["GLRMK"].GetProperty("written").GetInt32());
+
+        // The skip is recorded with the named reason (the statements-lane idiom, §10.9.10).
+        Assert.NotNull(logs);
+        Assert.True(
+            logs.Contains(evt =>
+                evt.RenderMessage().Contains("GLRMK", StringComparison.Ordinal)
+                && evt.RenderMessage().Contains(VykCompanyDirectory.CompanyIdentityUnresolved, StringComparison.Ordinal)),
+            "no log naming GLRMK / COMPANY_IDENTITY_UNRESOLVED");
+
+        // The unmapped constituent was never fetched: only the mapped company was walked.
+        AssertDisclosureQuery("1001", "0");
+    }
+
+    /// <summary>The family-appropriate detail double for one <c>CA</c> disclosure row.</summary>
+    private void StubFamilyDetail(string jobCode) => StubDetail(
+        "1138986",
+        jobCode switch
+        {
+            "dividends" => DividendDetailBody(),
+            "corporate-actions" => CapitalIncreaseDetailBody(),
+            _ => DisclosureDetailBody("1138986", "CA"),
+        });
+
+    private static Task<long> RowsForAsync(DegerliDbContext db, string table, long instrumentId) =>
+        table switch
+        {
+            "dividends" => db.Dividends.LongCountAsync(d => d.InstrumentId == instrumentId),
+            "corporate_actions" => db.CorporateActions.LongCountAsync(a => a.InstrumentId == instrumentId),
+            "kap_disclosures" => db.KapDisclosures.LongCountAsync(k => k.InstrumentId == instrumentId),
+            _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unknown fact table."),
+        };
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -863,7 +1004,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     /// <c>/disclosureDetail</c>; the canonical (legacy) doubles stay bound otherwise so the
     /// TC-MDF-003..006 goldens are byte-for-byte unchanged.
     /// </summary>
-    private IngestionHost BuildIngestion(string? documentRoot = null, bool vyk = false)
+    private IngestionHost BuildIngestion(string? documentRoot = null, bool vyk = false, InMemorySerilogSink? logs = null)
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
@@ -901,11 +1042,25 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var services = new ServiceCollection();
-        services.AddLogging();
+        if (logs is null)
+        {
+            services.AddLogging();
+        }
+        else
+        {
+            // The failure-forensics lane (test strategy §6): the application's log events land in
+            // the in-memory sink so a test can assert the named reason of an isolated symbol.
+            var logger = new LoggerConfiguration()
+                .MinimumLevel.Warning()
+                .WriteTo.Sink(logs)
+                .CreateLogger();
+            services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
+        }
+
         services.AddSingleton<TimeProvider>(clock);
         services.AddMarketDataIngestion(configuration);
 
-        return new IngestionHost(services.BuildServiceProvider());
+        return new IngestionHost(services.BuildServiceProvider(), logs);
     }
 
     private static async Task<IngestResult> RunAsync(IngestionHost host, string jobCode)
@@ -1056,6 +1211,36 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
 
     private void StubDetailError(string disclosureIndex, int statusCode, string body) =>
         _wireMock.StubJson(DetailPath(disclosureIndex), body, statusCode: statusCode);
+
+    /// <summary>
+    /// Binds the fetch bound to <paramref name="symbols"/>, creating an instrument row for any
+    /// symbol the FU universe does not seed (the TKT-foundation-026 harness precedent).
+    /// </summary>
+    private async Task BindAsync(params string[] symbols)
+    {
+        await using var db = _postgres.CreateContext();
+        var recordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        foreach (var symbol in symbols)
+        {
+            if (await db.Instruments.AnyAsync(i => i.Symbol == symbol))
+            {
+                continue;
+            }
+
+            db.Instruments.Add(new Instrument
+            {
+                Symbol = symbol,
+                Name = symbol,
+                Status = "active",
+                SourceRef = "test:vyk-bound",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        await StatementBound.ReplaceAsync(db, symbols);
+    }
 
     /// <summary>Seeds a per-instrument cursor row as an earlier run would have left it.</summary>
     private async Task SeedCursor(string symbol, string dataType, string notes)
@@ -1384,9 +1569,16 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     /// <summary>The active ingestion provider.</summary>
     private sealed class IngestionHost : IAsyncDisposable
     {
-        public IngestionHost(ServiceProvider provider) => Provider = provider;
+        public IngestionHost(ServiceProvider provider, InMemorySerilogSink? logs = null)
+        {
+            Provider = provider;
+            Logs = logs;
+        }
 
         public ServiceProvider Provider { get; }
+
+        /// <summary>The captured log events, when the host was composed with a sink.</summary>
+        public InMemorySerilogSink? Logs { get; }
 
         public ValueTask DisposeAsync() => Provider.DisposeAsync();
     }
