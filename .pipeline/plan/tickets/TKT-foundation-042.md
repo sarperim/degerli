@@ -17,7 +17,7 @@ scope:
 
 # TKT-foundation-042: market-snapshot honesty + repairability — same-day recompute must repair a broken row (no SQL surgery), and missing index levels must degrade to honest nulls (never fabricated 0.0000)
 
-- Status: in-review
+- Status: done
 - Size: M
 - **Priority: P2 — dispatch-ready** (code lane disjoint from 039/040-in-review and 041's scheduling lane; see Dependencies for the §13.1 serialize note).
 - Verified evidence (dev stack, 2026-10-20 evening, orchestrator's repair sequence):
@@ -44,3 +44,7 @@ scope:
 - `§13.1` v1.5.18 is a single-row append placed behind the in-flight v1.5.15/16/17 lanes per the ticket's serialize note (last-lander rebases).
 - **Live criterion:** untouched by the coder (orchestrator, post-merge, read-only per the ticket).
 - **CI (PR #112, head after the dev rebase `db0ad69`):** Backend **pass** (2m43s, full suite), Web **pass** (1m26s), E2E **fail** — the single failure is `TC-XC-004 — SCR-002 keeps the sector filter, search term, scroll and data cache` (72/73 specs pass), which is **pre-existing on dev**: dev's own push run `39521243991` (`db0ad69c`) fails on the same spec, before this branch existed. Not caused by this ticket (SCR-002 is the stock list; this diff touches no Web file). Reviewer/CI-owner call — no waiver claimed by the coder.
+
+### Closure + live criterion — armed (2026-10-22)
+- Merged as PR #112 (`c4e14a0`) after the §13.1 conflict rebase and the user's ratify+fold decision (amended acceptance: `written:1` + store-level `Rewritten`; the `rewritten` ledger-stat criterion folded into 044 on dev at `f231cd9`).
+- The merged code went live on the dev stack at the 14:58:28 UTC process restart (post-#117 pull crash — see 046's note). Live criterion armed: tonight's 20:30 Istanbul EOD chain's `market-snapshot` step completing in-chain with input-aware semantics (same-day guard, honest `written`/`unchanged` counts).

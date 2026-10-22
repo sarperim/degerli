@@ -8,6 +8,15 @@ namespace Degerli.Ingestion.Metrics;
 /// like every other job so the scheduler chain, the run ledger and the admin trigger pick it
 /// up by code (the TKT-mdf-008 convention); it reads the canonical <c>derived_metrics</c>
 /// rows and computes nothing itself beyond the median (BR-RES-004).
+/// <para>
+/// <b>Input-aware same-day recompute (<c>01</c> §10.9.13; TKT-foundation-050, the
+/// TKT-foundation-042 pattern extended to this lane).</b> The day is recomputed from the
+/// current <c>derived_metrics</c> rows on every run and written input-aware: a median already
+/// identical to its stored value is reported <c>unchanged</c> and left untouched, while a
+/// median whose upstream metrics changed is repaired in place and counted as written. One
+/// row per <c>(sector, metric, as_of_date)</c> is preserved and days other than the target
+/// one are never touched.
+/// </para>
 /// </summary>
 public sealed class SectorMediansJob : IIngestJob
 {
@@ -34,10 +43,25 @@ public sealed class SectorMediansJob : IIngestJob
         CancellationToken cancellationToken = default)
     {
         var results = await _engine.ComputeAsync(request.Date, cancellationToken).ConfigureAwait(false);
-        var outcome = await _store
-            .UpsertAsync(results, request.Date, _clock.GetUtcNow(), cancellationToken)
+
+        // The engine classifies the recompute against the stored same-day rows: identical
+        // rows are not rewritten, changed rows are (01 §10.9.13; TKT-foundation-050).
+        var plan = await _engine
+            .PlanWriteAsync(results, request.Date, cancellationToken)
             .ConfigureAwait(false);
 
-        return new IngestResult(Code, outcome.Written, outcome.Unchanged, 0, IngestResult.Succeeded);
+        var outcome = await _store
+            .UpsertAsync(plan.ToWrite, request.Date, _clock.GetUtcNow(), cancellationToken)
+            .ConfigureAwait(false);
+
+        // A repair is a written row for this run too; the plan keeps the insert / repair /
+        // unchanged distinction for the dedicated `rewritten` ledger stat
+        // (`SectorMedianWritePlan.Rewritten`, TKT-foundation-044's fold-in).
+        return new IngestResult(
+            Code,
+            outcome.Written + plan.Rewritten,
+            plan.Unchanged,
+            0,
+            IngestResult.Succeeded);
     }
 }

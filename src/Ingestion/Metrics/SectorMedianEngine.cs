@@ -1,5 +1,6 @@
 using Degerli.Core.Metrics;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Degerli.Ingestion.Metrics;
@@ -11,6 +12,22 @@ public sealed record SectorMedianResult(
     decimal? MedianValue,
     int PeerCount,
     int ExcludedCount);
+
+/// <summary>
+/// The write plan for one sector-median pass (<c>01</c> §10.9.13, extended to this lane by
+/// TKT-foundation-050): the computed medians whose stored same-day row differs from the
+/// current computation — the only rows that need writing — plus the honest counts the run
+/// reports. Identical medians are never rewritten and are counted in
+/// <see cref="Unchanged"/>; a median whose upstream <c>derived_metrics</c> inputs changed is
+/// repaired in place and counted in <see cref="Rewritten"/>.
+/// </summary>
+/// <param name="ToWrite">The computed medians to upsert (new rows + input-changed rows).</param>
+/// <param name="Unchanged">The recomputed medians already identical to their stored row.</param>
+/// <param name="Rewritten">The rows repaired in place because their inputs changed.</param>
+public sealed record SectorMedianWritePlan(
+    IReadOnlyList<SectorMedianResult> ToWrite,
+    int Unchanged,
+    int Rewritten);
 
 /// <summary>
 /// C3b sector-median computation for the vs.-sector strip (FR-RES-007/SD-002, `02` §6.3):
@@ -89,6 +106,84 @@ public sealed class SectorMedianEngine
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Classifies a computed median set against the stored same-day rows — the input-aware
+    /// half of the recompute (<c>01</c> §10.9.13, extended to this lane by
+    /// TKT-foundation-050). A median whose stored values already match the current
+    /// computation is reported <c>unchanged</c> and left untouched; a median whose upstream
+    /// <c>derived_metrics</c> inputs changed is repaired in place and counted as rewritten.
+    /// Only the resolved <paramref name="asOfDate"/>'s rows are addressed, so historical days
+    /// stay immutable.
+    /// </summary>
+    public async Task<SectorMedianWritePlan> PlanWriteAsync(
+        IReadOnlyList<SectorMedianResult> computed,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(computed);
+
+        var stored = (await _db.SectorMetricMedians
+                .Where(median => median.AsOfDate == asOfDate)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToDictionary(median => (median.SectorId, median.MetricCode), MedianKeyComparer.Instance);
+
+        var toWrite = new List<SectorMedianResult>(computed.Count);
+        var unchanged = 0;
+        var rewritten = 0;
+        foreach (var result in computed)
+        {
+            if (stored.TryGetValue((result.SectorId, result.MetricCode), out var row))
+            {
+                if (HasSameValues(row, result))
+                {
+                    // Identical inputs → identical median: nothing to write, and the run
+                    // reports the honest unchanged count instead of a silent vacuum.
+                    unchanged++;
+                    continue;
+                }
+
+                rewritten++;
+            }
+
+            toWrite.Add(result);
+        }
+
+        return new SectorMedianWritePlan(toWrite, unchanged, rewritten);
+    }
+
+    /// <summary>
+    /// True when the stored row already carries the computed median. Compares the
+    /// input-derived values only — never <c>computed_at</c>, which stamps the write, not the
+    /// facts — and compares the median in the stored column's own precision
+    /// (<c>numeric(18,6)</c>), so an even-peer-count mean is honestly unchanged on a
+    /// recompute instead of a perpetual pseudo-repair.
+    /// </summary>
+    private static bool HasSameValues(SectorMetricMedian stored, SectorMedianResult computed) =>
+        stored.MedianValue == AtStoredScale(computed.MedianValue)
+        && stored.PeerCount == computed.PeerCount
+        && stored.ExcludedCount == computed.ExcludedCount
+        && !stored.IsAdjusted; // the medians are always computed on the current (unadjusted) basis
+
+    /// <summary>The persisted scale of <c>sector_metric_medians.median_value</c> (<c>02</c> §3.4).</summary>
+    private const int StoredValueScale = 6;
+
+    /// <summary>Projects a computed median onto the column's precision (half away from zero, like the DB).</summary>
+    private static decimal? AtStoredScale(decimal? value) =>
+        value is null ? null : decimal.Round(value.Value, StoredValueScale, MidpointRounding.AwayFromZero);
+
+    /// <summary>Value equality over the composite key, so the lookup is ordinal like the DB.</summary>
+    private sealed class MedianKeyComparer : IEqualityComparer<(long SectorId, string MetricCode)>
+    {
+        public static readonly MedianKeyComparer Instance = new();
+
+        public bool Equals((long SectorId, string MetricCode) x, (long SectorId, string MetricCode) y) =>
+            x.SectorId == y.SectorId && string.Equals(x.MetricCode, y.MetricCode, StringComparison.Ordinal);
+
+        public int GetHashCode((long SectorId, string MetricCode) obj) =>
+            HashCode.Combine(obj.SectorId, StringComparer.Ordinal.GetHashCode(obj.MetricCode));
     }
 
     /// <summary>Standard statistical median; even count → the mean of the two middle values (FU §2).</summary>
