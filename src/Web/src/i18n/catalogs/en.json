@@ -121,6 +121,7 @@
         "title": "Vs. sector",
         "sectorMedian": "Sector median",
         "noMedian": "No sector median",
+        "noSectorDataTitle": "Not enough data for this sector",
         "peerCount": "median of {{count}} peers",
         "exclusionDisclosure": "The P/E median excludes loss-making peers ({{count}} excluded)."
       },

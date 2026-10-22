@@ -112,11 +112,21 @@ export function StockPage() {
         <h1 className="text-h1 font-semibold tracking-tight">
           {t('screens.stockPage.title')}
         </h1>
-        <StockIdentity symbol={symbol} />
+        {/*
+          The identity anchor (TKT-foundation-057) carries the stock's movement
+          beside it (TKT-foundation-055(b)): symbol + name + the day's served
+          price/change read as one glanceable unit, ahead of the description.
+        */}
+        <div
+          data-testid="stock-page-identity-anchor"
+          className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
+        >
+          <StockIdentity symbol={symbol} />
+          <StockPriceHeader symbol={symbol} />
+        </div>
         <p className="max-w-2xl text-muted-foreground">
           {t('screens.stockPage.description')}
         </p>
-        <StockPriceHeader symbol={symbol} />
         <div>
           <Link
             to={`/stocks/${encodeURIComponent(symbol)}/dcf`}

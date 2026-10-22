@@ -337,6 +337,60 @@ export const NO_MEDIAN_VALUATION_FIXTURE: StockValuationResponse = {
 }
 
 /**
+ * The **zero-shares world** (TKT-foundation-055): share-count-derived multiples
+ * cannot be computed, so every strip entry has no own value and no peer has a
+ * computable metric — `sectorMedian` absent, `peerCount` 0. This is the payload
+ * behind the user-reported all-"Anlamsız"/"0 emsal" wall; the strip must render
+ * one honest no-data state instead of per-row verdicts.
+ */
+const NO_PEER_ENTRY = {
+  value: null,
+  notMeaningful: false,
+  sectorMedian: null,
+  peerCount: 0,
+  excludedCount: 0,
+} as const
+
+export const NO_PEERS_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  current: { pe: null, pb: null, ev_ebitda: null, ev_fcf: null, fcf_yield: null },
+  strip: {
+    pe: NO_PEER_ENTRY,
+    pb: NO_PEER_ENTRY,
+    ev_ebitda: NO_PEER_ENTRY,
+    ev_fcf: NO_PEER_ENTRY,
+    fcf_yield: NO_PEER_ENTRY,
+  },
+}
+
+/**
+ * A computable comparison whose own value was not computed (TKT-foundation-055):
+ * the peers have a median, but this stock's multiple is absent. The row renders
+ * the no-data dash — never the "not meaningful" verdict, which is a claim about
+ * the metric rather than about missing data.
+ */
+export const NO_OWN_VALUE_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  strip: {
+    ...VALUATION_FIXTURE.strip,
+    pe: { value: null, notMeaningful: false, sectorMedian: 10.0, peerCount: 3, excludedCount: 0 },
+  },
+}
+
+/**
+ * A metric with no computable peers inside an otherwise populated strip
+ * (TKT-foundation-055): the row keeps its own value and shows no median, and the
+ * median basis must never render as "0 peers".
+ */
+export const ZERO_PEER_COUNT_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  strip: {
+    ...VALUATION_FIXTURE.strip,
+    pe: { value: 10.0, notMeaningful: false, sectorMedian: null, peerCount: 0, excludedCount: 0 },
+  },
+}
+
+/**
  * EPSL's adjusted series (TC-RES-032, TC-MDF-030): the raw close carries a split
  * cliff (100 → 20) while the adjusted close is continuous (50 → 49), so asserting
  * the adjusted basis is chosen proves no fabricated 80% crash is plotted.
