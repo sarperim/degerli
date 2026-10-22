@@ -22,3 +22,12 @@ scope:
 - UX refs: SCR-001 (market overview valuation block — the served values this eventually populates; rendering already handles both states).
 - Dependencies: TKT-foundation-032 (correct URI resolution is a prerequisite for any production-gateway fetch) — and the external unblock condition above.
 - Parallel group: none (blocked).
+
+### Investigation result (2026-10-22, decisive — blocker re-classified)
+The hosts-file probe (user added `185.53.63.11 apigw.mkk.com.tr` in WSL) resolved the DNS question and produced a definitive answer: **`apigw.mkk.com.tr` is not a functioning production endpoint.**
+- Port 80 answers instantly with `302 → https://apigwdev.mkk.com.tr/...` — the "prod" hostname literally redirects to the TEST gateway.
+- Port 443 completes a TLS handshake (wildcard `*.mkk.com.tr` cert) but no HTTP service answers for that Host (hangs, 45s+).
+- Quad9's A record for the hostname (`185.53.63.11`) is a **dev-gateway node** — verified: the dev hostname on that exact IP serves HTTP 200 in 0.3s.
+- Google (8.8.8.8) and Cloudflare (1.1.1.1) return NXDOMAIN.
+Conclusion: the earlier "prod gateway NXDOMAIN from this environment" framing was incomplete — the hostname itself carries no production service; whatever DNS view resolves it lands on shared test infrastructure. The real unblock for 033 is **not network access** but obtaining the actual production VYK dissemination endpoint and an appropriate subscription from MKK (the account currently holds a Free-plan on the TEST gateway only, per the .env notes). Until then, share counts remain honestly unavailable on every environment, and the per-share/multiples/DCF-baseline lanes stay blocked behind this ticket.
+Operational note: the hosts line is harmless (it only redirects to the dev gateway) but no longer needed; it can be removed.
