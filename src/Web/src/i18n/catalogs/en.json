@@ -131,6 +131,8 @@
     },
     "financials": {
       "period": "FY{{year}}",
+      "periodQuarter": "Q{{quarter}} {{year}}",
+      "periodEnding": "Period ending {{date}}",
       "columns": {
         "period": "Period",
         "revenue": "Revenue",

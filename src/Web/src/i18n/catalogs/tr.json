@@ -131,6 +131,8 @@
     },
     "financials": {
       "period": "FY{{year}}",
+      "periodQuarter": "Ç{{quarter}} {{year}}",
+      "periodEnding": "{{date}} biten dönem",
       "columns": {
         "period": "Dönem",
         "revenue": "Hasılat",
