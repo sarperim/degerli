@@ -17,6 +17,7 @@ import { StockPage } from '@/screens/stock-page/StockPage'
 import {
   API_BASE,
   PRICE_STATE_CLOSE,
+  PRICE_STATE_COLD_START,
   PRICE_STATE_INTRADAY,
   PRICE_STATE_INTRADAY_AFTER_CLOSE,
 } from '@/test/msw/handlers'
@@ -70,6 +71,16 @@ export const CLOSE_OVERVIEW: StockOverviewResponse = {
   ...PUBLISHED_OVERVIEW,
   asOf: '2026-10-22',
   priceState: PRICE_STATE_CLOSE,
+}
+
+/**
+ * An instrument's **cold start**: a real `lastPrice` but no previous stored
+ * close, so `prevClose`/`changePct` are `null` (TKT-foundation-047). The header
+ * must show the value and no change at all.
+ */
+export const COLD_START_OVERVIEW: StockOverviewResponse = {
+  ...INTRADAY_OVERVIEW,
+  priceState: PRICE_STATE_COLD_START,
 }
 
 export const FINANCIALS_FIXTURE: StockFinancialsResponse = {

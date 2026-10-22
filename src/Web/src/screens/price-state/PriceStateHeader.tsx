@@ -3,9 +3,9 @@ import { ArrowDown, ArrowUp } from 'lucide-react'
 
 import { AsOfDate, StaleBadge } from '@/components/honest-data'
 import type { PriceState } from '@/lib/api/contracts'
-import { formatAsOfDate, formatNumber, formatSignedPercent } from '@/lib/format'
+import { formatNumber, formatSignedPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { formatUpdateTime } from '@/screens/price-state/priceState'
+import { formatSessionDate, formatUpdateTime } from '@/screens/price-state/priceState'
 
 export interface PriceStateHeaderProps {
   /** The server's price state; absent when the deployment has no intraday lane. */
@@ -39,6 +39,12 @@ export interface PriceStateHeaderProps {
  * `priceState` degrades to the existing 037/039 EOD display (as-of date + stale
  * flag) instead of showing an inferred or fabricated price.
  *
+ * The numerics are nullable (`01` §10.9.18): on the market overview the server
+ * serves `state`/`asOf`/`sessionDate` with `lastPrice`/`prevClose`/`changePct`
+ * all `null`, and on an instrument's cold start `prevClose`/`changePct` are
+ * `null`. A `null` renders as **absence** — no value, no change, no direction
+ * arrow — never as `0,00` / `+0,00%`.
+ *
  * All copy is localized; the state and the direction are carried by text, never
  * by colour alone (UXR-G-009).
  */
@@ -71,8 +77,11 @@ export function PriceStateHeader({
   }
 
   const intraday = priceState.state === 'intraday'
-  const ChangeIcon = priceState.changePct < 0 ? ArrowDown : ArrowUp
+  const lastPrice = priceState.lastPrice
+  const changePct = priceState.changePct
+  const ChangeIcon = changePct !== null && changePct < 0 ? ArrowDown : ArrowUp
   const vsPreviousClose = t('priceState.changeVsPrevClose')
+  const hasValueBlock = Boolean(symbol) || lastPrice !== null
 
   return (
     <div
@@ -82,39 +91,48 @@ export function PriceStateHeader({
       aria-label={t('priceState.label')}
       className={cn('flex flex-col gap-1', className)}
     >
-      <div className="flex flex-wrap items-baseline gap-3">
-        {symbol ? (
-          <span
-            data-testid="price-state-symbol"
-            className="font-mono text-sm font-medium text-foreground"
-          >
-            {symbol}
-          </span>
-        ) : null}
-        <span className="text-xs text-muted-foreground">
-          {t('priceState.valueLabel')}
-        </span>
-        <span
-          data-testid="price-state-value"
-          className="text-h2 font-semibold tabular-nums"
-        >
-          {formatNumber(locale, priceState.lastPrice, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}
-        </span>
-        {/* The served change is a fraction vs the previous session's close; the
-            direction is an arrow + an explicit sign, never colour alone. */}
-        <span
-          data-testid="price-state-change"
-          title={vsPreviousClose}
-          className="inline-flex items-center gap-1 tabular-nums"
-        >
-          <ChangeIcon aria-hidden="true" className="size-3.5 shrink-0" />
-          {formatSignedPercent(locale, priceState.changePct)}
-          <span className="sr-only"> ({vsPreviousClose})</span>
-        </span>
-      </div>
+      {hasValueBlock ? (
+        <div className="flex flex-wrap items-baseline gap-3">
+          {symbol ? (
+            <span
+              data-testid="price-state-symbol"
+              className="font-mono text-sm font-medium text-foreground"
+            >
+              {symbol}
+            </span>
+          ) : null}
+          {lastPrice !== null ? (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {t('priceState.valueLabel')}
+              </span>
+              <span
+                data-testid="price-state-value"
+                className="text-h2 font-semibold tabular-nums"
+              >
+                {formatNumber(locale, lastPrice, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </>
+          ) : null}
+          {/* The served change is a fraction vs the previous session's close; the
+              direction is an arrow + an explicit sign, never colour alone. A null
+              change (cold start) is omitted entirely — never rendered as +0,00%. */}
+          {lastPrice !== null && changePct !== null ? (
+            <span
+              data-testid="price-state-change"
+              title={vsPreviousClose}
+              className="inline-flex items-center gap-1 tabular-nums"
+            >
+              <ChangeIcon aria-hidden="true" className="size-3.5 shrink-0" />
+              {formatSignedPercent(locale, changePct)}
+              <span className="sr-only"> ({vsPreviousClose})</span>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         {intraday ? (
           <p data-testid="price-state-asof" className="text-xs text-muted-foreground">
@@ -128,7 +146,7 @@ export function PriceStateHeader({
             className="text-xs text-muted-foreground"
           >
             {t('priceState.close.label', {
-              date: formatAsOfDate(locale, priceState.sessionDate),
+              date: formatSessionDate(locale, priceState.sessionDate),
             })}
           </p>
         )}

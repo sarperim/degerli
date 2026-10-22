@@ -31,12 +31,19 @@ export interface HonestDataEnvelope {
  * `changePct` is a **decimal fraction** (`0.02` = +2%) computed by the server
  * **versus the previous session's close** (Monday vs Friday) — the Web layer
  * never computes, extrapolates or freezes it.
+ *
+ * The three numerics are **honestly nullable** (`01` §10.9.18): on the market
+ * overview no index-level intraday level exists, so the server serves
+ * `state`/`asOf`/`sessionDate` with `lastPrice`/`prevClose`/`changePct` all
+ * `null`; on the instrument endpoint `prevClose`/`changePct` are `null` at a
+ * cold start (no previous stored close — never a fabricated `0`). A `null` is
+ * rendered as **absence** by the Web layer, never coerced to a number.
  */
 export interface PriceState {
   state: 'intraday' | 'close'
-  lastPrice: number
-  prevClose: number
-  changePct: number
+  lastPrice: number | null
+  prevClose: number | null
+  changePct: number | null
   /** ISO-8601 instant of the last update the served value comes from. */
   asOf: string
   /** ISO-8601 date of the session the served price belongs to. */
@@ -186,11 +193,12 @@ export interface MarketOverviewResponse extends HonestDataEnvelope {
   sectorPerformance: SectorPerformance
   /**
    * The served price's intraday/close state (TKT-foundation-047/049). Optional on
-   * the wire: a deployment without the intraday lane serves the EOD envelope only,
-   * and the Web layer then renders the existing 037/039 EOD display — it never
-   * infers a state or fabricates a price.
+   * the wire — and `null` when the deployment serves the intraday lane but no
+   * market-level level exists (the market overview's numerics are always `null`,
+   * `01` §10.9.18). Either way the Web layer renders the existing 037/039 EOD
+   * display for the values — it never infers a state or fabricates a price.
    */
-  priceState?: PriceState
+  priceState?: PriceState | null
 }
 
 /**
@@ -492,10 +500,12 @@ export interface StockOverviewResponse extends HonestDataEnvelope {
   lastReviewedAt?: string | null
   /**
    * The stock's served price state (TKT-foundation-047/049) — the SCR-005 price
-   * header's only source. Optional like the overview's: absent means the EOD
-   * envelope is all the server has, never a fresher value the UI should invent.
+   * header's only source. Optional like the overview's: absent (or `null`) means
+   * the EOD envelope is all the server has, never a fresher value the UI should
+   * invent. The full numeric block is served here; `prevClose`/`changePct` are
+   * `null` on a cold start (no previous stored close, `01` §10.9.18).
    */
-  priceState?: PriceState
+  priceState?: PriceState | null
 }
 
 /** A figure with its per-figure restatement marker (FR-RES-008/014). */
