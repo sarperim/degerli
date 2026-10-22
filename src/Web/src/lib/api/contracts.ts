@@ -499,6 +499,14 @@ export interface StockOverviewResponse extends HonestDataEnvelope {
   textEn?: string | null
   lastReviewedAt?: string | null
   /**
+   * The instrument's identity (TKT-foundation-057) — the canonical symbol and the
+   * language-neutral official name, so the stock page header can say which stock it
+   * is. `name` is `null` when the instrument has no official name: the header then
+   * degrades to the symbol alone rather than inventing one.
+   */
+  symbol?: string | null
+  name?: string | null
+  /**
    * The stock's served price state (TKT-foundation-047/049) — the SCR-005 price
    * header's only source. Optional like the overview's: absent (or `null`) means
    * the EOD envelope is all the server has, never a fresher value the UI should

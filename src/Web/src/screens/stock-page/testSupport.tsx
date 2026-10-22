@@ -45,12 +45,22 @@ export const PUBLISHED_OVERVIEW: StockOverviewResponse = {
   textTr: 'Alfa Teknoloji açıklaması.',
   textEn: 'Alfa Teknoloji description.',
   lastReviewedAt: '2026-09-30',
+  symbol: 'ALFA',
+  name: 'Alfa Teknoloji A.Ş.',
 }
 
 export const PREPARING_OVERVIEW: StockOverviewResponse = {
   asOf: '2026-10-06',
   stale: false,
   status: 'preparing',
+  symbol: 'ALFA',
+  name: 'Alfa Teknoloji A.Ş.',
+}
+
+/** An overview payload whose instrument has no official name (TKT-foundation-057). */
+export const UNNAMED_OVERVIEW: StockOverviewResponse = {
+  ...PUBLISHED_OVERVIEW,
+  name: null,
 }
 
 /**

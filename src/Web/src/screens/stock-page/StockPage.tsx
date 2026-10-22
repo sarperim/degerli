@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
 
 import { SectionNav } from '@/components/ui/section-nav'
 import { useDraftStore, type StockPageSection } from '@/store/draftStore'
+import { fetchStockOverview, stockPageQueryKeys } from '@/screens/stock-page/api'
 import { StockPriceHeader } from '@/screens/stock-page/StockPriceHeader'
 import {
   BalanceSheetSection,
@@ -33,6 +35,40 @@ const SECTION_TITLE_KEYS: Record<StockPageSection, string> = {
   growth: 'stockPage.sections.growth',
   balanceSheet: 'stockPage.sections.balanceSheet',
   dividends: 'stockPage.sections.dividends',
+}
+
+/**
+ * The stock page's identity anchor (TKT-foundation-057(ii); SCR-005 header).
+ *
+ * With several tabs open the page must say which stock it belongs to. The identity
+ * comes from the overview payload the page already loads — the same query key, so
+ * this costs no extra request — rendered as `symbol — official name` (`Alfa Teknoloji
+ * A.Ş.`-style, language-neutral, so both catalogs show the same identity).
+ *
+ * Honest degradation: while the payload is loading or failed, or when it carries no
+ * name, only the symbol is shown — the header never invents a company name.
+ */
+function StockIdentity({ symbol }: { symbol: string }) {
+  const { t } = useTranslation()
+  const query = useQuery({
+    queryKey: stockPageQueryKeys.overview(symbol),
+    queryFn: ({ signal }) => fetchStockOverview(symbol, signal),
+  })
+
+  const identity = query.data
+  const resolvedSymbol = identity?.symbol?.trim() ? identity.symbol : symbol
+  const name = identity?.name?.trim() ? identity.name : null
+
+  return (
+    <p
+      data-testid="stock-page-identity"
+      className="text-h3 font-semibold text-foreground"
+    >
+      {name
+        ? t('stockPage.identity.withName', { symbol: resolvedSymbol, name })
+        : resolvedSymbol}
+    </p>
+  )
 }
 
 /**
@@ -76,6 +112,7 @@ export function StockPage() {
         <h1 className="text-h1 font-semibold tracking-tight">
           {t('screens.stockPage.title')}
         </h1>
+        <StockIdentity symbol={symbol} />
         <p className="max-w-2xl text-muted-foreground">
           {t('screens.stockPage.description')}
         </p>

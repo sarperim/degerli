@@ -90,6 +90,9 @@
     }
   },
   "stockPage": {
+    "identity": {
+      "withName": "{{symbol}} — {{name}}"
+    },
     "sectionsLabel": "Sections",
     "sections": {
       "overview": "Overview",
