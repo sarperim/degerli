@@ -27,6 +27,7 @@ import {
   type MeResponse,
   type MetricCatalogResponse,
   type PasswordChangeResponse,
+  type PriceState,
   type ProblemDetails,
   type QuarantineItem,
   type QuarantineListResponse,
@@ -251,6 +252,109 @@ export function marketOverviewHandler(
   body: MarketOverviewResponse = MARKET_OVERVIEW_FIXTURE,
 ) {
   return http.get(`${API_BASE}/market/overview`, () => HttpResponse.json(body))
+}
+
+/* ------------------------------------------------------------------ *
+ * Intraday/close price-state doubles (`01` §10.9.x) — TKT-foundation-049.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Real-shape `priceState` doubles for the frozen contract (TKT-foundation-047
+ * item 4) — the **instrument** (SCR-005) shape, which carries the full numeric
+ * block. The instants are BIST session times expressed in UTC (Istanbul is
+ * UTC+03): 12:15Z = 15:15 local, a sweep of the pinned cadence.
+ *
+ * `changePct` is the server's fraction **versus the previous session's close**
+ * (10200) — the doubles never speak a different unit than the API (`03` §2), and
+ * no assertion here derives it client-side.
+ *
+ * SCR-001's market-level shape is different and separate: `GET /market/overview`
+ * serves `state`/`asOf`/`sessionDate` with the three numerics **null**
+ * (TKT-foundation-047 `GetMarketStateAsync`; `01` §10.9.18) — see
+ * `MARKET_PRICE_STATE_*` below.
+ */
+export const PRICE_STATE_INTRADAY: PriceState = {
+  state: 'intraday',
+  lastPrice: 10345.67,
+  prevClose: 10200,
+  changePct: 0.014281,
+  asOf: '2026-10-22T12:15:00Z',
+  sessionDate: '2026-10-22',
+}
+
+/**
+ * The 18:00 close → EOD-landing window (planner-pinned in 047): the server keeps
+ * serving `intraday` with its **last** `asOf` — here 18:05 Istanbul, i.e.
+ * deliberately **after** the 18:00 close (this is a post-close "no freeze" proof,
+ * not a scheduled sweep) — so the close in formation is never relabelled and the
+ * UI must still say "last update … not final".
+ */
+export const PRICE_STATE_INTRADAY_AFTER_CLOSE: PriceState = {
+  ...PRICE_STATE_INTRADAY,
+  asOf: '2026-10-22T15:05:00Z',
+}
+
+/** After the EOD chain lands: the stored session close, dated by `sessionDate`. */
+export const PRICE_STATE_CLOSE: PriceState = {
+  state: 'close',
+  lastPrice: 10412.5,
+  prevClose: 10200,
+  changePct: 0.020833,
+  asOf: '2026-10-22T17:30:00Z',
+  sessionDate: '2026-10-22',
+}
+
+/**
+ * A deliberately inconsistent double (`lastPrice`/`prevClose` imply −50% while the
+ * server says +50%): the UI must render the **served** `changePct`, proving it
+ * never computes the change client-side (acceptance ii).
+ */
+export const PRICE_STATE_SERVER_CHANGE: PriceState = {
+  ...PRICE_STATE_INTRADAY,
+  lastPrice: 100,
+  prevClose: 200,
+  changePct: 0.5,
+}
+
+/**
+ * An instrument's **cold start** (TKT-foundation-047 `GetInstrumentStateAsync`):
+ * there is no previous stored close yet, so `prevClose`/`changePct` are `null`
+ * while the served `lastPrice` is real. The UI must omit the change entirely —
+ * never fabricate `+0,00%` (047: "never a fabricated 0").
+ */
+export const PRICE_STATE_COLD_START: PriceState = {
+  ...PRICE_STATE_INTRADAY,
+  prevClose: null,
+  changePct: null,
+}
+
+/**
+ * The **market-level** (SCR-001) shape `GET /market/overview` actually serves
+ * (TKT-foundation-047 `GetMarketStateAsync`, `01` §10.9.18): the lane stores
+ * instrument quotes only, so no index-level intraday level exists and the three
+ * numerics are honestly `null`. The header must render only the state label —
+ * no value, no change, no direction arrow, never `0,00` / `+0,00%`.
+ */
+export const MARKET_PRICE_STATE_INTRADAY: PriceState = {
+  state: 'intraday',
+  lastPrice: null,
+  prevClose: null,
+  changePct: null,
+  asOf: '2026-10-22T12:15:00Z',
+  sessionDate: '2026-10-22',
+}
+
+/** The market overview in the 18:00→EOD window: still `intraday`, last `asOf`. */
+export const MARKET_PRICE_STATE_INTRADAY_AFTER_CLOSE: PriceState = {
+  ...MARKET_PRICE_STATE_INTRADAY,
+  asOf: '2026-10-22T15:05:00Z',
+}
+
+/** The market overview after the EOD chain: `close`, dated, still no numerics. */
+export const MARKET_PRICE_STATE_CLOSE: PriceState = {
+  ...MARKET_PRICE_STATE_INTRADAY,
+  state: 'close',
+  asOf: '2026-10-22T17:30:00Z',
 }
 
 /**
