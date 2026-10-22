@@ -31,12 +31,17 @@ public sealed record MoverEntry(string Symbol, decimal ChangePct, long Volume);
 /// <summary>An index level and its daily change.</summary>
 public sealed record IndexMove(decimal Level, decimal ChangePct);
 
-/// <summary>The computed market snapshot aggregate (02 §3.2 <c>market_snapshots</c>).</summary>
+/// <summary>
+/// The computed market snapshot aggregate (02 §3.2 <c>market_snapshots</c>). The
+/// index-level block is nullable: a resolved day whose index facts have not landed yet
+/// carries NULL levels/changes (<c>01</c> §10.9.14; TKT-foundation-042) — never a
+/// fabricated <c>0.0000</c>.
+/// </summary>
 public sealed record MarketSnapshotResult(
-    decimal Xu100Level,
-    decimal Xu100ChangePct,
-    decimal Xu30Level,
-    decimal Xu30ChangePct,
+    decimal? Xu100Level,
+    decimal? Xu100ChangePct,
+    decimal? Xu30Level,
+    decimal? Xu30ChangePct,
     int BreadthAdvancing,
     int BreadthDeclining,
     int BreadthUnchanged,
@@ -71,9 +76,15 @@ public static class MarketAggregates
     private const int Scale = 6;
 
     /// <summary>Computes the market snapshot aggregate for one trading day.</summary>
+    /// <remarks>
+    /// <paramref name="xu100"/>/<paramref name="xu30"/> are NULL when the day has no stored
+    /// level for that index: the block is honestly empty rather than a fabricated
+    /// <c>0.0000</c> reading (<c>01</c> §10.9.14; TKT-foundation-042). Everything else in
+    /// this aggregate is price-derived and computes regardless (`01` §10.9.14).
+    /// </remarks>
     public static MarketSnapshotResult Compute(
-        IndexMove xu100,
-        IndexMove xu30,
+        IndexMove? xu100,
+        IndexMove? xu30,
         IReadOnlyList<MarketConstituent> constituents,
         decimal volumeEligibilityThreshold)
     {
@@ -148,10 +159,10 @@ public static class MarketAggregates
                 StringComparer.Ordinal);
 
         return new MarketSnapshotResult(
-            xu100.Level,
-            Round(xu100.ChangePct),
-            xu30.Level,
-            Round(xu30.ChangePct),
+            xu100?.Level,
+            xu100 is null ? null : Round(xu100.ChangePct),
+            xu30?.Level,
+            xu30 is null ? null : Round(xu30.ChangePct),
             advancing,
             declining,
             unchanged,

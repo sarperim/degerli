@@ -340,8 +340,10 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
 
     /// <summary>
     /// TKT-foundation-028 (TC-MOV-005 one-row-per-trading-day) — re-running the same weekend
-    /// request after Friday is already snapshotted is a no-op: nothing recomputed/rewritten
-    /// and still exactly one row.
+    /// request after Friday is already snapshotted with **identical inputs** recomputes the
+    /// day and reports the honest <c>unchanged: 1</c> (TKT-foundation-042 made the guard
+    /// input-aware; before it the run reported 0/0 — a counting lie, since the day *was*
+    /// checked). Nothing is rewritten and still exactly one row exists.
     /// </summary>
     [Fact]
     public async Task TKT_foundation_028_weekend_rerun_after_snapshotted_is_noop()
@@ -359,7 +361,7 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
         var second = await RunSnapshotAsync(host, saturday);
         Assert.Equal("succeeded", second.Status);
         Assert.Equal(0, second.Written);
-        Assert.Equal(0, second.Unchanged);
+        Assert.Equal(1, second.Unchanged);
 
         await using var db = _postgres.CreateContext();
         Assert.Equal(1, await db.MarketSnapshots.CountAsync());
@@ -600,6 +602,263 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-042 — honest index levels + input-aware same-day repair (01 §10.9.13/14)
+    //
+    // (C) A resolved day whose index facts have not landed yet must not fabricate
+    //     `xu100_level = 0.0000`: the level/change columns are honestly NULL, the
+    //     price-derived blocks still materialise (the 031 doctrine) and the overview
+    //     serves `state: available` with `indices: null` (the Web's Unavailable block).
+    // (B) The resolved-day guard is input-aware: identical facts → honest `unchanged: 1`;
+    //     changed facts → the row is repaired in place and the ledger counts the repair.
+    //     Historical days stay immutable — the store only ever touches the resolved day.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MOV-034 (TKT-foundation-042) — prices exist but the day's index levels do not:
+    /// the row is written with NULL level/change columns (never 0.0000), the
+    /// price-derived blocks are real, and <c>GET /market/overview</c> serves
+    /// <c>state: available</c> with an honest <c>indices: null</c>. When the levels land,
+    /// the next run repairs the same row with the real figures.
+    /// </summary>
+    [Fact]
+    public async Task TC_MOV_034_missing_index_levels_write_null_and_serve_honest_empty_indices()
+    {
+        await ResetAsync();
+        var removed = await RemoveIndexLevelsAsync(T);
+        try
+        {
+            IngestResult result;
+            await using (var host = BuildHost())
+            {
+                result = await RunSnapshotAsync(host, T);
+            }
+
+            Assert.Equal("succeeded", result.Status);
+            Assert.Equal(1, result.Written);
+
+            await using (var db = _postgres.CreateContext())
+            {
+                var snapshot = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == T);
+
+                // FR-MOV-001 honest empty: a missing index fact is NULL, not a 0.0000 level
+                // with a 0.00% change (the 031/M-1 honesty class).
+                Assert.Null(snapshot.Xu100Level);
+                Assert.Null(snapshot.Xu100ChangePct);
+                Assert.Null(snapshot.Xu30Level);
+                Assert.Null(snapshot.Xu30ChangePct);
+
+                // The price-derived blocks are untouched by the missing index facts: a
+                // missing index level never takes the row down (01 §10.9.14).
+                Assert.Equal(10, snapshot.BreadthAdvancing);
+                Assert.Equal(5, snapshot.BreadthDeclining);
+                Assert.Equal(1, snapshot.BreadthUnchanged);
+                AssertClose(174_500_000m, snapshot.VolumeTotal);
+                Assert.Equal(
+                    new[] { "ETA", "NEWP", "ZETA", "KAPPA", "EPSL", "PART", "REST", "ALFA", "DELTA" },
+                    ReadMovers(snapshot.GainersJson).Select(g => g.Symbol).ToArray());
+                Assert.Equal(
+                    new[] { "THETA", "IOTA", "BETA", "GAMA", "UNSEC" },
+                    ReadMovers(snapshot.LosersJson).Select(l => l.Symbol).ToArray());
+            }
+
+            // The overview serves the honest empty indices block — never a fabricated zero.
+            await using (var factory = new DegerliAppFactory(_postgres.ConnectionString))
+            {
+                using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+                {
+                    BaseAddress = new Uri("https://localhost"),
+                    AllowAutoRedirect = false,
+                });
+
+                using var response = await client.GetAsync("/api/v1/market/overview");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = document.RootElement;
+
+                Assert.Equal(T, DateOnly.Parse(root.GetProperty("asOf").GetString()!));
+                Assert.Equal("available", root.GetProperty("state").GetString());
+                Assert.Equal(JsonValueKind.Null, root.GetProperty("indices").ValueKind);
+
+                // The rest of the payload is real, not blanked by the missing indices.
+                Assert.Equal(10, root.GetProperty("breadth").GetProperty("advancing").GetInt32());
+                Assert.Equal(5, root.GetProperty("breadth").GetProperty("declining").GetInt32());
+                Assert.Equal(174_500_000m, root.GetProperty("volumeTotal").GetDecimal());
+                Assert.Equal(9, root.GetProperty("gainers").GetArrayLength());
+                Assert.Equal(5, root.GetProperty("losers").GetArrayLength());
+            }
+
+            // The day's levels land afterwards: the next run repairs this very row
+            // (one row per trading day stays true — TC-MOV-035 pins the counting).
+            await RestoreIndexLevelsAsync(removed);
+
+            IngestResult repair;
+            await using (var host = BuildHost())
+            {
+                repair = await RunSnapshotAsync(host, T);
+            }
+
+            Assert.Equal("succeeded", repair.Status);
+
+            // The repair is a written row for this run (the pre-ticket behaviour reported
+            // 0/0 and left the broken row in place): the resolved day was recomputed from
+            // the changed facts and the row was overwritten in place, never duplicated.
+            Assert.Equal(1, repair.Written);
+            Assert.Equal(0, repair.Unchanged);
+
+            await using (var db = _postgres.CreateContext())
+            {
+                var snapshot = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == T);
+                AssertClose(10200.00m, snapshot.Xu100Level);
+                AssertClose(0.02m, snapshot.Xu100ChangePct);
+                AssertClose(30600.00m, snapshot.Xu30Level);
+                AssertClose(0.02m, snapshot.Xu30ChangePct);
+            }
+
+            await using (var factory = new DegerliAppFactory(_postgres.ConnectionString))
+            {
+                using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+                {
+                    BaseAddress = new Uri("https://localhost"),
+                    AllowAutoRedirect = false,
+                });
+
+                using var response = await client.GetAsync("/api/v1/market/overview");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var indices = document.RootElement.GetProperty("indices");
+                Assert.Equal(
+                    10200.00m,
+                    indices.GetProperty("xu100").GetProperty("level").GetDecimal());
+                Assert.Equal(
+                    30600.00m,
+                    indices.GetProperty("xu30").GetProperty("level").GetDecimal());
+            }
+        }
+        finally
+        {
+            await RestoreIndexLevelsAsync(removed);
+        }
+    }
+
+    /// <summary>
+    /// TC-MOV-035 (TKT-foundation-042) — the same-day recompute is input-aware: an
+    /// identical re-run reports the honest <c>unchanged: 1</c> (the pre-ticket
+    /// behaviour counted 0), and a re-run after the day's index levels land repairs the
+    /// existing row in place with the corrected values, counted in the run ledger instead
+    /// of the pre-ticket silent <c>written: 0, unchanged: 0</c>. Exactly one row per
+    /// trading day in both cases, and a historical day's row is never touched (it is not
+    /// the resolved day).
+    /// </summary>
+    [Fact]
+    public async Task TC_MOV_035_same_day_rerun_is_input_aware_and_repairs_in_place()
+    {
+        await ResetAsync();
+
+        // A completed earlier day: under the input-aware guard it must stay untouched.
+        var prior = L2.Anchor.TradingDay(-1);
+        IngestResult priorRun;
+        await using (var host = BuildHost())
+        {
+            priorRun = await RunSnapshotAsync(host, prior);
+        }
+
+        Assert.Equal("succeeded", priorRun.Status);
+        Assert.Equal(1, priorRun.Written);
+        var priorBefore = await ReadSnapshotRowAsync(prior);
+
+        var removed = await RemoveIndexLevelsAsync(T);
+        try
+        {
+            // The first compute of the day, before its index levels landed.
+            await using (var host = BuildHost())
+            {
+                var first = await RunSnapshotAsync(host, T);
+                Assert.Equal("succeeded", first.Status);
+                Assert.Equal(1, first.Written);
+            }
+
+            // Identical inputs: an honest unchanged count, not the pre-ticket 0/0.
+            IngestResult unchangedRun;
+            await using (var host = BuildHost())
+            {
+                unchangedRun = await RunSnapshotAsync(host, T);
+            }
+
+            Assert.Equal("succeeded", unchangedRun.Status);
+            Assert.Equal(0, unchangedRun.Written);
+            Assert.Equal(1, unchangedRun.Unchanged);
+
+            // The honest count reaches the run ledger too (it serialises the run's stats).
+            Assert.Equal(0, await ReadLatestLedgerStatAsync("written"));
+            Assert.Equal(1, await ReadLatestLedgerStatAsync("unchanged"));
+
+            // Changed inputs (the day's index levels land after the first compute): the
+            // re-run repairs the row in place instead of no-op'ing on a broken row.
+            await RestoreIndexLevelsAsync(removed);
+
+            IngestResult repairRun;
+            await using (var host = BuildHost())
+            {
+                repairRun = await RunSnapshotAsync(host, T);
+            }
+
+            Assert.Equal("succeeded", repairRun.Status);
+            Assert.Equal(1, repairRun.Written);
+            Assert.Equal(0, repairRun.Unchanged);
+
+            // The repair is visible in the run ledger (pre-ticket it was the silent
+            // `written: 0, unchanged: 0`), so operational repair needs no SQL surgery.
+            Assert.Equal(1, await ReadLatestLedgerStatAsync("written"));
+            Assert.Equal(0, await ReadLatestLedgerStatAsync("unchanged"));
+
+            await using (var db = _postgres.CreateContext())
+            {
+                // Exactly one row per trading day — the repair overwrote, never appended.
+                Assert.Equal(1, await db.MarketSnapshots.CountAsync(s => s.SnapshotDate == T));
+                Assert.Equal(2, await db.MarketSnapshots.CountAsync());
+
+                var snapshot = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == T);
+                AssertClose(10200.00m, snapshot.Xu100Level);
+                AssertClose(0.02m, snapshot.Xu100ChangePct);
+                AssertClose(30600.00m, snapshot.Xu30Level);
+                AssertClose(0.02m, snapshot.Xu30ChangePct);
+                Assert.Equal(T, snapshot.AsOfTradingDate);
+            }
+
+            // The served payload carries the corrected values, not the broken ones.
+            await using (var factory = new DegerliAppFactory(_postgres.ConnectionString))
+            {
+                using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+                {
+                    BaseAddress = new Uri("https://localhost"),
+                    AllowAutoRedirect = false,
+                });
+
+                using var response = await client.GetAsync("/api/v1/market/overview");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = document.RootElement;
+                Assert.Equal(T, DateOnly.Parse(root.GetProperty("asOf").GetString()!));
+                var indices = root.GetProperty("indices");
+                Assert.Equal(
+                    10200.00m,
+                    indices.GetProperty("xu100").GetProperty("level").GetDecimal());
+                Assert.Equal(
+                    0.02m,
+                    indices.GetProperty("xu100").GetProperty("changePct").GetDecimal());
+            }
+
+            // A historical day's row is never touched by a later day's recompute.
+            var priorAfter = await ReadSnapshotRowAsync(prior);
+            Assert.Equal(priorBefore, priorAfter);
+        }
+        finally
+        {
+            await RestoreIndexLevelsAsync(removed);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -720,6 +979,114 @@ public sealed class MarketSnapshotTests : IClassFixture<PostgresFixture>
                 id);
         }
     }
+
+    /// <summary>
+    /// Removes the stored index levels for one day (models the real defect world: the
+    /// session's prices exist but its index close has not landed yet) and returns the
+    /// removed rows so the test can restore them.
+    /// </summary>
+    private async Task<List<IndexLevel>> RemoveIndexLevelsAsync(DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var rows = await db.IndexLevels.Where(l => l.LevelDate == date).ToListAsync();
+        db.IndexLevels.RemoveRange(rows);
+        await db.SaveChangesAsync();
+        return rows;
+    }
+
+    /// <summary>Re-inserts previously removed index levels (idempotent: existing rows are skipped).</summary>
+    private async Task RestoreIndexLevelsAsync(IReadOnlyList<IndexLevel> rows)
+    {
+        await using var db = _postgres.CreateContext();
+        var existing = (await db.IndexLevels
+                .Where(l => rows.Select(r => r.LevelDate).Contains(l.LevelDate))
+                .Select(l => new { l.IndexId, l.LevelDate })
+                .ToListAsync())
+            .Select(l => (l.IndexId, l.LevelDate))
+            .ToHashSet();
+
+        foreach (var row in rows)
+        {
+            if (existing.Contains((row.IndexId, row.LevelDate)))
+            {
+                continue;
+            }
+
+            db.IndexLevels.Add(new IndexLevel
+            {
+                IndexId = row.IndexId,
+                LevelDate = row.LevelDate,
+                Close = row.Close,
+                SourceRef = row.SourceRef,
+                RecordedAt = row.RecordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Captures a stored snapshot row's full contents for byte-level comparison.</summary>
+    private async Task<SnapshotRow> ReadSnapshotRowAsync(DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var row = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == date);
+        return new SnapshotRow(
+            row.SnapshotDate,
+            row.Xu100Level,
+            row.Xu100ChangePct,
+            row.Xu30Level,
+            row.Xu30ChangePct,
+            row.BreadthAdvancing,
+            row.BreadthDeclining,
+            row.BreadthUnchanged,
+            row.VolumeTotal,
+            row.MarketPe,
+            row.MarketPeExcludedCount,
+            row.MarketDivYield,
+            row.GainersJson,
+            row.LosersJson,
+            row.SectorPerfJson,
+            row.AsOfTradingDate,
+            row.ComputedAt);
+    }
+
+    /// <summary>
+    /// Reads one stat off the latest <c>market-snapshot</c> run-ledger row (the stats the
+    /// runner writes to <c>ingest_runs.stats_json</c>); an absent stat reads 0.
+    /// </summary>
+    private async Task<int> ReadLatestLedgerStatAsync(string name)
+    {
+        await using var db = _postgres.CreateContext();
+        var statsJson = await db.IngestRuns
+            .Where(r => r.JobCode == MarketSnapshotJob.Code)
+            .OrderByDescending(r => r.Id)
+            .Select(r => r.StatsJson)
+            .FirstAsync();
+
+        using var document = JsonDocument.Parse(statsJson!);
+        return document.RootElement.TryGetProperty(name, out var value)
+            ? value.GetInt32()
+            : 0;
+    }
+
+    private sealed record SnapshotRow(
+        DateOnly SnapshotDate,
+        decimal? Xu100Level,
+        decimal? Xu100ChangePct,
+        decimal? Xu30Level,
+        decimal? Xu30ChangePct,
+        int? BreadthAdvancing,
+        int? BreadthDeclining,
+        int? BreadthUnchanged,
+        decimal? VolumeTotal,
+        decimal? MarketPe,
+        int? MarketPeExcludedCount,
+        decimal? MarketDivYield,
+        string? GainersJson,
+        string? LosersJson,
+        string? SectorPerfJson,
+        DateOnly AsOfTradingDate,
+        DateTimeOffset ComputedAt);
 
     /// <summary>
     /// FU §10 <c>prices-variant-threshold</c> state: BETA/GAMA/IOTA forced into gainers
