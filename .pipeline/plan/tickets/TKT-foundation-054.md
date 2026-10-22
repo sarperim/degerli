@@ -7,7 +7,7 @@ scope:
 
 # TKT-foundation-054: 046 post-merge reconciliation — TC-MDF-083 expected-result wording (DR-1) and the ticket-vs-§10.9.15 partial-rule reconcile (DR-3)
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/119
 - Size: S
 - **Priority: P3 — dispatch-ready, docs-and-assertion alignment only; no functional change.** Non-blocking routing items from `reviews/TKT-foundation-046-round-1.md` (046 merged as PR #113, v1.5.22).
@@ -19,3 +19,6 @@ scope:
 - UX refs: none.
 - Dependencies: none — dispatch-ready any time (046 is merged; no open PR touches these files).
 - Parallel group: none
+
+### Closure (2026-10-22)
+- Merged as PR #119 after a clean round-1 review (strict-direction assertion tightening verified non-vacuous against the shipped two-event shape; 046 correction verified additive). No §13.1 row required (judged defensible: §13.1 scopes to architecture-doc amendments; v1.5.34 was reallocated to 057). Routing leftovers for the planner's next pass: R1 (test-plan v1.9 test-planner confirmation), R3 (one-line board/plan mention of the 046 correction), DR-1 nit (summary-template count token unpinned).
