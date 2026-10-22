@@ -14,7 +14,10 @@ namespace Degerli.Api.Stocks;
 /// business description with <b>both</b> language texts and its last-reviewed date
 /// (the client renders the user's language choice, FR-RES-005/022); when nothing is
 /// published the honest <c>preparing</c> state is served — <c>200</c>, never a
-/// <c>404</c>, never a leaked draft (FR-RES-026, BR-RES-002/003).</item>
+/// <c>404</c>, never a leaked draft (FR-RES-026, BR-RES-002/003). Since
+/// TKT-foundation-057 the payload also carries the instrument's identity —
+/// canonical <c>symbol</c> + language-neutral official <c>name</c> (a blank name is
+/// served as <c>null</c>) — so the stock page header can say which stock it is.</item>
 /// <item><c>GET /api/v1/stocks/{symbol}/valuation</c> — the current canonical multiples
 /// (read from <c>derived_metrics</c>, never computed here — BR-RES-004), the
 /// corporate-action-adjusted historical price series with an honest <c>adjusted</c> flag
@@ -61,11 +64,22 @@ public static class StockOverviewAndValuationEndpoints
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        var instrumentId = await ResolveInstrumentIdAsync(db, symbol, cancellationToken);
-        if (instrumentId is null)
+        // The instrument's identity rides the overview payload (TKT-foundation-057, user-approved
+        // additive amendment): the stock page's header names the stock the user is looking at —
+        // the canonical uppercase symbol and the language-neutral official name (`Instrument.Name`,
+        // `02` §3.1). A blank/missing name is served as `null` — the client degrades to the symbol
+        // alone rather than inventing one.
+        var instrument = await Universe(db)
+            .Where(candidate => candidate.Symbol == symbol.ToUpperInvariant())
+            .Select(candidate => new { candidate.Id, candidate.Symbol, candidate.Name })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (instrument is null)
         {
             return NotFound(symbol);
         }
+
+        var identityName = string.IsNullOrWhiteSpace(instrument.Name) ? null : instrument.Name;
+        var instrumentId = instrument.Id;
 
         var description = await db.BusinessDescriptions
             .Where(row => row.InstrumentId == instrumentId && row.Status == "published")
@@ -77,7 +91,14 @@ public static class StockOverviewAndValuationEndpoints
 
         if (description is null)
         {
-            return Results.Ok(new { asOf, stale, status = "preparing" });
+            return Results.Ok(new
+            {
+                asOf,
+                stale,
+                status = "preparing",
+                symbol = instrument.Symbol,
+                name = identityName,
+            });
         }
 
         return Results.Ok(new
@@ -88,6 +109,8 @@ public static class StockOverviewAndValuationEndpoints
             textTr = description.TextTr,
             textEn = description.TextEn,
             lastReviewedAt = description.LastReviewedAt,
+            symbol = instrument.Symbol,
+            name = identityName,
         });
     }
 
@@ -192,16 +215,6 @@ public static class StockOverviewAndValuationEndpoints
     }
 
     // ── Shared helpers ───────────────────────────────────────────────────────
-
-    /// <summary>Resolves a symbol to its current-universe instrument, or <c>null</c> when unknown/delisted.</summary>
-    private static async Task<long?> ResolveInstrumentIdAsync(
-        DegerliDbContext db,
-        string symbol,
-        CancellationToken cancellationToken)
-        => await Universe(db)
-            .Where(instrument => instrument.Symbol == symbol.ToUpperInvariant())
-            .Select(instrument => (long?)instrument.Id)
-            .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>Instruments with a current XU100 membership — the covered universe.</summary>
     private static IQueryable<Instrument> Universe(DegerliDbContext db) =>
