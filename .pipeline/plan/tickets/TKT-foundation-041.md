@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-041: EOD chain silently stalls after `prices` (second consecutive night) — root-cause the inter-job stall, add a hung-run watchdog, and close the universe-sync nightly-chain gap
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/114
 - Size: M
 - **Priority: P1 — dispatch as soon as 040 (PR #110) merges** (shared scheduling files; see Dependencies). The nightly chain has now failed to deliver the overview row TWO consecutive nights without a single ledger row, log line, or alert — the front page exists only because the orchestrator manually repaired it each time (Monday run 101, Tuesday runs 118-124).
@@ -104,3 +104,6 @@ scope:
 - **Live criterion** (orchestrator post-merge, never fabricated): the next 20:30 Istanbul chain completes
   end-to-end on its own (`universe-sync → … → market-snapshot` rows, overview serving the day with real index
   levels, zero manual repair), or `RUN_HUNG` fires verbatim.
+
+### Live criteria — armed (2026-10-22)
+- Merged as PR #114 after 3 review rounds (2 fixer dispatches: scope amendment per 034 Option-A precedent; retry-timing discriminator + host-shutdown never-alert hardening). The dev stack API is force-recreated on the merged code; tonight's 20:30 Istanbul EOD chain (universe-sync → prices → statements → dividends → corporate-actions → disclosures → metrics-recompute → market-snapshot → sector-medians, every attempt bounded by the 90-min watchdog) is the live criterion — completing unattended, or a RUN_HUNG row firing verbatim. Observation scheduled; result will be recorded, never fabricated.
