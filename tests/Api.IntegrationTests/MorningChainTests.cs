@@ -61,15 +61,37 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
     private const string UniversePath = "/canned-sources/universe";
     private const string IndexLevelsPath = "/canned-sources/index-levels";
 
-    /// <summary>The morning composition as shipped (phase 1 — no event families yet).</summary>
+    /// <summary>
+    /// The pinned morning composition since TKT-foundation-053 (01 v1.5 §10.9.16): the three KAP
+    /// event families joined between <c>statements</c> and <c>metrics-recompute</c>, exactly as
+    /// the EOD chain orders them. <c>prices</c> stays repair-gated; the families ride their
+    /// per-company cursors and are never a full-universe first pull.
+    /// </summary>
     private static readonly string[] MorningChain =
     [
         "prices",
         "statements",
+        "dividends",
+        "corporate-actions",
+        "disclosures",
         "metrics-recompute",
         "market-snapshot",
         "medians",
     ];
+
+    // The VYK gateway routes the phase-2 test's doubles bind (01 v1.5 §10.9.15).
+    private const string KapMembersPath = "/members";
+    private const string KapAnchorPath = "/lastDisclosureIndex";
+    private const string KapDisclosuresPath = "/disclosures";
+    private const string KapDetailPathTemplate = "/disclosureDetail/{disclosureIndex}";
+
+    /// <summary>
+    /// The test-local index the phase-2 test binds the event families to: one constituent the
+    /// live VYK directory genuinely does not list (the 046 absent-member class). It is separate
+    /// from the statements bound so this test exercises the family lanes' honest skips in
+    /// isolation, not the statements lane's own identity isolation.
+    /// </summary>
+    private const string FamilyBoundIndex = "FAMBOUND";
 
     private readonly PostgresFixture _postgres;
     private readonly WireMockFixture _wireMock;
@@ -397,8 +419,154 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MDF-091 — the phase-2 composition (the event families in the morning chain)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-091 — the morning chain runs the phase-2 composition (TKT-foundation-053,
+    /// 01 v1.5 §10.9.16): <c>dividends → corporate-actions → disclosures</c> sit between
+    /// <c>statements</c> and <c>metrics-recompute</c>, exactly where the EOD chain orders them.
+    /// A family lane's honest per-constituent skip — 046's <c>COMPANY_IDENTITY_UNRESOLVED</c>
+    /// counting, the posture that replaced fail-stop — rides into the chain's run stats without
+    /// poisoning the chain: the pass stays non-failed, recomputes metrics, writes the snapshot
+    /// and medians, and never retries or alerts.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_091_morning_chain_runs_the_phase2_family_lanes_with_honest_skips()
+    {
+        await ResetAsync();
+        await DeleteStoredPricesAsync(PreviousTradingDay);
+        // The whole family bound is unmapped to the VYK directory (the 046 absent-member class):
+        // each family lane isolates it and completes — no gateway fact is ever fabricated for it.
+        await BindFamilyBoundAsync("GLRMK");
+        StubVykSources();
+
+        await using var host = BuildScheduler(vyk: true);
+        var clock = host.Clock;
+
+        clock.SetUtcNow(Trt(2026, 10, 6, 8, 29));
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 6, 8, 30));
+
+        var runs = await LedgerAsync();
+
+        // (i) The eight-job order, the families exactly where the EOD chain puts them.
+        Assert.Equal(8, runs.Count);
+        Assert.Equal(MorningChain, runs.Select(run => run.JobCode).ToArray());
+
+        // (ii) The family lanes ended completable, not failed: the honest skip is counted in the
+        // run's per-symbol stats with the 046 stat shape (failed, zero written).
+        foreach (var family in runs.Where(run => run.JobCode is "dividends" or "corporate-actions" or "disclosures"))
+        {
+            Assert.Equal(IngestResult.Partial, family.Status);
+            using var stats = JsonDocument.Parse(family.StatsJson!);
+            var symbol = Assert.Single(stats.RootElement.GetProperty("symbols").EnumerateArray());
+            Assert.Equal("GLRMK", symbol.GetProperty("symbol").GetString());
+            Assert.True(symbol.GetProperty("failed").GetBoolean());
+            Assert.Equal(0, symbol.GetProperty("written").GetInt32());
+        }
+
+        // The pass terminated non-failed: the uncovered day ran prices for real, the incremental
+        // steps completed, and nothing retried, alerted or exhausted.
+        Assert.All(runs, run => Assert.NotEqual(IngestResult.Failed, run.Status));
+        Assert.Equal(IngestResult.Succeeded, runs[0].Status);
+        Assert.Equal(16, Stat(runs[0], "written"));
+        // The statements lane's own bind is resolvable: the family bound's skip never leaks into it.
+        Assert.Equal(IngestResult.Succeeded, runs[1].Status);
+        Assert.All(runs.Skip(5), run => Assert.Equal(IngestResult.Succeeded, run.Status));
+        Assert.Empty(host.Mail.Sent);
+
+        // (iii) The loop still closed after the families: metrics recomputed on the morning's
+        // repaired day, the snapshot written, medians recomputed.
+        await using var db = _postgres.CreateContext();
+        Assert.True(await db.DerivedMetrics.AnyAsync(m => m.AsOfDate == PreviousTradingDay));
+        Assert.True(await db.MarketSnapshots.AnyAsync(s => s.SnapshotDate == PreviousTradingDay));
+        Assert.True(await db.SectorMetricMedians.AnyAsync(m => m.AsOfDate == PreviousTradingDay));
+
+        // Identity isolation is not a parse event, and no fact may exist under the unresolvable
+        // identity: neither a quarantine row nor a family fact.
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        var glrmk = await db.Instruments.Where(i => i.Symbol == "GLRMK").Select(i => i.Id).SingleAsync();
+        Assert.Equal(0, await db.Dividends.CountAsync(d => d.InstrumentId == glrmk));
+        Assert.Equal(0, await db.CorporateActions.CountAsync(a => a.InstrumentId == glrmk));
+        Assert.Equal(0, await db.KapDisclosures.CountAsync(k => k.InstrumentId == glrmk));
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Binds the phase-2 test's event-family index to exactly <paramref name="symbols"/>. The
+    /// statements bound (the ALFA single-member bind) is deliberately left untouched: this test
+    /// exercises the family lanes' honest skips, not the statements lane's own isolation.
+    /// </summary>
+    private async Task BindFamilyBoundAsync(params string[] symbols)
+    {
+        await using var db = _postgres.CreateContext();
+        var recordedAt = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+
+        foreach (var symbol in symbols.Where(symbol => db.Instruments.All(i => i.Symbol != symbol)).ToList())
+        {
+            db.Instruments.Add(new Instrument
+            {
+                Symbol = symbol,
+                Name = symbol,
+                AccountingProfile = "industrial",
+                Status = "active",
+                SourceRef = "test:phase2-bound",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+
+        var index = new MarketIndex
+        {
+            Code = FamilyBoundIndex,
+            NameTr = "Phase-2 family bound",
+            NameEn = "Phase-2 family bound",
+        };
+        db.Indices.Add(index);
+        await db.SaveChangesAsync();
+
+        var instrumentIds = await db.Instruments
+            .Where(i => symbols.Contains(i.Symbol))
+            .Select(i => i.Id)
+            .ToListAsync();
+
+        foreach (var instrumentId in instrumentIds)
+        {
+            db.IndexConstituents.Add(new IndexConstituent
+            {
+                IndexId = index.Id,
+                InstrumentId = instrumentId,
+                EffectiveFrom = new DateOnly(2010, 1, 4),
+                EffectiveTo = null,
+                SourceRef = "test:phase2-bound",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The VYK doubles for the phase-2 test: the prices payload (an uncovered day runs the real
+    /// job) and a directory carrying one mapped member — ALFA, so the statements lane is a clean
+    /// honest-empty — while the family bound (GLRMK) is deliberately absent from it.
+    /// </summary>
+    private void StubVykSources()
+    {
+        _wireMock.Server.ResetMappings();
+        _wireMock.Server.ResetLogEntries();
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.PricesOkTminus1, path: PricesPath);
+        _wireMock.StubJson(
+            KapMembersPath,
+            """[{"id":"1001","title":"ALFA","stockCode":"ALFA","memberType":"stock"}]""");
+        _wireMock.StubJson(KapAnchorPath, """{"lastDisclosureIndex":"1231017"}""");
+        // The statements lane's VYK company list: an honest empty page, never a fabricated row.
+        _wireMock.StubJson(KapDisclosuresPath, "[]");
+    }
 
     /// <summary>Points every source-reading job of the chain at its WireMock canned payload.</summary>
     private void StubChainSources()
@@ -472,7 +640,7 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         clock.SetUtcNow(target.ToUniversalTime());
     }
 
-    private IngestionSchedulerHost BuildScheduler(RecordingMailDispatcher? mail = null)
+    private IngestionSchedulerHost BuildScheduler(RecordingMailDispatcher? mail = null, bool vyk = false)
     {
         mail ??= new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -503,6 +671,25 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
             ["Ingestion:Scheduler:MorningCron"] = "0 30 8 * * *",
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
         };
+
+        if (vyk)
+        {
+            // The live-verified company-scoped VYK routes (01 v1.5 §10.9.15) for the phase-2
+            // test: the event families walk their own bound through /members + /disclosures.
+            settings["Ingestion:Kap:MembersPath"] = KapMembersPath;
+            settings["Ingestion:Kap:LastDisclosureIndexPath"] = KapAnchorPath;
+            // The statements lane resolves its rows through the same list route when VYK is on
+            // (the doubles answer it with an honest empty page).
+            settings["Ingestion:Statements:Path"] = KapDisclosuresPath;
+            settings["Ingestion:Statements:DetailPath"] = KapDetailPathTemplate;
+            foreach (var section in new[] { "Dividends", "CorporateActions", "Disclosures" })
+            {
+                settings[$"Ingestion:{section}:Path"] = KapDisclosuresPath;
+                settings[$"Ingestion:{section}:DetailPath"] = KapDetailPathTemplate;
+                settings[$"Ingestion:{section}:UniverseIndex"] = FamilyBoundIndex;
+                settings[$"Ingestion:{section}:EarlyDisclosureIndex"] = "0";
+            }
+        }
 
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
