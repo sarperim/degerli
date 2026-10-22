@@ -71,6 +71,22 @@ scope:
 - **Not fixed here (out of scope, flagged):** `src/Ingestion/Jobs/Jobs.cs` excludes `OperationCanceledException`
   from its failed-row write, so a self-cancelling job still leaves no per-job `ingest_runs` row (the scheduler
   now enters the ladder honestly). Belongs to the 044 ledger-error-honesty lane.
+- **Review round 2 (fixer).** TC-MDF-079 now *pins* the end-relative retry instant instead of only
+  reaching it: after the probe wake at 20:42, no retry row exists at 20:45 and the recovery lands at
+  20:46 (a start-relative retry, due 20:35, is already overdue at that point). A second supporting
+  case covers the uninterruptible premise with a double that ignores cancellation — the abandoned
+  task stays pending while the tick returns, the row/alert are written once and the ladder recovers.
+  The deadline branch now re-checks completion (one attempt is never both `succeeded` and
+  `RUN_HUNG`, and is not retried on that race) and never writes a `RUN_HUNG` row/alert on a
+  stopping host; the hung step is snapshotted before the row/alert awaits (the abandoned chain may
+  still advance the live object), and the exhausted alert names the hung step rather than
+  "registered jobs". §10.9.17 states the guarantee's scope precisely — awaits are bounded, a
+  synchronous block inside a step is legible in the log but not pre-emptible. The OCE test's
+  comment records that it pins the ladder only (the job-runner row gap stays with 044), and the
+  test plan's v1.5.17/v1.5.18 citation is left to the last-lander renumber (#112).
+  Narrow verification: `EodStallWatchdogTests` 4/4, `EodChainTests` 2/2, `SchedulerTests` 3/3 on
+  the round-2 head; the new timing assertion was red-checked against a start-relative retry and the
+  whole hung test against the pre-fix scheduler (tick never returns).
 - **Live criterion** (orchestrator post-merge, never fabricated): the next 20:30 Istanbul chain completes
   end-to-end on its own (`universe-sync → … → market-snapshot` rows, overview serving the day with real index
   levels, zero manual repair), or `RUN_HUNG` fires verbatim.

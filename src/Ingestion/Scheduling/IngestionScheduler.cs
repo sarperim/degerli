@@ -326,6 +326,11 @@ public sealed class IngestionScheduler
             ? Task.Delay(_options.MaxRunDuration, _clock, deadlineCts.Token)
             : null;
 
+        // The watchdog bounds an await, not a synchronous block (01 v1.5 §10.9.17 "Scope of the
+        // guarantee"): this chain is invoked on the loop thread, so a step that blocks
+        // synchronously before its first await cannot be pre-empted by an in-process timer. Such
+        // a step is still *legible* — its "Chain step … starting" line was already written — so a
+        // synchronous freeze is never silent, even though only the awaits are bounded here.
         var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, attemptCts.Token);
         try
         {
@@ -338,12 +343,30 @@ public sealed class IngestionScheduler
             else
             {
                 var winner = await Task.WhenAny(work, deadline).ConfigureAwait(false);
-                if (ReferenceEquals(winner, work))
+
+                // A finished attempt is never "hung", even when the deadline fired in the same
+                // instant: without this re-check a chain that completed at the bound could be
+                // recorded twice (its own succeeded rows plus a failed RUN_HUNG row) and retried
+                // on a technicality.
+                if (ReferenceEquals(winner, work) || work.IsCompleted)
                 {
                     var outcome = await work.ConfigureAwait(false);
                     jobCodes = outcome.JobCodes;
                     failure = outcome.Failure;
                     await deadlineCts.CancelAsync().ConfigureAwait(false);
+                }
+                else if (cancellationToken.IsCancellationRequested)
+                {
+                    // The host is stopping and the deadline only lost the race to it: this is a
+                    // shutdown, not a hung run — no RUN_HUNG row and no alert on the way out.
+                    // The attempt's task is still running, so its scope/CTS pair is abandoned
+                    // (never disposed under it) and the stop is rethrown to the loop.
+                    hung = true;
+                    attemptCts.Cancel();
+                    await deadlineCts.CancelAsync().ConfigureAwait(false);
+                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+
+                    throw new OperationCanceledException(cancellationToken);
                 }
                 else
                 {
@@ -354,23 +377,15 @@ public sealed class IngestionScheduler
                     // The step cannot be killed (a hung await is not interruptible); the scope is
                     // handed to the abandoned task so it is disposed only when that task ends,
                     // and its terminal exception is observed rather than left unobserved.
-                    var abandonedScope = scope;
-                    var abandonedAttempt = attemptCts;
-                    var abandonedDeadline = deadlineCts;
-                    var abandonedWork = work;
-                    _ = work.ContinueWith(
-                        completed =>
-                        {
-                            _ = completed.Exception;
-                            abandonedScope.Dispose();
-                            abandonedAttempt.Dispose();
-                            abandonedDeadline.Dispose();
-                        },
-                        CancellationToken.None,
-                        TaskContinuationOptions.ExecuteSynchronously,
-                        TaskScheduler.Default);
+                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
 
-                    failure = await HandleHungAttemptAsync(run, attempt, step, cancellationToken)
+                    // Snapshot the progress before awaiting anything: the abandoned chain may
+                    // still be advancing the live object, and the row/alert must name the step
+                    // the watchdog actually caught. The chain's own codes are not known on this
+                    // path, so the hung step is what the exhausted alert names (R6).
+                    var hungStep = step.Snapshot();
+                    jobCodes = [hungStep.JobCode];
+                    failure = await HandleHungAttemptAsync(run, attempt, hungStep, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
@@ -549,10 +564,10 @@ public sealed class IngestionScheduler
     private async Task<Exception> HandleHungAttemptAsync(
         ActiveRun run,
         int attempt,
-        ChainStepProgress step,
+        ChainStepSnapshot step,
         CancellationToken cancellationToken)
     {
-        var hungJob = step.CurrentJobCode ?? "scheduler-chain";
+        var hungJob = step.JobCode;
 
         _logger.LogError(
             "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} bound and was cancelled ({ReasonCode}); the retry ladder takes over.",
@@ -564,11 +579,36 @@ public sealed class IngestionScheduler
             _options.MaxRunDuration,
             RunHungReasonCode);
 
-        await RecordHungRunAsync(run, attempt, step, hungJob, cancellationToken).ConfigureAwait(false);
-        await RaiseHungAsync(run, attempt, step, hungJob, cancellationToken).ConfigureAwait(false);
+        await RecordHungRunAsync(run, attempt, step, cancellationToken).ConfigureAwait(false);
+        await RaiseHungAsync(run, attempt, step, cancellationToken).ConfigureAwait(false);
 
         return new TimeoutException(
             $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {_options.MaxRunDuration} bound in chain step '{hungJob}' ({RunHungReasonCode}).");
+    }
+
+    /// <summary>
+    /// Hands an abandoned attempt's DI scope and cancellation sources to a continuation on the
+    /// task that is still running, so they are disposed only when that task finally ends and its
+    /// terminal exception is observed instead of surfacing as an unobserved-task crash
+    /// (01 v1.5 §10.9.17 step 1).
+    /// </summary>
+    private static void DisposeWithAbandonedWork(
+        Task work,
+        IServiceScope scope,
+        CancellationTokenSource attemptCts,
+        CancellationTokenSource deadlineCts)
+    {
+        _ = work.ContinueWith(
+            completed =>
+            {
+                _ = completed.Exception;
+                scope.Dispose();
+                attemptCts.Dispose();
+                deadlineCts.Dispose();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     /// <summary>
@@ -580,10 +620,10 @@ public sealed class IngestionScheduler
     private async Task RecordHungRunAsync(
         ActiveRun run,
         int attempt,
-        ChainStepProgress step,
-        string hungJob,
+        ChainStepSnapshot step,
         CancellationToken cancellationToken)
     {
+        var hungJob = step.JobCode;
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -633,10 +673,10 @@ public sealed class IngestionScheduler
     private Task RaiseHungAsync(
         ActiveRun run,
         int attempt,
-        ChainStepProgress step,
-        string hungJob,
+        ChainStepSnapshot step,
         CancellationToken cancellationToken)
     {
+        var hungJob = step.JobCode;
         var subject = $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded {_options.MaxRunDuration} for {run.TradingDate:yyyy-MM-dd}";
 
         return _alerter.RaiseAsync(
@@ -875,5 +915,17 @@ public sealed class IngestionScheduler
             Index = index;
             Total = total;
         }
+
+        /// <summary>
+        /// An immutable copy of the progress at one instant. The watchdog snapshots because the
+        /// abandoned chain may still be advancing this live object while the run-ledger row and
+        /// the alert are written.
+        /// </summary>
+        public ChainStepSnapshot Snapshot() =>
+            new(_currentJobCode ?? "scheduler-chain", Index, Total);
     }
+
+    /// <summary>The chain step the watchdog caught, captured before any await (see
+    /// <see cref="ChainStepProgress.Snapshot"/>).</summary>
+    private readonly record struct ChainStepSnapshot(string JobCode, int Index, int Total);
 }
