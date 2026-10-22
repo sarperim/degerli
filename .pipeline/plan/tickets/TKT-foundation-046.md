@@ -16,7 +16,8 @@ scope:
 
 # TKT-foundation-046: VYK company-identity resolution breaks all three KAP family jobs — comma-joined stockCodes make one dictionary key, and an unresolved symbol fail-stops the whole run; fix the directory split and align the families with the statements lane's per-company isolation
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/113
 - Size: M
 - **Priority: P1 — dispatch-ready immediately. This gates the user's stated top priority ("make it functional first (KAP)") and the difference between TKT-foundation-034's live criteria passing and being permanently blocked.**
 - Verified evidence (dev stack, 2026-10-20 ~21:36-22:13 UTC, while running 034's live criteria):
@@ -36,3 +37,20 @@ scope:
 - UX refs: none (ingestion lane; the user-visible effect is KAP-sourced dividend/action/disclosure facts existing at all — FR-MOV-006's TTM DPS supply and the stock-page event lanes downstream).
 - Dependencies: **none hard — dispatch-ready immediately** (Kap + three family lanes; disjoint from 041 Scheduling, 042 Metrics/Persistence, 043 Prices, 045 Api host). **Coordination notes:** (a) 044 owns the runner-level `error`-column fix (`Jobs.cs` — not in this ticket's scope; see item 3); (b) 040's phase-2 morning chain depends on these jobs being able to complete — this ticket is a prerequisite for 040 phase 2's value (recorded on 040's phase-2 lane; no new ticket); (c) `01` §13.1 v1.5.22 behind in-flight v1.5.15 (040/#110), v1.5.16 (039), and the reserved v1.5.17-21 (041-045) — single-row append, last-lander rebases (the 026/027/029 convention); `.pipeline/testing/market-data-foundation.md` shared with 041/043's TC additions — rebase behind whichever lands first.
 - Parallel group: none.
+- Implementation (2026-10-21, PR #113): `FetchMembersAsync` splits `member.StockCode` on commas and
+  registers every trimmed part in the existing `OrdinalIgnoreCase` map (last-wins; a logged warning
+  when two member entries claim one code with different ids; identical duplicates idempotent; codeless
+  auditor members skipped). The three family adapters adopt the statements lane's per-constituent
+  isolation: an unmapped bound symbol is logged with `COMPANY_IDENTITY_UNRESOLVED`, reported on the new
+  `Kap.IVykIdentityIsolationReporter` channel and skipped (the walk continues); the jobs fold the list
+  into the run's `symbols` stats (`failed=true`, `written=0`) and the run terminates `partial` — no
+  quarantine, no cursor advance, no fabricated identity, no whole-run 500. Transport failures inside a
+  company walk stay fail-fast (FR-MDF-012 for transports is unchanged). `Jobs.cs` untouched (044 owns
+  the runner-level error column). Tests: new `tests/Api.IntegrationTests/VykCompanyDirectoryTests.cs`
+  (TC-MDF-082, committed real-shape `/members` double derived from the live capture) + TC-MDF-083
+  theory across all three families and a TC-MDF-082 end-to-end comma-coded constituent case in
+  `StatementsAndEventsIngestionTests.cs`. Red→green: 7 failed/0 passed on pre-fix behaviour → 7/7
+  green; targeted suites 50 + 17 + 20 passed, solution build 0 warnings. Docs: `01` §10.9.15
+  (failure posture + members-map comma split) and §13.1 v1.5.22; test plan §10 TC-MDF-082/083 + change
+  record v1.7. **Live criterion (one paced run per family, ≥12 s/call) remains the orchestrator's
+  post-merge step — not yet attempted.**
