@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-050: F-1 — `metrics-recompute` and `medians` same-day silent 0/0 no-op: extend 042's input-aware recompute to both jobs
 
-- Status: in-review — PR #117 (https://github.com/sarperim/degerli/pull/117)
+- Status: done — PR #117 (https://github.com/sarperim/degerli/pull/117)
 - Size: S
 - **Priority: P2 — dispatch-ready, no dependencies.** Honesty defect in run accounting (the 042 sibling): a same-day re-run with identical inputs and identical outputs reports `written: 0, unchanged: 0` — the run is invisible in its own stats, exactly the shape 042 fixed for `market-snapshot`.
 - Verified evidence (orchestrator-found during Thursday 2026-10-22's manual repair, corroborated in 042's review): `metrics-recompute` and `medians` ledger runs 164/166 for 2026-10-21 both returned the silent same-day no-op. Root shape: neither job compares its recomputed rows against the stored same-day rows before skipping/deciding — the write path treats "same day, nothing new upstream" as an uncounted vacuum instead of an input-aware `unchanged`/`rewritten` decision.
@@ -31,3 +31,8 @@ scope:
 - **⚑ CI surface (not this ticket's scope):** `.github/workflows/ci.yml` runs Backend, Web and E2E only — no secrets-scan and no dependency-audit job.
 - **⚑ Pre-existing red (not this PR):** `E2E / TC-XC-004` (`global-ux.spec.ts:97` SCR-002 scroll assertion) fails on `dev` itself at this PR's base sha — `dev` run 39780344975 has the same failure. Also `VykStatementsSourceTests.TKT_foundation_026_pacing_applies_to_every_vyk_call` (30 ms pacing guard vs measured 27 ms) flakes under full-suite load and passes in isolation. Both are outside this ticket's scope; neither is caused by this diff.
 - **Rebase note (final):** rebased three times — first onto `dev` after TKT-foundation-041/#114 (took test-plan `v1.8`), then onto `dev` `7a50982` after TKT-foundation-053/#116 (landed §13.1 `v1.5.33`), then onto `dev` `395b81a` after TKT-foundation-054/#119, whose `v1.9` test-plan entry collided with this ticket's (054's `v1.9` kept intact, this ticket's renumbered **v1.9 → v1.10**). Docs-only conflicts, resolved in scope: this ticket's §13.1 row re-pinned **v1.5.30 → v1.5.34** (landed-table-max), test-plan change record **v1.10**. No code conflicts.
+
+### Closure (2026-10-22)
+- Merged as PR #117 after 2 review passes: round 1 APPROVE (seam deviation adjudicated honest boundary; precision fix adjudicated correctness), round 2 fixer rebase resolving the test-plan v1.9 collision with 054 (050 renumbered v1.10, 054's v1.9 preserved) + DR-1 docs correction; code byte-identical across the rebase (sha-verified). Test plan v1.10 awaits test-planner confirmation (v1.2/v1.3 precedent).
+- Live criterion: the next scheduled `metrics-recompute` + `medians` pair after a fresh prices store (tonight's 20:30 EOD chain on the force-recreated API) must show input-aware recompute — identical inputs → no write/unchanged/frozen computed_at; changed inputs → in-place repair counted as written. Observation armed for tonight's chain.
+- Open nits routed to 044's store-level lane: DR-2 (engine↔store comparer duplication), DR-3 (store's misleading Unchanged counter), DR-4 (Rewritten never asserted distinctly); DR-5 docs wording (v1.5.34 TC column) on next docs touch.
