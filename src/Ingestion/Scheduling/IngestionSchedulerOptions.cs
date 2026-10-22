@@ -73,6 +73,25 @@ public sealed class IngestionSchedulerOptions
 
     /// <summary>Total attempts per scheduled run (initial + retries).</summary>
     public int MaxAttempts => RetryDelays.Count + 1;
+
+    /// <summary>
+    /// The <b>hung-run watchdog</b> bound (01 v1.5 §10.9.17, TKT-foundation-041): the longest a
+    /// single scheduled attempt may hold the scheduler before it is declared hung. The
+    /// production loop awaits one tick to completion and a tick runs a chain's jobs
+    /// sequentially, so before this bound existed a chain step whose await never completed
+    /// starved <b>every</b> stream silently — no ledger row (the runner records at completion),
+    /// no error, no retry, no alert, process alive (the live signature of 2026-10-19/20).
+    /// <para>
+    /// On expiry the attempt is cancelled, an honest run-ledger row is written with
+    /// <c>reasonCode: RUN_HUNG</c> and the hung step named, a <c>RUN_HUNG</c> alert is raised,
+    /// and the stream continues on the existing retry ladder. The default (90 minutes) is
+    /// ~2.5× the observed full-chain duration (prices ≈ 7 min + statements ≈ 25 min on the dev
+    /// stack) — generous headroom for a slow night, far short of the overnight window, and well
+    /// before the 08:30 morning safety net (01 §10.9.16). Zero or negative disables the
+    /// watchdog (unbounded await — not recommended; only for a deliberately long one-off).
+    /// </para>
+    /// </summary>
+    public TimeSpan MaxRunDuration { get; set; } = TimeSpan.FromMinutes(90);
 }
 
 /// <summary>One per-job cron trigger (e.g. a macro cadence).</summary>

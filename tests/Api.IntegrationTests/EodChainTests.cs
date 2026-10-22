@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
@@ -43,10 +44,23 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
     private const string DividendsPath = "/canned-sources/dividends-ok";
     private const string CorporateActionsPath = "/canned-sources/corporate-actions-ok";
     private const string DisclosuresPath = "/canned-sources/disclosures-ok";
+    private const string UniversePath = "/canned-sources/universe";
+    private const string IndexLevelsPath = "/canned-sources/index-levels";
 
-    /// <summary>The pinned chain order TC-MDF-010 asserts.</summary>
+    /// <summary>A dedicated index-levels route carrying the run day's own closes (TC-MDF-080).</summary>
+    private const string RunDayLevelsPath = "/canned-sources/index-levels-eod";
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The pinned chain order TC-MDF-010 asserts. Since TKT-foundation-041 (01 v1.5 §10.9.17)
+    /// the chain <b>leads with <c>universe-sync</c></b>: index-level refresh has no schedule of
+    /// its own, so a nightly chain that did not run it left the day's index levels to a manual
+    /// admin trigger (TC-MDF-080).
+    /// </summary>
     private static readonly string[] EodChain =
     [
+        "universe-sync",
         "prices",
         "statements",
         "dividends",
@@ -80,12 +94,17 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
 
-        // One succeeded run-ledger row per job, in the pinned chain order.
+        // One run-ledger row per job, in the pinned chain order.
         var runs = await LedgerAsync();
         Assert.Equal(EodChain, runs.Select(run => run.JobCode).ToArray());
         Assert.All(runs, run =>
         {
-            Assert.Equal(IngestResult.Succeeded, run.Status);
+            // The FU world carries one instrument with no sector classification (UNSEC), so
+            // universe-sync reports the documented MISSING_CLASSIFICATION quarantine and lands
+            // Partial — a non-fatal status that never stops the chain (fail-stop is Failed only).
+            Assert.Equal(
+                run.JobCode == "universe-sync" ? IngestResult.Partial : IngestResult.Succeeded,
+                run.Status);
             Assert.NotNull(run.StartedAt);
             Assert.NotNull(run.FinishedAt);
             Assert.True(run.FinishedAt >= run.StartedAt);
@@ -101,6 +120,80 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         Assert.True(await db.SectorMetricMedians.AnyAsync(m => m.AsOfDate == RunDay));
     }
 
+    /// <summary>
+    /// TC-MDF-080 — <c>universe-sync</c> is the EOD chain's first job, so the day's index levels
+    /// exist without a manual admin trigger: the levels the snapshot shows are written <i>by this
+    /// run</i>, and a re-run over the same world is an idempotent no-op (one more ledger row, no
+    /// duplicate level rows, membership unchanged).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_080_Universe_sync_leads_the_eod_chain_and_the_snapshot_has_real_levels()
+    {
+        await ResetAsync();
+        StubChainSources();
+
+        // The day's own closes, served on a dedicated route (the live gap's Tuesday numbers).
+        _wireMock.StubJson(RunDayLevelsPath, JsonSerializer.Serialize(new
+        {
+            sourceRef = "isyatirim",
+            levels = new[]
+            {
+                new { indexCode = "XU100", date = RunDay, close = 11797.70m },
+                new { indexCode = "XU30", date = RunDay, close = 14676.53m },
+            },
+        }, JsonOptions));
+
+        // The world the live gap produced: no index levels stored at all, so any level the
+        // snapshot shows can only have come from this chain's own universe-sync step.
+        await using (var reset = _postgres.CreateContext())
+        {
+            await reset.Database.ExecuteSqlRawAsync("DELETE FROM index_levels");
+        }
+
+        await using var host = BuildScheduler(indexLevelsPath: RunDayLevelsPath);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
+
+        var runs = await LedgerAsync();
+
+        // (1) universe-sync leads the chain: one ledger row, before prices.
+        Assert.Equal(EodChain, runs.Select(run => run.JobCode).ToArray());
+        Assert.Equal("universe-sync", runs[0].JobCode);
+        Assert.True(runs[0].FinishedAt <= runs[1].StartedAt);
+
+        // (2) The day's index levels came from the chain's own first step (FU §4: XU100 10200).
+        int levelCount;
+        int membershipCount;
+        await using (var db = _postgres.CreateContext())
+        {
+            var indexIds = await db.Indices.ToDictionaryAsync(i => i.Code, i => i.Id);
+            var level = await db.IndexLevels.SingleAsync(l => l.IndexId == indexIds["XU100"] && l.LevelDate == RunDay);
+            Assert.Equal(11797.70m, level.Close);
+
+            // (3) …and the snapshot serves them: no dependency on a manual universe-sync run.
+            var snapshot = await db.MarketSnapshots.SingleAsync(s => s.SnapshotDate == RunDay);
+            Assert.Equal(11797.70m, snapshot.Xu100Level);
+            Assert.Equal(14676.53m, snapshot.Xu30Level);
+
+            levelCount = await db.IndexLevels.CountAsync();
+            membershipCount = await db.IndexConstituents.CountAsync();
+        }
+
+        // (4) Idempotent: the next night's universe-sync step is a no-op over the same world.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 6, 20, 30));
+
+        await using var after = _postgres.CreateContext();
+        var universeRuns = await after.IngestRuns
+            .Where(r => r.JobCode == "universe-sync")
+            .OrderBy(r => r.Id)
+            .ToListAsync();
+        Assert.Equal(2, universeRuns.Count);
+        Assert.Equal(IngestResult.Partial, universeRuns[1].Status);
+        Assert.Equal(levelCount, await after.IndexLevels.CountAsync());
+        Assert.Equal(membershipCount, await after.IndexConstituents.CountAsync());
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -114,6 +207,10 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DividendsOk, path: DividendsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.CorporateActionsOk, path: CorporateActionsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DisclosuresOk, path: DisclosuresPath);
+        // The chain's leading step (01 v1.5 §10.9.17): the universe snapshot and the day's
+        // index levels, both served by the İş Yatırım source double.
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexLevelsPath);
     }
 
     /// <summary>
@@ -139,7 +236,10 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         clock.SetUtcNow(target.ToUniversalTime());
     }
 
-    private IngestionSchedulerHost BuildScheduler()
+    private IngestionSchedulerHost BuildScheduler(string indexLevelsPath = IndexLevelsPath)
+        => BuildSchedulerCore(indexLevelsPath);
+
+    private IngestionSchedulerHost BuildSchedulerCore(string indexLevelsPath)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -155,6 +255,12 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
             // pacing, so the EOD chain's 16-row price golden survives the per-ticker loop.
             ["Ingestion:Prices:UniverseIndex"] = "XU100",
             ["Ingestion:Prices:RequestDelayMs"] = "0",
+            // The chain's leading universe-sync step (01 v1.5 §10.9.17) reads the İş Yatırım
+            // universe + index-levels resources; both are the FU §10 source double here.
+            ["Ingestion:Universe:Path"] = UniversePath,
+            ["Ingestion:Universe:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Universe:IndexLevelsPath"] = indexLevelsPath,
+            ["Ingestion:Universe:IndexLevelsIndices:0"] = "XU100",
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Statements:Path"] = StatementsPath,
             // The company-scoped statements loop resolves its fetch bound from this index; the

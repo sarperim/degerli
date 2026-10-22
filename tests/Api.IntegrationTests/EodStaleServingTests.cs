@@ -39,6 +39,8 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
     private const string DividendsPath = "/canned-sources/dividends-ok";
     private const string CorporateActionsPath = "/canned-sources/corporate-actions-ok";
     private const string DisclosuresPath = "/canned-sources/disclosures-ok";
+    private const string UniversePath = "/canned-sources/universe";
+    private const string IndexLevelsPath = "/canned-sources/index-levels";
 
     private readonly PostgresFixture _postgres;
     private readonly WireMockFixture _wireMock;
@@ -159,6 +161,20 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DividendsOk, path: DividendsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.CorporateActionsOk, path: CorporateActionsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DisclosuresOk, path: DisclosuresPath);
+        StubUniverseSources();
+    }
+
+    /// <summary>
+    /// The chain's leading <c>universe-sync</c> step (01 v1.5 §10.9.17, TKT-foundation-041):
+    /// without its two routes the step fails and the chain stops before <c>prices</c>, which is
+    /// the job this suite is about. The canonical FU §10 payload carries one unclassified
+    /// instrument, so the step lands <see cref="IngestResult.Partial"/> — never <c>Failed</c> —
+    /// and the chain continues.
+    /// </summary>
+    private void StubUniverseSources()
+    {
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.UniverseMissingSector, path: UniversePath);
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexLevelsPath);
     }
 
     private void RestoreChainSources() => StubChainSources();
@@ -167,6 +183,7 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
     {
         _wireMock.Server.ResetMappings();
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.PricesSourceDown, path: PricesPath);
+        StubUniverseSources();
     }
 
     private static async Task AdvanceToAsync(IngestionScheduler scheduler, FakeTimeProvider clock, DateTimeOffset target)
@@ -213,6 +230,11 @@ public sealed class EodStaleServingTests : IClassFixture<PostgresFixture>, IClas
             ["Ingestion:Dividends:Path"] = DividendsPath,
             ["Ingestion:CorporateActions:Path"] = CorporateActionsPath,
             ["Ingestion:Disclosures:Path"] = DisclosuresPath,
+            // The chain's leading universe-sync step (TKT-foundation-041).
+            ["Ingestion:Universe:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Universe:Path"] = UniversePath,
+            ["Ingestion:Universe:IndexLevelsPath"] = IndexLevelsPath,
+            ["Ingestion:Universe:IndexLevelsIndices:0"] = "XU100",
             ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
         };

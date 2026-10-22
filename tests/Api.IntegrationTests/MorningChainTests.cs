@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
@@ -57,6 +58,8 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
     private const string DividendsPath = "/canned-sources/dividends-ok";
     private const string CorporateActionsPath = "/canned-sources/corporate-actions-ok";
     private const string DisclosuresPath = "/canned-sources/disclosures-ok";
+    private const string UniversePath = "/canned-sources/universe";
+    private const string IndexLevelsPath = "/canned-sources/index-levels";
 
     /// <summary>The morning composition as shipped (phase 1 — no event families yet).</summary>
     private static readonly string[] MorningChain =
@@ -223,12 +226,14 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
 
         var nightRuns = await LedgerAsync();
-        Assert.Equal(8, nightRuns.Count);
+        // Nine jobs since TKT-foundation-041: the chain now leads with universe-sync.
+        Assert.Equal(9, nightRuns.Count);
         Assert.All(nightRuns, run => Assert.Equal(IngestResult.Succeeded, run.Status));
 
         // The night is the writer: the day starts uncovered and ends with 16 stored rows.
-        Assert.Equal("prices", nightRuns[0].JobCode);
-        Assert.Equal(16, Stat(nightRuns[0], "written"));
+        Assert.Equal("universe-sync", nightRuns[0].JobCode);
+        Assert.Equal("prices", nightRuns[1].JobCode);
+        Assert.Equal(16, Stat(nightRuns[1], "written"));
 
         DateTimeOffset nightComputedAt;
         await using (var before = _postgres.CreateContext())
@@ -359,7 +364,7 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
         var nightRuns = await LedgerAsync();
-        Assert.Equal(8, nightRuns.Count);
+        Assert.Equal(9, nightRuns.Count);
 
         await DeleteOneConstituentsPricesAsync(PreviousTradingDay);
 
@@ -406,6 +411,33 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DividendsOk, path: DividendsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.CorporateActionsOk, path: CorporateActionsPath);
         _wireMock.StubCannedSource(L2, CannedSourceCatalog.DisclosuresOk, path: DisclosuresPath);
+        // The EOD chain's leading universe-sync step (01 v1.5 §10.9.17, TKT-foundation-041).
+        _wireMock.StubJson(UniversePath, ClassifiedUniverseBody());
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.IndexLevelsOk, path: IndexLevelsPath);
+    }
+
+    /// <summary>
+    /// The canonical FU §10 universe snapshot with <b>every</b> instrument classified. The
+    /// canned body deliberately carries one unclassified instrument (TC-MDF-007's anomaly), and
+    /// the night chain now leads with <c>universe-sync</c> (TKT-foundation-041): reusing it
+    /// verbatim would make every night quarantine and alert, which TC-MDF-078(a) pins as silent.
+    /// </summary>
+    private static string ClassifiedUniverseBody()
+    {
+        var body = JsonNode.Parse(CannedSourceCatalog.Get(L2, CannedSourceCatalog.UniverseMissingSector).Body)!;
+        var instruments = body["instruments"]!.AsArray();
+        var known = instruments
+            .Select(instrument => instrument!["sectorCode"]?.GetValue<string>())
+            .First(code => code is not null);
+        foreach (var instrument in instruments)
+        {
+            if (instrument!["sectorCode"] is null)
+            {
+                instrument["sectorCode"] = known;
+            }
+        }
+
+        return body.ToJsonString();
     }
 
     /// <summary>The İş Yatırım price-route request log entries (the morning gate's cost meter).</summary>
@@ -462,6 +494,11 @@ public sealed class MorningChainTests : IClassFixture<PostgresFixture>, IClassFi
             ["Ingestion:Dividends:Path"] = DividendsPath,
             ["Ingestion:CorporateActions:Path"] = CorporateActionsPath,
             ["Ingestion:Disclosures:Path"] = DisclosuresPath,
+            // The chain's leading universe-sync step (TKT-foundation-041).
+            ["Ingestion:Universe:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Universe:Path"] = UniversePath,
+            ["Ingestion:Universe:IndexLevelsPath"] = IndexLevelsPath,
+            ["Ingestion:Universe:IndexLevelsIndices:0"] = "XU100",
             ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
             ["Ingestion:Scheduler:MorningCron"] = "0 30 8 * * *",
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
