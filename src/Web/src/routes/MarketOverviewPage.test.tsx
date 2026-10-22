@@ -6,10 +6,15 @@ import { MemoryRouter, Route, Routes, useParams } from 'react-router'
 
 import { MarketOverviewPage } from '@/routes/MarketOverviewPage'
 import type { MarketOverviewResponse } from '@/lib/api/contracts'
+import { formatAsOfDate } from '@/lib/format'
 import { catalogValue } from '@/test/i18n'
 import {
   API_BASE,
   MARKET_OVERVIEW_FIXTURE,
+  PRICE_STATE_CLOSE,
+  PRICE_STATE_INTRADAY,
+  PRICE_STATE_INTRADAY_AFTER_CLOSE,
+  PRICE_STATE_SERVER_CHANGE,
   marketOverviewHandler,
   problemResponse,
 } from '@/test/msw/handlers'
@@ -438,3 +443,185 @@ describe('TC-MOV-031 percentage surfaces render the API fraction ×100', () => {
     expect(screen.getByTestId('index-xu30')).toHaveTextContent('-10.00%')
   })
 })
+
+/**
+ * TKT-foundation-049 — the SCR-001 price header renders the frozen `priceState`
+ * contract (`01` §10.9.x; TKT-foundation-047 item 4) honestly: an intraday
+ * refresh is labelled "last update — not final" with its `asOf`, the
+ * 18:00→EOD-landing window stays intraday (never relabelled close), the stored
+ * session close is dated by `sessionDate`, and a missing `priceState` degrades to
+ * the 037/039 EOD display instead of inventing a value.
+ *
+ * Screen-alignment style (the 036/039 precedent): the ticket's acceptance is
+ * explicit, so these cases carry the ticket tag and extend TC-MOV-016.
+ */
+describe('TKT-foundation-049 — SCR-001 price state (TC-MOV-016 extension)', () => {
+  /** The BIST session clock the doubles are written in (Istanbul is UTC+03). */
+  const time = (iso: string) =>
+    new Intl.DateTimeFormat('tr', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: 'Europe/Istanbul',
+    }).format(new Date(iso))
+
+  const fillCatalog = (language: 'tr' | 'en', key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce(
+      (text, [name, value]) => text.replaceAll(`{{${name}}}`, value),
+      catalogValue(language, key),
+    )
+
+  const overviewWith = (priceState?: MarketOverviewResponse['priceState']) =>
+    server.use(
+      marketOverviewHandler(
+        priceState
+          ? { ...MARKET_OVERVIEW_FIXTURE, priceState }
+          : MARKET_OVERVIEW_FIXTURE,
+      ),
+    )
+
+  it('renders the intraday state: last price, served change and the not-final last-update time', async () => {
+    overviewWith(PRICE_STATE_INTRADAY)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'intraday')
+    expect(within(header).getByTestId('price-state-value')).toHaveTextContent(
+      num(10345.67, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    )
+    // The server's fraction (0.014281) is rendered ×100 by the 036 formatter.
+    expect(within(header).getByTestId('price-state-change')).toHaveTextContent('+1,43%')
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(
+      fillCatalog('tr', 'priceState.intraday.label', { time: '15:15' }),
+    )
+    // The 15:15 sweep of a 12:15Z instant, in the Istanbul session clock.
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(time('2026-10-22T12:15:00Z'))
+    // Nothing about the not-final value claims to be a close.
+    expect(within(header).queryByTestId('price-state-session-date')).toBeNull()
+    expect(
+      header.textContent,
+    ).not.toContain(catalogValue('tr', 'priceState.close.label').replace('{{date}}', ''))
+  })
+
+  it('never relabels the 18:00→EOD window as close (intraday with its last asOf)', async () => {
+    overviewWith(PRICE_STATE_INTRADAY_AFTER_CLOSE)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'intraday')
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(
+      fillCatalog('tr', 'priceState.intraday.label', { time: '18:05' }),
+    )
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(time('2026-10-22T15:05:00Z'))
+    expect(within(header).queryByTestId('price-state-session-date')).toBeNull()
+  })
+
+  it('renders the close state as the session close, dated by sessionDate', async () => {
+    overviewWith(PRICE_STATE_CLOSE)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'close')
+    expect(within(header).getByTestId('price-state-value')).toHaveTextContent(
+      num(10412.5, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    )
+    expect(within(header).getByTestId('price-state-change')).toHaveTextContent('+2,08%')
+    const dated = within(header).getByTestId('price-state-session-date')
+    expect(dated).toHaveTextContent(
+      fillCatalog('tr', 'priceState.close.label', {
+        date: formatAsOfDate('tr', '2026-10-22'),
+      }),
+    )
+    expect(dated).toHaveTextContent('2026')
+    // The close is not a "not final" intraday value.
+    expect(within(header).queryByTestId('price-state-asof')).toBeNull()
+  })
+
+  it('renders the price-state labels in English when English is active', async () => {
+    overviewWith(PRICE_STATE_INTRADAY)
+    renderPage('en')
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('aria-label', catalogValue('en', 'priceState.label'))
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(
+      fillCatalog('en', 'priceState.intraday.label', { time: '15:15' }),
+    )
+    expect(within(header).getByTestId('price-state-change')).toHaveTextContent('+1.43%')
+  })
+
+  it('renders the close label in English when English is active', async () => {
+    overviewWith(PRICE_STATE_CLOSE)
+    renderPage('en')
+
+    const header = await screen.findByTestId('price-state')
+    expect(within(header).getByTestId('price-state-session-date')).toHaveTextContent(
+      fillCatalog('en', 'priceState.close.label', {
+        date: formatAsOfDate('en', '2026-10-22'),
+      }),
+    )
+  })
+
+  /**
+   * Acceptance (ii) — never fabricated: the change is the **served** `changePct`.
+   * This double is internally inconsistent (100 vs a 200 previous close implies
+   * −50%) while the server says +50%; rendering +50,00% proves the UI computes
+   * nothing of its own and a client-side formula fails the assertion.
+   */
+  it('renders the server-provided changePct, never a client-side computation', async () => {
+    overviewWith(PRICE_STATE_SERVER_CHANGE)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(within(header).getByTestId('price-state-change')).toHaveTextContent('+50,00%')
+    expect(within(header).getByTestId('price-state-change')).not.toHaveTextContent('-50,00%')
+  })
+
+  /**
+   * Acceptance (ii) — a payload without the intraday lane (`priceState` absent)
+   * keeps the pre-049 EOD display: the as-of line states the completed session and
+   * no price is shown (a missing value is never inferred, never blank-as-zero).
+   */
+  it('degrades to the existing EOD display when priceState is missing', async () => {
+    overviewWith(undefined)
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    })
+    expect(
+      await screen.findByTestId('market-asof-explanation'),
+    ).toHaveTextContent(tr('screens.marketOverview.asOfExplanation'))
+    // No price header, no fabricated price.
+    expect(screen.queryByTestId('price-state')).toBeNull()
+    expect(screen.queryByTestId('price-state-value')).toBeNull()
+  })
+
+  /**
+   * 039's recency claim ("prices are the completed session's closes; intraday
+   * prices are not shown") is false once an intraday price is on the screen, so it
+   * is suppressed exactly like the stale case — the header never contradicts
+   * itself (the 039 DR-1 doctrine extended to the intraday lane).
+   */
+  it('suppresses the closing-values claim while an intraday price is shown', async () => {
+    overviewWith(PRICE_STATE_INTRADAY)
+    renderPage()
+
+    await screen.findByTestId('price-state')
+    expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
+  })
+
+  it('keeps the closing-values claim once the served price is the completed close', async () => {
+    overviewWith(PRICE_STATE_CLOSE)
+    renderPage()
+
+    expect(await screen.findByTestId('price-state')).toHaveAttribute(
+      'data-price-state',
+      'close',
+    )
+    expect(
+      await screen.findByTestId('market-asof-explanation'),
+    ).toHaveTextContent(tr('screens.marketOverview.asOfExplanation'))
+  })
+})
+

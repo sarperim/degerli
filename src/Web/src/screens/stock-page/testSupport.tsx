@@ -14,7 +14,12 @@ import type {
   StockValuationResponse,
 } from '@/lib/api/contracts'
 import { StockPage } from '@/screens/stock-page/StockPage'
-import { API_BASE } from '@/test/msw/handlers'
+import {
+  API_BASE,
+  PRICE_STATE_CLOSE,
+  PRICE_STATE_INTRADAY,
+  PRICE_STATE_INTRADAY_AFTER_CLOSE,
+} from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import { renderWithProviders } from '@/test/render'
 import { useDraftStore } from '@/store/draftStore'
@@ -41,6 +46,30 @@ export const PREPARING_OVERVIEW: StockOverviewResponse = {
   asOf: '2026-10-06',
   stale: false,
   status: 'preparing',
+}
+
+/**
+ * SCR-005 price-header doubles (TKT-foundation-049): the same published overview
+ * carrying each frozen `priceState` shape. The default fixtures stay without
+ * `priceState` so the pre-049 suites keep exercising the EOD degradation path.
+ */
+export const INTRADAY_OVERVIEW: StockOverviewResponse = {
+  ...PUBLISHED_OVERVIEW,
+  asOf: '2026-10-22',
+  priceState: PRICE_STATE_INTRADAY,
+}
+
+/** The 18:00→EOD window: still `intraday`, with the last sweep's `asOf`. */
+export const INTRADAY_AFTER_CLOSE_OVERVIEW: StockOverviewResponse = {
+  ...INTRADAY_OVERVIEW,
+  priceState: PRICE_STATE_INTRADAY_AFTER_CLOSE,
+}
+
+/** After the EOD chain: the completed session's close, dated `sessionDate`. */
+export const CLOSE_OVERVIEW: StockOverviewResponse = {
+  ...PUBLISHED_OVERVIEW,
+  asOf: '2026-10-22',
+  priceState: PRICE_STATE_CLOSE,
 }
 
 export const FINANCIALS_FIXTURE: StockFinancialsResponse = {
@@ -313,7 +342,10 @@ function DcfStub() {
 }
 
 /** Render the SCR-005 route (plus a DCF hand-off landing) in memory. */
-export function renderStockPage(initialEntries: string[] = ['/stocks/ALFA']) {
+export function renderStockPage(
+  initialEntries: string[] = ['/stocks/ALFA'],
+  options: { language?: 'tr' | 'en' } = {},
+) {
   return renderWithProviders(
     <MemoryRouter initialEntries={initialEntries}>
       <Routes>
@@ -321,6 +353,7 @@ export function renderStockPage(initialEntries: string[] = ['/stocks/ALFA']) {
         <Route path="/stocks/:symbol" element={<StockPage />} />
       </Routes>
     </MemoryRouter>,
+    { language: options.language ?? 'tr' },
   )
 }
 

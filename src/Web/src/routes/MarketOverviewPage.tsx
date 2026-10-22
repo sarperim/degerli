@@ -8,6 +8,7 @@ import { AsOfDate, NoDataState, StaleBadge } from '@/components/honest-data'
 import { Button } from '@/components/ui/button'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { MacroStrip } from '@/routes/MacroStrip'
+import { PriceStateHeader } from '@/screens/price-state/PriceStateHeader'
 import {
   marketQueryKeys,
   fetchMarketOverview,
@@ -531,6 +532,15 @@ export function MarketOverviewPage() {
         </p>
         {envelope ? (
           <div className="flex flex-col gap-1">
+            {/* TKT-foundation-049: the price header renders the served
+                intraday/close state. Its stale flag is left to the envelope row
+                immediately below (one envelope, one badge). */}
+            <PriceStateHeader
+              priceState={envelope.priceState}
+              asOf={envelope.asOf}
+              stale={envelope.stale}
+              showStale={false}
+            />
             <div className="flex flex-wrap items-center gap-3">
               <AsOfDate asOf={envelope.asOf} />
               {envelope.stale ? <StaleBadge /> : null}
@@ -540,8 +550,10 @@ export function MarketOverviewPage() {
                 read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
                 suppresses the recency claim: 037's stale means a newer stored
                 session exists that this row lacks, so the badge beside it is the
-                honest statement (review round 1, DR-1). */}
-            {envelope.stale ? null : (
+                honest statement (review round 1, DR-1). TKT-foundation-049: an
+                intraday price on the screen also falsifies the "closing values /
+                no intraday prices" claim, so it is suppressed there too. */}
+            {envelope.stale || envelope.priceState?.state === 'intraday' ? null : (
               <p
                 data-testid="market-asof-explanation"
                 className="text-xs text-muted-foreground"

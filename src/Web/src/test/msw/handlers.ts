@@ -27,6 +27,7 @@ import {
   type MeResponse,
   type MetricCatalogResponse,
   type PasswordChangeResponse,
+  type PriceState,
   type ProblemDetails,
   type QuarantineItem,
   type QuarantineListResponse,
@@ -251,6 +252,61 @@ export function marketOverviewHandler(
   body: MarketOverviewResponse = MARKET_OVERVIEW_FIXTURE,
 ) {
   return http.get(`${API_BASE}/market/overview`, () => HttpResponse.json(body))
+}
+
+/* ------------------------------------------------------------------ *
+ * Intraday/close price-state doubles (`01` §10.9.x) — TKT-foundation-049.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Real-shape `priceState` doubles for the frozen contract (TKT-foundation-047
+ * item 4). The instants are BIST session times expressed in UTC (Istanbul is
+ * UTC+03): 12:15Z = 15:15 local, the 15:15 sweep of the pinned 2-hour cadence.
+ *
+ * `changePct` is the server's fraction **versus the previous session's close**
+ * (10200) — the doubles never speak a different unit than the API (`03` §2), and
+ * no assertion here derives it client-side.
+ */
+export const PRICE_STATE_INTRADAY: PriceState = {
+  state: 'intraday',
+  lastPrice: 10345.67,
+  prevClose: 10200,
+  changePct: 0.014281,
+  asOf: '2026-10-22T12:15:00Z',
+  sessionDate: '2026-10-22',
+}
+
+/**
+ * The 18:00 close → EOD-landing window (planner-pinned in 047): the server keeps
+ * serving `intraday` with its **last** `asOf` (the 17:15 sweep, 18:05 local here)
+ * — the close in formation is never relabelled, so the UI must still say
+ * "last update … not final".
+ */
+export const PRICE_STATE_INTRADAY_AFTER_CLOSE: PriceState = {
+  ...PRICE_STATE_INTRADAY,
+  asOf: '2026-10-22T15:05:00Z',
+}
+
+/** After the EOD chain lands: the stored session close, dated by `sessionDate`. */
+export const PRICE_STATE_CLOSE: PriceState = {
+  state: 'close',
+  lastPrice: 10412.5,
+  prevClose: 10200,
+  changePct: 0.020833,
+  asOf: '2026-10-22T17:30:00Z',
+  sessionDate: '2026-10-22',
+}
+
+/**
+ * A deliberately inconsistent double (`lastPrice`/`prevClose` imply −50% while the
+ * server says +50%): the UI must render the **served** `changePct`, proving it
+ * never computes the change client-side (acceptance ii).
+ */
+export const PRICE_STATE_SERVER_CHANGE: PriceState = {
+  ...PRICE_STATE_INTRADAY,
+  lastPrice: 100,
+  prevClose: 200,
+  changePct: 0.5,
 }
 
 /**

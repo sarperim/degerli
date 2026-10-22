@@ -16,6 +16,33 @@ export interface HonestDataEnvelope {
   stale: boolean
 }
 
+/**
+ * The intraday/close price-state contract (`01` §10.9.x; frozen by
+ * TKT-foundation-047 item 4, built against by TKT-foundation-049).
+ *
+ * `state` is the **source** of the served price, never a client-side inference:
+ * - `intraday` — a session-in-progress refresh; `asOf` is the sweep's instant and
+ *   the value is explicitly **not final**. This includes the 18:00→EOD-landing
+ *   window, which stays `intraday` with its last `asOf` — the close in formation
+ *   is never relabelled as a close.
+ * - `close` — the completed session's stored close, dated `sessionDate`.
+ *   Weekends/holidays serve the last completed session's close.
+ *
+ * `changePct` is a **decimal fraction** (`0.02` = +2%) computed by the server
+ * **versus the previous session's close** (Monday vs Friday) — the Web layer
+ * never computes, extrapolates or freezes it.
+ */
+export interface PriceState {
+  state: 'intraday' | 'close'
+  lastPrice: number
+  prevClose: number
+  changePct: number
+  /** ISO-8601 instant of the last update the served value comes from. */
+  asOf: string
+  /** ISO-8601 date of the session the served price belongs to. */
+  sessionDate: string
+}
+
 /** Stable machine error codes from the `03` §7 catalog. */
 export const API_ERROR_CODES = [
   'VALIDATION_FAILED',
@@ -157,6 +184,13 @@ export interface MarketOverviewResponse extends HonestDataEnvelope {
   gainers: MoverEntry[]
   losers: MoverEntry[]
   sectorPerformance: SectorPerformance
+  /**
+   * The served price's intraday/close state (TKT-foundation-047/049). Optional on
+   * the wire: a deployment without the intraday lane serves the EOD envelope only,
+   * and the Web layer then renders the existing 037/039 EOD display — it never
+   * infers a state or fabricates a price.
+   */
+  priceState?: PriceState
 }
 
 /**
@@ -456,6 +490,12 @@ export interface StockOverviewResponse extends HonestDataEnvelope {
   textTr?: string | null
   textEn?: string | null
   lastReviewedAt?: string | null
+  /**
+   * The stock's served price state (TKT-foundation-047/049) — the SCR-005 price
+   * header's only source. Optional like the overview's: absent means the EOD
+   * envelope is all the server has, never a fresher value the UI should invent.
+   */
+  priceState?: PriceState
 }
 
 /** A figure with its per-figure restatement marker (FR-RES-008/014). */
