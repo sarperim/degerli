@@ -70,7 +70,17 @@ public sealed class IntradayQuoteStore
                 continue;
             }
 
-            if (fact.LastPrice is not { } lastPrice || lastPrice <= 0m)
+            if (fact.LastPrice is not { } lastPrice)
+            {
+                // A reading with no price is not a fact at all — the source's interval had no
+                // trade (the adapter widens to the last available observation and yields
+                // nothing when the whole session is empty, so this is a defence-in-depth
+                // check). The honest class is a required field absent, never "negative".
+                rejected.Add(new RejectedIntradayQuote(fact, QuarantineReason.SchemaMismatch));
+                continue;
+            }
+
+            if (lastPrice <= 0m)
             {
                 // A non-positive price is never a real market fact (FR-MDF-012, FU §2).
                 rejected.Add(new RejectedIntradayQuote(fact, QuarantineReason.NegativePrice));

@@ -144,7 +144,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<CoverageRecorder>();
         services.AddScoped<FundCoverageRecorder>();
 
-        // The intraday refresh lane (TKT-foundation-047, 01 §10.9.17): its own source section
+        // The intraday refresh lane (TKT-foundation-047, 01 §10.9.18): its own source section
         // mirroring `Ingestion:Prices` (the probe-gated İş/Yahoo choice is config, never a
         // code fork), its own keyed client (a repoint at the Yahoo contingency must not move
         // the EOD lane), the intraday fact store and the served price-state resolver.

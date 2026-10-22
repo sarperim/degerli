@@ -364,13 +364,21 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
         return recordedAt;
     }
 
-    private static HttpClient CreateClient(WebApplicationFactory<Program> factory)        => factory.CreateClient(new WebApplicationFactoryClientOptions
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
+        => factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
             AllowAutoRedirect = false,
         });
 
-    /// <summary>Applies the fixture universe and clears the mutable snapshot state.</summary>
+    /// <summary>
+    /// Applies the fixture universe and clears the mutable state each case creates: the
+    /// snapshot, the intraday rows, the ledger, and every stored price <b>after</b> the fixture
+    /// anchor. The session rows the TC-MDF-085 EOD-close case writes belong to that case; a
+    /// later case in the same class must not inherit them (xUnit gives no intra-class ordering),
+    /// so the class returns to its documented L2 state (last stored session = Tuesday) every
+    /// time — the same hygiene the stock-page class applies in its seed.
+    /// </summary>
     private async Task ResetAsync()
     {
         await using var db = _postgres.CreateContext();
@@ -378,6 +386,7 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
         await db.Database.ExecuteSqlRawAsync("DELETE FROM market_snapshots");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM intraday_quotes");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM daily_prices WHERE price_date > {0}", Tuesday);
     }
 
     /// <summary>

@@ -12,11 +12,14 @@ namespace Degerli.Ingestion.Intraday;
 
 /// <summary>
 /// The <c>intraday-quotes</c> sweep (TKT-foundation-047, architecture §10.9.18;
-/// FR-MDF-001's intraday mode): the scheduler's four trading-day passes
+/// FR-MDF-001's intraday mode): the scheduler's four Mon–Fri passes
 /// (11:15/13:15/15:15/17:15 Europe/Istanbul, shipped as the <c>JobSchedules</c> cron) walk the
 /// current constituents of the configured universe <b>strictly sequentially</b>, paced by
 /// <see cref="IntradayQuoteSourceOptions.RequestDelayMs"/> — the same politeness posture as
-/// the EOD lane (01 §10.9.2), ~400 paced calls a day.
+/// the EOD lane (01 §10.9.2), ~400 paced calls a day. The only day gate is the cron's
+/// <c>1-5</c>: <c>JobSchedules</c> entries register as per-job streams with
+/// <c>TradingDaysOnly = false</c> (<c>IngestionScheduler.BuildStreams</c>), so a Turkish
+/// weekday holiday still sweeps until TKT-foundation-048 wires the calendar in.
 /// <para>
 /// <b>Honest per-symbol accounting</b> (043's no-data doctrine): a symbol the source has no
 /// same-day row for is counted in the run's <c>skipped</c> counter and named in the log —
@@ -122,13 +125,19 @@ public sealed class IntradayRefreshJob : IIngestJob
 
                 if (string.IsNullOrWhiteSpace(fetched.SourceRef))
                 {
-                    // Provenance is required on every fact (FR-MDF-008): nothing is stored.
+                    // Provenance is required on every fact (FR-MDF-008): the payload is
+                    // quarantined and counted, exactly as the EOD lane does (PricesJob's
+                    // MISSING_PROVENANCE branch) — not silently folded into "no data".
                     _logger.LogWarning(
                         "intraday: symbol {Symbol} payload for {Date} carries no provenance (MISSING_PROVENANCE)",
                         symbol,
                         request.Date);
-                    noData++;
-                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false));
+                    await _quarantine.QuarantineAsync(
+                            new QuarantineEntry(Code, null, fetched.RawJson, QuarantineReason.MissingProvenance, _clock.GetUtcNow()),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    quarantined++;
+                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
                     continue;
                 }
 

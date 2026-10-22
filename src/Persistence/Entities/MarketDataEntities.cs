@@ -88,7 +88,7 @@ public class DailyPrice
 
 /// <summary>
 /// Intraday last-price observation for one instrument in one session (TKT-foundation-047,
-/// architecture §10.9.17). One row per (instrument, session), <b>updated in place</b> by each
+/// architecture §10.9.18). One row per (instrument, session), <b>updated in place</b> by each
 /// session sweep — the value is the source's current reading, never a close: EOD closes stay
 /// pure in <see cref="DailyPrice"/>. <see cref="FetchedAt"/> is the sweep's observation
 /// instant (UTC) so the served state can say "last update HH:MM — not final";
@@ -114,7 +114,8 @@ public class IntradayQuote
 }
 
 /// <summary>Daily index level; one row per index per trading day (FR-MDF-006).</summary>
-public class IndexLevel{
+public class IndexLevel
+{
     public long IndexId { get; set; }
     public DateOnly LevelDate { get; set; }
     public decimal Close { get; set; }

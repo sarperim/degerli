@@ -60,8 +60,9 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
 
     /// <summary>
     /// TC-MDF-084 — a paced 3-symbol sweep over the three source shapes: the İş Yatırım
-    /// same-day row (primary), the Yahoo delayed-quote chart (the documented contingency),
-    /// and an empty same-day payload (the probe's honest "no current row" outcome).
+    /// same-day row (primary), the Yahoo delayed-quote chart (the documented contingency,
+    /// whose last grid interval carries a null close and must not shadow the last available
+    /// price), and an empty same-day payload (the probe's honest "no current row" outcome).
     /// <para>
     /// Expected: one <c>intraday_quotes</c> row per data-carrying symbol with the sweep's
     /// <c>fetched_at</c> (UTC) and the session date as <c>session_date</c>; the no-data symbol
@@ -109,6 +110,8 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
         Assert.Equal(clock.GetUtcNow(), alfa.FetchedAt.ToUniversalTime());
 
         var beta = rows.Single(row => symbols[row.InstrumentId] == "BETA");
+        // The stub's last interval carries a null close (an interval with no trade): the
+        // reading is the last *available* observation, never the hole at the end of the grid.
         Assert.Equal(33.75m, beta.LastPrice);
         // Yahoo's volume is a share count, not the stored ₺ turnover semantic (FLG-09(b)):
         // the honest gap is NULL, never a mislabelled unit.
@@ -183,7 +186,10 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
     public async Task TC_MDF_086_Intraday_resweep_is_in_place_and_prior_sessions_are_immutable()
     {
         await ResetAsync();
-        await RestrictUniverseAsync(Bound);
+        // Test plan §11 pins this case to the ALFA-only bound: every sweep stubs exactly the
+        // one İş route it depends on, so no case can inherit another's stub or lean on an
+        // unstubbed route's 404.
+        await RestrictUniverseAsync(["ALFA"]);
 
         // A prior session's sweep first (Monday), so its row exists before the Tuesday sweeps.
         StubIsSameDayRow("ALFA", lastPrice: 19.90m, volume: 999_000, session: TMinus1);
@@ -239,10 +245,14 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
             Assert.Equal(0, thirdResult.Written);
             Assert.Equal(0, thirdResult.Unchanged);
 
-            // The changed row is counted as a rewrite in the run's stat line.
+            // The changed row is counted as a rewrite in the run's stat line — the counter's
+            // *value* is pinned (the template is emitted on every sweep, including 0).
             Assert.Contains(third.Logs.Events, evt =>
                 evt.MessageTemplate.Text.Contains("rewritten", StringComparison.OrdinalIgnoreCase)
-                && evt.MessageTemplate.Text.Contains("{Rewritten}", StringComparison.Ordinal));
+                && evt.MessageTemplate.Text.Contains("{Rewritten}", StringComparison.Ordinal)
+                && evt.Properties.TryGetValue("Rewritten", out var rewritten)
+                && rewritten is Serilog.Events.ScalarValue { Value: int rewrittenCount }
+                && rewrittenCount == 1);
         }
 
         await using (var afterThird = _postgres.CreateContext())
@@ -322,7 +332,10 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
 
     /// <summary>
     /// Applies the FU universe, clears the intraday/EOD/ledger state so each case creates its
-    /// own world, and resets the WireMock request log.
+    /// own world, and resets the WireMock double completely — mappings <b>and</b> request log.
+    /// xUnit gives no intra-class ordering, so a leftover stub from another case would be a
+    /// silent second source shape; every case stubs exactly the routes it depends on (the
+    /// suite's convention, e.g. <c>EodChainTests</c>/<c>MacroIngestionTests</c>).
     /// </summary>
     private async Task ResetAsync()
     {
@@ -332,6 +345,7 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM daily_prices");
+        _wireMock.Server.ResetMappings();
         _wireMock.Server.ResetLogEntries();
     }
 
@@ -407,29 +421,32 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
 
     /// <summary>
     /// The documented Yahoo Finance <c>.IS</c> contingency envelope (01 §10.9.1): a
-    /// range-shaped chart with two observations for the session — the last one is the
-    /// delayed last price. Volume is deliberately present in the body so the adapter's
-    /// unit-honest NULL is observable (FLG-09(b)).
+    /// range-shaped chart carrying the session's observations, the last of which has a
+    /// <b>null close</b> — the grid's hole for an interval with no trade, the real-world case
+    /// that must not shadow the last available price. The reading is therefore the last
+    /// <b>non-null</b> close, and never a null passed off as a price. Volume is deliberately
+    /// present in the body so the adapter's unit-honest NULL is observable (FLG-09(b)).
     /// </summary>
     private void StubYahooDelayedQuote(string symbol, decimal lastPrice)
     {
         var morning = new DateTimeOffset(T.ToDateTime(new TimeOnly(7, 15)), TimeSpan.Zero).ToUnixTimeSeconds();
         var midday = new DateTimeOffset(T.ToDateTime(new TimeOnly(9, 45)), TimeSpan.Zero).ToUnixTimeSeconds();
+        var last = new DateTimeOffset(T.ToDateTime(new TimeOnly(10, 0)), TimeSpan.Zero).ToUnixTimeSeconds();
         var body = $$"""
         {
           "chart": {
             "result": [
               {
                 "meta": { "symbol": "{{symbol}}.IS", "currency": "TRY" },
-                "timestamp": [ {{morning}}, {{midday}} ],
+                "timestamp": [ {{morning}}, {{midday}}, {{last}} ],
                 "indicators": {
                   "quote": [
                     {
-                      "open": [ 33.10, 33.40 ],
-                      "high": [ 33.60, 33.90 ],
-                      "low": [ 33.00, 33.30 ],
-                      "close": [ 33.40, {{lastPrice.ToString(CultureInfo.InvariantCulture)}} ],
-                      "volume": [ 12000, 18000 ]
+                      "open": [ 33.10, 33.40, null ],
+                      "high": [ 33.60, 33.90, null ],
+                      "low": [ 33.00, 33.30, null ],
+                      "close": [ 33.40, {{lastPrice.ToString(CultureInfo.InvariantCulture)}}, null ],
+                      "volume": [ 12000, 18000, null ]
                     }
                   ]
                 }

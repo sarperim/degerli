@@ -105,11 +105,16 @@ public sealed class IntradayQuoteSourceAdapter
         if (IsYahooEnvelope(document))
         {
             // Yahoo's chart is range-shaped and carries no provenance field: the adapter
-            // stamps the concrete source and keeps only the requested day's last observation
-            // (the delayed quote). Volume is deliberately dropped — Yahoo publishes a share
-            // count, a different unit from the stored ₺ turnover semantic (FLG-09(b)).
+            // stamps the concrete source and keeps only the requested day's last *available*
+            // observation (the delayed quote). The grid carries a null close for every
+            // interval without a trade, so a literal "last element" can be a hole with a real
+            // price before it — narrow to the last non-null close, exactly like the İş branch
+            // below. A session whose every interval is null has no reading at all: an empty
+            // item list (the honest no-data class), never a hole passed off as a price.
+            // Volume is deliberately dropped — Yahoo publishes a share count, a different unit
+            // from the stored ₺ turnover semantic (FLG-09(b)).
             var yahooRows = ParseYahooSessionRows(raw, symbol, sessionDate);
-            var last = yahooRows.LastOrDefault();
+            var last = yahooRows.LastOrDefault(close => close is not null);
             var items = last is null
                 ? Array.Empty<IntradayQuoteFact>()
                 : new[] { new IntradayQuoteFact(symbol, sessionDate, last, DayVolume: null) };
@@ -151,7 +156,10 @@ public sealed class IntradayQuoteSourceAdapter
         return new SourcePayload<IntradayQuotePayload>(payload.SourceRef, payload with { Items = filtered }, raw);
     }
 
-    /// <summary>Yahoo's same-day closes in timestamp order (the last one is the last price).</summary>
+    /// <summary>
+    /// Yahoo's same-day closes in timestamp order; a null entry is an interval with no trade,
+    /// so the last <b>non-null</b> one is the last available price.
+    /// </summary>
     private static IEnumerable<decimal?> ParseYahooSessionRows(string raw, string symbol, DateOnly sessionDate)
     {
         var payload = Deserialize<YahooPricesPayload>(raw)
@@ -180,6 +188,12 @@ public sealed class IntradayQuoteSourceAdapter
         }
     }
 
+    // NOTE (TKT-foundation-047): the envelope/symbol helpers below (MatchesSymbol,
+    // NormalizeYahooSymbol, the Yahoo .IS suffix strip) deliberately duplicate
+    // `PricesSourceAdapter`'s. `src/Ingestion/Prices/` is TKT-foundation-043's lane and was
+    // read-only for this ticket, so sharing them would have meant editing out-of-scope code;
+    // the duplication is to be retired (extracted into one shared helper) the next time
+    // `src/Ingestion/Prices/` opens.
     private static bool MatchesSymbol(string? candidate, string symbol) =>
         string.Equals(candidate, symbol, StringComparison.OrdinalIgnoreCase);
 

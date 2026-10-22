@@ -164,7 +164,7 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
 
         builder.Entity<IntradayQuote>(b =>
         {
-            // The intraday lane's own fact table (TKT-foundation-047, §10.9.17): one row per
+            // The intraday lane's own fact table (TKT-foundation-047, §10.9.18): one row per
             // instrument per session, updated in place per sweep. It is deliberately NOT
             // `daily_prices`: an intraday reading is never a close.
             b.ToTable("intraday_quotes");
@@ -175,7 +175,8 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
 
         builder.Entity<IndexLevel>(b =>
         {
-            b.ToTable("index_levels");            b.HasKey(x => new { x.IndexId, x.LevelDate });
+            b.ToTable("index_levels");
+            b.HasKey(x => new { x.IndexId, x.LevelDate });
             b.Property(x => x.SourceRef).IsRequired();
             b.HasOne<MarketIndex>().WithMany().HasForeignKey(x => x.IndexId).OnDelete(DeleteBehavior.Restrict);
         });
