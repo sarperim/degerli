@@ -20,6 +20,24 @@ public sealed record InstrumentMetricResult(
     IReadOnlyList<ComputedMetric> Metrics);
 
 /// <summary>
+/// The write plan for one recompute pass (<c>01</c> §10.9.13, TKT-foundation-050): the
+/// computed results whose stored same-day rows differ from the current computation — the only
+/// rows that need writing — plus the honest counts the run reports. A row that is already
+/// identical is <b>not</b> in <see cref="ToWrite"/>: it is never rewritten, and it is counted
+/// in <see cref="Unchanged"/>. A row whose stored values no longer match the current facts is
+/// in <see cref="ToWrite"/> (the store overwrites it in place, one row per key) and is counted
+/// in <see cref="Rewritten"/>. Rows with no stored row are in <see cref="ToWrite"/> and are
+/// the store's <c>Written</c> count.
+/// </summary>
+/// <param name="ToWrite">The computed rows to upsert (new rows + input-changed rows).</param>
+/// <param name="Unchanged">The recomputed rows already identical to their stored row.</param>
+/// <param name="Rewritten">The rows repaired in place because their inputs changed.</param>
+public sealed record MetricWritePlan(
+    IReadOnlyList<InstrumentMetricResult> ToWrite,
+    int Unchanged,
+    int Rewritten);
+
+/// <summary>
 /// C3b Metrics Engine (FR-MDF-013/014, UC-MDF-005; AD-06): reads the canonical fact
 /// tables and produces every metric any surface displays through the single shared
 /// definition in <c>Degerli.Core.Metrics</c>. It performs no formula math of its own —
@@ -156,6 +174,108 @@ public sealed class MetricsEngine
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Classifies a computed metric set against the stored same-day rows — the input-aware
+    /// half of the recompute (<c>01</c> §10.9.13, extended to this lane by
+    /// TKT-foundation-050). The recompute is never a blind overwrite: a row whose stored
+    /// values already match the current computation is reported <c>unchanged</c> and left
+    /// untouched (its <c>computed_at</c> does not move), while a row whose inputs changed is
+    /// repaired in place and counted as rewritten — so operational repair is a plain re-run
+    /// and the run's own stats say whether anything was repaired.
+    /// <para>
+    /// Only the resolved <paramref name="asOfDate"/>'s rows are addressed, so historical days
+    /// stay immutable (FR-MDF-015/NFR-MDF-002); a stored row for a metric this run no longer
+    /// computes is not a repair target and is left alone.
+    /// </para>
+    /// </summary>
+    public async Task<MetricWritePlan> PlanWriteAsync(
+        IReadOnlyList<InstrumentMetricResult> computed,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(computed);
+
+        var instrumentIds = await _db.Instruments
+            .ToDictionaryAsync(i => i.Symbol, i => i.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        var stored = (await _db.DerivedMetrics
+                .Where(m => m.AsOfDate == asOfDate)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToDictionary(m => (m.InstrumentId, m.MetricCode), MetricKeyComparer.Instance);
+
+        var toWrite = new List<InstrumentMetricResult>(computed.Count);
+        var unchanged = 0;
+        var rewritten = 0;
+        foreach (var result in computed)
+        {
+            if (!instrumentIds.TryGetValue(result.Symbol, out var instrumentId))
+            {
+                continue;
+            }
+
+            var pending = new List<ComputedMetric>(result.Metrics.Count);
+            foreach (var metric in result.Metrics)
+            {
+                if (stored.TryGetValue((instrumentId, metric.Code), out var row))
+                {
+                    if (HasSameValues(row, metric))
+                    {
+                        // Identical inputs → identical outputs: nothing to write, and the run
+                        // reports the honest unchanged count instead of a silent vacuum.
+                        unchanged++;
+                        continue;
+                    }
+
+                    rewritten++;
+                }
+
+                pending.Add(metric);
+            }
+
+            if (pending.Count > 0)
+            {
+                toWrite.Add(result with { Metrics = pending });
+            }
+        }
+
+        return new MetricWritePlan(toWrite, unchanged, rewritten);
+    }
+
+    /// <summary>
+    /// True when the stored row already carries the computed metric. Compares the
+    /// input-derived values only — never <c>computed_at</c>, which stamps the write, not the
+    /// facts — and compares the value in the stored column's own precision
+    /// (<c>numeric(18,6)</c>): a recompute that reproduces a high-precision value is honestly
+    /// unchanged, not a perpetual pseudo-repair.
+    /// </summary>
+    private static bool HasSameValues(DerivedMetric stored, ComputedMetric computed) =>
+        stored.Value == AtStoredScale(computed.Value)
+        && stored.WindowYears == computed.WindowYears
+        && stored.IsAdjusted == computed.IsAdjusted
+        && stored.IsRested == computed.IsRested
+        && stored.RegimeBreak == computed.RegimeBreak;
+
+    /// <summary>The persisted scale of <c>derived_metrics.value</c> (<c>02</c> §3.1).</summary>
+    private const int StoredValueScale = 6;
+
+    /// <summary>Projects a computed value onto the column's precision (half away from zero, like the DB).</summary>
+    private static decimal? AtStoredScale(decimal? value) =>
+        value is null ? null : decimal.Round(value.Value, StoredValueScale, MidpointRounding.AwayFromZero);
+
+    /// <summary>Value equality over the composite key, so the lookup is ordinal like the DB.</summary>
+    private sealed class MetricKeyComparer : IEqualityComparer<(long InstrumentId, string MetricCode)>
+    {
+        public static readonly MetricKeyComparer Instance = new();
+
+        public bool Equals((long InstrumentId, string MetricCode) x, (long InstrumentId, string MetricCode) y) =>
+            x.InstrumentId == y.InstrumentId && string.Equals(x.MetricCode, y.MetricCode, StringComparison.Ordinal);
+
+        public int GetHashCode((long InstrumentId, string MetricCode) obj) =>
+            HashCode.Combine(obj.InstrumentId, StringComparer.Ordinal.GetHashCode(obj.MetricCode));
     }
 
     private static (CanonicalMetricsInput Input, bool PerShareAdjusted) BuildInput(
