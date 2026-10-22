@@ -48,10 +48,11 @@ Web unit suite 324/324; `check:i18n` 662 keys, `check:advice`, `tsc`, `eslint`, 
 049's flow-back note); TC-RES-037/038 are the RES plan's next free IDs and still need mirroring into
 `.pipeline/testing/stock-research.md` (test-planner lane — outside this ticket's scope).
 
-**CI (PR run 39796697047):** Backend **pass** (2m56s), Web **pass** (1m10s), E2E **fail** — one
-pre-existing dev failure, not this branch: `tests/e2e/src/global-ux.spec.ts:97 TC-XC-004` (SCR-002
-scroll preservation after a language switch) asserts `|Δscroll| < 60` and receives **157**, identically
-on re-run, and identically on `dev` at the base commit `395b81a` (run 39793314149) — every dev `ci.yml`
-run since 2026-10-20 has ended `failure`. The other 76 e2e specs pass, all stock-page specs included;
-the failing spec and SCR-002 are outside this ticket's scope → reported for the constructor/fixer
-lane, never patched around here.
+**CI (PR run 39796697047 pre-rebase, 39801994236 post-rebase — identical results):** Backend
+**pass** (2m56s / 2m20s), Web **pass** (1m10s / 1m31s), E2E **fail** — one pre-existing dev failure,
+not this branch: `tests/e2e/src/global-ux.spec.ts:97 TC-XC-004` (SCR-002 scroll preservation after a
+language switch) asserts `|Δscroll| < 60` and receives **157**, identically on re-run, and identically
+on `dev` at the base commit `395b81a` (run 39793314149) — every dev `ci.yml` run since 2026-10-20 has
+ended `failure`. The other 75–76 e2e specs pass, all stock-page specs included; the failing spec and
+SCR-002 are outside this ticket's scope → reported for the constructor/fixer lane, never patched around
+here.
