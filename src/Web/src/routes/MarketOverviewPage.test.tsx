@@ -7,9 +7,13 @@ import { MemoryRouter, Route, Routes, useParams } from 'react-router'
 import { MarketOverviewPage } from '@/routes/MarketOverviewPage'
 import type { MarketOverviewResponse } from '@/lib/api/contracts'
 import { catalogValue } from '@/test/i18n'
+import { fillTemplate, sessionClockTime } from '@/test/priceState'
 import {
   API_BASE,
   MARKET_OVERVIEW_FIXTURE,
+  MARKET_PRICE_STATE_CLOSE,
+  MARKET_PRICE_STATE_INTRADAY,
+  MARKET_PRICE_STATE_INTRADAY_AFTER_CLOSE,
   marketOverviewHandler,
   problemResponse,
 } from '@/test/msw/handlers'
@@ -438,3 +442,188 @@ describe('TC-MOV-031 percentage surfaces render the API fraction ×100', () => {
     expect(screen.getByTestId('index-xu30')).toHaveTextContent('-10.00%')
   })
 })
+
+/**
+ * TKT-foundation-049 — the SCR-001 price header renders the frozen `priceState`
+ * contract (`01` §10.9.x; TKT-foundation-047 item 4) honestly: an intraday
+ * refresh is labelled "last update — not final" with its `asOf`, the
+ * 18:00→EOD-landing window stays intraday (never relabelled close), the stored
+ * session close is dated by `sessionDate`, and a missing `priceState` degrades to
+ * the 037/039 EOD display instead of inventing a value.
+ *
+ * Screen-alignment style (the 036/039 precedent): the ticket's acceptance is
+ * explicit, so these cases carry the ticket tag and extend TC-MOV-016.
+ */
+describe('TKT-foundation-049 — SCR-001 price state (TC-MOV-016 extension)', () => {
+  const overviewWith = (priceState?: MarketOverviewResponse['priceState']) =>
+    server.use(
+      marketOverviewHandler(
+        priceState
+          ? { ...MARKET_OVERVIEW_FIXTURE, priceState }
+          : MARKET_OVERVIEW_FIXTURE,
+      ),
+    )
+
+  /**
+   * `GET /market/overview` serves the market-level `priceState` with the three
+   * numerics **null** (TKT-foundation-047 `GetMarketStateAsync`, `01` §10.9.18):
+   * no index-level intraday level exists. SCR-001 therefore renders the honest
+   * state/as-of label and **nothing numeric** — never `0,00` / `+0,00%`.
+   */
+  it('renders only the honest intraday state label (market numerics are null)', async () => {
+    overviewWith(MARKET_PRICE_STATE_INTRADAY)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'intraday')
+    const asOf = within(header).getByTestId('price-state-asof')
+    expect(asOf).toHaveTextContent(
+      fillTemplate(catalogValue('tr', 'priceState.intraday.label'), { time: '15:15' }),
+    )
+    // The not-final wording is asserted literally, not sliced from the catalog it
+    // is meant to guard (review round 1, DR-1).
+    expect(asOf).toHaveTextContent('kesinleşmedi')
+    // The 15:15 sweep of a 12:15Z instant, in the Istanbul session clock.
+    expect(asOf).toHaveTextContent(sessionClockTime('2026-10-22T12:15:00Z'))
+    // Null numerics are absence: no value, no change, no direction arrow.
+    expect(within(header).queryByTestId('price-state-value')).toBeNull()
+    expect(within(header).queryByTestId('price-state-change')).toBeNull()
+    expect(header.querySelector('svg')).toBeNull()
+    expect(header.textContent).not.toContain('0,00')
+    expect(header.textContent).not.toContain('%')
+    // Nothing about the not-final value claims to be a close.
+    expect(within(header).queryByTestId('price-state-session-date')).toBeNull()
+    expect(
+      header.textContent,
+    ).not.toContain(catalogValue('tr', 'priceState.close.label').replace('{{date}}', ''))
+  })
+
+  it('never relabels the 18:00→EOD window as close (intraday with its last asOf)', async () => {
+    overviewWith(MARKET_PRICE_STATE_INTRADAY_AFTER_CLOSE)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'intraday')
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(
+      fillTemplate(catalogValue('tr', 'priceState.intraday.label'), { time: '18:05' }),
+    )
+    expect(within(header).getByTestId('price-state-asof')).toHaveTextContent(
+      sessionClockTime('2026-10-22T15:05:00Z'),
+    )
+    expect(within(header).queryByTestId('price-state-session-date')).toBeNull()
+    expect(within(header).queryByTestId('price-state-value')).toBeNull()
+  })
+
+  it('renders the close state as the session date only (market numerics are null)', async () => {
+    overviewWith(MARKET_PRICE_STATE_CLOSE)
+    renderPage()
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('data-price-state', 'close')
+    const dated = within(header).getByTestId('price-state-session-date')
+    // A date-only `sessionDate` keeps its own civil date in every browser zone
+    // (pinned literally — review round 1, DR-2).
+    expect(dated).toHaveTextContent(
+      fillTemplate(catalogValue('tr', 'priceState.close.label'), {
+        date: '22 Eki 2026',
+      }),
+    )
+    expect(dated).toHaveTextContent('2026')
+    expect(within(header).queryByTestId('price-state-value')).toBeNull()
+    expect(within(header).queryByTestId('price-state-change')).toBeNull()
+    expect(header.textContent).not.toContain('0,00')
+    // The close is not a "not final" intraday value.
+    expect(within(header).queryByTestId('price-state-asof')).toBeNull()
+  })
+
+  it('renders the price-state labels in English when English is active', async () => {
+    overviewWith(MARKET_PRICE_STATE_INTRADAY)
+    renderPage('en')
+
+    const header = await screen.findByTestId('price-state')
+    expect(header).toHaveAttribute('aria-label', catalogValue('en', 'priceState.label'))
+    const asOf = within(header).getByTestId('price-state-asof')
+    expect(asOf).toHaveTextContent(
+      fillTemplate(catalogValue('en', 'priceState.intraday.label'), { time: '15:15' }),
+    )
+    expect(asOf).toHaveTextContent('not final')
+    expect(within(header).queryByTestId('price-state-change')).toBeNull()
+  })
+
+  it('renders the close label in English when English is active', async () => {
+    overviewWith(MARKET_PRICE_STATE_CLOSE)
+    renderPage('en')
+
+    const header = await screen.findByTestId('price-state')
+    expect(within(header).getByTestId('price-state-session-date')).toHaveTextContent(
+      fillTemplate(catalogValue('en', 'priceState.close.label'), {
+        date: 'Oct 22, 2026',
+      }),
+    )
+  })
+
+  /**
+   * Acceptance (ii) — a payload without the intraday lane (`priceState` absent)
+   * keeps the pre-049 EOD display: the as-of line states the completed session and
+   * no price is shown (a missing value is never inferred, never blank-as-zero).
+   */
+  it('degrades to the existing EOD display when priceState is missing', async () => {
+    overviewWith(undefined)
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    })
+    expect(
+      await screen.findByTestId('market-asof-explanation'),
+    ).toHaveTextContent(tr('screens.marketOverview.asOfExplanation'))
+    // No price header, no fabricated price.
+    expect(screen.queryByTestId('price-state')).toBeNull()
+    expect(screen.queryByTestId('price-state-value')).toBeNull()
+  })
+
+  /**
+   * The contract is `priceState: {…} | null` (`01` §10.9.18): an explicit `null`
+   * (the server's honest "no market-level level exists") is treated exactly like
+   * an absent member — the EOD envelope only, never an inferred state.
+   */
+  it('treats an explicit null priceState like an absent one', async () => {
+    overviewWith(null)
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    expect(screen.queryByTestId('price-state')).toBeNull()
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="as-of-date"]')).not.toBeNull()
+    })
+  })
+
+  /**
+   * 039's recency claim ("prices are the completed session's closes; intraday
+   * prices are not shown") is false once an intraday price is on the screen, so it
+   * is suppressed exactly like the stale case — the header never contradicts
+   * itself (the 039 DR-1 doctrine extended to the intraday lane).
+   */
+  it('suppresses the closing-values claim while an intraday price is shown', async () => {
+    overviewWith(MARKET_PRICE_STATE_INTRADAY)
+    renderPage()
+
+    await screen.findByTestId('price-state')
+    expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
+  })
+
+  it('keeps the closing-values claim once the served price is the completed close', async () => {
+    overviewWith(MARKET_PRICE_STATE_CLOSE)
+    renderPage()
+
+    expect(await screen.findByTestId('price-state')).toHaveAttribute(
+      'data-price-state',
+      'close',
+    )
+    expect(
+      await screen.findByTestId('market-asof-explanation'),
+    ).toHaveTextContent(tr('screens.marketOverview.asOfExplanation'))
+  })
+})
+

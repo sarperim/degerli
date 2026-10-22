@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router'
 
 import { SectionNav } from '@/components/ui/section-nav'
 import { useDraftStore, type StockPageSection } from '@/store/draftStore'
+import { StockPriceHeader } from '@/screens/stock-page/StockPriceHeader'
 import {
   BalanceSheetSection,
   DividendsSection,
@@ -78,6 +79,7 @@ export function StockPage() {
         <p className="max-w-2xl text-muted-foreground">
           {t('screens.stockPage.description')}
         </p>
+        <StockPriceHeader symbol={symbol} />
         <div>
           <Link
             to={`/stocks/${encodeURIComponent(symbol)}/dcf`}

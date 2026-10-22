@@ -841,5 +841,16 @@
       "emptyTitle": "No metrics found",
       "emptyBody": "There are no screenable metrics to display."
     }
+  },
+  "priceState": {
+    "label": "Price status",
+    "valueLabel": "Price",
+    "changeVsPrevClose": "vs previous session close",
+    "intraday": {
+      "label": "Last update {{time}} — not final"
+    },
+    "close": {
+      "label": "Session close — {{date}}"
+    }
   }
 }

@@ -2,11 +2,13 @@
 scope:
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/plan/tickets/TKT-foundation-046.md
+  - tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs
 ---
 
 # TKT-foundation-054: 046 post-merge reconciliation — TC-MDF-083 expected-result wording (DR-1) and the ticket-vs-§10.9.15 partial-rule reconcile (DR-3)
 
-- Status: todo
+- Status: done
+- PR: https://github.com/sarperim/degerli/pull/119
 - Size: S
 - **Priority: P3 — dispatch-ready, docs-and-assertion alignment only; no functional change.** Non-blocking routing items from `reviews/TKT-foundation-046-round-1.md` (046 merged as PR #113, v1.5.22).
 - **DR-1 (test-plan defect):** TC-MDF-083's pinned expected result says "exactly one log event names GLRMK with COMPANY_IDENTITY_UNRESOLVED", but the shipped code emits **two** honest events (the adapter's per-symbol skip + the job's summary) and the shipped test asserts `Contains` (weaker than the pinned expectation). Fix: amend TC-MDF-083's expected result to pin the two-event shape (per-symbol + summary, both named) — the test may then be tightened to assert both. Test-planner confirmation lane (the v1.2/v1.3 precedent: delivery-planner/test-planner-applied amendments recorded in the plan's change record).
@@ -17,3 +19,6 @@ scope:
 - UX refs: none.
 - Dependencies: none — dispatch-ready any time (046 is merged; no open PR touches these files).
 - Parallel group: none
+
+### Closure (2026-10-22)
+- Merged as PR #119 after a clean round-1 review (strict-direction assertion tightening verified non-vacuous against the shipped two-event shape; 046 correction verified additive). No §13.1 row required (judged defensible: §13.1 scopes to architecture-doc amendments; v1.5.34 was reallocated to 057). Routing leftovers for the planner's next pass: R1 (test-plan v1.9 test-planner confirmation), R3 (one-line board/plan mention of the 046 correction), DR-1 nit (summary-template count token unpinned).

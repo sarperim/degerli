@@ -8,7 +8,8 @@ scope:
 
 # TKT-foundation-053: 040 phase-2 wiring — flip the morning chain to `Phase2JobCodes` (dividends/CA/disclosures daily) and repair the stale §10.9.16 rationale prose
 
-- Status: todo
+- Status: done
+- PR: https://github.com/sarperim/degerli/pull/116
 - Size: S
 - **Priority: P1 (functional: daily KAP event freshness — the user's "make it functional first (KAP)" priority) — GATED on PR #114 (TKT-foundation-041) merging** (shared scheduling files: `MorningIngestChain.cs` lives beside 041's scheduler/watchdog work; `appsettings.json` overlap risk).
 - Verified unblock: `MorningIngestChain.Phase2JobCodes` already encodes the full 8-job phase-2 list (prices, statements, **dividends, corporate-actions, disclosures**, metrics-recompute, market-snapshot, sector-medians) — the code comment states "flipping the morning stream to this list is the whole phase-2 change". Both blockers are gone: 034 merged, and 046 (PR #113, v1.5.22) fixed the family jobs' fail-stop (they now complete with honest per-company skips on the dev archive).
@@ -19,3 +20,15 @@ scope:
 - UX refs: none (scheduling lane).
 - Dependencies: **GATED on PR #114 (041) merging** — shared scheduling files. Coordination: `appsettings.json` also touched by 047 (rebase convention if both in flight).
 - Parallel group: none
+
+### Implementation record (2026-10-22)
+- **Flip (in scope):** `MorningIngestChain.JobCodes` now *is* the eight-job phase-2 composition; the scheduler already runs `JobCodes`, so `IngestionScheduler.cs` (outside this ticket's scope) needed no edit. The redundant `Phase2JobCodes` alias was removed — with the flip it encoded nothing extra and had no other references.
+- **Red→green (TC-MDF-091, `MorningChainTests`):** red `Expected: 8, Actual: 5` (the morning stream wrote the five phase-1 rows; the moved chain-order golden also reddened TC-MDF-077/078). Green: `MorningChainTests` 7/7; 041 baseline `SchedulerTests` + `EodChainTests` + `EodStallWatchdogTests` 9/9; `dotnet build Degerli.sln` 0 warnings/0 errors. Focused suites only — CI owns the full gate.
+- **TC-MDF-091 world:** real scheduler over the fake clock, VYK routes enabled for the families with an L2 directory double; the family bound is deliberately unresolvable (`GLRMK`, the 046 absent-member class), so each family lane completes `partial` with the per-symbol stat shape and the chain still reaches metrics/snapshot/medians, with zero quarantine and zero alerts.
+- **Docs:** §10.9.16 rationale repaired (DR3-01) — the families joined because 046 made the lane completable, not "because 034 landed"; §13.1 appended v1.5.33.
+- **Flags:** 040's historical ticket prose and `.pipeline/testing/market-data-foundation.md` (no TC-MDF-091 yet, still says "executable only after 034") are outside this ticket's scope and untouched — both routed in the PR body. Live criterion (one 08:30 pass with the three family rows, honest skips, zero 500s) is the orchestrator's post-merge step.
+- **CI:** Backend ✅ · Web ✅ on PR #116; `E2E` ❌ on **TC-XC-004** (`global-ux.spec.ts:132`, SCR-002 scroll delta 157 vs <60) — reproduced identically on the base `dev` @ `57cedcd` before this branch (same assertion, `Received: 157`), i.e. **pre-existing**, not caused by this ticket (no Web file touched). Recorded in the PR comment; needs the planner/user routing decision (fix in the Web lane or waive — the 031-review precedent already waived TC-XC-004).
+
+### Live criterion — armed (2026-10-22)
+- Merged as PR #116 after a clean round-1 review (no fixer rounds; TC-MDF-091 verified driving the production scheduler with the 046 isolation shape end-to-end). The dev stack API will be force-recreated on the merged code; tomorrow's 08:30 Istanbul morning pass completing end-to-end with the three family rows in the ledger (honest skips counted, zero 500s, metrics recomputed) is the live criterion. Review timing note carried: the paced family lanes now run before market-snapshot, so a KAP transport failure consumes retries ahead of the overview row.
+- Non-blocking open items routed: DR-2 (reason-code assertion, test-planner), DR-3 (§10.9.16 residual sentence), DR-1 (test-plan §643 phase-2 gating + TC-MDF-091 entry — test-planner lane).
