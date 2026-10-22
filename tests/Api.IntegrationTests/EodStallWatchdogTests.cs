@@ -124,6 +124,17 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 42));
         Assert.Contains(await LedgerAsync(), run => run.JobCode == ProbeStep.Code);
 
+        // (4b) The retry is measured from the instant the hung attempt ENDED (20:41 + 5 min =
+        //     20:46), not from the instant it was due (20:30 + 5 min = 20:35). This assertion
+        //     pins that rule rather than relying on the harness: a start-relative retry was
+        //     already due at 20:35 — before the 20:42 advance above — so it would have run by
+        //     now. One minute before the end-relative due instant the stream must still be
+        //     waiting: no retry has run.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        Assert.DoesNotContain(
+            await LedgerAsync(),
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+
         // (5) The stream recovers through the retry ladder: the 5-minute retry (measured from
         //     the instant the hung attempt ended — 20:41 — so 20:46) re-runs the chain and the
         //     now-healthy step completes the run.
@@ -173,10 +184,61 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     }
 
     /// <summary>
+    /// TC-MDF-079 (supporting) — the premise the watchdog rests on: a chain step whose await is
+    /// <b>not</b> interruptible. The doubled hang here ignores the attempt's cancellation, so the
+    /// coordinator must abandon it rather than wait for it: the tick still returns within the
+    /// bound, the <c>RUN_HUNG</c> row and alert are written once, the loop keeps waking and the
+    /// retry recovers the stream — while the abandoned task is still pending and has written
+    /// nothing. (The main case's double is cooperative, so it cannot prove this.)
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_Uninterruptible_hang_is_abandoned_and_still_bounded()
+    {
+        await ResetAsync();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubCannedSource(L2, CannedSourceCatalog.PricesOkTminus1, path: PricesPath);
+
+        var stall = new StallStep(StallMode.HangWithoutToken);
+        var probe = new ProbeStep();
+        await using var host = BuildScheduler(stall, probe, maxRunDuration: "00:10:00");
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        clock.Advance(TimeSpan.FromMinutes(11));
+        var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
+        Assert.Same(tick, finished);
+        await tick;
+
+        var hung = Assert.Single(await LedgerAsync(), run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+
+        // The watchdog did not wait for the step: the first call is still suspended.
+        Assert.False(stall.FirstAttemptReturned, "the uninterruptible hang must still be pending");
+
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 46));
+        var recovered = await LedgerAsync();
+        var recoveredStep = Assert.Single(
+            recovered,
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+        Assert.Equal(2, Stat(recoveredStep, "attempt"));
+        Assert.Equal(1, recovered.Count(run => ReasonCode(run) == "RUN_HUNG"));
+    }
+
+    /// <summary>
     /// TC-MDF-079 (supporting) — a step that cancels itself (an <see cref="OperationCanceledException"/>
     /// that is <b>not</b> the host's stopping token — a job-level timeout, a source's own CTS)
     /// is a failure of the attempt: it enters the retry ladder instead of escaping the tick and
     /// leaving the stream to re-fire in a hot loop.
+    /// <para>
+    /// This pins the ladder and the scheduler's attempt-level honesty only — <b>not</b> a
+    /// per-job ledger row: the job runner's cancellation path writes none
+    /// (<c>src/Ingestion/Jobs/Jobs.cs</c>, the known fold-forward to TKT-foundation-044).
+    /// </para>
     /// </summary>
     [Fact]
     public async Task TC_MDF_079_Unexpected_cancellation_enters_the_retry_ladder()
@@ -216,6 +278,10 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         /// <summary>The await never completes (the live signature's class).</summary>
         HangOnFirstAttempt,
 
+        /// <summary>The await never completes <b>and</b> ignores the attempt's cancellation —
+        /// the uninterruptible premise behind the watchdog (the attempt must be abandoned).</summary>
+        HangWithoutToken,
+
         /// <summary>A plain exception between steps.</summary>
         ThrowOnFirstAttempt,
 
@@ -239,6 +305,9 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         /// <summary>Completes when the doubled step has entered its pathological branch.</summary>
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        /// <summary>True only if the first (pathological) call ever ran to completion.</summary>
+        public bool FirstAttemptReturned { get; private set; }
+
         public string JobCode => Code;
 
         public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
@@ -252,11 +321,18 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
                         // Never completes on its own: only the watchdog's cancellation ends it.
                         await Task.Delay(Timeout.Infinite, cancellationToken);
                         break;
+                    case StallMode.HangWithoutToken:
+                        // Never completes and never observes cancellation: the watchdog's cancel
+                        // cannot end it, so the attempt has to be abandoned, not awaited.
+                        await Task.Delay(Timeout.Infinite);
+                        break;
                     case StallMode.ThrowOnFirstAttempt:
                         throw new InvalidOperationException("stall-step: source step failed (doubled).");
                     case StallMode.CancelOnFirstAttempt:
                         throw new OperationCanceledException("stall-step: job-level timeout (doubled).");
                 }
+
+                FirstAttemptReturned = true;
             }
 
             return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
