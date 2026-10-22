@@ -7,6 +7,8 @@ scope:
   - tests/Api.IntegrationTests/SchedulerTests.cs
   - tests/Api.IntegrationTests/EodChainTests.cs
   - tests/Api.IntegrationTests/EodStallWatchdogTests.cs
+  - tests/Api.IntegrationTests/EodStaleServingTests.cs
+  - tests/Api.IntegrationTests/MorningChainTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
   - .pipeline/architecture/03-api-design.md
@@ -54,12 +56,15 @@ scope:
   returns; self-cancelling step escapes `TickAsync`; chain-order golden 8 vs 9). Green post-fix and post-rebase:
   `SchedulerTests · EodChainTests · EodStallWatchdogTests · MorningChainTests · EodStaleServingTests ·
   MacroIngestionTests · UniverseSyncTests · FundSchedulingCoverageTests` → **45/45**, build 0 warnings.
-- **Scope amendment (requested, not silent):** `tests/Api.IntegrationTests/EodStaleServingTests.cs` and
-  `tests/Api.IntegrationTests/MorningChainTests.cs` drive the production **default** chain, so the prepended
+- **Scope amendment (recorded, reviewer-approved — 034 Option-A precedent):** the review lead approved
+  this amendment in review round 1 (artifact
+  `reviews/TKT-foundation-041-round-1.md`, G-1/G-2) per the TKT-foundation-034 Option-A precedent;
+  `tests/Api.IntegrationTests/EodStaleServingTests.cs` and `tests/Api.IntegrationTests/MorningChainTests.cs`
+  are declared in this ticket's `scope`. Both files drive the production **default** chain, so the prepended
   `universe-sync` step required the universe/index-levels source stubs and the +1 night ledger row there
   (MorningChain additionally uses the FU snapshot with every instrument classified, because it pins a *silent*
   night). No assertion weakened; 4–6 added lines per file. The planner's pre-listed delta covered only
-  `EodChainTests` — recorded here for the reviewer's approval/bounce (034 Option-A precedent).
+  `EodChainTests` — closed here as a declared-scope amendment, not a silent widening.
 - **Version renumber at rebase:** §13.1 **v1.5.17** was consumed by TKT-foundation-039 (PR #111, v1.5.16 +
   v1.5.17) while this lane was in flight; this PR's row landed as **v1.5.18**. Exact-note per the ticket's
   "last-lander rebases" rule.
