@@ -960,13 +960,18 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.True(perSymbol["GLRMK"].GetProperty("failed").GetBoolean());
         Assert.Equal(0, perSymbol["GLRMK"].GetProperty("written").GetInt32());
 
-        // The skip is recorded with the named reason (the statements-lane idiom, §10.9.10).
+        // The skip is recorded with the named reason on exactly two events (test plan §10
+        // TC-MDF-083 as amended v1.9 for TKT-foundation-054 / 046-review DR-1): the adapter's
+        // per-symbol skip event and the job's single run-summary event — nothing else names the pair.
         Assert.NotNull(logs);
-        Assert.True(
-            logs.Contains(evt =>
+        var identityEvents = logs.Events
+            .Where(evt =>
                 evt.RenderMessage().Contains("GLRMK", StringComparison.Ordinal)
-                && evt.RenderMessage().Contains(VykCompanyDirectory.CompanyIdentityUnresolved, StringComparison.Ordinal)),
-            "no log naming GLRMK / COMPANY_IDENTITY_UNRESOLVED");
+                && evt.RenderMessage().Contains(VykCompanyDirectory.CompanyIdentityUnresolved, StringComparison.Ordinal))
+            .ToList();
+        Assert.Equal(2, identityEvents.Count);
+        Assert.Single(identityEvents, evt => evt.RenderMessage().Contains("could not be mapped", StringComparison.Ordinal));
+        Assert.Single(identityEvents, evt => evt.RenderMessage().Contains("bound symbol(s) isolated", StringComparison.Ordinal));
 
         // The unmapped constituent was never fetched: only the mapped company was walked.
         AssertDisclosureQuery("1001", "0");
