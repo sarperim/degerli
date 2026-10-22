@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-053: 040 phase-2 wiring — flip the morning chain to `Phase2JobCodes` (dividends/CA/disclosures daily) and repair the stale §10.9.16 rationale prose
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/116
 - Size: S
 - **Priority: P1 (functional: daily KAP event freshness — the user's "make it functional first (KAP)" priority) — GATED on PR #114 (TKT-foundation-041) merging** (shared scheduling files: `MorningIngestChain.cs` lives beside 041's scheduler/watchdog work; `appsettings.json` overlap risk).
@@ -28,3 +28,7 @@ scope:
 - **Docs:** §10.9.16 rationale repaired (DR3-01) — the families joined because 046 made the lane completable, not "because 034 landed"; §13.1 appended v1.5.33.
 - **Flags:** 040's historical ticket prose and `.pipeline/testing/market-data-foundation.md` (no TC-MDF-091 yet, still says "executable only after 034") are outside this ticket's scope and untouched — both routed in the PR body. Live criterion (one 08:30 pass with the three family rows, honest skips, zero 500s) is the orchestrator's post-merge step.
 - **CI:** Backend ✅ · Web ✅ on PR #116; `E2E` ❌ on **TC-XC-004** (`global-ux.spec.ts:132`, SCR-002 scroll delta 157 vs <60) — reproduced identically on the base `dev` @ `57cedcd` before this branch (same assertion, `Received: 157`), i.e. **pre-existing**, not caused by this ticket (no Web file touched). Recorded in the PR comment; needs the planner/user routing decision (fix in the Web lane or waive — the 031-review precedent already waived TC-XC-004).
+
+### Live criterion — armed (2026-10-22)
+- Merged as PR #116 after a clean round-1 review (no fixer rounds; TC-MDF-091 verified driving the production scheduler with the 046 isolation shape end-to-end). The dev stack API will be force-recreated on the merged code; tomorrow's 08:30 Istanbul morning pass completing end-to-end with the three family rows in the ledger (honest skips counted, zero 500s, metrics recomputed) is the live criterion. Review timing note carried: the paced family lanes now run before market-snapshot, so a KAP transport failure consumes retries ahead of the overview row.
+- Non-blocking open items routed: DR-2 (reason-code assertion, test-planner), DR-3 (§10.9.16 residual sentence), DR-1 (test-plan §643 phase-2 gating + TC-MDF-091 entry — test-planner lane).
