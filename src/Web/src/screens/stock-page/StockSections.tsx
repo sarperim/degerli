@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
@@ -157,6 +158,49 @@ export function OverviewSection({ symbol }: { symbol: string }) {
   )
 }
 
+/** Splits an ISO `periodEndDate` prefix into its year and month, or `null`. */
+function parsePeriodEnd(periodEndDate: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})/.exec(periodEndDate ?? '')
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isInteger(year) || month < 1 || month > 12) return null
+  return { year, month }
+}
+
+/**
+ * The financials row's period label, derived from what the API actually sends
+ * (TKT-foundation-057; FR-RES-017 — the label is a claim about the data).
+ *
+ * `FY` → the fiscal-year label; `Q` → the quarter from the period-end month
+ * (Jan–Mar → Q1 … Oct–Dec → Q4) and that period's year; anything else — absent or
+ * unexpected `periodType`, or an unparseable `periodEndDate` — degrades to the
+ * period-end date itself: no fabricated quarter, no implied fiscal year.
+ */
+function financialPeriodLabel(
+  period: FinancialPeriod,
+  t: TFunction,
+  locale: string,
+): string {
+  const periodType = period.periodType?.trim().toUpperCase()
+
+  if (periodType === 'FY') {
+    return t('stockPage.financials.period', { year: period.fiscalYear })
+  }
+
+  const periodEnd = parsePeriodEnd(period.periodEndDate)
+  if (periodType === 'Q' && periodEnd) {
+    return t('stockPage.financials.periodQuarter', {
+      quarter: Math.ceil(periodEnd.month / 3),
+      year: periodEnd.year,
+    })
+  }
+
+  return t('stockPage.financials.periodEnding', {
+    date: formatAsOfDate(locale, period.periodEndDate),
+  })
+}
+
 /** SCR-005 §3 — Financials (FR-RES-008/014). */
 export function FinancialsSection({ symbol }: { symbol: string }) {
   const { t, i18n } = useTranslation()
@@ -211,9 +255,7 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                   {sectionData.periods.map((period) => (
                     <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
                       <TableHead scope="row" className="font-medium text-foreground">
-                        {t('stockPage.financials.period', {
-                          year: period.fiscalYear,
-                        })}
+                        {financialPeriodLabel(period, t, locale)}
                       </TableHead>
                       {FINANCIAL_COLUMNS.map((column) => (
                         <TableCell key={column}>

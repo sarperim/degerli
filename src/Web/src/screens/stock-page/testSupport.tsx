@@ -45,12 +45,22 @@ export const PUBLISHED_OVERVIEW: StockOverviewResponse = {
   textTr: 'Alfa Teknoloji açıklaması.',
   textEn: 'Alfa Teknoloji description.',
   lastReviewedAt: '2026-09-30',
+  symbol: 'ALFA',
+  name: 'Alfa Teknoloji A.Ş.',
 }
 
 export const PREPARING_OVERVIEW: StockOverviewResponse = {
   asOf: '2026-10-06',
   stale: false,
   status: 'preparing',
+  symbol: 'ALFA',
+  name: 'Alfa Teknoloji A.Ş.',
+}
+
+/** An overview payload whose instrument has no official name (TKT-foundation-057). */
+export const UNNAMED_OVERVIEW: StockOverviewResponse = {
+  ...PUBLISHED_OVERVIEW,
+  name: null,
 }
 
 /**
@@ -100,6 +110,39 @@ export const FINANCIALS_FIXTURE: StockFinancialsResponse = {
       ebit: { value: 120, restated: false },
       netIncome: { value: 60, restated: false },
       fcf: { value: 50, restated: false },
+    },
+  ],
+}
+
+/**
+ * AEFES's real published shape (TKT-foundation-057): the API serves FY2022 beside
+ * the Q1-2023 period (24.5B vs 90.5B), keyed by `periodType` + `periodEndDate`.
+ * The table must label the second row as a quarter — never "FY2023", which would
+ * read as a fabricated −73% collapse.
+ */
+export const QUARTER_FINANCIALS_FIXTURE: StockFinancialsResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  periods: [
+    {
+      periodType: 'FY',
+      fiscalYear: 2022,
+      periodEndDate: '2022-12-31',
+      revenue: { value: 90_500_000_000, restated: false },
+      ebitda: { value: 12_000_000_000, restated: false },
+      ebit: { value: 9_000_000_000, restated: false },
+      netIncome: { value: 5_000_000_000, restated: false },
+      fcf: { value: 3_000_000_000, restated: false },
+    },
+    {
+      periodType: 'Q',
+      fiscalYear: 2023,
+      periodEndDate: '2023-03-31',
+      revenue: { value: 24_500_000_000, restated: false },
+      ebitda: { value: 3_200_000_000, restated: false },
+      ebit: { value: 2_400_000_000, restated: false },
+      netIncome: { value: 1_300_000_000, restated: false },
+      fcf: { value: 900_000_000, restated: false },
     },
   ],
 }

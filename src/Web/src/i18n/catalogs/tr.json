@@ -90,6 +90,9 @@
     }
   },
   "stockPage": {
+    "identity": {
+      "withName": "{{symbol}} — {{name}}"
+    },
     "sectionsLabel": "Bölümler",
     "sections": {
       "overview": "Genel Bakış",
@@ -131,6 +134,8 @@
     },
     "financials": {
       "period": "FY{{year}}",
+      "periodQuarter": "Ç{{quarter}} {{year}}",
+      "periodEnding": "{{date}} biten dönem",
       "columns": {
         "period": "Dönem",
         "revenue": "Hasılat",
