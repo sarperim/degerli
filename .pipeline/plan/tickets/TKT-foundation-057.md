@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-057: Stock-page honesty pair — period-type-aware financials label ("FY2023" lying about a Q1 row) + which-stock header (symbol + company name)
 
-- Status: todo
+- Status: done
 - Size: S
 - **Priority: P1 — USER-DIRECTED small slice (2026-10-22, explicit request). Web-only; dispatch-ready immediately** (with the 049 coordination note below).
 - **Verified defects (live on the dev stack, 2026-10-22):**
