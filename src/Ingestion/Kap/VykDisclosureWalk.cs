@@ -65,23 +65,32 @@ public static class VykDisclosureList
         return rows;
     }
 
-    private static bool CarriesCode(string? body, string code)
+    /// <summary>
+    /// The gateway's own error code from a non-success body (the <c>code</c> of a
+    /// <c>{"code":"ER005",…}</c> answer, or the <c>faultCode</c> of a fault envelope), or
+    /// <c>null</c> when the body carries none. Used to record a stale-cursor reset verbatim
+    /// (TKT-foundation-063).
+    /// </summary>
+    public static string? ReadCode(string? body)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
-            return false;
+            return null;
         }
 
         try
         {
             using var document = JsonDocument.Parse(body);
-            return string.Equals(VykFault.TryRead(document.RootElement)?.Code, code, StringComparison.OrdinalIgnoreCase);
+            return VykFault.TryRead(document.RootElement)?.Code;
         }
         catch (JsonException)
         {
-            return false;
+            return null;
         }
     }
+
+    private static bool CarriesCode(string? body, string code) =>
+        string.Equals(ReadCode(body), code, StringComparison.OrdinalIgnoreCase);
 
     private static bool HasNumericIndex(JsonElement element)
     {
@@ -172,6 +181,38 @@ public sealed class VykDetailTimeoutException : Exception
     public VykDetailTimeoutException(string message, Exception? inner = null) : base(message, inner) { }
 }
 
+/// <summary>
+/// The evidence of the <b>one</b> stale-cursor reset a company walk may perform (01 v1.5.42
+/// §10.9.15, TKT-foundation-063): the persisted cursor answered HTTP 400 <c>ER005</c> — the
+/// gateway saying "no disclosure at or after this index" — so the walk re-walked once from
+/// <c>EarlyDisclosureIndex</c>. The record carries the symbol, the from/to indices and the
+/// gateway's own code and body <b>verbatim</b> so the run can record the recovery as evidence
+/// instead of hiding it (or failing the company forever). The reset's outcome is persisted by
+/// the caller: the corrected cursor (last emitted index) or a cleared row when the re-walk was
+/// itself honest-empty.
+/// </summary>
+public sealed record VykCursorReset(
+    string Symbol,
+    string FromCursor,
+    string ToIndex,
+    string Code,
+    string? Body,
+    string Error)
+{
+    /// <summary>The reset as the run's evidence document (structured log payload).</summary>
+    public string ToEvidenceJson() => JsonSerializer.Serialize(new
+    {
+        symbol = Symbol,
+        from = FromCursor,
+        to = ToIndex,
+        code = Code,
+        body = Body,
+        error = Error,
+    }, ResetJsonOptions);
+
+    private static readonly JsonSerializerOptions ResetJsonOptions = new(JsonSerializerDefaults.Web);
+}
+
 /// <summary>The outcome of one company's disclosure walk.</summary>
 public sealed record VykCompanyWalk<TFact>(IReadOnlyList<TFact> Facts, string? NextCursor, string Raw)
 {
@@ -180,6 +221,12 @@ public sealed record VykCompanyWalk<TFact>(IReadOnlyList<TFact> Facts, string? N
     /// every detail answered carries none, so the pre-061 goldens are unchanged.
     /// </summary>
     public IReadOnlyList<VykDetailSkip> Skips { get; init; } = [];
+
+    /// <summary>
+    /// The one stale-cursor reset this walk performed (01 v1.5.42 §10.9.15), or <c>null</c>
+    /// when no persisted cursor answered <c>ER005</c>. Additive: the pre-063 goldens carry none.
+    /// </summary>
+    public VykCursorReset? Reset { get; init; }
 }
 
 /// <summary>
@@ -243,7 +290,8 @@ public sealed class VykDisclosureWalker
     /// <para>
     /// <b>Stale-cursor reset.</b> When the <b>first</b> request of a company — the one made from a
     /// persisted cursor — answers 400 <c>ER005</c>, the cursor points past a tail the gateway no
-    /// longer serves. The walk logs it and re-walks once from
+    /// longer serves. The walk records the gateway's answer verbatim on
+    /// <see cref="VykCompanyWalk{TFact}.Reset"/> and re-walks once from
     /// <paramref name="earlyDisclosureIndex"/> (at most one reset per company per run), so one
     /// stale row cannot poison every future run.
     /// </para>
@@ -265,6 +313,14 @@ public sealed class VykDisclosureWalker
     /// source failure, unchanged by v1.5.40); a malformed list or detail body is a
     /// <see cref="SourcePayloadException"/>.
     /// </para>
+    /// <para>
+    /// <b>Replay at the persisted index.</b> <paramref name="replayPersistedIndex"/> is the
+    /// statements lane's inclusive re-decode (TKT-foundation-063): the statements cursor names the
+    /// last index whose facts were <b>persisted</b>, so re-reading that one row keeps a re-run
+    /// idempotent (it reports <c>unchanged</c>) while its own cursor semantics stay unchanged. It
+    /// applies only to the very first request made from the persisted cursor — never to later
+    /// pages and never to the post-reset re-walk.
+    /// </para>
     /// </summary>
     public async Task<VykCompanyWalk<TFact>> WalkAsync<TFact>(
         string symbol,
@@ -275,7 +331,8 @@ public sealed class VykDisclosureWalker
         string detailPath,
         Func<DisclosureInfo, bool> isFamily,
         Func<string, string, DisclosureInfo, IEnumerable<TFact>> decode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool replayPersistedIndex = false)
     {
         var early = ParseIndex(earlyDisclosureIndex)
             ?? throw new SourceFetchException(
@@ -296,6 +353,12 @@ public sealed class VykDisclosureWalker
         var from = processed;
         string? nextCursor = null;
         var resetAttempted = false;
+        VykCursorReset? reset = null;
+
+        // The statements lane's inclusive re-decode applies to the first request made from the
+        // persisted cursor only (see the method remarks). It is dropped as soon as that request
+        // has been answered — including the reset path, whose re-walk starts at the early index.
+        var replayPending = replayPersistedIndex && persisted is not null;
 
         while (true)
         {
@@ -310,14 +373,27 @@ public sealed class VykDisclosureWalker
                 {
                     // The cursor persisted by an earlier run is past a tail the gateway no longer
                     // serves (or a post-fetch store failure left it ahead of the facts). Re-walk
-                    // once from the configured early index instead of failing forever.
+                    // once from the configured early index instead of failing forever, and
+                    // record the gateway's own answer verbatim (01 v1.5.42 §10.9.15).
                     resetAttempted = true;
-                    _logger?.LogWarning(
-                        "{Family}: persisted cursor {Cursor} for {Symbol} answered HTTP 400 ER005; resetting to EarlyDisclosureIndex {Early}",
-                        _family,
-                        cursor,
+                    replayPending = false;
+                    var code = VykDisclosureList.ReadCode(exception.Body) ?? VykDisclosureList.EndOfListCode;
+                    var error = _redact(exception.Message);
+                    reset = new VykCursorReset(
                         symbol,
-                        early);
+                        cursor!,
+                        early.ToString(CultureInfo.InvariantCulture),
+                        code,
+                        exception.Body,
+                        error);
+                    _logger?.LogWarning(
+                        "{Family}: persisted cursor {From} for {Symbol} answered HTTP 400 {Code}; resetting once to EarlyDisclosureIndex {To} (gateway body: {Body})",
+                        _family,
+                        reset.FromCursor,
+                        reset.Symbol,
+                        reset.Code,
+                        reset.ToIndex,
+                        reset.Body);
                     processed = early;
                     from = early;
                     continue;
@@ -333,6 +409,9 @@ public sealed class VykDisclosureWalker
             {
                 break;
             }
+
+            var replayThisPage = replayPending;
+            replayPending = false;
 
             long maxIndex = -1;
             foreach (var disclosure in listed)
@@ -351,7 +430,9 @@ public sealed class VykDisclosureWalker
                 }
 
                 maxIndex = Math.Max(maxIndex, index.Value);
-                if (index <= processed || !isFamily(disclosure))
+                if (index.Value < processed
+                    || (index.Value == processed && !replayThisPage)
+                    || !isFamily(disclosure))
                 {
                     continue;
                 }
@@ -414,7 +495,7 @@ public sealed class VykDisclosureWalker
             from = maxIndex;
         }
 
-        return new VykCompanyWalk<TFact>(facts, nextCursor, raw.ToString()) { Skips = skips };
+        return new VykCompanyWalk<TFact>(facts, nextCursor, raw.ToString()) { Skips = skips, Reset = reset };
     }
 
     /// <summary>

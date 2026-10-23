@@ -1,5 +1,6 @@
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Universe;
@@ -101,6 +102,8 @@ public sealed class StatementsJob : IIngestJob
         var quarantined = 0;
         var failedSymbols = new List<string>();
         var parseFailed = 0;
+        var identityIsolated = 0;
+        var cursorResets = 0;
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
 
         for (var index = 0; index < constituents.Count; index++)
@@ -150,31 +153,79 @@ public sealed class StatementsJob : IIngestJob
                     symbolQuarantined++;
                 }
 
+                // The per-disclosure isolation evidence (01 v1.5.40/v1.5.42 §10.9.15,
+                // TKT-foundation-063): each detail the shared walker could not fetch — an HTTP
+                // error, a fault envelope, a transport failure or the bounded timeout — is
+                // quarantined with the gateway's own answer verbatim and counted, never a failed
+                // company and never a silent omission. The other disclosures' facts were written
+                // above; the company's cursor already advanced past the recorded index.
+                var skips = fetched.DetailSkips;
+                foreach (var skip in skips)
+                {
+                    _logger.LogWarning(
+                        "statements: disclosure detail {Index} for {Symbol} could not be fetched and is quarantined with evidence ({ReasonCode}, {FailureKind}, status {Status}): {Error}",
+                        skip.DisclosureIndex,
+                        skip.Symbol,
+                        skip.ReasonCode,
+                        skip.FailureKind,
+                        skip.StatusCode,
+                        skip.Error);
+                    await QuarantineAsync(
+                            source.SourceRef,
+                            skip.ToEvidenceJson(),
+                            VykDisclosureWalker.DisclosureDetailUnfetchable,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    symbolQuarantined++;
+                }
+
                 written += outcome.Inserted;
                 unchanged += outcome.Unchanged;
                 quarantined += symbolQuarantined;
 
                 // Advance the company's cursor to the last-processed disclosure index (the
                 // disclosure was decoded and persisted — or idempotently collapsed — so the
-                // next run resumes after it; FR-MDF-010/011).
+                // next run resumes after it; FR-MDF-010/011). A stale-cursor reset (01 v1.5.42
+                // §10.9.15, TKT-foundation-063) is recorded verbatim and its outcome persisted:
+                // the corrected cursor when the re-walk emitted facts, or a cleared row when the
+                // re-walk was itself honest-empty — so the next run never repeats the same ER005.
+                if (fetched.CursorReset is { } cursorReset)
+                {
+                    cursorResets++;
+                    _logger.LogWarning(
+                        "statements: stale disclosure cursor reset for {Symbol}: {From} -> {To} ({Code}); gateway body: {Body}. {Error}",
+                        cursorReset.Symbol,
+                        cursorReset.FromCursor,
+                        cursorReset.ToIndex,
+                        cursorReset.Code,
+                        cursorReset.Body ?? string.Empty,
+                        cursorReset.Error);
+                }
+
                 if (fetched.Cursor is not null)
                 {
                     await _cursorStore.SetAsync(symbol, fetched.Cursor, cancellationToken).ConfigureAwait(false);
+                }
+                else if (fetched.CursorReset is not null)
+                {
+                    // The re-walk was honest-empty; keep the stale value would repeat ER005 forever.
+                    await _cursorStore.ClearAsync(symbol, cancellationToken).ConfigureAwait(false);
                 }
 
                 symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false));
             }
             catch (CompanyIdentityUnresolvedException)
             {
-                // The bound symbol has no VYK companyId (FR-MDF-008/FR-MDF-012): mark the
-                // company failed with the named reason, write nothing, never fabricate a
-                // mapping — and continue the loop.
+                // The bound symbol has no VYK companyId (FR-MDF-008/FR-MDF-012): the company is
+                // isolated with the named reason, writes nothing, is named in the per-company
+                // stats and never fabricates a mapping — and, per the 046/v1.5.42 honesty pin,
+                // never fail-stops the chain on its own.
                 _logger.LogWarning(
-                    "statements: company {Symbol} could not be mapped to a VYK companyId for {Date} ({ReasonCode})",
+                    "statements: company {Symbol} could not be mapped to a VYK companyId for {Date} ({ReasonCode}); isolated and the loop continues",
                     symbol,
                     request.Date,
                     CompanyIdentityUnresolved);
-                failedSymbols.Add(symbol);
+                identityIsolated++;
                 symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true));
             }
             catch (SourcePayloadException exception)
@@ -212,16 +263,25 @@ public sealed class StatementsJob : IIngestJob
             quarantined,
             failedSymbols,
             parseFailed,
+            identityIsolated,
+            cursorResets,
             symbolStats,
             cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// The run's terminal outcome: aggregate the per-company counts, emit the run summary and
-    /// raise a single aggregate alert naming the failed companies (the TC-MDF-073 posture). A
-    /// run with <b>no</b> writable company — every current constituent failed to fetch or to
-    /// parse — is a failed run (so the retry ladder applies); some failed or some facts
-    /// quarantined → <see cref="IngestResult.Partial"/>; otherwise <see cref="IngestResult.Succeeded"/>.
+    /// raise a single aggregate alert naming the failed companies (the TC-MDF-073 posture).
+    /// <para>
+    /// <b>Honest status (01 v1.5.42 §10.9.15, TKT-foundation-063).</b> A run is
+    /// <see cref="IngestResult.Failed"/> only when <b>every</b> constituent failed for a genuine
+    /// source reason (transport/list non-success, or an unparseable payload) — so the retry
+    /// ladder keeps its meaning. A run whose writes are zero because companies were honestly
+    /// skipped — a stale-cursor reset, an unfetchable detail, an unresolved identity, a
+    /// quarantine — is <see cref="IngestResult.Partial"/>, never <c>failed</c> and never a
+    /// chain fail-stop (the 2026-10-23 run-212 shape). Some failed or some facts quarantined →
+    /// <see cref="IngestResult.Partial"/>; otherwise <see cref="IngestResult.Succeeded"/>.
+    /// </para>
     /// </summary>
     private async Task<IngestResult> CompleteAsync(
         IngestionRequest request,
@@ -231,6 +291,8 @@ public sealed class StatementsJob : IIngestJob
         int quarantined,
         List<string> failedSymbols,
         int parseFailed,
+        int identityIsolated,
+        int cursorResets,
         IReadOnlyList<SymbolRunStat> symbolStats,
         CancellationToken cancellationToken)
     {
@@ -247,20 +309,29 @@ public sealed class StatementsJob : IIngestJob
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var status = failedSymbols.Count + parseFailed == constituentCount
+        // Every constituent a genuine source failure → failed (the retry ladder's meaning). A
+        // parse-only world keeps the pre-063 posture (all unparseable → failed).
+        var allGenuinelyFailed = failedSymbols.Count + parseFailed == constituentCount;
+
+        var status = allGenuinelyFailed
             ? IngestResult.Failed
-            : failedSymbols.Count > 0 || quarantined > 0
-                ? IngestResult.Partial
-                : IngestResult.Succeeded;
+            : failedSymbols.Count > 0
+                || quarantined > 0
+                || identityIsolated > 0
+                || (written == 0 && cursorResets > 0)
+                    ? IngestResult.Partial
+                    : IngestResult.Succeeded;
 
         _logger.LogInformation(
-            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed} ({Status})",
+            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, identity-isolated {IdentityIsolated}, cursor-resets {CursorResets} ({Status})",
             request.Date,
             constituentCount,
             written,
             unchanged,
             quarantined,
             failedSymbols.Count,
+            identityIsolated,
+            cursorResets,
             status);
 
         return new IngestResult(Code, written, unchanged, quarantined, status) { SymbolStats = symbolStats };

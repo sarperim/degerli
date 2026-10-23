@@ -92,4 +92,39 @@ public sealed class KapDisclosureCursorStore
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Clears <paramref name="symbol"/>'s cursor row (01 v1.5.42 §10.9.15, TKT-foundation-063):
+    /// the outcome of a stale-cursor reset whose re-walk was itself honest-empty. Removing the
+    /// row — rather than leaving the stale value — makes the next run start from
+    /// <c>EarlyDisclosureIndex</c> and stops it repeating the same <c>ER005</c> forever. An
+    /// unresolvable symbol, or a symbol with no row, is a no-op.
+    /// </summary>
+    public async Task ClearAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+
+        var instrumentId = await _db.Instruments
+            .Where(i => i.Symbol == symbol)
+            .Select(i => (long?)i.Id)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (instrumentId is null)
+        {
+            return;
+        }
+
+        var row = await _db.CoverageMetadata
+            .FirstOrDefaultAsync(
+                c => c.Scope == InstrumentScope && c.InstrumentId == instrumentId && c.DataType == DataType,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (row is null)
+        {
+            return;
+        }
+
+        _db.CoverageMetadata.Remove(row);
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
 }
