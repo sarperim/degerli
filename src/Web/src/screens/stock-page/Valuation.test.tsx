@@ -10,6 +10,7 @@ import {
   BETA_VALUATION_FIXTURE,
   EPSL_VALUATION_FIXTURE,
   NO_MEDIAN_VALUATION_FIXTURE,
+  NO_PEERS_VALUATION_FIXTURE,
   RAW_VALUATION_FIXTURE,
   resetStockPageTest,
   stockValuationHandler,
@@ -99,6 +100,38 @@ describe('TC-RES-025 — vs.-sector strip component', () => {
       TR('stockPage.valuation.strip.noMedian'),
     )
     expect(evFcf.querySelector('[data-slot="peer-count"]')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * TKT-foundation-055 — the sector comparison's honest empty must not take the
+ * stock's own canonical multiples down with it. The own-multiple rows carry the
+ * same `data-metric` / `data-slot="stock-value"` hooks as the strip rows, so the
+ * canonical figure stays machine-readable off the valuation region when no peer
+ * median is served (the TC-RES-028 / TC-XC-008 contract).
+ */
+describe('TKT-foundation-055 — current multiples stay addressable while the strip is empty', () => {
+  it('keeps the canonical own P/E hooked when no peer median is served', async () => {
+    server.use(
+      stockValuationHandler({
+        ...NO_PEERS_VALUATION_FIXTURE,
+        current: VALUATION_FIXTURE.current,
+      }),
+    )
+    const { container } = renderWithProviders(<ValuationSection symbol="ALFA" />)
+
+    // The comparison block states its one honest empty…
+    await screen.findByTestId('vs-sector-no-data')
+
+    // …and the canonical own multiple is still rendered and addressable.
+    const ownPe = VALUATION_FIXTURE.current.pe
+    if (ownPe === null) throw new Error('fixture canonical P/E missing')
+    const pe = container.querySelector('[data-metric="pe"] [data-slot="stock-value"]')
+    expect(pe).toHaveTextContent(formatNumber('tr', ownPe))
+    // The empty strip contributes no per-row hooks of its own.
+    expect(
+      container.querySelectorAll('[data-slot="vs-sector-strip"] [data-metric]'),
+    ).toHaveLength(0)
   })
 })
 

@@ -121,6 +121,7 @@
         "title": "Sektör karşılaştırması",
         "sectorMedian": "Sektör medyanı",
         "noMedian": "Sektör medyanı yok",
+        "noSectorDataTitle": "Bu sektör için yeterli veri yok",
         "peerCount": "{{count}} emsalin medyanı",
         "exclusionDisclosure": "F/K medyanı zarar eden şirketleri hariç tutar ({{count}} hariç)."
       },

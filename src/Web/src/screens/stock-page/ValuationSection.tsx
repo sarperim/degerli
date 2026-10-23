@@ -4,6 +4,7 @@ import { Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 
 import { NotMeaningful } from '@/components/honest-data'
+import { EmptyState } from '@/components/ui/empty-state'
 import type {
   SectorStripEntry,
   StockValuationResponse,
@@ -174,6 +175,14 @@ function StripMetric({
           data-slot="stock-value"
           className="text-sm font-medium tabular-nums text-foreground"
         >
+          {/*
+            "Anlamsız" is a verdict about the metric (e.g. P/E on negative
+            earnings), so it is rendered only when the server says so. The
+            served contract ties the two together: `notMeaningful` is
+            `value is null`, unconditionally, and a null `value` is explicit
+            "not meaningful, never 0" (BR-RES-008) — there is no
+            "uncomputed but meaningful" payload to dash (TKT-foundation-055(c)).
+          */}
           {entry.notMeaningful || entry.value === null ? (
             <NotMeaningful />
           ) : (
@@ -189,7 +198,8 @@ function StripMetric({
                 entry.sectorMedian,
               )}`}
         </span>
-        {entry.peerCount !== null ? (
+        {/* A median over zero peers is not a comparison basis — never "0 emsal". */}
+        {entry.peerCount !== null && entry.peerCount > 0 ? (
           <span data-slot="peer-count" className="text-xs text-muted-foreground">
             {t('stockPage.valuation.strip.peerCount', { count: entry.peerCount })}
           </span>
@@ -202,30 +212,56 @@ function StripMetric({
 /**
  * The vs.-sector strip: the five valuation-family multiples, each next to its
  * sector median with the peer count behind it and the P/E loss-maker exclusion
- * disclosed inline (UXR-RES-013/024/025).
+ * disclosed inline (UXR-RES-013/024/025). When no metric has a served sector
+ * median — the zero-shares world until 058's share counts land — the block
+ * states one honest no-data empty instead of presenting absence as per-row
+ * "not meaningful" verdicts (TKT-foundation-055(c)).
  */
 export function VsSectorStrip({ strip }: { strip: Record<string, SectorStripEntry> }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
   const peExcluded = strip.pe?.excludedCount ?? 0
 
+  /*
+   * A comparison exists only where a sector median is served — the peers behind
+   * it are what make the row a comparison. In the zero-shares world (TKT-
+   * foundation-033 → 058) no peer has a computable metric, so every entry comes
+   * back without a median: rendering the rows anyway produced the user-reported
+   * wall of per-row "Anlamsız" and "0 emsal" verdicts over pure absence. The
+   * block then states the honest empty once, and populates by itself as the
+   * share counts land (TKT-foundation-055(c), the 052 doctrine).
+   */
+  const hasComparablePeers = VALUATION_METRIC_ORDER.some((code) => {
+    const entry = strip[code]
+    return entry !== undefined && entry.sectorMedian !== null
+  })
+
   return (
     <div data-slot="vs-sector-strip" className="flex flex-col gap-2">
       <h3 className="text-xs font-medium text-muted-foreground">
         {t('stockPage.valuation.strip.title')}
       </h3>
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {VALUATION_METRIC_ORDER.map((code) => {
-          const entry = strip[code]
-          if (entry === undefined) return null
-          return <StripMetric key={code} code={code} entry={entry} locale={locale} />
-        })}
-      </dl>
-      {peExcluded > 0 ? (
-        <p data-slot="pe-exclusion" className="text-xs text-muted-foreground">
-          {t('stockPage.valuation.strip.exclusionDisclosure', { count: peExcluded })}
-        </p>
-      ) : null}
+      {hasComparablePeers ? (
+        <>
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {VALUATION_METRIC_ORDER.map((code) => {
+              const entry = strip[code]
+              if (entry === undefined) return null
+              return <StripMetric key={code} code={code} entry={entry} locale={locale} />
+            })}
+          </dl>
+          {peExcluded > 0 ? (
+            <p data-slot="pe-exclusion" className="text-xs text-muted-foreground">
+              {t('stockPage.valuation.strip.exclusionDisclosure', { count: peExcluded })}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <EmptyState
+          data-testid="vs-sector-no-data"
+          title={t('stockPage.valuation.strip.noSectorDataTitle')}
+        />
+      )}
     </div>
   )
 }
@@ -252,6 +288,13 @@ export function ValuationSection({ symbol }: { symbol: string }) {
       >
         {data ? (
           <div className="flex flex-col gap-4">
+            {/*
+              The stock's own canonical multiples stay machine-addressable
+              (`data-metric` / `data-slot="stock-value"`) regardless of the
+              vs.-sector strip: the strip states an honest empty when no peer
+              median is served, but the canonical own P/E and friends are still
+              the figures TC-RES-028 / TC-XC-008 read off this region.
+            */}
             <div className="flex flex-col gap-2">
               <h3 className="text-xs font-medium text-muted-foreground">
                 {t('stockPage.valuation.current.title')}
@@ -262,12 +305,16 @@ export function ValuationSection({ symbol }: { symbol: string }) {
                   return (
                     <div
                       key={code}
+                      data-metric={code}
                       className="flex items-center justify-between gap-3"
                     >
                       <dt className="text-xs text-muted-foreground">
                         {t(VALUATION_METRIC_LABEL_KEYS[code])}
                       </dt>
-                      <dd className="text-sm font-medium tabular-nums text-foreground">
+                      <dd
+                        data-slot="stock-value"
+                        className="text-sm font-medium tabular-nums text-foreground"
+                      >
                         {value === null ? (
                           <NotMeaningful />
                         ) : (

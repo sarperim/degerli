@@ -337,6 +337,58 @@ export const NO_MEDIAN_VALUATION_FIXTURE: StockValuationResponse = {
 }
 
 /**
+ * The **zero-shares world** (TKT-foundation-055): share-count-derived multiples
+ * cannot be computed, so every strip entry has no own value and no peer has a
+ * computable metric — `sectorMedian` absent, `peerCount` 0. This is the payload
+ * behind the user-reported all-"Anlamsız"/"0 emsal" wall; the strip must render
+ * one honest no-data state instead of per-row verdicts.
+ *
+ * The shape is the served one, not a sanitised variant: the API sets
+ * `notMeaningful = value is null` unconditionally
+ * (`StockOverviewAndValuationEndpoints.cs`), and the median engine writes a row
+ * with `PeerCount = 0` and `ExcludedCount` = the same-day null peer rows
+ * (`SectorMedianEngine.cs`) — here the five assessed peers of the ALFA group.
+ */
+const NO_PEER_ENTRY = {
+  value: null,
+  notMeaningful: true,
+  sectorMedian: null,
+  peerCount: 0,
+  excludedCount: 5,
+} as const
+
+export const NO_PEERS_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  current: { pe: null, pb: null, ev_ebitda: null, ev_fcf: null, fcf_yield: null },
+  strip: {
+    pe: NO_PEER_ENTRY,
+    pb: NO_PEER_ENTRY,
+    ev_ebitda: NO_PEER_ENTRY,
+    ev_fcf: NO_PEER_ENTRY,
+    fcf_yield: NO_PEER_ENTRY,
+  },
+}
+
+/**
+ * A metric with no computable peers inside an otherwise populated strip
+ * (TKT-foundation-055): every same-day peer row for that metric is null, so the
+ * median engine serves `sectorMedian: null`, `peerCount: 0` and the whole group
+ * as `excludedCount`. The own value is null too — a non-null own value would
+ * itself be inside its sector's meaningful set, so `peerCount ≥ 1` — and the row
+ * must never render a median basis as "0 emsal".
+ */
+export const ZERO_PEER_COUNT_VALUATION_FIXTURE: StockValuationResponse = {
+  ...VALUATION_FIXTURE,
+  // `current` and the strip's own `value` come from the same derived row, so a
+  // null strip value is a null canonical multiple too.
+  current: { ...VALUATION_FIXTURE.current, pe: null },
+  strip: {
+    ...VALUATION_FIXTURE.strip,
+    pe: { value: null, notMeaningful: true, sectorMedian: null, peerCount: 0, excludedCount: 5 },
+  },
+}
+
+/**
  * EPSL's adjusted series (TC-RES-032, TC-MDF-030): the raw close carries a split
  * cliff (100 → 20) while the adjusted close is continuous (50 → 49), so asserting
  * the adjusted basis is chosen proves no fabricated 80% crash is plotted.

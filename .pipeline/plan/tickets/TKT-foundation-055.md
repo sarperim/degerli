@@ -6,7 +6,7 @@ scope:
 
 # TKT-foundation-055: Stock-page UX findings — daily-movement clarity, sector-comparison/performance honest states (SCR-005; header item moved to 057 on 2026-10-22)
 
-- Status: todo
+- Status: in-review — PR #122: https://github.com/sarperim/degerli/pull/122 (red→green evidence in the PR body: movement 8/8, sector empty 6/6, stock-page 63/63, Web 350/350, i18n 666 keys, tsc/eslint clean; §13.1 v1.5.39)
 - Size: M
 - **Priority: P2 — DISPATCH-READY (unblocked 2026-10-22 by USER GRANT: the planner pins the minimal honest shapes below, the 057 precedent — user-pinned minimal, ux-designer flow-back as future refinement, NOT a gate).** Serialized behind 057 for the file overlap only.
 - Verified user findings (2026-10-20, dev stack):
