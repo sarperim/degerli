@@ -4,6 +4,7 @@ using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
+using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -30,6 +31,9 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     /// <summary>The route the prices adapter reads; both the down and the ok stubs are
     /// bound here so the test can switch the source mid-run without touching config.</summary>
     private const string PricesPath = "/prices/eod";
+
+    /// <summary>A liveness bound for "the tick never returns" — real time, not the fake clock.</summary>
+    private static readonly TimeSpan LivenessBound = TimeSpan.FromSeconds(30);
 
     private readonly PostgresFixture _postgres;
     private readonly WireMockFixture _wireMock;
@@ -152,6 +156,203 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-059 — the four RunAttemptAsync boundary defects of 041's round-3 review
+    // (DR-1/DR-2/DR-3 edge repairs, DR-5 boundary-branch coverage). Doubles only, fake clock.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// DR-1 — the attempt's pre-await prologue is inside the failure-classifying try: a
+    /// mis-typed <c>Ingestion:Scheduler:MaxRunDuration</c> (60 days, beyond
+    /// <c>Task.Delay</c>'s ~49.7-day accepted range) is a failed attempt on the ordinary
+    /// ladder, never an escape that leaves <c>Attempts</c> bumped with <c>NextAttemptAt</c>
+    /// still past — the unbounded hot refire the watchdog exists to eliminate.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_DR_1_Mistyped_MaxRunDuration_is_classified_and_never_refires_hot()
+    {
+        await ResetAsync();
+
+        await using var host = BuildEdgeHost("60.00:00:00", new SilentStep());
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        // Pre-fix the ArgumentOutOfRangeException escapes this call: the attempt never
+        // reaches the ladder, so nothing below is even observable.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 21, 55));
+
+        // One attempt per rung of the 5/15/60 ladder (20:30, 20:35, 20:50, 21:50), each
+        // classified as a failure, then the exhausted alert — bounded accounting, not a loop.
+        Assert.Equal(4, FailureLogCount(host));
+        var exhausted = Assert.Single(host.Mail.Sent);
+        Assert.Contains("failed after 4 attempts", exhausted.Subject);
+
+        // The chain never began: the prologue failed before the first step.
+        Assert.Equal(0, await LedgerCountAsync());
+
+        // Exhausted, not overdue: the stream's next wake is tomorrow's 20:30 occurrence, and
+        // sweeping the rest of the day adds no attempt (a hot loop would add thousands).
+        Assert.Equal(Trt(2026, 10, 6, 20, 30), host.Scheduler.NextWake(clock.GetUtcNow()));
+        clock.SetUtcNow(Trt(2026, 10, 5, 23, 59));
+        Assert.Equal(4, FailureLogCount(host));
+        Assert.Equal(0, await LedgerCountAsync());
+    }
+
+    /// <summary>
+    /// DR-2 — an attempt that finishes during the watchdog's cancel window is recorded
+    /// exactly once, as the terminal truth: the post-cancel <c>IsCompletedSuccessfully</c>
+    /// re-check suppresses the <c>RUN_HUNG</c> row/alert. Pre-fix the same attempt produced
+    /// both its success row and a <c>RUN_HUNG</c> row.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_DR_2_Attempt_finishing_in_the_cancel_window_writes_one_true_row()
+    {
+        await ResetAsync();
+
+        var step = new SwallowingStep();
+        await using var host = BuildEdgeHost("00:10:00", step);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await step.Entered.Task.WaitAsync(LivenessBound);
+
+        // The bound expires; the step swallows the watchdog's cancellation and returns its
+        // success result, so the attempt finishes inside the cancel window.
+        clock.Advance(TimeSpan.FromMinutes(11));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var row = Assert.Single(runs);
+        Assert.Equal(SwallowingStep.Code, row.JobCode);
+        Assert.Equal(IngestResult.Succeeded, row.Status);
+        Assert.Equal(1, Attempt(row));
+        Assert.Null(ReasonCode(row));
+        Assert.DoesNotContain(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.DoesNotContain(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+
+        // The completed attempt ends the run: no retry, no exhausted alert.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 47));
+        Assert.Single(await LedgerAsync());
+        Assert.DoesNotContain(host.Mail.Sent, mail => mail.Subject.Contains("failed after"));
+    }
+
+    /// <summary>
+    /// DR-3 — the <c>RUN_HUNG</c> row and alert name the step the watchdog actually caught:
+    /// the snapshot is hoisted above the cancellation, so a step that swallows the
+    /// cancellation and advances the chain cannot rename the hung step in the record.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_DR_3_RunHung_row_names_the_pre_cancel_step()
+    {
+        await ResetAsync();
+
+        // Step 1 swallows the cancellation and returns Partial (the chain advances); step 2
+        // then hangs uninterruptibly, so the pre-fix snapshot taken after the cancel names
+        // the *next* step instead of the one that held the run at the bound.
+        var swallow = new SwallowingStep(IngestResult.Partial);
+        var hang = new UninterruptibleStep();
+        await using var host = BuildEdgeHost("00:10:00", swallow, hang);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await swallow.Entered.Task.WaitAsync(LivenessBound);
+
+        clock.Advance(TimeSpan.FromMinutes(11));
+        await AwaitTickAsync(tick);
+
+        var hung = Assert.Single(await LedgerAsync(), run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(IngestResult.Failed, hung.Status);
+        Assert.Equal(SwallowingStep.Code, hung.JobCode);
+        Assert.Equal(SwallowingStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(1, Stat(hung, "step"));
+        Assert.Equal(2, Stat(hung, "stepCount"));
+
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(SwallowingStep.Code, alert.Subject);
+        Assert.DoesNotContain(UninterruptibleStep.Code, alert.Subject);
+    }
+
+    /// <summary>
+    /// DR-5(a) — the round-2 boundary branch "completes as the deadline fires": a run that
+    /// finishes while the bound is armed is a completed attempt — one success row, no
+    /// <c>RUN_HUNG</c> row or alert, no retry, and the disarmed deadline fires nothing later.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_DR_5a_Attempt_completing_against_the_armed_bound_is_completed_once()
+    {
+        await ResetAsync();
+
+        var step = new ControllableStep();
+        await using var host = BuildEdgeHost("00:10:00", step);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await step.Entered.Task.WaitAsync(LivenessBound);
+
+        // The run finishes at the bound: the watchdog's deadline is armed and its re-check
+        // must prefer the terminal truth over a RUN_HUNG row.
+        step.Complete();
+        await AwaitTickAsync(tick);
+
+        // Sweeping past the bound afterwards must not conjure a hung row either.
+        clock.Advance(TimeSpan.FromMinutes(11));
+
+        var row = Assert.Single(await LedgerAsync());
+        Assert.Equal(ControllableStep.Code, row.JobCode);
+        Assert.Equal(IngestResult.Succeeded, row.Status);
+        Assert.Equal(1, Attempt(row));
+        Assert.Empty(host.Mail.Sent);
+        Assert.DoesNotContain(host.Logs.Events, logEvent => logEvent.RenderMessage().Contains("Hung run detected"));
+    }
+
+    /// <summary>
+    /// DR-5(b) — the round-2 boundary branch "host stopping → no RUN_HUNG": when the host's
+    /// token is already cancelled as the bound expires, the attempt unwinds as a shutdown —
+    /// no ledger row, no alert — instead of being reported as a hung run.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_079_DR_5b_Host_shutdown_at_the_bound_raises_no_RunHung_row_or_alert()
+    {
+        await ResetAsync();
+
+        var hang = new UninterruptibleStep();
+        await using var host = BuildEdgeHost("00:10:00", hang);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        using var stopping = new CancellationTokenSource();
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30), stopping.Token);
+        await hang.Entered.Task.WaitAsync(LivenessBound);
+
+        // The host stops, then the bound expires in the same window.
+        stopping.Cancel();
+        clock.Advance(TimeSpan.FromMinutes(11));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await tick.WaitAsync(LivenessBound));
+        Assert.Equal(0, await LedgerCountAsync());
+        Assert.Empty(host.Mail.Sent);
+        Assert.DoesNotContain(host.Logs.Events, logEvent => logEvent.RenderMessage().Contains("Hung run detected"));
+    }
+
+    /// <summary>Completes the tick within the liveness bound, never hanging the suite.</summary>
+    private static async Task AwaitTickAsync(Task tick)
+    {
+        var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
+        Assert.Same(tick, finished);
+        await tick;
+    }
+
+    /// <summary>The scheduler's "failed on attempt N" classification lines.</summary>
+    private static int FailureLogCount(IngestionSchedulerHost host) =>
+        host.Logs.Events.Count(logEvent => logEvent.RenderMessage().Contains("failed on attempt"));
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -218,7 +419,49 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetRequiredService<IngestionScheduler>();
-        return new IngestionSchedulerHost(provider, clock, scheduler);
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail, logs);
+    }
+
+    /// <summary>
+    /// The TKT-foundation-059 harness: the same real scheduler engine and fake clock, with the
+    /// chain composed entirely of doubles and the job runner doubled so the ledger write lands
+    /// deterministically (see <see cref="RecordingJobRunner"/>).
+    /// </summary>
+    private IngestionSchedulerHost BuildEdgeHost(string maxRunDuration, params IIngestJob[] chain)
+    {
+        var mail = new RecordingMailDispatcher();
+        var logs = new InMemorySerilogSink();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
+            ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
+            ["Ingestion:Scheduler:MaxRunDuration"] = maxRunDuration,
+        };
+        for (var index = 0; index < chain.Length; index++)
+        {
+            settings[$"Ingestion:Scheduler:JobCodes:{index}"] = chain[index].JobCode;
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Sink(logs).CreateLogger();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IIngestionAlerter>(new HarnessMailAlerter(mail));
+        services.AddMarketDataIngestion(configuration);
+
+        // The doubled runner replaces the real one (last registration wins) so the boundary
+        // interleavings below are deterministic; the dispatcher, ledger table, scheduler
+        // engine, retry ladder and watchdog are all the production code paths.
+        services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, chain));
+
+        var provider = services.BuildServiceProvider();
+        var scheduler = provider.GetRequiredService<IngestionScheduler>();
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail, logs);
     }
 
     private async Task ResetAsync()
@@ -252,6 +495,26 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         return document.RootElement.GetProperty(name).GetInt32();
     }
 
+    private static string StatString(IngestRun run, string name)
+    {
+        using var document = JsonDocument.Parse(run.StatsJson!);
+        return document.RootElement.GetProperty(name).GetString()!;
+    }
+
+    /// <summary>The run-ledger row's own reason code, or null for a job row (which has none).</summary>
+    private static string? ReasonCode(IngestRun run)
+    {
+        if (run.StatsJson is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(run.StatsJson);
+        return document.RootElement.TryGetProperty("reasonCode", out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
     /// <summary>An instant expressed in Turkey time (Europe/Istanbul = UTC+3, no DST
     /// since 2016) as a UTC <see cref="DateTimeOffset"/> for the fake clock.</summary>
     private static DateTimeOffset Trt(int year, int month, int day, int hour, int minute) =>
@@ -260,11 +523,18 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     /// <summary>The active engine provider plus its clock and the mail/log doubles.</summary>
     private sealed class IngestionSchedulerHost : IAsyncDisposable
     {
-        public IngestionSchedulerHost(ServiceProvider provider, FakeTimeProvider clock, IngestionScheduler scheduler)
+        public IngestionSchedulerHost(
+            ServiceProvider provider,
+            FakeTimeProvider clock,
+            IngestionScheduler scheduler,
+            RecordingMailDispatcher mail,
+            InMemorySerilogSink logs)
         {
             Provider = provider;
             Clock = clock;
             Scheduler = scheduler;
+            Mail = mail;
+            Logs = logs;
         }
 
         public ServiceProvider Provider { get; }
@@ -272,6 +542,10 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         public FakeTimeProvider Clock { get; }
 
         public IngestionScheduler Scheduler { get; }
+
+        public RecordingMailDispatcher Mail { get; }
+
+        public InMemorySerilogSink Logs { get; }
 
         public ValueTask DisposeAsync() => Provider.DisposeAsync();
     }
@@ -287,5 +561,214 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
             _mail.SendAsync(
                 new OutboundMail("builder@degerli.test", alert.Subject, alert.BodyTr, alert.BodyEn),
                 cancellationToken);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // TKT-foundation-059 doubles
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>A healthy step: the DR-1 chain never reaches it (the prologue fails first).</summary>
+    private sealed class SilentStep : IIngestJob
+    {
+        public const string Code = "silent-step";
+
+        public string JobCode => Code;
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded));
+    }
+
+    /// <summary>
+    /// A chain step that <b>swallows</b> the watchdog's cancellation and returns its terminal
+    /// result — the cooperative-but-cancellation-tolerant shape (adapters return
+    /// <see cref="IngestResult.Partial"/> in production). It waits on a cancellation callback,
+    /// so under the fake clock the attempt's outcome runs deterministically inline on the
+    /// cancelling thread: the chain can advance (or complete) inside the watchdog's cancel
+    /// window, which is exactly the boundary DR-2 and DR-3 are about.
+    /// </summary>
+    private sealed class SwallowingStep : IIngestJob
+    {
+        public const string Code = "swallow-step";
+
+        private readonly string _status;
+        private int _calls;
+
+        public SwallowingStep(string status = IngestResult.Succeeded) => _status = status;
+
+        /// <summary>Completes when the doubled step has entered its awaiting branch.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) > 1)
+            {
+                return Task.FromResult(new IngestResult(Code, 1, 0, 0, _status));
+            }
+
+            Entered.TrySetResult();
+            return AwaitCancellationAsync(cancellationToken);
+        }
+
+        private async Task<IngestResult> AwaitCancellationAsync(CancellationToken cancellationToken)
+        {
+            // A plain (non-run-continuations-asynchronously) source completed from a
+            // cancellation callback: the continuation runs inline when the watchdog cancels.
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.None);
+            using var registration = cancellationToken.Register(
+                static state => ((TaskCompletionSource)state!).TrySetResult(),
+                cancelled);
+
+            // The watchdog's own cancellation: swallowed, the step still reports its terminal
+            // result — that is what lets the chain advance inside the cancel window.
+            await cancelled.Task;
+            return new IngestResult(Code, 1, 0, 0, _status);
+        }
+    }
+
+    /// <summary>A step whose await never completes and never observes cancellation.</summary>
+    private sealed class UninterruptibleStep : IIngestJob
+    {
+        public const string Code = "uninterruptible-step";
+
+        /// <summary>Completes when the doubled step has entered its awaiting branch.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite);
+            return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
+        }
+    }
+
+    /// <summary>
+    /// A step that suspends on a test-controlled signal: it completes when
+    /// <see cref="Complete"/> is called, independently of the token and of the watchdog.
+    /// </summary>
+    private sealed class ControllableStep : IIngestJob
+    {
+        public const string Code = "controllable-step";
+
+        private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes when the doubled step has entered its awaiting branch.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await _done.Task;
+            return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
+        }
+
+        /// <summary>Lets the step finish successfully — the "completes at the bound" signal.</summary>
+        public void Complete() => _done.TrySetResult();
+    }
+
+    /// <summary>
+    /// The job runner double (TKT-foundation-059): it runs the real doubled job and appends the
+    /// same terminal <c>ingest_runs</c> row the production runner writes, but commits it with
+    /// <see cref="CancellationToken.None"/> — pinning the one interleaving the boundary tests
+    /// measure, "the step's terminal result was already recorded when the watchdog's
+    /// cancellation arrived". The real runner's write and that cancellation race on the thread
+    /// pool (both orders are legal); the double removes the race so the scheduler's own
+    /// accounting — the row it must <i>not</i> add — is what the test asserts.
+    /// </summary>
+    private sealed class RecordingJobRunner : IIngestionJobRunner
+    {
+        private static readonly JsonSerializerOptions StatsJsonOptions = new(JsonSerializerDefaults.Web);
+
+        private readonly PostgresFixture _postgres;
+        private readonly TimeProvider _clock;
+        private readonly IReadOnlyList<IIngestJob> _jobs;
+
+        public RecordingJobRunner(PostgresFixture postgres, TimeProvider clock, IEnumerable<IIngestJob> jobs)
+        {
+            _postgres = postgres;
+            _clock = clock;
+            _jobs = jobs.ToList();
+        }
+
+        public IReadOnlyCollection<string> JobCodes => _jobs.Select(job => job.JobCode).ToList();
+
+        public Task<IngestResult> RunAsync(
+            string jobCode,
+            IngestionRequest request,
+            CancellationToken cancellationToken = default) =>
+            RunAsync(jobCode, request, new IngestionRunContext(1, 1), cancellationToken);
+
+        public Task<IngestResult> RunAsync(
+            string jobCode,
+            IngestionRequest request,
+            IngestionRunContext context,
+            CancellationToken cancellationToken = default) =>
+            RunCoreAsync(jobCode, request, context, cancellationToken);
+
+        private async Task<IngestResult> RunCoreAsync(
+            string jobCode,
+            IngestionRequest request,
+            IngestionRunContext context,
+            CancellationToken cancellationToken)
+        {
+            var job = _jobs.Single(candidate => candidate.JobCode == jobCode);
+            var startedAt = _clock.GetUtcNow();
+            IngestResult result;
+            try
+            {
+                result = await job.RunAsync(request, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Record(jobCode, startedAt, IngestResult.Failed, result: null, request, context);
+                throw;
+            }
+
+            Record(jobCode, startedAt, result.Status, result, request, context);
+            return result;
+        }
+
+        /// <summary>
+        /// The terminal row, committed <b>synchronously</b> and with
+        /// <see cref="CancellationToken.None"/>: the double pins "the step's terminal result was
+        /// already recorded when the watchdog's cancellation arrived", and keeps the whole
+        /// hand-off inline so the boundary interleaving is deterministic rather than a race.
+        /// </summary>
+        private void Record(
+            string jobCode,
+            DateTimeOffset startedAt,
+            string status,
+            IngestResult? result,
+            IngestionRequest request,
+            IngestionRunContext context)
+        {
+            var stats = JsonSerializer.Serialize(new
+            {
+                written = result?.Written ?? 0,
+                unchanged = result?.Unchanged ?? 0,
+                quarantined = result?.Quarantined ?? 0,
+                skipped = result?.Skipped ?? 0,
+                mode = request.IsBackfill ? "backfill" : "incremental",
+                attempt = context.Attempt,
+                retries = context.Retries,
+                maxAttempts = context.MaxAttempts,
+            }, StatsJsonOptions);
+
+            using var db = _postgres.CreateContext();
+            db.IngestRuns.Add(new IngestRun
+            {
+                JobCode = jobCode,
+                StartedAt = startedAt,
+                FinishedAt = _clock.GetUtcNow(),
+                Status = status,
+                StatsJson = stats,
+            });
+            db.SaveChanges();
+        }
     }
 }
