@@ -7,7 +7,8 @@ scope:
 
 # TKT-foundation-062: Scheduler retry-delay starvation — a retry scheduled for T+60 fired ~11h49m late and starved the morning chain (diagnosis-first)
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/126 (branch `feature/TKT-foundation-062`, base `dev`)
 - Size: M
 - **Priority: P1 — GATED on TKT-foundation-059 merging** (same files: `IngestionScheduler.cs` + `SchedulerTests.cs`; 059 is in flight). Dispatch 059 first, then this.
 - **Verified evidence (orchestrator, Thursday night → Friday morning, 2026-10-22/23):** after the EOD chain's attempt 3 failed at **21:52:29 UTC**, the scheduler logged `Retry 3 for 2026-10-22 scheduled at 2026-10-22T22:52:29+00:00` (`IngestionScheduler.cs:453`) — then emitted **ZERO log lines until 10:41:24 UTC Friday**, when it started attempt 4 (chain step 1/9, Date 2026-10-22) unbidden. Meanwhile the **Friday 08:30 Istanbul morning chain (05:30 UTC) never fired**. So: a retry scheduled for +60 min fired **~11h49m late**, and the morning chain was **starved** while the retry was pending. New behavior, post-041 (the retry ladder itself is 041's; the starvation interaction is not).
