@@ -97,6 +97,13 @@ test.describe('TC-XC-004 — language switch preserves context', () => {
   test('SCR-002 keeps the sector filter, search term, scroll and data cache', async ({
     page,
   }) => {
+    // Viewport pinned (same technique as TC-MOV-023): sector A + "beta" leaves a
+    // one-row result list, so the page is only ~877px tall. At the default 720px
+    // viewport the entire scrollable range is 157px (scrollHeight 877 minus
+    // innerHeight 720), i.e. `scrollTo(0, 250)` below silently clamps and the
+    // "mid-page" premise is never met. A 400px-tall viewport gives 477px of
+    // range, so 250 is genuinely mid-page and a reset to the top would show.
+    await page.setViewportSize({ width: 1280, height: 400 })
     await page.goto('/stocks')
     await expect(page.getByTestId('stock-row-ALFA')).toBeVisible()
 
@@ -109,10 +116,25 @@ test.describe('TC-XC-004 — language switch preserves context', () => {
     // Put the viewport mid-page so a switch that reset to the top would be caught.
     await page.evaluate(() => window.scrollTo(0, 250))
     const scrollBefore = await page.evaluate(() => window.scrollY)
+    // The premise itself must hold: a clamped scroll target would make the
+    // before/after comparison vacuous.
+    expect(scrollBefore).toBe(250)
 
     // Switching must not re-fetch the data caches (only the session read is exempt).
     const recorder = recordRequests(page, /\/api\/v1\/(?!auth\/session)/)
-    await switchLanguage(page, 'en')
+
+    // Invoke the toggle's click handler directly. The header is not sticky
+    // (`Header.tsx`), so at scrollY 250 it sits above the viewport (measured:
+    // toggleTop −86 under a 163px header) and Playwright's `click` scrolls the
+    // page back to the top to reveal it — which masks the behaviour under test
+    // (measured: 157 → 0, reproduced identically by clicking any other header
+    // button). Dispatching the handler keeps the scroll position a property of
+    // the language switch alone; TC-MOV-023 uses the same technique.
+    await page
+      .getByRole('group', { name: TR('header.languageToggle') })
+      .getByRole('button', { name: TR('header.english') })
+      .evaluate((element) => (element as HTMLElement).click())
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
 
     // Same URL, same screen, in the other language.
     await expect(page).toHaveURL(/\/stocks$/)
