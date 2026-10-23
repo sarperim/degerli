@@ -682,7 +682,7 @@ v1.5.34 (the TKT-foundation-042 input-aware-recompute doctrine applied to `deriv
 - Expected: identical re-runs report `written: 0` with `unchanged` = the full row set (416 metric rows / 15 median rows — never the pre-ticket silent `0/0`), every stored row (values, windows, markers **and** `computed_at`) is untouched, exactly one row per `(instrument, metric, as_of_date)` / `(sector, metric, as_of_date)` and the historical day is byte-identical. Changed-input re-runs report the affected rows as **written** (the metrics lane: exactly the rows whose stored values no longer match the recompute — the FCF family for the CAPEX change; the medians lane: exactly one row, sector A P/E, now 20 with unchanged peer/exclusion counts) and the rest as `unchanged`, the repaired values are the current-fact values (EV 2200 / FCF 150, FCF yield 0.075), only the repaired rows carry the later `computed_at`, the run-ledger stats agree with the result, one row per key holds and the historical day is byte-identical. *(Red before the fix: 4/4 cases failed — the identical re-runs rewrote every row and moved `computed_at`, and the changed-input re-runs reported `written: 0` while overwriting the rows.)*
 - Dependencies: —
 
-## 12. Intraday refresh lane (TKT-foundation-047) — session sweeps and the intraday/close price-state contract (TKT-foundation-047)
+## 12. Intraday refresh lane (TKT-foundation-047) — session sweeps and the intraday/close price-state contract
 
 **Lane posture.** The intraday lane is a **sibling** of the EOD prices lane on the same
 ingestion engine (architecture §10.9.18): job code `intraday-quotes`, cadence
