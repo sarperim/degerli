@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-058: Share-count store from VYK `/memberSecurities` — the zero-shares world ends (SUPERSEDES TKT-foundation-033)
 
-- Status: in-review
+- Status: done — merged 2026-10-23 (PR #123; §13.1 v1.5.36). Live ingest RUN 2026-10-23: shares job run 219 — 556 written, 0 skips; ASELS 4.56B, THYAO 1.38B, TUPRS 1,926,795,598, GARAN 4.2B, AEFES 592.1M (all match known counts); served via `GET /stocks/{symbol}/balance-sheet.shareCount`. UNIT CROSS-VALIDATION RECORDED AS UNRESOLVED, not passed: the served field is `currentCapital` (a monetary capital figure — 64/556 rows carry sub-unit precision, e.g. LYDYE 1,831,580.69), so equality with share counts holds where nominal = 1 TL and is unproven elsewhere; needs a planner/user decision.
 - Size: M
 - **Priority: P1 — dispatch-ready immediately (USER GRANT 2026-10-22: autonomous unblock, notice recorded; the orchestrator documents it in the run report).** Unblocks the entire share-derived surface: per-share metrics, multiples, market P/E, DCF baselines (seams pinned below; consumers stay their own tickets).
 - **Supersedes TKT-foundation-033** (amended there with a dated note). The old blocker is DISPROVEN on both legs: (a) there is no separate production endpoint — `apigw.mkk.com.tr` 302-redirects to the test gateway (recorded on 033's file at dev `9bfed14`); (b) the source for share counts was never the disclosure XBRL layer — it is **`GET /api/vyk/memberSecurities` on the gateway we already ingest from**, an endpoint NOT currently in our pipeline.

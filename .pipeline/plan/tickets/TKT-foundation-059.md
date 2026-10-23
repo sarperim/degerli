@@ -7,7 +7,7 @@ scope:
 
 # TKT-foundation-059: Watchdog edge-fix — the four `RunAttemptAsync` boundary defects from 041's round-3 late report
 
-- Status: in-review
+- Status: done — merged 2026-10-23 (PR #124; §13.1 v1.5.37). No live criterion of its own (edge repairs); the watchdog fired correctly on live hangs twice (runs 203, 208).
 - PR: https://github.com/sarperim/degerli/pull/124 (base `dev`, head `feature/TKT-foundation-059`)
 - Size: S
 - **Priority: P1 — dispatch-ready immediately (#114/041 is MERGED; the scheduler files are free). RECOMMENDED BEFORE FRIDAY'S 20:30 Istanbul EOD chain:** the watchdog is tonight's/tomorrow's chain-evidence instrument — its edge cases must be correct before the chain relies on it.**
