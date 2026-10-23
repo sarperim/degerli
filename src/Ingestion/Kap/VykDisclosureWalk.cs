@@ -131,8 +131,9 @@ public sealed record VykDetailSkip(
 {
     /// <summary>
     /// The quarantine evidence document: the disclosure id, the named reason, the failure kind
-    /// (a timeout, an HTTP status, a transport error) and the gateway's error text/body verbatim.
-    /// Written as the quarantine row's payload so the skip is inspectable and re-ingestable.
+    /// (an HTTP status, a fault envelope, a transport error or a timeout) and the gateway's error
+    /// text/body verbatim. Written as the quarantine row's payload so the skip is inspectable
+    /// and re-ingestable.
     /// </summary>
     public string ToEvidenceJson() => JsonSerializer.Serialize(new
     {
@@ -362,15 +363,25 @@ public sealed class VykDisclosureWalker
                             BuildDetailPath(detailPath, disclosure.DisclosureIndex!),
                             cancellationToken)
                         .ConfigureAwait(false);
+
+                    // Decode inside the same per-item try: every adapter's DecodeDetail throws the
+                    // fault-envelope SourceFetchException lazily, and it must become the same
+                    // recorded skip as an HTTP error. Materialize before appending so a detail that
+                    // fails mid-decode contributes no facts and no raw evidence.
+                    var decoded = decode(detailRaw, symbol, disclosure).ToList();
+                    raw.AppendLine(detailRaw);
+                    facts.AddRange(decoded);
                 }
-                catch (Exception exception) when (exception is SourceFetchException or VykDetailTimeoutException)
+                catch (Exception exception) when (exception is SourceFetchException or HttpRequestException or VykDetailTimeoutException)
                 {
                     // Per-disclosure quarantine-and-continue (01 v1.5.40 §10.9.15, the 046
                     // per-constituent doctrine one level down): one un-fetchable attachment (the
-                    // 2026-10-22 HTTP 500 on /disclosureDetail/1185709, or the 90-minute hang) is
+                    // 2026-10-22 HTTP 500 on /disclosureDetail/1185709, a 200 fault envelope on an
+                    // auth/throttle failure, a transport error, or the 90-minute hang) is
                     // isolated with its evidence, counted and skipped — the walk continues, the
                     // cursor still advances past the recorded index, and the run ends an honest
-                    // partial. Never a whole-run failure, never a silent omission.
+                    // partial. Never a whole-run failure, never a silent omission. A malformed
+                    // detail body stays a SourcePayloadException and still fails the run.
                     var skip = DescribeSkip(symbol, disclosure.DisclosureIndex!, exception);
                     skips.Add(skip);
                     _logger?.LogWarning(
@@ -384,9 +395,6 @@ public sealed class VykDisclosureWalker
                         skip.Error);
                     continue;
                 }
-
-                raw.AppendLine(detailRaw);
-                facts.AddRange(decode(detailRaw, symbol, disclosure));
             }
 
             var advanced = maxIndex > from;
@@ -463,7 +471,8 @@ public sealed class VykDisclosureWalker
     /// <summary>
     /// Builds the evidence of one isolated detail (01 v1.5.40 §10.9.15): the named reason, the
     /// failure kind and the gateway's error verbatim — an HTTP status and body excerpt for a
-    /// served response, the transport error text otherwise, the bound message for a timeout.
+    /// served response, <c>fault</c> for a 200 fault envelope, <c>transport</c> for a connection
+    /// failure, the bound message for a timeout.
     /// </summary>
     private VykDetailSkip DescribeSkip(string symbol, string disclosureIndex, Exception exception) =>
         exception switch
@@ -472,7 +481,9 @@ public sealed class VykDisclosureWalker
                 symbol,
                 disclosureIndex,
                 DisclosureDetailUnfetchable,
-                fetch.StatusCode is not null ? "http" : "transport",
+                // A status means the gateway served an HTTP error; no status means the 200 body
+                // was a fault envelope (each adapter's DecodeDetail throws it without a status).
+                fetch.StatusCode is not null ? "http" : "fault",
                 fetch.StatusCode,
                 _redact(fetch.Message),
                 fetch.Body),
@@ -483,6 +494,14 @@ public sealed class VykDisclosureWalker
                 "timeout",
                 null,
                 _redact(timeout.Message),
+                null),
+            HttpRequestException transport => new VykDetailSkip(
+                symbol,
+                disclosureIndex,
+                DisclosureDetailUnfetchable,
+                "transport",
+                null,
+                _redact(transport.Message),
                 null),
             _ => new VykDetailSkip(
                 symbol,

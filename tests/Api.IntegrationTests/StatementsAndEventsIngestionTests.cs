@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
@@ -1097,6 +1100,141 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
+    /// TC-MDF-094 (fault envelope) — <b>per-item isolation</b> for the gateway's HTTP <b>200</b>
+    /// <c>fault</c> body (01 v1.5.40 §10.9.15; the Apinizer answer on auth/throttle failures, the
+    /// shape 034 captured live). Each adapter's <c>DecodeDetail</c> throws that fault as a
+    /// <c>SourceFetchException</c> lazily, so the isolation must cover the decode as well as the
+    /// fetch: the item is quarantined with the <b>fault</b> failure kind and the fault code/message
+    /// verbatim, contributes no facts, the fetchable sibling is written, the cursor advances past
+    /// the faulted index, and the run ends an honest <c>partial</c> — never <c>failed</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_094_a_detail_fault_envelope_is_an_isolated_skip_not_a_failed_run()
+    {
+        const string UnfetchableIndex = "1138987";
+        const string FaultCode = "OI002";
+        const string FaultMessage = "Authentication policy failed or rate limit exceeded";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), (UnfetchableIndex, "CA"));
+        StubFamilyDetailFor("corporate-actions", "1138796");
+        // HTTP 200 whose body is the gateway's fault envelope — the class a throttle mid-walk hits.
+        var faultBody = "{\"fault\":{\"faultCode\":\"" + FaultCode + "\",\"faultString\":\"" + FaultMessage + "\"}}";
+        StubDetail(UnfetchableIndex, faultBody);
+
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "corporate-actions");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+        Assert.Equal(1, result.Quarantined);
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+
+        // The faulted detail contributes no fact; only the fetchable sibling's row exists.
+        Assert.Equal(1, await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+        Assert.Equal(result.Written, (int)await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+
+        // Recorded, never silently dropped: the cursor advanced past the faulted index.
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-corporate-actions-cursor");
+        Assert.Equal(UnfetchableIndex, cursor.Notes);
+
+        // Exactly one skip, with the fault failure kind and the gateway's fault code/message verbatim.
+        var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "corporate-actions").ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Contains(UnfetchableIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+        using var evidence = JsonDocument.Parse(quarantine.PayloadJson!);
+        Assert.Equal("fault", evidence.RootElement.GetProperty("failureKind").GetString());
+        Assert.Equal(JsonValueKind.Null, evidence.RootElement.GetProperty("statusCode").ValueKind);
+        Assert.Contains(FaultCode, evidence.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+        Assert.Contains(FaultMessage, evidence.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+
+        // Honest partial ledger: the skip is counted, the symbol is not failed.
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+        var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .Single(e => e.GetProperty("symbol").GetString() == "ALFA");
+        Assert.Equal(1, perSymbol.GetProperty("quarantined").GetInt32());
+        Assert.False(perSymbol.GetProperty("failed").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-MDF-094 (transport) — <b>per-item isolation</b> for a transport failure (01 v1.5.40
+    /// §10.9.15): the doubled detail endpoint resets the connection, so the client throws
+    /// <c>HttpRequestException</c> rather than a status error. One transport blip must take the
+    /// same skip path — <c>transport</c> failure kind, one quarantine, sibling written, cursor
+    /// advanced, run <c>partial</c> — instead of failing the whole run.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_094_a_detail_transport_error_is_an_isolated_skip_not_a_failed_run()
+    {
+        const string UnfetchableIndex = "1138987";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), (UnfetchableIndex, "CA"));
+
+        // The detail route is doubled at the socket: the faulted index is reset (a genuine
+        // HttpRequestException), the sibling answers normally — one transport blip, not systemic.
+        var detailDouble = StartDetailTransportDouble(UnfetchableIndex, CapitalIncreaseDetailBody());
+        try
+        {
+            var port = ((IPEndPoint)detailDouble.LocalEndpoint).Port;
+            await using var provider = BuildIngestion(
+                vyk: true,
+                extraSettings: new Dictionary<string, string?>
+                {
+                    ["Ingestion:CorporateActions:DetailPath"] =
+                        $"http://127.0.0.1:{port}/disclosureDetail/{{disclosureIndex}}",
+                });
+
+            var result = await RunAsync(provider, "corporate-actions");
+
+            Assert.Equal(IngestResult.Partial, result.Status);
+            Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+            Assert.Equal(1, result.Quarantined);
+            Assert.Equal(0, result.Skipped);
+
+            await using var db = _postgres.CreateContext();
+            var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+
+            Assert.Equal(1, await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+            Assert.Equal(result.Written, (int)await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+
+            var cursor = await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-corporate-actions-cursor");
+            Assert.Equal(UnfetchableIndex, cursor.Notes);
+
+            var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "corporate-actions").ToListAsync());
+            Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+            Assert.Contains(UnfetchableIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+            using var evidence = JsonDocument.Parse(quarantine.PayloadJson!);
+            Assert.Equal("transport", evidence.RootElement.GetProperty("failureKind").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(evidence.RootElement.GetProperty("error").GetString()));
+
+            var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync());
+            Assert.Equal(IngestResult.Partial, run.Status);
+            using var stats = JsonDocument.Parse(run.StatsJson!);
+            Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+            var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+                .Single(e => e.GetProperty("symbol").GetString() == "ALFA");
+            Assert.Equal(1, perSymbol.GetProperty("quarantined").GetInt32());
+            Assert.False(perSymbol.GetProperty("failed").GetBoolean());
+        }
+        finally
+        {
+            detailDouble.Stop();
+        }
+    }
+
+    /// <summary>
     /// TC-MDF-095 — <b>per-item hang bounded</b> (01 v1.5.40 §10.9.15): a detail endpoint that
     /// accepts the connection and never answers (the 90-minute stall of runs 185/190) is bounded
     /// by the configured per-item timeout and takes the <b>identical</b> quarantine-and-continue
@@ -1237,6 +1375,74 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             "corporate-actions" => CapitalIncreaseDetailBody(),
             _ => DisclosureDetailBody(disclosureIndex, "CA"),
         });
+
+    /// <summary>
+    /// A minimal HTTP/1.1 detail double that answers <paramref name="healthyBody"/> for every
+    /// disclosure index except <paramref name="faultedIndex"/>, where it closes the socket with an
+    /// <b>RST</b> — the client then raises <c>HttpRequestException</c> (the transport class of
+    /// §10.9.15), never a status error. WireMock's fault model has no connection-reset primitive
+    /// in this version and its empty/malformed responses are delivered as bodies, so the transport
+    /// class is doubled at the socket.
+    /// </summary>
+    private static TcpListener StartDetailTransportDouble(string faultedIndex, string healthyBody)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    {
+                        try
+                        {
+                            var stream = client.GetStream();
+                            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+                            var requestLine = await reader.ReadLineAsync().ConfigureAwait(false) ?? string.Empty;
+                            string? header;
+                            do
+                            {
+                                header = await reader.ReadLineAsync().ConfigureAwait(false);
+                            }
+                            while (!string.IsNullOrEmpty(header));
+
+                            if (requestLine.Contains(faultedIndex, StringComparison.Ordinal))
+                            {
+                                // Reset rather than FIN: the client sees a transport failure.
+                                client.Client.LingerState = new LingerOption(true, 0);
+                                return;
+                            }
+
+                            var body = Encoding.UTF8.GetBytes(healthyBody);
+                            var headers = Encoding.ASCII.GetBytes(
+                                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+                            await stream.WriteAsync(headers).ConfigureAwait(false);
+                            await stream.WriteAsync(body).ConfigureAwait(false);
+                        }
+                        catch (Exception exception) when (exception is IOException or SocketException)
+                        {
+                            // The client hung up first — nothing to answer.
+                        }
+                    }
+                });
+            }
+        });
+
+        return listener;
+    }
 
     /// <summary>
     /// A detail endpoint that <b>accepts and stalls</b> for <paramref name="delay"/> (the
