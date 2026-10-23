@@ -11,7 +11,7 @@ scope:
 
 # TKT-foundation-063: Statements lane — per-company isolation + stale-disclosure-cursor recovery (`ER005` is not a source failure)
 
-- Status: in-review
+- Status: done — merged 2026-10-23 (PR #128; §13.1 v1.5.42). LIVE CRITERION MET, run **249** (paced, 22:21→22:46 UTC): status **`partial`** (written 0, unchanged 60, quarantined 25) — NOT `failed`, so the zero-write isolated-skip world no longer fail-stops the chain. Cursor recovery fired live exactly as pinned: **2 reset events, one per symbol (TTKOM, TOASO)**, log verbatim "persisted cursor … answered HTTP 400 … resetting once to EarlyDisclosureIndex 0 (gateway body: …ER005…)"; no repeated reset. Prior runs 227/233/236/244 had all reported `failed` on the same world and fail-stopped the chain six times.
 - PR: https://github.com/sarperim/degerli/pull/128
 - Size: M
 - **Priority: P1 — tonight/tomorrow's chain risk (USER GRANT 2026-10-23 afternoon).** The lane fails 22–24 of 30 covered companies every run and, on a zero-write run, reports `failed` — which fail-stops the EOD chain **before `metrics-recompute` / `market-snapshot` / `medians`**, the same chain-loss class 061 closed for the event families.

@@ -7,7 +7,7 @@ scope:
 
 # TKT-foundation-062: Scheduler retry-delay starvation — a retry scheduled for T+60 fired ~11h49m late and starved the morning chain (diagnosis-first)
 
-- Status: in-review
+- Status: done — merged 2026-10-23 (PR #126; §13.1 v1.5.41). LIVE CRITERIA MET on the 2026-10-23 EOD chain: (1) punctuality — the chain started at **17:30:00.123** exactly on cron for Date 2026-10-23 with no starvation (first on-time EOD chain since the incident); (2) retry punctuality — after the statements failure at 17:47:37 the next attempt was scheduled and fired at **17:52:37, exactly +5 min** (ladder tolerance). The ~11h49m duration anomaly is explicitly NOT claimed as explained by this mechanism (needs an attempt outliving its own bound: §10.9.17 class, ticket 064).
 - PR: https://github.com/sarperim/degerli/pull/126 (branch `feature/TKT-foundation-062`, base `dev`)
 - Size: M
 - **Priority: P1 — GATED on TKT-foundation-059 merging** (same files: `IngestionScheduler.cs` + `SchedulerTests.cs`; 059 is in flight). Dispatch 059 first, then this.
