@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
@@ -678,8 +681,13 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
-    /// TKT-foundation-034 (R5) — a <b>404 on the detail route mid-walk</b> is a source failure:
-    /// failed run, no fact rows (the payload is never persisted), no quarantine.
+    /// TKT-foundation-034 (R5) — a <b>404 on the detail route mid-walk</b> is never an honest empty
+    /// and never a silently dropped row. <b>Amended by TKT-foundation-061 (01 v1.5.40 §10.9.15,
+    /// TC-MDF-094):</b> the 034 posture failed the whole run here; the per-disclosure doctrine now
+    /// isolates the unfetchable attachment instead — the skip is quarantined with the gateway's
+    /// 404 verbatim and counted, the fetchable sibling is written, and the run ends <c>partial</c>.
+    /// The 034 intent survives intact: nothing is invented for the missing item and nothing is
+    /// omitted silently (a 404 detail is not an empty disclosure).
     /// </summary>
     [Fact]
     public async Task TKT_foundation_034_detail_404_mid_walk_is_an_honest_source_failure()
@@ -691,13 +699,25 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         StubDetailError("1138987", 404, """{"message":"Resource not found."}""");
         await using var provider = BuildIngestion(vyk: true);
 
-        await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "corporate-actions"));
+        var result = await RunAsync(provider, "corporate-actions");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(1, result.Written);
+        Assert.Equal(1, result.Quarantined);
 
         await using var db = _postgres.CreateContext();
-        Assert.Equal(0, await db.CorporateActions.CountAsync());
-        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+
+        // Only the fetchable disclosure's action is written — the 404 item yields nothing.
+        Assert.Equal(1, await db.CorporateActions.CountAsync());
+
+        var quarantine = Assert.Single(await db.QuarantinedFacts.ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Contains("1138987", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("404", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("Resource not found.", quarantine.PayloadJson, StringComparison.Ordinal);
+
         Assert.Equal(
-            "failed",
+            "partial",
             Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync()).Status);
     }
 
@@ -997,6 +1017,450 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         };
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-061 — event-family per-disclosure resilience (TC-MDF-094/095)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-094 — <b>per-item isolation</b> (01 v1.5.40 §10.9.15, the 046 per-constituent
+    /// doctrine one level down): one disclosure detail answers the gateway's HTTP 500 (Thursday
+    /// 2026-10-22's run-195 shape on <c>/disclosureDetail/1185709</c>). The walk must complete:
+    /// the unfetchable item is quarantined <b>with the gateway's error verbatim</b> and counted
+    /// with its named reason, every fetchable item's facts and the cursor are written, and the run
+    /// terminates an honest <c>partial</c> — never <c>failed</c> (the pre-fix behaviour, which
+    /// fail-stopped the EOD chain before the snapshot steps), never a silent omission.
+    /// </summary>
+    [Theory]
+    [InlineData("dividends", "dividends", "kap-dividends-cursor", "1138986")]
+    [InlineData("corporate-actions", "corporate_actions", "kap-corporate-actions-cursor", "1138796")]
+    [InlineData("disclosures", "kap_disclosures", "kap-disclosures-cursor", "1138796")]
+    public async Task TC_MDF_094_an_unfetchable_detail_is_isolated_and_the_run_ends_partial(
+        string jobCode,
+        string table,
+        string cursorDataType,
+        string fetchableIndex)
+    {
+        const string UnfetchableIndex = "1138987";
+        const string GatewayBody = """{"fault":{"faultCode":"OI005","faultString":"Unhandled backend failure on disclosure detail"}}""";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, (fetchableIndex, "CA"), (UnfetchableIndex, "CA"));
+        StubFamilyDetailFor(jobCode, fetchableIndex);
+        StubDetailError(UnfetchableIndex, 500, GatewayBody);
+
+        await using var provider = BuildIngestion(vyk: true);
+
+        // The run returns a result instead of throwing out of the walk/job (pre-fix: the
+        // SourceFetchException escaped and the runner recorded `failed`).
+        var result = await RunAsync(provider, jobCode);
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+        Assert.Equal(1, result.Quarantined);
+        // The skip is a quarantine event, not a scope-bound exclusion (IngestResult.Skipped).
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+
+        // Every fetchable item's rows are written…
+        Assert.True(await RowsForAsync(db, table, alfa) > 0);
+
+        // …and the cursor advanced past the recorded index (the skip is recorded, never dropped —
+        // a silent omission would leave the cursor behind the isolated row forever).
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == cursorDataType);
+        Assert.Equal(UnfetchableIndex, cursor.Notes);
+
+        // The skip is quarantined with evidence: the named reason, the disclosure id and the
+        // gateway's error verbatim — inspectable and re-ingestable, never a fabricated row.
+        var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == jobCode).ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Equal("kap", quarantine.SourceRef);
+        Assert.Contains(UnfetchableIndex, quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("http", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("500", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("returned HTTP 500", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("Unhandled backend failure on disclosure detail", quarantine.PayloadJson, StringComparison.Ordinal);
+
+        // The run ledger is an honest partial and counts the skip.
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == jobCode).ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+        var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .Single(e => e.GetProperty("symbol").GetString() == "ALFA");
+        Assert.Equal(1, perSymbol.GetProperty("quarantined").GetInt32());
+        Assert.False(perSymbol.GetProperty("failed").GetBoolean());
+
+        // Every family fact row is the one the fetchable detail yielded — no invented value took
+        // the unfetchable item's place (nothing is written for the isolated index).
+        Assert.Equal(result.Written, (int)await RowsForAsync(db, table, alfa));
+    }
+
+    /// <summary>
+    /// TC-MDF-094 (fault envelope) — <b>per-item isolation</b> for the gateway's HTTP <b>200</b>
+    /// <c>fault</c> body (01 v1.5.40 §10.9.15; the Apinizer answer on auth/throttle failures, the
+    /// shape 034 captured live). Each adapter's <c>DecodeDetail</c> throws that fault as a
+    /// <c>SourceFetchException</c> lazily, so the isolation must cover the decode as well as the
+    /// fetch: the item is quarantined with the <b>fault</b> failure kind and the fault code/message
+    /// verbatim, contributes no facts, the fetchable sibling is written, the cursor advances past
+    /// the faulted index, and the run ends an honest <c>partial</c> — never <c>failed</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_094_a_detail_fault_envelope_is_an_isolated_skip_not_a_failed_run()
+    {
+        const string UnfetchableIndex = "1138987";
+        const string FaultCode = "OI002";
+        const string FaultMessage = "Authentication policy failed or rate limit exceeded";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), (UnfetchableIndex, "CA"));
+        StubFamilyDetailFor("corporate-actions", "1138796");
+        // HTTP 200 whose body is the gateway's fault envelope — the class a throttle mid-walk hits.
+        var faultBody = "{\"fault\":{\"faultCode\":\"" + FaultCode + "\",\"faultString\":\"" + FaultMessage + "\"}}";
+        StubDetail(UnfetchableIndex, faultBody);
+
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "corporate-actions");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+        Assert.Equal(1, result.Quarantined);
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+
+        // The faulted detail contributes no fact; only the fetchable sibling's row exists.
+        Assert.Equal(1, await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+        Assert.Equal(result.Written, (int)await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+
+        // Recorded, never silently dropped: the cursor advanced past the faulted index.
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-corporate-actions-cursor");
+        Assert.Equal(UnfetchableIndex, cursor.Notes);
+
+        // Exactly one skip, with the fault failure kind and the gateway's fault code/message verbatim.
+        var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "corporate-actions").ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Contains(UnfetchableIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+        using var evidence = JsonDocument.Parse(quarantine.PayloadJson!);
+        Assert.Equal("fault", evidence.RootElement.GetProperty("failureKind").GetString());
+        Assert.Equal(JsonValueKind.Null, evidence.RootElement.GetProperty("statusCode").ValueKind);
+        Assert.Contains(FaultCode, evidence.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+        Assert.Contains(FaultMessage, evidence.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+
+        // Honest partial ledger: the skip is counted, the symbol is not failed.
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+        var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .Single(e => e.GetProperty("symbol").GetString() == "ALFA");
+        Assert.Equal(1, perSymbol.GetProperty("quarantined").GetInt32());
+        Assert.False(perSymbol.GetProperty("failed").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-MDF-094 (transport) — <b>per-item isolation</b> for a transport failure (01 v1.5.40
+    /// §10.9.15): the doubled detail endpoint resets the connection, so the client throws
+    /// <c>HttpRequestException</c> rather than a status error. One transport blip must take the
+    /// same skip path — <c>transport</c> failure kind, one quarantine, sibling written, cursor
+    /// advanced, run <c>partial</c> — instead of failing the whole run.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_094_a_detail_transport_error_is_an_isolated_skip_not_a_failed_run()
+    {
+        const string UnfetchableIndex = "1138987";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), (UnfetchableIndex, "CA"));
+
+        // The detail route is doubled at the socket: the faulted index is reset (a genuine
+        // HttpRequestException), the sibling answers normally — one transport blip, not systemic.
+        var detailDouble = StartDetailTransportDouble(UnfetchableIndex, CapitalIncreaseDetailBody());
+        try
+        {
+            var port = ((IPEndPoint)detailDouble.LocalEndpoint).Port;
+            await using var provider = BuildIngestion(
+                vyk: true,
+                extraSettings: new Dictionary<string, string?>
+                {
+                    ["Ingestion:CorporateActions:DetailPath"] =
+                        $"http://127.0.0.1:{port}/disclosureDetail/{{disclosureIndex}}",
+                });
+
+            var result = await RunAsync(provider, "corporate-actions");
+
+            Assert.Equal(IngestResult.Partial, result.Status);
+            Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+            Assert.Equal(1, result.Quarantined);
+            Assert.Equal(0, result.Skipped);
+
+            await using var db = _postgres.CreateContext();
+            var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+
+            Assert.Equal(1, await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+            Assert.Equal(result.Written, (int)await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+
+            var cursor = await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-corporate-actions-cursor");
+            Assert.Equal(UnfetchableIndex, cursor.Notes);
+
+            var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "corporate-actions").ToListAsync());
+            Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+            Assert.Contains(UnfetchableIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+            using var evidence = JsonDocument.Parse(quarantine.PayloadJson!);
+            Assert.Equal("transport", evidence.RootElement.GetProperty("failureKind").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(evidence.RootElement.GetProperty("error").GetString()));
+
+            var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "corporate-actions").ToListAsync());
+            Assert.Equal(IngestResult.Partial, run.Status);
+            using var stats = JsonDocument.Parse(run.StatsJson!);
+            Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+            var perSymbol = stats.RootElement.GetProperty("symbols").EnumerateArray()
+                .Single(e => e.GetProperty("symbol").GetString() == "ALFA");
+            Assert.Equal(1, perSymbol.GetProperty("quarantined").GetInt32());
+            Assert.False(perSymbol.GetProperty("failed").GetBoolean());
+        }
+        finally
+        {
+            detailDouble.Stop();
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-095 — <b>per-item hang bounded</b> (01 v1.5.40 §10.9.15): a detail endpoint that
+    /// accepts the connection and never answers (the 90-minute stall of runs 185/190) is bounded
+    /// by the configured per-item timeout and takes the <b>identical</b> quarantine-and-continue
+    /// path as the 500 case — recorded with the <c>timeout</c> failure kind, counted, and the run
+    /// ends partial with every fetchable item written. Pre-fix the stall escaped the walk to the
+    /// run level, where only the 041 watchdog could bound it (a <c>RUN_HUNG</c> row and a lost run).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_095_a_stalled_detail_is_bounded_and_takes_the_skip_path()
+    {
+        const string UnfetchableIndex = "1138987";
+
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), (UnfetchableIndex, "CA"));
+        StubFamilyDetailFor("corporate-actions", "1138796");
+        StubStalledDetail(UnfetchableIndex, TimeSpan.FromSeconds(60));
+
+        await using var provider = BuildIngestion(
+            vyk: true,
+            extraSettings: new Dictionary<string, string?> { ["Ingestion:Kap:DetailFetchTimeoutMs"] = "500" });
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await RunAsync(provider, "corporate-actions");
+        stopwatch.Stop();
+
+        // Bounded at the item: the double would have stalled for 60 s; the configured 500 ms bound
+        // ends the item and the walk continues (a generous ceiling keeps the assertion about the
+        // bound, not about machine speed).
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(20),
+            $"the stalled detail was not bounded per item (elapsed {stopwatch.Elapsed.TotalSeconds:0.0}s)");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(1, result.Quarantined);
+        Assert.True(result.Written > 0, "the fetchable disclosure's facts were not written");
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(1, await db.CorporateActions.LongCountAsync(a => a.InstrumentId == alfa));
+
+        var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "corporate-actions").ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Contains(UnfetchableIndex, quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("timeout", quarantine.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("did not answer within", quarantine.PayloadJson, StringComparison.Ordinal);
+
+        var cursor = await db.CoverageMetadata.SingleAsync(
+            c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-corporate-actions-cursor");
+        Assert.Equal(UnfetchableIndex, cursor.Notes);
+    }
+
+    /// <summary>
+    /// TC-MDF-095 (second half) — a <b>healthy paced walk is never falsely timed out</b>: the
+    /// shipped bound stays an order of magnitude above the shipped pace (the ticket's "timeout in
+    /// the low minutes distinguishes hang from pace"), and a slow-but-answering detail under the
+    /// default bound is ingested normally with nothing quarantined.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_095_a_healthy_paced_walk_is_never_falsely_timed_out()
+    {
+        // The shipped constant vs the shipped pace: the default must be far above one paced call
+        // (Ingestion:Statements:RequestDelayMs — the pacer every family walk uses), or a healthy
+        // gateway would be quarantined for being slow.
+        var appsettingsPath = Path.Combine(FindRepositoryRoot(), "src", "Api", "appsettings.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
+        var shippedPaceMs = document.RootElement
+            .GetProperty("Ingestion").GetProperty("Statements").GetProperty("RequestDelayMs").GetInt32();
+        Assert.Equal(10_000, shippedPaceMs);
+        Assert.True(
+            KapSourceOptions.DefaultDetailFetchTimeoutMs >= 10 * shippedPaceMs,
+            $"the per-item bound ({KapSourceOptions.DefaultDetailFetchTimeoutMs} ms) is too close to the shipped pace ({shippedPaceMs} ms)");
+        Assert.Equal(TimeSpan.FromMilliseconds(KapSourceOptions.DefaultDetailFetchTimeoutMs), new KapSourceOptions().DetailFetchTimeout);
+
+        // Behaviourally: a detail that answers slowly (2 s — 25% of the pace, far inside the
+        // bound) is never a timeout, so nothing is quarantined and the run succeeds.
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"));
+        StubStalledDetail("1138796", TimeSpan.FromSeconds(2), CapitalIncreaseDetailBody());
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "corporate-actions");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(0, result.Quarantined);
+        Assert.Equal(1, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "corporate-actions"));
+    }
+
+    /// <summary>
+    /// TC-MDF-094 (chain composition) — a <b>partial</b> corporate-actions step does not block the
+    /// chain: the steps that Thursday's failure never reached (metrics-recompute /
+    /// market-snapshot / medians) run straight after it through the same production runner and
+    /// none of them fails. The chain's step policy is untouched (01 v1.5.33 §10.9.16: fail-stop
+    /// on <c>failed</c> only), which is exactly what the honest partial buys.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_094_a_partial_corporate_actions_step_keeps_the_chain_steps_reachable()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138796", "CA"), ("1138987", "CA"));
+        StubFamilyDetailFor("corporate-actions", "1138796");
+        StubDetailError("1138987", 500, """{"fault":{"faultCode":"OI005","faultString":"Unhandled backend failure on disclosure detail"}}""");
+        await using var provider = BuildIngestion(vyk: true);
+
+        var corporateActions = await RunAsync(provider, "corporate-actions");
+        Assert.Equal(IngestResult.Partial, corporateActions.Status);
+
+        var metrics = await RunAsync(provider, "metrics-recompute");
+        var snapshot = await RunAsync(provider, "market-snapshot");
+        var medians = await RunAsync(provider, "medians");
+
+        Assert.NotEqual(IngestResult.Failed, metrics.Status);
+        Assert.NotEqual(IngestResult.Failed, snapshot.Status);
+        Assert.NotEqual(IngestResult.Failed, medians.Status);
+
+        await using var db = _postgres.CreateContext();
+        var runs = await db.IngestRuns
+            .Where(r => new[] { "corporate-actions", "metrics-recompute", "market-snapshot", "medians" }.Contains(r.JobCode))
+            .Select(r => r.JobCode)
+            .ToListAsync();
+        Assert.Equal(4, runs.Distinct().Count());
+        Assert.Equal(
+            0,
+            await db.IngestRuns.CountAsync(r => r.Status == IngestResult.Failed && r.JobCode != "corporate-actions"));
+    }
+
+    /// <summary>The family-appropriate detail double for one disclosure index.</summary>
+    private void StubFamilyDetailFor(string jobCode, string disclosureIndex) => StubDetail(
+        disclosureIndex,
+        jobCode switch
+        {
+            "dividends" => DividendDetailBody(),
+            "corporate-actions" => CapitalIncreaseDetailBody(),
+            _ => DisclosureDetailBody(disclosureIndex, "CA"),
+        });
+
+    /// <summary>
+    /// A minimal HTTP/1.1 detail double that answers <paramref name="healthyBody"/> for every
+    /// disclosure index except <paramref name="faultedIndex"/>, where it closes the socket with an
+    /// <b>RST</b> — the client then raises <c>HttpRequestException</c> (the transport class of
+    /// §10.9.15), never a status error. WireMock's fault model has no connection-reset primitive
+    /// in this version and its empty/malformed responses are delivered as bodies, so the transport
+    /// class is doubled at the socket.
+    /// </summary>
+    private static TcpListener StartDetailTransportDouble(string faultedIndex, string healthyBody)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    {
+                        try
+                        {
+                            var stream = client.GetStream();
+                            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+                            var requestLine = await reader.ReadLineAsync().ConfigureAwait(false) ?? string.Empty;
+                            string? header;
+                            do
+                            {
+                                header = await reader.ReadLineAsync().ConfigureAwait(false);
+                            }
+                            while (!string.IsNullOrEmpty(header));
+
+                            if (requestLine.Contains(faultedIndex, StringComparison.Ordinal))
+                            {
+                                // Reset rather than FIN: the client sees a transport failure.
+                                client.Client.LingerState = new LingerOption(true, 0);
+                                return;
+                            }
+
+                            var body = Encoding.UTF8.GetBytes(healthyBody);
+                            var headers = Encoding.ASCII.GetBytes(
+                                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+                            await stream.WriteAsync(headers).ConfigureAwait(false);
+                            await stream.WriteAsync(body).ConfigureAwait(false);
+                        }
+                        catch (Exception exception) when (exception is IOException or SocketException)
+                        {
+                            // The client hung up first — nothing to answer.
+                        }
+                    }
+                });
+            }
+        });
+
+        return listener;
+    }
+
+    /// <summary>
+    /// A detail endpoint that <b>accepts and stalls</b> for <paramref name="delay"/> (the
+    /// 2026-10-22 hang shape), optionally answering the healthy body when the delay elapses.
+    /// </summary>
+    private void StubStalledDetail(string disclosureIndex, TimeSpan delay, string? body = null)
+    {
+        _wireMock.Server
+            .Given(Request.Create().WithPath(DetailPath(disclosureIndex)).UsingGet())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(body ?? """{"disclosureIndex":"unused"}""")
+                    .WithDelay(delay));
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -1009,7 +1473,11 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     /// <c>/disclosureDetail</c>; the canonical (legacy) doubles stay bound otherwise so the
     /// TC-MDF-003..006 goldens are byte-for-byte unchanged.
     /// </summary>
-    private IngestionHost BuildIngestion(string? documentRoot = null, bool vyk = false, InMemorySerilogSink? logs = null)
+    private IngestionHost BuildIngestion(
+        string? documentRoot = null,
+        bool vyk = false,
+        InMemorySerilogSink? logs = null,
+        IReadOnlyDictionary<string, string?>? extraSettings = null)
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
@@ -1041,6 +1509,14 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
                 settings[$"Ingestion:{section}:DetailPath"] = DetailPathTemplate;
                 settings[$"Ingestion:{section}:UniverseIndex"] = StatementBound.IndexCode;
                 settings[$"Ingestion:{section}:EarlyDisclosureIndex"] = "0";
+            }
+        }
+
+        if (extraSettings is not null)
+        {
+            foreach (var (key, value) in extraSettings)
+            {
+                settings[key] = value;
             }
         }
 
