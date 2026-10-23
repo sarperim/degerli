@@ -1327,6 +1327,345 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "corporate-actions"));
     }
 
+    // ---------------------------------------------------------------------------------
+    // TKT-foundation-063 — statements lane: per-company isolation + stale-cursor recovery (TC-MDF-096/097)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-096 (HTTP 500) — a statements disclosure detail the gateway cannot serve is an
+    /// <b>evidence-carrying per-company skip</b>, not a failed company (01 v1.5.42 §10.9.15, the
+    /// 2026-10-23 run-212 world: 24 ER005-caused `failed` companies fail-stopped the EOD chain).
+    /// The run completes, the item is quarantined with the gateway's error verbatim and counted,
+    /// every other company's statement rows are written, and the run ends <c>partial</c> — never
+    /// <c>failed</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_096_a_statements_detail_http_500_is_an_isolated_skip_and_the_run_is_partial()
+    {
+        const string FaultedIndex = "1138986";
+        const string HealthyIndex = "1138987";
+        const string GatewayBody = """{"fault":{"faultCode":"OI005","faultString":"Unhandled backend failure on disclosure detail"}}""";
+
+        await ResetAsync();
+        await BindAsync("ALFA", "EPSL");
+        StubStatementDirectory("ALFA", "EPSL");
+        StubDisclosureList("1001", 0, (FaultedIndex, "FR"));
+        StubDisclosureList("1002", 0, (HealthyIndex, "FR"));
+        StubDetailError(FaultedIndex, 500, GatewayBody);
+        StubDetail(HealthyIndex, StatementDetailBody(HealthyIndex));
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: StatementsVykSettings());
+
+        var result = await RunAsync(provider, "statements");
+
+        // Pre-fix the SourceFetchException escaped the company loop and the run was `failed`.
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.True(result.Written > 0, "the fetchable company's statement rows were not written");
+        Assert.Equal(1, result.Quarantined);
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        var epsl = await db.Instruments.Where(i => i.Symbol == "EPSL").Select(i => i.Id).SingleAsync();
+
+        // The fetchable company's rows exist; nothing fabricated took the faulted item's place.
+        Assert.True(await db.FinancialStatements.LongCountAsync(s => s.InstrumentId == epsl) > 0);
+        Assert.Equal(0, await db.FinancialStatements.LongCountAsync(s => s.InstrumentId == alfa));
+
+        // The skip is quarantined with the named reason, the disclosure id, the failure kind and
+        // the gateway's error verbatim — inspectable and re-ingestable, never silently dropped.
+        var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "statements").ToListAsync());
+        Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+        Assert.Equal("kap", quarantine.SourceRef);
+        Assert.Contains(FaultedIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+        Assert.Contains("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.PayloadJson!, StringComparison.Ordinal);
+        Assert.Contains("http", quarantine.PayloadJson!, StringComparison.Ordinal);
+        Assert.Contains("500", quarantine.PayloadJson!, StringComparison.Ordinal);
+        Assert.Contains("Unhandled backend failure on disclosure detail", quarantine.PayloadJson!, StringComparison.Ordinal);
+
+        // Every constituent appears in the per-symbol stats; the isolated one is counted, not failed.
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "statements").ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Equal(1, stats.RootElement.GetProperty("quarantined").GetInt32());
+        var symbols = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+        Assert.Equal(2, symbols.Count);
+        Assert.Equal(1, symbols["ALFA"].GetProperty("quarantined").GetInt32());
+        Assert.False(symbols["ALFA"].GetProperty("failed").GetBoolean());
+        Assert.False(symbols["EPSL"].GetProperty("failed").GetBoolean());
+        Assert.True(symbols["EPSL"].GetProperty("written").GetInt32() > 0);
+    }
+
+    /// <summary>
+    /// TC-MDF-096 (transport) — the same per-company skip path for a connection reset (the
+    /// transport class of 01 v1.5.40 §10.9.15): the detail is doubled at the socket so the client
+    /// raises <c>HttpRequestException</c>; the run completes with the item quarantined (failure
+    /// kind <c>transport</c>, a non-empty gateway error), the sibling company written, and the
+    /// run <c>partial</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_096_a_statements_detail_transport_error_is_an_isolated_skip_and_the_run_is_partial()
+    {
+        const string FaultedIndex = "1138986";
+        const string HealthyIndex = "1138987";
+
+        await ResetAsync();
+        await BindAsync("ALFA", "EPSL");
+        StubStatementDirectory("ALFA", "EPSL");
+        StubDisclosureList("1001", 0, (FaultedIndex, "FR"));
+        StubDisclosureList("1002", 0, (HealthyIndex, "FR"));
+
+        var detailDouble = StartDetailTransportDouble(FaultedIndex, StatementDetailBody(HealthyIndex));
+        try
+        {
+            var port = ((IPEndPoint)detailDouble.LocalEndpoint).Port;
+            var settings = StatementsVykSettings($"http://127.0.0.1:{port}/disclosureDetail/{{disclosureIndex}}");
+            await using var provider = BuildIngestion(vyk: true, extraSettings: settings);
+
+            var result = await RunAsync(provider, "statements");
+
+            Assert.Equal(IngestResult.Partial, result.Status);
+            Assert.True(result.Written > 0, "the fetchable company's statement rows were not written");
+            Assert.Equal(1, result.Quarantined);
+
+            await using var db = _postgres.CreateContext();
+            var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+            Assert.Equal(0, await db.FinancialStatements.LongCountAsync(s => s.InstrumentId == alfa));
+
+            var quarantine = Assert.Single(await db.QuarantinedFacts.Where(q => q.JobCode == "statements").ToListAsync());
+            Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", quarantine.ReasonCode);
+            Assert.Contains(FaultedIndex, quarantine.PayloadJson!, StringComparison.Ordinal);
+            using var evidence = JsonDocument.Parse(quarantine.PayloadJson!);
+            Assert.Equal("transport", evidence.RootElement.GetProperty("failureKind").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(evidence.RootElement.GetProperty("error").GetString()));
+
+            var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "statements").ToListAsync());
+            Assert.Equal(IngestResult.Partial, run.Status);
+        }
+        finally
+        {
+            detailDouble.Stop();
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-096 (all isolated) — the run-212 shape: every company's detail is un-fetchable, so
+    /// no row can be written. The run must be an honest <c>partial</c> with one evidence-carrying
+    /// skip per company and no silent omission — never the run-fatal <c>failed</c> that
+    /// fail-stopped the EOD chain before `metrics-recompute` / `market-snapshot` / `medians`.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_096_an_all_isolated_statements_world_is_partial_never_failed()
+    {
+        const string AlfaIndex = "1138986";
+        const string EpslIndex = "1138987";
+        const string GatewayBody = """{"fault":{"faultCode":"OI005","faultString":"Unhandled backend failure on disclosure detail"}}""";
+
+        await ResetAsync();
+        await BindAsync("ALFA", "EPSL");
+        StubStatementDirectory("ALFA", "EPSL");
+        StubDisclosureList("1001", 0, (AlfaIndex, "FR"));
+        StubDisclosureList("1002", 0, (EpslIndex, "FR"));
+        StubDetailError(AlfaIndex, 500, GatewayBody);
+        StubDetailError(EpslIndex, 500, GatewayBody);
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: StatementsVykSettings());
+
+        var result = await RunAsync(provider, "statements");
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(0, result.Written);
+        Assert.Equal(2, result.Quarantined);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.FinancialStatements.CountAsync());
+
+        // One evidence-carrying skip per company — nothing silently dropped.
+        var quarantine = await db.QuarantinedFacts.Where(q => q.JobCode == "statements").ToListAsync();
+        Assert.Equal(2, quarantine.Count);
+        Assert.All(quarantine, q => Assert.Equal("DISCLOSURE_DETAIL_UNFETCHABLE", q.ReasonCode));
+        Assert.Contains(quarantine, q => q.PayloadJson!.Contains(AlfaIndex, StringComparison.Ordinal));
+        Assert.Contains(quarantine, q => q.PayloadJson!.Contains(EpslIndex, StringComparison.Ordinal));
+
+        var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "statements").ToListAsync());
+        Assert.Equal(IngestResult.Partial, run.Status);
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        var symbols = stats.RootElement.GetProperty("symbols").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+        Assert.Equal(2, symbols.Count);
+        Assert.Equal(1, symbols["ALFA"].GetProperty("quarantined").GetInt32());
+        Assert.Equal(1, symbols["EPSL"].GetProperty("quarantined").GetInt32());
+        Assert.All(symbols.Values, e => Assert.False(e.GetProperty("failed").GetBoolean()));
+    }
+
+    /// <summary>
+    /// TC-MDF-096 (genuine source-down) — a world where every company's <b>list</b> route fails
+    /// with a non-ER005 status stays <c>failed</c>: the retry ladder's meaning is preserved and no
+    /// false recovery is invented. No quarantine row is written (a source-down is not a parse
+    /// event).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_096_a_genuine_statements_source_down_still_fails()
+    {
+        await ResetAsync();
+        await BindAsync("ALFA", "EPSL");
+        StubStatementDirectory("ALFA", "EPSL");
+        StubDisclosureListError("1001", 0, 500, "{}");
+        StubDisclosureListError("1002", 0, 500, "{}");
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: StatementsVykSettings());
+
+        var result = await RunAsync(provider, "statements");
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Equal(0, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.FinancialStatements.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync(q => q.JobCode == "statements"));
+    }
+
+    /// <summary>
+    /// TC-MDF-097 — a persisted cursor past the gateway tail answers HTTP 400
+    /// <c>{"code":"ER005","message":"Bildirim bulunamadı. Disclosure not found."}</c> on the first
+    /// list call. It is the gateway saying "no disclosure at or after this index", never a source
+    /// failure: the walk resets <b>exactly once</b> from <c>EarlyDisclosureIndex</c>, writes the
+    /// re-walked facts, records the reset verbatim (symbol, from → to, code and body) and persists
+    /// the corrected cursor, so the second run makes one list call with no repeated reset. A
+    /// non-ER005 list failure on another company is <b>not</b> recovered as an honest empty.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_097_a_stale_statements_cursor_resets_once_and_persists_the_correction()
+    {
+        const string StaleCursor = "1231018";
+        const string EmittedIndex = "1138986";
+        const string Status500 = "{}";
+
+        await ResetAsync();
+        await BindAsync("ALFA", "EPSL");
+        StubStatementDirectory("ALFA", "EPSL");
+        await SeedCursor("ALFA", KapDisclosureCursorStore.DataType, StaleCursor);
+
+        // ALFA: the persisted cursor is past the tail (ER005), the early index serves one FR
+        // disclosure — and, for the second run, the corrected cursor answers its own row.
+        StubDisclosureListError("1001", long.Parse(StaleCursor, CultureInfo.InvariantCulture), 400, Status400Er005);
+        StubDisclosureList("1001", 0, (EmittedIndex, "FR"));
+        StubDisclosureList("1001", long.Parse(EmittedIndex, CultureInfo.InvariantCulture), (EmittedIndex, "FR"));
+        StubDetail(EmittedIndex, StatementDetailBody(EmittedIndex));
+
+        // EPSL: a genuine non-ER005 list failure — never treated as an honest empty.
+        StubDisclosureListError("1002", 0, 500, Status500);
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, extraSettings: StatementsVykSettings());
+
+        // (i) First run: one reset, the re-walked facts written, the reset recorded verbatim.
+        _wireMock.Server.ResetLogEntries();
+        var first = await RunAsync(provider, "statements");
+
+        Assert.Equal(IngestResult.Partial, first.Status); // the recovered company + one honest source failure
+        Assert.True(first.Written > 0, "the re-walked facts were not written");
+
+        // Exactly one reset: the stale index was requested first, then the early index — once each.
+        Assert.Equal(
+            new[] { StaleCursor, "0" },
+            DisclosureRequestIndexesFor("1001").ToArray());
+
+        // The reset is recorded verbatim: symbol, from → to, the gateway's code and body.
+        Assert.True(
+            logs.Contains(evt =>
+            {
+                var message = evt.RenderMessage();
+                return message.Contains("stale disclosure cursor reset", StringComparison.Ordinal)
+                    && message.Contains("ALFA", StringComparison.Ordinal)
+                    && message.Contains(StaleCursor, StringComparison.Ordinal)
+                    && message.Contains("ER005", StringComparison.Ordinal)
+                    && message.Contains("Bildirim bulunamadı", StringComparison.Ordinal);
+            }),
+            "no structured log records the stale-cursor reset verbatim");
+
+        // The non-ER005 company stays a genuine source failure, never an honest empty.
+        await using (var db = _postgres.CreateContext())
+        {
+            var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+            Assert.True(await db.FinancialStatements.LongCountAsync(s => s.InstrumentId == alfa) > 0);
+
+            var cursor = await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == KapDisclosureCursorStore.DataType);
+            Assert.Equal(EmittedIndex, cursor.Notes);
+
+            var run = Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "statements").ToListAsync());
+            using var stats = JsonDocument.Parse(run.StatsJson!);
+            var symbols = stats.RootElement.GetProperty("symbols").EnumerateArray()
+                .ToDictionary(e => e.GetProperty("symbol").GetString()!, StringComparer.Ordinal);
+            Assert.False(symbols["ALFA"].GetProperty("failed").GetBoolean());
+            Assert.True(symbols["EPSL"].GetProperty("failed").GetBoolean());
+        }
+
+        // (ii) Second run: one list call for the recovered company from the corrected cursor, no
+        // repeated stale reset, no ER005 loop.
+        logs.Clear();
+        _wireMock.Server.ResetLogEntries();
+        var second = await RunAsync(provider, "statements");
+
+        Assert.Equal(new[] { EmittedIndex }, DisclosureRequestIndexesFor("1001").ToArray());
+        Assert.DoesNotContain(
+            logs.Events,
+            evt => evt.RenderMessage().Contains("stale disclosure cursor reset", StringComparison.Ordinal));
+        Assert.NotEqual(IngestResult.Failed, second.Status);
+    }
+
+    /// <summary>
+    /// TC-MDF-097 (honest-empty re-walk) — when the reset's re-walk is itself honest-empty the
+    /// cursor row is <b>cleared</b> rather than left stale, so the following run starts from the
+    /// early index, makes one list call and repeats no reset. The first run is an honest
+    /// <c>partial</c> (zero writes because of a recorded recovery, never <c>failed</c>).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_097_a_stale_cursor_whose_rewalk_is_honest_empty_is_cleared()
+    {
+        const string StaleCursor = "1231018";
+
+        await ResetAsync();
+        await BindAsync("ALFA");
+        StubStatementDirectory("ALFA");
+        await SeedCursor("ALFA", KapDisclosureCursorStore.DataType, StaleCursor);
+
+        // Both the stale cursor and the early index answer ER005: the company has no fetchable
+        // disclosure at all (the tail the gateway serves is genuinely empty).
+        StubDisclosureListError("1001", long.Parse(StaleCursor, CultureInfo.InvariantCulture), 400, Status400Er005);
+        StubDisclosureListError("1001", 0, 400, Status400Er005);
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, extraSettings: StatementsVykSettings());
+
+        _wireMock.Server.ResetLogEntries();
+        var first = await RunAsync(provider, "statements");
+
+        Assert.Equal(IngestResult.Partial, first.Status);
+        Assert.Equal(0, first.Written);
+        Assert.Equal(new[] { StaleCursor, "0" }, DisclosureRequestIndexesFor("1001").ToArray());
+
+        await using (var db = _postgres.CreateContext())
+        {
+            // The cursor row was cleared — the corrected state is "no cursor", not the stale value.
+            Assert.Equal(
+                0,
+                await db.CoverageMetadata.CountAsync(c => c.DataType == KapDisclosureCursorStore.DataType));
+        }
+
+        // The next run starts from the early index, one list call, no stale reset.
+        logs.Clear();
+        _wireMock.Server.ResetLogEntries();
+        await RunAsync(provider, "statements");
+
+        Assert.Equal(new[] { "0" }, DisclosureRequestIndexesFor("1001").ToArray());
+        Assert.DoesNotContain(
+            logs.Events,
+            evt => evt.RenderMessage().Contains("stale disclosure cursor reset", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// TC-MDF-094 (chain composition) — a <b>partial</b> corporate-actions step does not block the
     /// chain: the steps that Thursday's failure never reached (metrics-recompute /
@@ -1567,7 +1906,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
         await db.Database.ExecuteSqlRawAsync(
-            "DELETE FROM coverage_metadata WHERE data_type IN ('kap-dividends-cursor','kap-corporate-actions-cursor','kap-disclosures-cursor')");
+            "DELETE FROM coverage_metadata WHERE data_type IN ('kap-dividends-cursor','kap-corporate-actions-cursor','kap-disclosures-cursor','kap-disclosure-cursor')");
         await StatementBound.ReplaceAsync(db, "ALFA");
     }
 
@@ -1624,6 +1963,103 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             MembersPath,
             """[{"id":"1001","title":"ALFA","stockCode":"ALFA","memberType":"stock"}]""");
         _wireMock.StubJson(AnchorPath, """{"lastDisclosureIndex":"1231017"}""");
+    }
+
+    /// <summary>
+    /// The statements run's company directory double (TKT-foundation-063): the live <c>/members</c>
+    /// row shape, one row per symbol in order (companyId <c>1001</c>, <c>1002</c>, …), so a
+    /// multi-company statements walk can resolve each constituent.
+    /// </summary>
+    private void StubStatementDirectory(params string[] symbols)
+    {
+        _wireMock.Server.ResetMappings();
+        var members = symbols.Select((symbol, index) => new
+        {
+            id = (1001 + index).ToString(CultureInfo.InvariantCulture),
+            title = symbol,
+            stockCode = symbol,
+            memberType = "stock",
+        });
+        _wireMock.StubJson(MembersPath, JsonSerializer.Serialize(members));
+        _wireMock.StubJson(AnchorPath, """{"lastDisclosureIndex":"1231017"}""");
+    }
+
+    /// <summary>
+    /// The statements lane's VYK settings (TKT-foundation-063): the verified
+    /// <c>disclosureClass=FR</c> list route, the detail route, the early index and the test-local
+    /// bound. Merged after <c>BuildIngestion</c>'s defaults.
+    /// </summary>
+    private static Dictionary<string, string?> StatementsVykSettings(string? detailPath = null) => new()
+    {
+        ["Ingestion:Statements:Path"] = DisclosuresPath,
+        ["Ingestion:Statements:DetailPath"] = detailPath ?? DetailPathTemplate,
+        ["Ingestion:Statements:DisclosureClass"] = "FR",
+        ["Ingestion:Statements:EarlyDisclosureIndex"] = "0",
+        ["Ingestion:Statements:UniverseIndex"] = StatementBound.IndexCode,
+        ["Ingestion:Statements:RequestDelayMs"] = "0",
+    };
+
+    /// <summary>
+    /// A minimal shape-faithful VYK financial-report detail body (the verified <c>presentation</c>
+    /// envelope, 01 v1.5 §10.9.11): one IS sub-report with a single <c>CURR</c> context carrying
+    /// one canonical fact — enough to produce a persisted statement row without inventing fields
+    /// the gateway does not serve.
+    /// </summary>
+    private static string StatementDetailBody(string disclosureIndex)
+    {
+        const string ContextId = "2025-01-012025-12-31";
+        return JsonSerializer.Serialize(new
+        {
+            disclosureIndex,
+            year = "2025",
+            period = new { tr = "Yıllık", en = "Annual" },
+            consolidation = "NC",
+            relatedStocks = Array.Empty<object>(),
+            presentation = new object[]
+            {
+                new
+                {
+                    id = "general_role_IS",
+                    content = new
+                    {
+                        id = "general_role_IS",
+                        isMultiDimensional = "yes",
+                        ContextList = new
+                        {
+                            Context = new[]
+                            {
+                                new
+                                {
+                                    id = ContextId,
+                                    key = "CURR",
+                                    Period = new { startDate = "2025-01-01", endDate = "2025-12-31" },
+                                },
+                            },
+                        },
+                        ReportItem = new
+                        {
+                            name = "StatementOfProfitOrLossAbstract",
+                            @abstract = "true",
+                            ReportItem = new object[]
+                            {
+                                new
+                                {
+                                    name = "Revenue",
+                                    Values = new
+                                    {
+                                        Value = new[]
+                                        {
+                                            new { contextId = ContextId, currency = "TRY", rounding = "INF", value = "1.234.567,89" },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            attachmentUrls = Array.Empty<object>(),
+        });
     }
 
     private const string Status400Er005 =
@@ -1982,6 +2418,13 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     /// <summary>The disclosure indexes the run requested from <c>/disclosures</c>, in call order.</summary>
     private List<string?> DisclosureRequestIndexes() =>
         DisclosureRequests().Select(r => r.Index).ToList();
+
+    /// <summary>The disclosure indexes the run requested for one company, in call order.</summary>
+    private List<string?> DisclosureRequestIndexesFor(string companyId) =>
+        DisclosureRequests()
+            .Where(r => string.Equals(r.CompanyId, companyId, StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.Index)
+            .ToList();
 
     /// <summary>The exact (index, companyId) pairs the run sent to <c>/disclosures</c>, in call order.</summary>
     private List<(string? Index, string? CompanyId)> DisclosureRequests() =>
