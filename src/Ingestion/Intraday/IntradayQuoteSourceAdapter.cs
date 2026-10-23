@@ -31,10 +31,13 @@ public sealed class IntradayQuoteSourceOptions
     /// <summary>
     /// Path of the per-symbol intraday resource, relative to <see cref="BaseUrl"/>. Supports
     /// the same tokens as the prices lane: <c>{symbol}</c> and <c>{date}</c> (source-locale
-    /// <c>dd-MM-yyyy</c>). The shipped value is the EOD-shaped İş Yatırım <c>HisseTekil</c>
-    /// resource; the probe outcome decides whether it serves a same-day row mid-session, and
-    /// a repoint at Yahoo (e.g. <c>/v8/finance/chart/{symbol}.IS?range=1d&amp;interval=5m</c>)
-    /// needs no code change.
+    /// <c>dd-MM-yyyy</c>); a template that does not need them simply omits them. The shipped
+    /// value is İş Yatırım's <b>delayed intraday chart feed</b>
+    /// (<c>ChartData.aspx/IntradayDelay</c>) — unlike the EOD-shaped <c>HisseTekil</c> daily
+    /// resource it publishes the live session's 5-minute bars (probed 2026-10-23: ASELS'
+    /// 15:00 UTC bar = 338.00), which is what makes an honest mid-session reading possible.
+    /// The EOD prices lane keeps <c>HisseTekil</c>; a repoint at Yahoo
+    /// (e.g. <c>/v8/finance/chart/{symbol}.IS?range=1d&amp;interval=5m</c>) needs no code change.
     /// </summary>
     public string Path { get; set; } = "/intraday/{symbol}";
 
@@ -60,10 +63,12 @@ public sealed class IntradayQuoteSourceOptions
 /// symbol's payload for a session and narrows it to that session's current reading, behind the
 /// <b>same envelope detection</b> the EOD prices adapter uses (01 v1.5 §10.9.1) — the real İş
 /// Yatırım <c>HGDG_*</c> body (daily-bar shaped: its session row's close is the last price the
-/// source publishes) and Yahoo's <c>chart</c> contingency (whose last same-day observation is
-/// the delayed quote). The envelope, not configuration, decides which parser runs; the
-/// concrete source is stamped on every reading (<c>isyatirim</c> / <c>yahoo</c>) so storage
-/// always names the source that produced the value (FR-MDF-008).
+/// source publishes), İş Yatırım's <c>{"data":[[epochMs, price], …]}</c> <b>delayed intraday
+/// chart feed</b> (the shipped intraday resource — its last bar is the current session's latest
+/// reading), and Yahoo's <c>chart</c> contingency (whose last same-day observation is the
+/// delayed quote). The envelope, not configuration, decides which parser runs; the concrete
+/// source is stamped on every reading (<c>isyatirim</c> / <c>yahoo</c>) so storage always
+/// names the source that produced the value (FR-MDF-008).
 /// </summary>
 public sealed class IntradayQuoteSourceAdapter
 {
@@ -121,6 +126,36 @@ public sealed class IntradayQuoteSourceAdapter
             return new SourcePayload<IntradayQuotePayload>(
                 YahooSource,
                 new IntradayQuotePayload(YahooSource, sessionDate, items),
+                raw);
+        }
+
+        if (IsYatirimChartEnvelope(document))
+        {
+            // İş Yatırım's delayed intraday chart feed (the shipped intraday resource, probed
+            // 2026-10-23): a per-code body of 5-minute bars, each [epoch-milliseconds, price].
+            // It carries no volume (never synthesised: a price bar is not a ₺ turnover —
+            // FLG-09(b)) and echoes no symbol (the configured route already names the code).
+            //
+            // The reading is the last bar of the **latest session present in the payload**,
+            // and only when that session is the one being swept. The feed returns a rolling
+            // window that can still contain yesterday's session at the open (the probe body
+            // carried 2026-10-22 and 2026-10-23), so a payload whose newest bar belongs to an
+            // earlier session is the honest no-data class for today — an empty item list,
+            // never yesterday's price stamped with today's date. The session date is derived
+            // from the bar's own epoch timestamp, never from the request or the clock.
+            var bars = ParseChartBars(document);
+            var latestSession = bars.Count == 0 ? (DateOnly?)null : bars.Max(bar => bar.SessionDate);
+            var lastBar = latestSession == sessionDate
+                ? bars.Where(bar => bar.SessionDate == sessionDate)
+                    .OrderBy(bar => bar.EpochMilliseconds)
+                    .Last()
+                : (ChartBar?)null;
+            var chartItems = lastBar is { } bar
+                ? new[] { new IntradayQuoteFact(symbol, bar.SessionDate, bar.Price, DayVolume: null) }
+                : Array.Empty<IntradayQuoteFact>();
+            return new SourcePayload<IntradayQuotePayload>(
+                IsYatirimSource,
+                new IntradayQuotePayload(IsYatirimSource, sessionDate, chartItems),
                 raw);
         }
 
@@ -240,6 +275,62 @@ public sealed class IntradayQuoteSourceAdapter
     private static bool IsYahooEnvelope(JsonDocument document) =>
         document.RootElement.ValueKind == JsonValueKind.Object
         && document.RootElement.TryGetProperty("chart", out _);
+
+    /// <summary>
+    /// True when the document is İş Yatırım's delayed intraday chart feed: an object carrying
+    /// a <c>data</c> member (the canonical payload uses <c>sourceRef</c>/<c>items</c>, the EOD
+    /// envelope <c>ok</c>/<c>value</c>, Yahoo <c>chart</c>). The member's <i>presence</i>
+    /// decides the branch, not its type: a body whose <c>data</c> is malformed is still the
+    /// chart feed and must decode to the honest no-data outcome, never fall through to the
+    /// canonical parser. The feed also carries a root <c>timestamp</c> field (the server's wall
+    /// clock); it is transport metadata and never becomes the reading's session date.
+    /// </summary>
+    private static bool IsYatirimChartEnvelope(JsonDocument document) =>
+        document.RootElement.ValueKind == JsonValueKind.Object
+        && document.RootElement.TryGetProperty("data", out _);
+
+    /// <summary>One chart-feed bar: the source's epoch-millisecond stamp, its UTC session date and price.</summary>
+    private readonly record struct ChartBar(DateOnly SessionDate, long EpochMilliseconds, decimal Price);
+
+    /// <summary>
+    /// Decodes the chart feed's <c>data</c> bars, skipping anything malformed (a non-array
+    /// entry, a non-numeric stamp or price) rather than failing the whole payload: a body with
+    /// no usable bar is the honest no-data outcome. Stamps are epoch <b>milliseconds</b>; BIST
+    /// session bars sit entirely inside one UTC calendar date, so the UTC date is the trading session
+    /// date (the Yahoo branch derives it the same way).
+    /// </summary>
+    private static IReadOnlyList<ChartBar> ParseChartBars(JsonDocument document)
+    {
+        if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var bars = new List<ChartBar>();
+        foreach (var entry in data.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Array || entry.GetArrayLength() < 2)
+            {
+                continue;
+            }
+
+            var stamp = entry[0];
+            var price = entry[1];
+            if (stamp.ValueKind != JsonValueKind.Number
+                || !stamp.TryGetInt64(out var epochMilliseconds)
+                || price.ValueKind != JsonValueKind.Number
+                || !price.TryGetDecimal(out var value))
+            {
+                continue;
+            }
+
+            var sessionDate = DateOnly.FromDateTime(
+                DateTimeOffset.FromUnixTimeMilliseconds(epochMilliseconds).UtcDateTime);
+            bars.Add(new ChartBar(sessionDate, epochMilliseconds, value));
+        }
+
+        return bars;
+    }
 
     private static JsonDocument ParseDocument(string raw)
     {

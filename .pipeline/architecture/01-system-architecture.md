@@ -1669,6 +1669,21 @@ Yahoo's delayed quote. Either way the served `asOf` is the real observation inst
 is never fabricated. A symbol with **no same-day row is counted** (`IngestResult.Skipped` + a
 `NO_DATA` log event naming it) — 043's no-data doctrine applied from the start.
 
+**Source wiring (probe outcome, 2026-10-23).** The probe settled the question: `HisseTekil`
+lagged — at 17:35 UTC (after the 15:00 UTC close) it returned **no 2026-10-23 row** for
+ASELS/THYAO — while İş Yatırım's **delayed chart feed**
+`/_layouts/15/IsYatirim.Website/Common/ChartData.aspx/IntradayDelay?period=5&code={symbol}&last=108`
+served the live session's 5-minute bars (`{"data":[[epochMs, price], …]}`, price only).
+`Ingestion:Intraday:Path` therefore ships the chart feed; the EOD prices lane keeps
+`HisseTekil`. The adapter detects the envelope by the `data` member (not configuration) and
+reads the **last bar of the latest session present in the payload**, deriving the session date
+from the bar's own epoch-millisecond stamp — a payload whose newest bar is an earlier session
+is the honest no-data class for today, never yesterday's price stamped with today's date. The feed carries
+no volume, so `day_volume` stays NULL (the FLG-09(b) honest gap); the source stamp stays
+`isyatirim` (same publisher and host as the daily resource, so the stored `source_ref` names
+the source, not the route). Probe values: ASELS 2026-10-23 15:00 UTC = 338.00, GARAN = 126.50,
+ISCTR = 12.17, THYAO = 258.00.
+
 **Storage — `intraday_quotes`, never `daily_prices`.** New table: `instrument_id`,
 `session_date`, `fetched_at` (timestamptz, UTC), `last_price`, `day_volume` (nullable),
 `source_ref`; one row per (instrument, session). A sweep **updates in place** (042's
