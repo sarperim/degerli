@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
@@ -29,6 +30,7 @@ import {
   fetchStockGrowth,
   fetchStockOverview,
   fetchStockProfitability,
+  isDividendsMissing,
   isMissingData,
   stockPageQueryKeys,
 } from '@/screens/stock-page/api'
@@ -156,6 +158,49 @@ export function OverviewSection({ symbol }: { symbol: string }) {
   )
 }
 
+/** Splits an ISO `periodEndDate` prefix into its year and month, or `null`. */
+function parsePeriodEnd(periodEndDate: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})/.exec(periodEndDate ?? '')
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isInteger(year) || month < 1 || month > 12) return null
+  return { year, month }
+}
+
+/**
+ * The financials row's period label, derived from what the API actually sends
+ * (TKT-foundation-057; FR-RES-017 — the label is a claim about the data).
+ *
+ * `FY` → the fiscal-year label; `Q` → the quarter from the period-end month
+ * (Jan–Mar → Q1 … Oct–Dec → Q4) and that period's year; anything else — absent or
+ * unexpected `periodType`, or an unparseable `periodEndDate` — degrades to the
+ * period-end date itself: no fabricated quarter, no implied fiscal year.
+ */
+function financialPeriodLabel(
+  period: FinancialPeriod,
+  t: TFunction,
+  locale: string,
+): string {
+  const periodType = period.periodType?.trim().toUpperCase()
+
+  if (periodType === 'FY') {
+    return t('stockPage.financials.period', { year: period.fiscalYear })
+  }
+
+  const periodEnd = parsePeriodEnd(period.periodEndDate)
+  if (periodType === 'Q' && periodEnd) {
+    return t('stockPage.financials.periodQuarter', {
+      quarter: Math.ceil(periodEnd.month / 3),
+      year: periodEnd.year,
+    })
+  }
+
+  return t('stockPage.financials.periodEnding', {
+    date: formatAsOfDate(locale, period.periodEndDate),
+  })
+}
+
 /** SCR-005 §3 — Financials (FR-RES-008/014). */
 export function FinancialsSection({ symbol }: { symbol: string }) {
   const { t, i18n } = useTranslation()
@@ -210,9 +255,7 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                   {sectionData.periods.map((period) => (
                     <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
                       <TableHead scope="row" className="font-medium text-foreground">
-                        {t('stockPage.financials.period', {
-                          year: period.fiscalYear,
-                        })}
+                        {financialPeriodLabel(period, t, locale)}
                       </TableHead>
                       {FINANCIAL_COLUMNS.map((column) => (
                         <TableCell key={column}>
@@ -528,7 +571,7 @@ export function BalanceSheetSection({ symbol }: { symbol: string }) {
   )
 }
 
-/** SCR-005 §7 — Dividends (FR-RES-012), incl. the explicit never-paid state. */
+/** SCR-005 §7 — Dividends (FR-RES-012), with the three honest states (TKT-foundation-052). */
 export function DividendsSection({ symbol }: { symbol: string }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
@@ -539,14 +582,19 @@ export function DividendsSection({ symbol }: { symbol: string }) {
   })
 
   const data = query.data
-  const missingData = data !== undefined && isMissingData(data) ? data : null
-  const sectionData = data !== undefined && !isMissingData(data) ? data : null
+  const missingData = data !== undefined && isDividendsMissing(data) ? data : null
+  const sectionData = data !== undefined && !isDividendsMissing(data) ? data : null
 
   const coverageBoundary = missingData?.coverage?.availableFrom
     ? t('honestData.coverageBoundary', {
         date: formatAsOfDate(locale, missingData.coverage.availableFrom),
       })
     : undefined
+
+  // The server's availability signal decides which empty state is honest: the
+  // never-paid wording only over data the lane has actually covered. No signal (a
+  // pre-052 payload) degrades to the neutral state, never to the claim.
+  const dividendsAvailable = missingData?.dividendsAvailable === true
 
   return (
     <SectionShell section="dividends" titleKey="stockPage.sections.dividends">
@@ -557,7 +605,15 @@ export function DividendsSection({ symbol }: { symbol: string }) {
         onRetry={() => void query.refetch()}
       >
         {missingData ? (
-          missingData.state === 'no-data' ? (
+          missingData.state !== 'no-data' ? (
+            // Preparing / unavailable are the server's own honest states — rendered as-is.
+            <SectionMarkers
+              asOf={missingData.asOf}
+              stale={missingData.stale}
+              state={missingData.state}
+              coverage={missingData.coverage}
+            />
+          ) : dividendsAvailable ? (
             <EmptyState
               data-testid="dividends-never-paid"
               data-state={missingData.state}
@@ -567,11 +623,16 @@ export function DividendsSection({ symbol }: { symbol: string }) {
                 .join(' ')}
             />
           ) : (
-            <SectionMarkers
-              asOf={missingData.asOf}
-              stale={missingData.stale}
-              state={missingData.state}
-              coverage={missingData.coverage}
+            <EmptyState
+              data-testid="dividends-unavailable"
+              data-state={missingData.state}
+              title={t('stockPage.dividends.unavailableTitle')}
+              description={[
+                t('stockPage.dividends.unavailableBody'),
+                coverageBoundary,
+              ]
+                .filter(Boolean)
+                .join(' ')}
             />
           )
         ) : null}

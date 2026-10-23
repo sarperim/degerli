@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
+using Degerli.Ingestion.Dividends;
+using Degerli.Ingestion.Jobs;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -22,7 +25,7 @@ namespace Degerli.Api.Stocks;
 /// <item><c>GET /api/v1/stocks/{symbol}/balance-sheet</c> — BS lines + book value +
 /// BVPS = equity / shares (FR-RES-027).</item>
 /// <item><c>GET /api/v1/stocks/{symbol}/dividends</c> — dated dividend history, or the
-/// explicit never-paid state (SCR-005 §7).</item>
+/// explicit empty state with the server's availability signal (SCR-005 §7).</item>
 /// </list>
 /// All five are anonymous, per-section reads with the honest-data envelope (M-1/`03`
 /// §1.2): missing data is <c>200</c> + <c>state</c>/<c>coverage</c>, never blank-as-zero
@@ -331,9 +334,26 @@ public static class StockFundamentalsEndpoints
     // ── Dividends (FR-RES-012) ───────────────────────────────────────────────
 
     /// <summary>
+    /// The <c>coverage_metadata.data_type</c> of the dividends family's per-instrument
+    /// cursor — written by the adapter only after a company walk completed (01 §10.9.11/§10.9.15).
+    /// </summary>
+    private const string DividendsCursorDataType = "kap-dividends-cursor";
+
+    /// <summary>Instrument-scoped coverage rows (02 §3.1).</summary>
+    private const string InstrumentCoverageScope = "instrument";
+
+    /// <summary>
     /// The dated dividend history (ex-date, pay date, amount) with the trailing-twelve-
-    /// month DPS, or the explicit never-paid state when no dividend row exists
-    /// (TC-RES-013, SCR-005 §7) — never an error, never blanks.
+    /// month DPS, or the explicit empty state (TC-RES-013/037, SCR-005 §7) — never an
+    /// error, never blanks.
+    /// <para>
+    /// A zero-row table is <b>not</b> evidence that the company never paid a dividend
+    /// (TKT-foundation-052): it is equally the shape of "the dividends lane has not
+    /// covered this instrument yet". The payload therefore carries
+    /// <c>dividendsAvailable</c> — the server's coverage/run-state signal — so the three
+    /// honest states are distinguishable: not processed (no signal backing), processed
+    /// with zero rows (the backed never-paid state) and populated.
+    /// </para>
     /// </summary>
     private static async Task<IResult> DividendsAsync(
         string symbol,
@@ -363,11 +383,21 @@ public static class StockFundamentalsEndpoints
 
         if (dividends.Count == 0)
         {
-            return Results.Ok(DataEnvelope.Missing(
+            // Availability comes from the lane's coverage/run state, never from the row
+            // count: the client must not read "never paid" out of an empty table.
+            var available = await DividendsAvailableAsync(db, instrument, cancellationToken);
+            return Results.Ok(new
+            {
                 asOf,
-                DataStates.NoData,
-                new DataCoverage(instrument.ListingDate?.ToString("yyyy-MM-dd"), "no dividends paid"),
-                stale));
+                stale,
+                dividendsAvailable = available,
+                state = DataStates.NoData,
+                coverage = new DataCoverage(
+                    instrument.ListingDate?.ToString("yyyy-MM-dd"),
+                    available
+                        ? "dividends data available; no dividend paid in the covered history"
+                        : "dividends data not ingested for this instrument yet"),
+            });
         }
 
         // TTM DPS uses the same trailing-year ex-date window the Metrics Engine applies
@@ -381,9 +411,116 @@ public static class StockFundamentalsEndpoints
         {
             asOf,
             stale,
+            dividendsAvailable = true,
             dividends,
             ttmPerShare,
         });
+    }
+
+    /// <summary>
+    /// Whether the dividends lane has covered this instrument — the evidence that an empty
+    /// dividends table means "no dividend paid" rather than "not ingested yet"
+    /// (TKT-foundation-052).
+    /// <para>
+    /// Two sources, both the lane's own state: (1) the per-instrument family cursor, which
+    /// the adapter persists only after a company's VYK walk completed; (2) the latest
+    /// terminal <c>dividends</c> run in the ledger. A <c>partial</c> run isolates the
+    /// constituents it could not walk (046's per-symbol stats, FR-MDF-012) — an instrument
+    /// named failed there is <b>not</b> covered, so it keeps the neutral state. Rows always
+    /// mean available (the caller only asks when there are none).
+    /// </para>
+    /// </summary>
+    private static async Task<bool> DividendsAvailableAsync(
+        DegerliDbContext db,
+        CoveredInstrument instrument,
+        CancellationToken cancellationToken)
+    {
+        var walked = await db.CoverageMetadata
+            .AnyAsync(
+                coverage => coverage.Scope == InstrumentCoverageScope
+                    && coverage.InstrumentId == instrument.Id
+                    && coverage.DataType == DividendsCursorDataType,
+                cancellationToken);
+        if (walked)
+        {
+            return true;
+        }
+
+        var run = await db.IngestRuns
+            .Where(candidate => candidate.JobCode == DividendsJob.Code
+                && (candidate.Status == IngestResult.Succeeded || candidate.Status == IngestResult.Partial))
+            .OrderByDescending(candidate => candidate.FinishedAt ?? candidate.StartedAt)
+            .ThenByDescending(candidate => candidate.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (run is null)
+        {
+            return false;
+        }
+
+        // A succeeded pass walked every resolvable constituent. A partial pass walked all
+        // but the ones it isolated — those are named in the run's per-symbol stats.
+        return run.Status == IngestResult.Succeeded
+            || !IsNamedFailedSymbol(run.StatsJson, instrument.Symbol);
+    }
+
+    /// <summary>
+    /// True when the run's <c>stats_json.symbols</c> names this symbol as failed (the 046
+    /// isolation channel). Unreadable stats are treated as "not covered": the signal is
+    /// only ever raised on evidence, never assumed.
+    /// </summary>
+    private static bool IsNamedFailedSymbol(string? statsJson, string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(statsJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(statsJson);
+            if (!TryGetProperty(document.RootElement, "symbols", out var symbols)
+                || symbols.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var entry in symbols.EnumerateArray())
+            {
+                if (TryGetProperty(entry, "symbol", out var named)
+                    && named.ValueKind == JsonValueKind.String
+                    && string.Equals(named.GetString(), symbol, StringComparison.OrdinalIgnoreCase)
+                    && TryGetProperty(entry, "failed", out var failed)
+                    && failed.ValueKind == JsonValueKind.True)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (JsonException)
+        {
+            // An unreadable breakdown cannot back a "no dividend" claim.
+            return true;
+        }
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     // ── Shared helpers ───────────────────────────────────────────────────────

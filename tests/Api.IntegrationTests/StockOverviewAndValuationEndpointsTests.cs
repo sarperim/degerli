@@ -103,6 +103,68 @@ public sealed class StockOverviewAndValuationEndpointsTests : IClassFixture<Post
         Assert.Null(TextField(restRoot, "textEn"));
     }
 
+    // -- TKT-foundation-057 — Overview: the instrument's identity ---------------
+
+    /// <summary>
+    /// The overview payload names the stock the page is about (TKT-foundation-057,
+    /// user-approved additive amendment): the canonical uppercase symbol and the
+    /// language-neutral official name ride both the published and the preparing
+    /// payload, and the route's casing never leaks into the header.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_057_overview_serves_the_instrument_identity()
+    {
+        await SeedAsync();
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/ALFA/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        // The official name is the L2 fixture's (FU §7): "Alfa Teknoloji A.Ş.".
+        Assert.Equal("ALFA", TextField(root, "symbol"));
+        Assert.Equal("Alfa Teknoloji A.Ş.", TextField(root, "name"));
+
+        // The preparing state carries the same identity — the header must be able to
+        // say which stock it is even before a description is published.
+        using var preparing = await client.GetAsync("/api/v1/stocks/beta/overview");
+        Assert.Equal(HttpStatusCode.OK, preparing.StatusCode);
+        using var preparingDocument = JsonDocument.Parse(await preparing.Content.ReadAsStringAsync());
+        var preparingRoot = preparingDocument.RootElement;
+        Assert.Equal("preparing", preparingRoot.GetProperty("status").GetString());
+        // A lowercase request symbol is served canonicalised, never echoed back raw.
+        Assert.Equal("BETA", TextField(preparingRoot, "symbol"));
+        Assert.False(string.IsNullOrWhiteSpace(TextField(preparingRoot, "name")));
+    }
+
+    /// <summary>
+    /// A blank instrument name is served as `null`, never as an empty string dressed up
+    /// as an identity (TKT-foundation-057): the client degrades to the symbol alone.
+    /// </summary>
+    [Fact]
+    public async Task TKT_foundation_057_overview_serves_a_blank_name_as_null()
+    {
+        await SeedAsync();
+        await using (var db = _postgres.CreateContext())
+        {
+            await db.Instruments
+                .Where(instrument => instrument.Symbol == "BETA")
+                .ExecuteUpdateAsync(setters => setters.SetProperty(instrument => instrument.Name, string.Empty));
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/BETA/overview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("BETA", TextField(root, "symbol"));
+        Assert.True(root.TryGetProperty("name", out var name));
+        Assert.Equal(JsonValueKind.Null, name.ValueKind);
+    }
+
     // -- TC-RES-007 — Valuation incl. vs.-sector strip (golden) -----------------
 
     [Fact]

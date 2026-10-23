@@ -90,6 +90,9 @@
     }
   },
   "stockPage": {
+    "identity": {
+      "withName": "{{symbol}} — {{name}}"
+    },
     "sectionsLabel": "Bölümler",
     "sections": {
       "overview": "Genel Bakış",
@@ -131,6 +134,8 @@
     },
     "financials": {
       "period": "FY{{year}}",
+      "periodQuarter": "Ç{{quarter}} {{year}}",
+      "periodEnding": "{{date}} biten dönem",
       "columns": {
         "period": "Dönem",
         "revenue": "Hasılat",
@@ -181,7 +186,9 @@
       },
       "ttm": "Son 12 ay hisse başına temettü",
       "neverPaidTitle": "Temettü ödenmedi",
-      "neverPaidBody": "Bu şirket hiç temettü ödemedi."
+      "neverPaidBody": "Bu şirket hiç temettü ödemedi.",
+      "unavailableTitle": "Temettü verisi yok",
+      "unavailableBody": "Bu şirket için temettü verisi henüz yüklenmedi."
     }
   },
   "stockList": {
