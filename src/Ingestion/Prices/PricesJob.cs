@@ -156,6 +156,10 @@ public sealed class PricesJob : IIngestJob
         var sweepStartedAt = _clock.GetUtcNow();
         var pending = constituents;
         var coverage = new PriceDayCoverage(0, 0);
+        // Run-global, not pass-local: the politeness posture (§10.9.2 — strictly sequential,
+        // spaced) is a property of the whole run, so a re-sweep's first fetch must wait after
+        // the previous pass's last fetch too. Only the run's very first request is unpaced.
+        var requestsMade = 0;
 
         for (var pass = 1; ; pass++)
         {
@@ -163,7 +167,8 @@ public sealed class PricesJob : IIngestJob
 
             for (var index = 0; index < pending.Count; index++)
             {
-                await PaceAsync(index, cancellationToken).ConfigureAwait(false);
+                await PaceAsync(requestsMade, cancellationToken).ConfigureAwait(false);
+                requestsMade++;
                 var symbol = pending[index];
 
                 var sweep = await SweepSymbolAsync(symbol, request, cancellationToken).ConfigureAwait(false);
@@ -176,6 +181,13 @@ public sealed class PricesJob : IIngestJob
                     failedSymbols.Add(symbol);
                 }
 
+                // Invariant: the totals above accumulate across passes while statSlots keeps
+                // exactly one merged entry per symbol. They cannot disagree, because a re-swept
+                // symbol is only ever one that answered empty on the previous pass — AnsweredEmpty
+                // is set exclusively on the all-zero path (written/unchanged/quarantined all 0) —
+                // so replacing its slot never drops a count the totals still carry. A duplicated
+                // open membership row for the same symbol would be the one way to break this
+                // (GetCurrentConstituentSymbolsAsync applies no Distinct); none exists today.
                 if (statSlots.TryGetValue(symbol, out var slot))
                 {
                     symbolStats[slot] = sweep.Stat;
@@ -421,10 +433,12 @@ public sealed class PricesJob : IIngestJob
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
         var coveredSymbols = new HashSet<string>(StringComparer.Ordinal);
         DateOnly? achievedFrom = null;
+        var requestsMade = 0;
 
         for (var index = 0; index < constituents.Count; index++)
         {
-            await PaceAsync(index, cancellationToken).ConfigureAwait(false);
+            await PaceAsync(requestsMade, cancellationToken).ConfigureAwait(false);
+            requestsMade++;
             var symbol = constituents[index];
 
             try
@@ -646,14 +660,17 @@ public sealed class PricesJob : IIngestJob
 
     /// <summary>
     /// Paces the strictly sequential loop (01 v1.5 §10.9.2): waits
-    /// <see cref="PricesSourceOptions.RequestDelayMs"/> between requests, never before the
-    /// first. A non-positive delay disables the wait (deterministic L2 runs). The wait is a
-    /// real wall-clock timer — the delay is a politeness measure, not a scheduling decision —
-    /// so the TC-MDF-074 lower-bound timing assertion reflects the live posture.
+    /// <see cref="PricesSourceOptions.RequestDelayMs"/> between requests of the run, and never
+    /// before its very first request. <paramref name="requestsMadeSoFar"/> is the run-global
+    /// count, not the index within the current pass — a coverage re-sweep is a continuation of
+    /// the same loop, so its first fetch is spaced from the previous pass's last fetch too. A
+    /// non-positive delay disables the wait (deterministic L2 runs). The wait is a real
+    /// wall-clock timer — the delay is a politeness measure, not a scheduling decision — so the
+    /// TC-MDF-074 lower-bound timing assertion reflects the live posture.
     /// </summary>
-    private async Task PaceAsync(int index, CancellationToken cancellationToken)
+    private async Task PaceAsync(int requestsMadeSoFar, CancellationToken cancellationToken)
     {
-        if (index == 0 || _options.RequestDelayMs <= 0)
+        if (requestsMadeSoFar == 0 || _options.RequestDelayMs <= 0)
         {
             return;
         }
