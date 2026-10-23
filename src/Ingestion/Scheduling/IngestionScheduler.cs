@@ -310,30 +310,43 @@ public sealed class IngestionScheduler
         run.AttemptStartedAt = now;
 
         var step = new ChainStepProgress();
-        var scope = _scopeFactory.CreateScope();
-        var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         IReadOnlyList<string> jobCodes = [];
         Exception? failure = null;
         var hung = false;
 
-        // The hung-run watchdog (01 v1.5 §10.9.17): the attempt races a deadline on the
-        // injected clock, so the bound is deterministic under a fake clock exactly like every
-        // other scheduling decision here. A step that never completes can no longer hold the
-        // loop — and with it every other stream — in silence.
-        var deadline = _options.MaxRunDuration > TimeSpan.Zero
-            ? Task.Delay(_options.MaxRunDuration, _clock, deadlineCts.Token)
-            : null;
+        // The attempt's owned resources are created inside the failure-classifying try (DR-1,
+        // TKT-foundation-059) and disposed in its finally. Anything that throws before the
+        // attempt's first await — most realistically a mis-typed `MaxRunDuration` beyond
+        // Task.Delay's accepted range — used to escape RunAttemptAsync with `Attempts` already
+        // bumped and `NextAttemptAt` still in the past, so the hosted loop refired the attempt
+        // immediately and forever. A prologue failure is now a failed attempt on the ladder.
+        IServiceScope? ownedScope = null;
+        CancellationTokenSource? ownedAttemptCts = null;
+        CancellationTokenSource? ownedDeadlineCts = null;
 
-        // The watchdog bounds an await, not a synchronous block (01 v1.5 §10.9.17 "Scope of the
-        // guarantee"): this chain is invoked on the loop thread, so a step that blocks
-        // synchronously before its first await cannot be pre-empted by an in-process timer. Such
-        // a step is still *legible* — its "Chain step … starting" line was already written — so a
-        // synchronous freeze is never silent, even though only the awaits are bounded here.
-        var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, attemptCts.Token);
         try
         {
+            var scope = ownedScope = _scopeFactory.CreateScope();
+            var attemptCts = ownedAttemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var deadlineCts = ownedDeadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            // The hung-run watchdog (01 v1.5 §10.9.17): the attempt races a deadline on the
+            // injected clock, so the bound is deterministic under a fake clock exactly like every
+            // other scheduling decision here. A step that never completes can no longer hold the
+            // loop — and with it every other stream — in silence.
+            var deadline = _options.MaxRunDuration > TimeSpan.Zero
+                ? Task.Delay(_options.MaxRunDuration, _clock, deadlineCts.Token)
+                : null;
+
+            // The watchdog bounds an await, not a synchronous block (01 v1.5 §10.9.17 "Scope of
+            // the guarantee"): this chain is invoked on the loop thread, so a step that blocks
+            // synchronously before its first await cannot be pre-empted by an in-process timer.
+            // Such a step is still *legible* — its "Chain step … starting" line was already
+            // written — so a synchronous freeze is never silent, even though only the awaits are
+            // bounded here.
+            var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, attemptCts.Token);
+
             if (deadline is null)
             {
                 var outcome = await work.ConfigureAwait(false);
@@ -355,38 +368,60 @@ public sealed class IngestionScheduler
                     failure = outcome.Failure;
                     await deadlineCts.CancelAsync().ConfigureAwait(false);
                 }
-                else if (cancellationToken.IsCancellationRequested)
-                {
-                    // The host is stopping and the deadline only lost the race to it: this is a
-                    // shutdown, not a hung run — no RUN_HUNG row and no alert on the way out.
-                    // The attempt's task is still running, so its scope/CTS pair is abandoned
-                    // (never disposed under it) and the stop is rethrown to the loop.
-                    hung = true;
-                    attemptCts.Cancel();
-                    await deadlineCts.CancelAsync().ConfigureAwait(false);
-                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
-
-                    throw new OperationCanceledException(cancellationToken);
-                }
                 else
                 {
+                    // Snapshot the progress *before* anything is cancelled (DR-3,
+                    // TKT-foundation-059): a step that swallows the cancellation and returns
+                    // lets the abandoned chain advance — and `Begin` the next step — so a
+                    // snapshot taken after the cancel can name the *next* step in both the
+                    // ledger row and the RUN_HUNG alert. The watchdog caught this state; this
+                    // is what the row must name (R6).
+                    var hungStep = step.Snapshot();
+
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        // The host is stopping and the deadline only lost the race to it: this is
+                        // a shutdown, not a hung run — no RUN_HUNG row and no alert on the way out.
+                        // The attempt's task is still running, so its scope/CTS pair is abandoned
+                        // (never disposed under it) and the stop is rethrown to the loop.
+                        hung = true;
+                        attemptCts.Cancel();
+                        await deadlineCts.CancelAsync().ConfigureAwait(false);
+                        DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+
+                        throw new OperationCanceledException(cancellationToken);
+                    }
+
                     hung = true;
                     attemptCts.Cancel();
                     await deadlineCts.CancelAsync().ConfigureAwait(false);
 
-                    // The step cannot be killed (a hung await is not interruptible); the scope is
-                    // handed to the abandoned task so it is disposed only when that task ends,
-                    // and its terminal exception is observed rather than left unobserved.
-                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+                    // DR-2 (TKT-foundation-059): the cancel window is not instantaneous — a step
+                    // that swallows the cancellation can still finish successfully between the
+                    // re-check above and this point. Prefer the terminal truth: an attempt that
+                    // completed successfully is recorded by its own row and is never also
+                    // declared RUN_HUNG (one attempt, one row, one retry decision).
+                    if (work.IsCompletedSuccessfully)
+                    {
+                        hung = false;
+                        var outcome = await work.ConfigureAwait(false);
+                        jobCodes = outcome.JobCodes;
+                        failure = outcome.Failure;
+                    }
+                    else
+                    {
+                        // The step cannot be killed (a hung await is not interruptible); the scope
+                        // is handed to the abandoned task so it is disposed only when that task
+                        // ends, and its terminal exception is observed rather than left
+                        // unobserved.
+                        DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
 
-                    // Snapshot the progress before awaiting anything: the abandoned chain may
-                    // still be advancing the live object, and the row/alert must name the step
-                    // the watchdog actually caught. The chain's own codes are not known on this
-                    // path, so the hung step is what the exhausted alert names (R6).
-                    var hungStep = step.Snapshot();
-                    jobCodes = [hungStep.JobCode];
-                    failure = await HandleHungAttemptAsync(run, attempt, hungStep, cancellationToken)
-                        .ConfigureAwait(false);
+                        // The chain's own codes are not known on this path, so the hung step is
+                        // what the exhausted alert names (R6).
+                        jobCodes = [hungStep.JobCode];
+                        failure = await HandleHungAttemptAsync(run, attempt, hungStep, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -403,9 +438,9 @@ public sealed class IngestionScheduler
         {
             if (!hung)
             {
-                scope.Dispose();
-                attemptCts.Dispose();
-                deadlineCts.Dispose();
+                ownedScope?.Dispose();
+                ownedAttemptCts?.Dispose();
+                ownedDeadlineCts?.Dispose();
             }
         }
 
