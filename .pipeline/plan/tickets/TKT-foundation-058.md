@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-058: Share-count store from VYK `/memberSecurities` — the zero-shares world ends (SUPERSEDES TKT-foundation-033)
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P1 — dispatch-ready immediately (USER GRANT 2026-10-22: autonomous unblock, notice recorded; the orchestrator documents it in the run report).** Unblocks the entire share-derived surface: per-share metrics, multiples, market P/E, DCF baselines (seams pinned below; consumers stay their own tickets).
 - **Supersedes TKT-foundation-033** (amended there with a dated note). The old blocker is DISPROVEN on both legs: (a) there is no separate production endpoint — `apigw.mkk.com.tr` 302-redirects to the test gateway (recorded on 033's file at dev `9bfed14`); (b) the source for share counts was never the disclosure XBRL layer — it is **`GET /api/vyk/memberSecurities` on the gateway we already ingest from**, an endpoint NOT currently in our pipeline.
@@ -34,3 +34,23 @@ scope:
 - UX refs: none (ingestion + serving seam; downstream display is the consumers' tickets).
 - Dependencies: none hard — **dispatch-ready immediately** (Kap client + Shares lane + Persistence; `KapSources.cs`/`VykModels.cs` unowned — 046 merged). Coordination: `.pipeline/testing/market-data-foundation.md` rebase convention; §13.1 v1.5.36 above the in-review v1.5.35 (057/#120) — last-lander rebases.
 - Parallel group: none
+
+## Implementation record (2026-10-22, lane `feature/TKT-foundation-058`)
+
+- **PR:** https://github.com/sarperim/degerli/pull/123 (target `dev`; not merged).
+- **Delivered:** `src/Ingestion/Shares/` lane (job code `shares`, admin-triggerable, one paced `/memberSecurities` snapshot per run through the shared `IKapSourceClient`/`KapRequestPacer`/`KapUri` seams — the pacer's shared `Ingestion:Statements:RequestDelayMs` interval, shipped 10 s), `share_counts` store (`src/Persistence/Entities/ShareCountEntities.cs` + migration `20261022170854_ShareCounts`), `KapSourceOptions.MemberSecuritiesPath` (code default `/memberSecurities`, no `appsettings.json` change), the additive `shareCount { sharesOutstanding, asOf }` serving block on `GET /api/v1/stocks/{symbol}/balance-sheet`, and the committed real-shape double `CannedSourceCatalog.MemberSecuritiesOk`.
+- **Decisions recorded in the lane (all within the pinned design):** (a) `shares_outstanding` = sum of the member's matching security lines' `currentCapital`, gated on at least one trading-open (`borsadaIslemeAcik`) line; (b) a missing `currentCapital` line is skipped + counted, and its **whole matched group is withheld** (no row) — a partial tertip sum would be a fabricated count — while the run stays `succeeded` so the freshness signal does not lie permanently; (c) input-aware store (unchanged → `unchanged`, `recorded_at` frozen; changed → repaired in place + `written`); (d) `borsaKodu` primary / `isin` fallback; (e) the statement-reported `lines.sharesOutstanding`/`sharesDiluted`/BVPS are untouched by the new block (golden stability).
+- **Test evidence:** red = 7 failed / 1 passed with the implementation disabled (the one pass, `TC_MDF_092_fetch_failure_and_malformed_body_are_honest`, resolves before the store is reached); green = 8/8 on the ticket suites and 52/52 across `MemberSecuritiesIngestTests` + `StockFundamentalsEndpointsTests` + `CannedSourceCatalogTests` + `VykCompanyDirectoryTests` + `VykStatementsSourceTests` after the rebase onto `dev@cdc773c`. `dotnet build`: 0 warnings.
+- **Review round 1 (2026-10-23) — fixes pushed to the same branch:** the trading-open decode tolerates the boolean/numeric/string spellings (the capture carried booleans only; the doc no longer claims a live-observed `"1"` variance), a root single-member object decodes as one member, `skipped` counts only *our* matched unreadable lines, a withheld group removes its previously stored row, the false "serving stays withheld" enforcement claim and the unit reading are removed from `01` §10.9.11 (the unit is recorded **unresolved**, pending the live table), the doc's precision/pacer claims are reconciled to the shipped `numeric(18,4)` / 10 s pacer, and the serving test now asserts the public cache headers + envelope `asOf`. Narrow local run: `MemberSecuritiesIngestTests` + `StockFundamentalsEndpointsTests` 28/28 green; CI is the test authority.
+- **Flagged for the orchestrator / reviewer:** (1) the 2026-10-22 capture carried **zero** lines without `currentCapital` (the ticket text said 1,061/1,062 populated), so the double's missing-capital lines are **derived anomalies**, labeled as such in the catalog; (2) TUPRS's pinned total is **1,926,795,598** (A 1,926,795,597.99 + C 0.01), not a rounded 1.93B; (3) no live gateway call was made in this lane (the gateway was serving the live EOD chain — doubles only), so the unit cross-validation below is untouched.
+- **Live criterion — orchestrator post-merge (paced ≥12 s, honest, recorded verbatim).** One `/memberSecurities` fetch + `shares` run on the dev stack, then fill this table from the served values before values are treated as counts anywhere downstream:
+
+| Company | Served `sharesOutstanding` | Known real count | Verdict |
+|---|---|---|---|
+| ASELS | (pending) | 4,560,000,000 | (pending) |
+| THYAO | (pending) | 1,380,000,000 | (pending) |
+| TUPRS | (pending) | 1,926,795,598 | (pending) |
+| GARAN | (pending) | 4,200,000,000 | (pending) |
+| AEFES | (pending) | 592,105,263 | (pending) |
+
+  A **refuted** unit or aggregation rule is recorded here and serving stays withheld (no fabricated division, no zeros). The 5 archive-absent members (GLRMK, PAHOL, TRALT, TRENJ, TRMET) stay honestly absent — dashes, never zeros.

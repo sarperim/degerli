@@ -221,11 +221,22 @@ public sealed class KapSourceOptions
     /// <summary>The <c>/lastDisclosureIndex</c> route — the run's global disclosure anchor.</summary>
     public string LastDisclosureIndexPath { get; set; } = "/lastDisclosureIndex";
 
+    /// <summary>
+    /// The <c>/memberSecurities</c> route (Menkul Kıymet Listesi, 01 v1.5.36 §10.9.11): the
+    /// per-member security lines the <c>shares</c> lane aggregates into the per-instrument
+    /// share-count store. Empty disables the lane (the job then fails honestly rather than
+    /// fetching an empty path).
+    /// </summary>
+    public string MemberSecuritiesPath { get; set; } = "/memberSecurities";
+
     /// <summary>True when a Basic credential can be attached (an API key or secret is present).</summary>
     public bool HasCredential => !string.IsNullOrWhiteSpace(ApiKey) || !string.IsNullOrWhiteSpace(ApiSecret);
 
     /// <summary>True when the VYK company-scoped source is enabled (a members route is configured).</summary>
     public bool HasMembersPath => !string.IsNullOrWhiteSpace(MembersPath);
+
+    /// <summary>True when the <c>/memberSecurities</c> share-count route is configured (01 v1.5.36).</summary>
+    public bool HasMemberSecuritiesPath => !string.IsNullOrWhiteSpace(MemberSecuritiesPath);
 
     /// <summary>Every configured secret (for redaction / never-echo guarantees).</summary>
     public IEnumerable<string> Secrets =>

@@ -305,6 +305,21 @@ public static class StockFundamentalsEndpoints
         var shares = Line(sheet, SharesDiluted, lines);
         var bvps = equity is not null && shares is > 0m ? equity.Value / shares.Value : (decimal?)null;
 
+        // The market-data share count (TKT-foundation-058, 01 v1.5.36 §10.9.11): served from the
+        // per-instrument share_counts store, distinct from the statement-reported
+        // `lines.sharesDiluted`/`lines.sharesOutstanding` figures above. Honest absence: an
+        // instrument with no stored count serves nulls (a dash), never a zero.
+        var storedShareCount = await db.ShareCounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(row => row.InstrumentId == instrument.Id, cancellationToken);
+        var shareCount = new
+        {
+            sharesOutstanding = storedShareCount?.SharesOutstanding,
+            asOf = storedShareCount is null
+                ? null
+                : DateOnly.FromDateTime(storedShareCount.RecordedAt.UtcDateTime).ToString("yyyy-MM-dd"),
+        };
+
         var bsLines = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["cash"] = Figure(Line(sheet, Cash, lines), restated),
@@ -326,6 +341,7 @@ public static class StockFundamentalsEndpoints
             periodEndDate = sheet.PeriodEndDate,
             restated,
             lines = bsLines,
+            shareCount,
             bookValue = Figure(equity, restated),
             bookValuePerShare = Figure(bvps, restated),
         });

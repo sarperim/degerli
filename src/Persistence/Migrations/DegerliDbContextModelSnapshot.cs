@@ -1475,6 +1475,32 @@ namespace Degerli.Persistence.Migrations
                     b.ToTable("sector_metric_medians", (string)null);
                 });
 
+            modelBuilder.Entity("Degerli.Persistence.Entities.ShareCount", b =>
+                {
+                    b.Property<long>("InstrumentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("instrument_id");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<decimal>("SharesOutstanding")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("shares_outstanding");
+
+                    b.Property<string>("SourceRef")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_ref");
+
+                    b.HasKey("InstrumentId")
+                        .HasName("pk_share_counts");
+
+                    b.ToTable("share_counts", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<long>", b =>
                 {
                     b.Property<int>("Id")
@@ -1840,6 +1866,16 @@ namespace Degerli.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_sector_metric_medians_sectors_sector_id");
+                });
+
+            modelBuilder.Entity("Degerli.Persistence.Entities.ShareCount", b =>
+                {
+                    b.HasOne("Degerli.Persistence.Entities.Instrument", null)
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_share_counts_instruments_instrument_id");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<long>", b =>

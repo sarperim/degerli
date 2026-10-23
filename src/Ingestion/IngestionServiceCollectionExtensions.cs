@@ -14,6 +14,7 @@ using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Scheduling;
+using Degerli.Ingestion.Shares;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Ingestion.Universe;
@@ -226,6 +227,11 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<ISourceAdapter<DividendsPayload>, DividendsSourceAdapter>();
         services.AddScoped<DividendStore>();
 
+        // The shares lane (01 v1.5.36 §10.9.11): one paced /memberSecurities snapshot per run
+        // through the shared KAP client, decoded into the per-instrument share-count store.
+        services.AddScoped<ISourceAdapter<SharesPayload>, SharesSourceAdapter>();
+        services.AddScoped<ShareCountStore>();
+
         services.AddScoped<ISourceAdapter<CorporateActionsPayload>, CorporateActionsSourceAdapter>();
         services.AddScoped<CorporateActionStore>();
 
@@ -295,6 +301,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, UniverseSyncJob>();
         services.AddScoped<IIngestJob, StatementsJob>();
         services.AddScoped<IIngestJob, DividendsJob>();
+        services.AddScoped<IIngestJob, SharesJob>();
         services.AddScoped<IIngestJob, CorporateActionsJob>();
         services.AddScoped<IIngestJob, DisclosuresJob>();
         services.AddScoped<IIngestJob, MetricsRecomputeJob>();
