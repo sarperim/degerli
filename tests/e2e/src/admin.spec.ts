@@ -160,8 +160,14 @@ test.describe('TC-MDF-050 — admin empty states', () => {
   test('the open quarantine queue names the healthy condition', async ({ page }) => {
     await signIn(page, BUILDER_EMAIL)
     await page.goto('/admin')
+
+    // Scoped to the section nav and exact-matched: the ops summary body also
+    // renders an "open the quarantine queue" button, whose accessible name
+    // contains the tab label, so a page-wide substring match resolved to two
+    // elements once the summary fetch had landed (a load-order race).
     await page
-      .getByRole('button', { name: TR('admin.sections.quarantine') })
+      .getByRole('navigation', { name: TR('admin.sectionsNavLabel') })
+      .getByRole('button', { name: TR('admin.sections.quarantine'), exact: true })
       .click()
     await expect(page.getByText(TR('admin.quarantine.emptyOpenTitle'))).toBeVisible()
   })
