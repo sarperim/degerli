@@ -342,13 +342,19 @@ export const NO_MEDIAN_VALUATION_FIXTURE: StockValuationResponse = {
  * computable metric — `sectorMedian` absent, `peerCount` 0. This is the payload
  * behind the user-reported all-"Anlamsız"/"0 emsal" wall; the strip must render
  * one honest no-data state instead of per-row verdicts.
+ *
+ * The shape is the served one, not a sanitised variant: the API sets
+ * `notMeaningful = value is null` unconditionally
+ * (`StockOverviewAndValuationEndpoints.cs`), and the median engine writes a row
+ * with `PeerCount = 0` and `ExcludedCount` = the same-day null peer rows
+ * (`SectorMedianEngine.cs`) — here the five assessed peers of the ALFA group.
  */
 const NO_PEER_ENTRY = {
   value: null,
-  notMeaningful: false,
+  notMeaningful: true,
   sectorMedian: null,
   peerCount: 0,
-  excludedCount: 0,
+  excludedCount: 5,
 } as const
 
 export const NO_PEERS_VALUATION_FIXTURE: StockValuationResponse = {
@@ -364,29 +370,21 @@ export const NO_PEERS_VALUATION_FIXTURE: StockValuationResponse = {
 }
 
 /**
- * A computable comparison whose own value was not computed (TKT-foundation-055):
- * the peers have a median, but this stock's multiple is absent. The row renders
- * the no-data dash — never the "not meaningful" verdict, which is a claim about
- * the metric rather than about missing data.
- */
-export const NO_OWN_VALUE_VALUATION_FIXTURE: StockValuationResponse = {
-  ...VALUATION_FIXTURE,
-  strip: {
-    ...VALUATION_FIXTURE.strip,
-    pe: { value: null, notMeaningful: false, sectorMedian: 10.0, peerCount: 3, excludedCount: 0 },
-  },
-}
-
-/**
  * A metric with no computable peers inside an otherwise populated strip
- * (TKT-foundation-055): the row keeps its own value and shows no median, and the
- * median basis must never render as "0 peers".
+ * (TKT-foundation-055): every same-day peer row for that metric is null, so the
+ * median engine serves `sectorMedian: null`, `peerCount: 0` and the whole group
+ * as `excludedCount`. The own value is null too — a non-null own value would
+ * itself be inside its sector's meaningful set, so `peerCount ≥ 1` — and the row
+ * must never render a median basis as "0 emsal".
  */
 export const ZERO_PEER_COUNT_VALUATION_FIXTURE: StockValuationResponse = {
   ...VALUATION_FIXTURE,
+  // `current` and the strip's own `value` come from the same derived row, so a
+  // null strip value is a null canonical multiple too.
+  current: { ...VALUATION_FIXTURE.current, pe: null },
   strip: {
     ...VALUATION_FIXTURE.strip,
-    pe: { value: 10.0, notMeaningful: false, sectorMedian: null, peerCount: 0, excludedCount: 0 },
+    pe: { value: null, notMeaningful: true, sectorMedian: null, peerCount: 0, excludedCount: 5 },
   },
 }
 

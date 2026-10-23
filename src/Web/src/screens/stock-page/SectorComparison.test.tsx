@@ -8,7 +8,6 @@ import { server } from '@/test/msw/server'
 import {
   BETA_VALUATION_FIXTURE,
   fill,
-  NO_OWN_VALUE_VALUATION_FIXTURE,
   NO_PEERS_VALUATION_FIXTURE,
   renderStockPage,
   resetStockPageTest,
@@ -103,24 +102,6 @@ describe('TKT-foundation-055 (TC-RES-025 extension) — vs.-sector honest emptie
     )
   })
 
-  it('TC-RES-025 — shows the no-data dash, never a not-meaningful verdict, for an uncomputed own value', () => {
-    renderWithProviders(
-      <VsSectorStrip strip={NO_OWN_VALUE_VALUATION_FIXTURE.strip} />,
-    )
-
-    const pe = metric(strip(), 'pe')
-    const ownValue = pe.querySelector('[data-slot="stock-value"]')
-    expect(ownValue).toHaveTextContent('—')
-    expect(ownValue).not.toHaveTextContent(TR('honestData.notMeaningful'))
-    expect(pe.querySelector('[data-slot="no-value"]')).toHaveAttribute(
-      'title',
-      TR('honestData.noDataTitle'),
-    )
-    expect(pe.querySelector('[data-slot="sector-median"]')).toHaveTextContent(
-      formatNumber('tr', 10),
-    )
-  })
-
   it('TC-RES-025 — never renders a zero peer count as a median basis', () => {
     renderWithProviders(
       <VsSectorStrip strip={ZERO_PEER_COUNT_VALUATION_FIXTURE.strip} />,
@@ -131,7 +112,11 @@ describe('TKT-foundation-055 (TC-RES-025 extension) — vs.-sector honest emptie
     expect(within(block).queryByTestId('vs-sector-no-data')).toBeNull()
 
     const pe = metric(block, 'pe')
-    expect(pe.querySelector('[data-slot="stock-value"]')).toHaveTextContent('10')
+    // The served shape for "no meaningful peer row": own value null →
+    // not-meaningful, median absent, no peer-count basis.
+    expect(pe.querySelector('[data-slot="stock-value"]')).toHaveTextContent(
+      TR('honestData.notMeaningful'),
+    )
     expect(pe.querySelector('[data-slot="sector-median"]')).toHaveTextContent(
       TR('stockPage.valuation.strip.noMedian'),
     )

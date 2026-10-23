@@ -177,16 +177,14 @@ function StripMetric({
         >
           {/*
             "Anlamsız" is a verdict about the metric (e.g. P/E on negative
-            earnings), so it is rendered only when the server says so. An own
-            value the server did not compute is missing data — a dash, never a
-            fabricated verdict (TKT-foundation-055(c), the 052 doctrine).
+            earnings), so it is rendered only when the server says so. The
+            served contract ties the two together: `notMeaningful` is
+            `value is null`, unconditionally, and a null `value` is explicit
+            "not meaningful, never 0" (BR-RES-008) — there is no
+            "uncomputed but meaningful" payload to dash (TKT-foundation-055(c)).
           */}
-          {entry.notMeaningful ? (
+          {entry.notMeaningful || entry.value === null ? (
             <NotMeaningful />
-          ) : entry.value === null ? (
-            <span data-slot="no-value" title={t('honestData.noDataTitle')}>
-              —
-            </span>
           ) : (
             formatMetric(locale, code, entry.value)
           )}
