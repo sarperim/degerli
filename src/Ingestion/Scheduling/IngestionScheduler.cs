@@ -49,6 +49,18 @@ namespace Degerli.Ingestion.Scheduling;
 /// cancellation that is not the host's stopping token is a failed attempt, never an escape from
 /// the loop.
 /// </para>
+/// <para>
+/// <b>Streams do not starve each other</b> (01 v1.5 §10.9.17, TKT-foundation-062). A bounded
+/// attempt still held the calling loop for its whole duration, and the loop is what evaluates
+/// every other stream's due instant — so a retry armed for T, or the 05:30Z morning chain,
+/// started only when the loop was released (live: ~6h41m late). <see cref="TickAsync"/>
+/// therefore keeps evaluating due-ness on the injected clock while attempts are in flight: each
+/// stream's armed retry and each cron occurrence starts at its own instant <b>for as long as the
+/// in-flight attempt is at an await</b> — a step that blocks synchronously still holds the pump
+/// thread and still postpones the other streams' due instants (the unbounded class under "Scope
+/// of the guarantee") — and an in-flight stream is neither a wake nor a due candidate until its
+/// attempt ends.
+/// </para>
 /// </remarks>
 public sealed class IngestionScheduler
 {
@@ -126,7 +138,9 @@ public sealed class IngestionScheduler
     /// <summary>Whether the scheduler is enabled in configuration.</summary>
     public bool Enabled => _options.Enabled;
 
-    /// <summary>The next instant the scheduler needs to be woken at, or null when idle.</summary>
+    /// <summary>The next instant the scheduler needs to be woken at, or null when idle.
+    /// A stream whose attempt is in flight (only possible inside a tick) has no wake: its own
+    /// attempt owns it until it ends.</summary>
     public DateTimeOffset? NextWake(DateTimeOffset now)
     {
         lock (_gate)
@@ -134,6 +148,11 @@ public sealed class IngestionScheduler
             DateTimeOffset? next = null;
             foreach (var stream in _streams)
             {
+                if (stream.InFlight)
+                {
+                    continue;
+                }
+
                 if (stream.Active is { } active)
                 {
                     next = Earliest(next, active.NextAttemptAt);
@@ -148,21 +167,176 @@ public sealed class IngestionScheduler
         }
     }
 
-    /// <summary>Processes everything due at <paramref name="now"/>: a scheduled trigger
-    /// (if the local date is a trading day for the calendar-gated chain streams) and/or a due
-    /// retry.</summary>
+    /// <summary>
+    /// Processes everything due at <paramref name="now"/>: a scheduled trigger (if the local
+    /// date is a trading day for the calendar-gated chain streams) and/or a due retry — and,
+    /// while an attempt is in flight, every due instant that falls on <b>another</b> stream.
+    /// </summary>
+    /// <remarks>
+    /// <b>Streams do not starve each other (01 v1.5 §10.9.17, TKT-foundation-062).</b> The
+    /// calling loop is a single logical loop: it computes <see cref="NextWake"/>, delays, and
+    /// calls this method, and it is inside this method for as long as any attempt it started
+    /// runs. Before this pump, the tick awaited each due stream's attempt to its end in stream
+    /// order, so an attempt in flight postponed <i>every</i> other stream's due instant — a
+    /// retry armed for T fired hours late, and a cron occurrence (the 05:30Z morning chain)
+    /// was consumed only when the loop was released, firing at the release instant instead of
+    /// at its own (the live 2026-10-22/23 trace: morning chain at 12:11:24Z, ~6h41m late).
+    /// The pump therefore keeps evaluating due-ness on the injected clock itself while
+    /// attempts are in flight: each stream's armed retry and each cron occurrence starts at
+    /// its own instant <b>for as long as the in-flight attempt is at an await</b>. A step that
+    /// blocks synchronously still holds the pump thread and still postpones the other streams'
+    /// due instants (the unbounded class under "Scope of the guarantee"). Lateness is then
+    /// bounded by nothing this engine adds — the only remaining bound on an attempt is its own
+    /// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> watchdog.
+    /// </remarks>
     public async Task TickAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        var due = new List<(ScheduleStream Stream, ActiveRun Run)>();
-        lock (_gate)
+        if (!_options.Enabled)
         {
-            if (!_options.Enabled)
+            return;
+        }
+
+        // The attempts this tick owns. Each is awaited here (the tick's contract: when it
+        // returns, the attempts it started have ended), but concurrently rather than one
+        // stream at a time.
+        var running = new List<Task>();
+        StartDueAttempts(now, running, cancellationToken);
+
+        while (running.Count > 0)
+        {
+            // Settle the attempts that ended — awaiting them folds their failures (including
+            // the host-stop cancellation) into this tick exactly as the sequential tick did.
+            foreach (var ended in running.Where(task => task.IsCompleted).ToList())
+            {
+                running.Remove(ended);
+                try
+                {
+                    await ended.ConfigureAwait(false);
+                }
+                catch
+                {
+                    // This tick is unwinding on the attempt's failure (or the host's stop): the
+                    // siblings it already started end on their own — each clears its stream's
+                    // InFlight in its finally — but this returning tick will never await them,
+                    // so their terminal faults are observed here rather than left unobserved.
+                    ObserveAbandoned(running);
+                    throw;
+                }
+            }
+
+            if (running.Count == 0)
             {
                 return;
             }
 
+            var current = _clock.GetUtcNow();
+            var next = NextWake(current);
+            if (next is { } immediate && immediate <= current)
+            {
+                // A stopping host is not a due instant: do not start an attempt it would only
+                // cancel. The siblings already started end on their own; observe their faults
+                // since this tick is about to unwind without awaiting them.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ObserveAbandoned(running);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                if (StartDueAttempts(current, running, cancellationToken) == 0)
+                {
+                    // Nothing was startable at an instant `NextWake` reported as due: the
+                    // remaining work is the running attempts. Never spin; wait for them.
+                    await AwaitAnyRunningAsync(running, wakeAt: null, cancellationToken).ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
+            var pause = await AwaitAnyRunningAsync(running, next, cancellationToken).ConfigureAwait(false);
+            if (pause)
+            {
+                // A stopping host is not a due instant: unwind instead of starting work. The
+                // siblings already started end on their own (their finally clears InFlight);
+                // observe their faults since this tick unwinds without awaiting them.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ObserveAbandoned(running);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                // Another stream's due instant arrived while an attempt held the tick: start it
+                // now, at its own instant, never at this tick's release instant.
+                StartDueAttempts(_clock.GetUtcNow(), running, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits until one of <paramref name="running"/> ends or <paramref name="wakeAt"/> falls due
+    /// on the injected clock. Returns true when the wait ended because the instant arrived
+    /// (a due re-evaluation is owed) and false when an attempt ended.
+    /// </summary>
+    private async Task<bool> AwaitAnyRunningAsync(
+        IReadOnlyList<Task> running,
+        DateTimeOffset? wakeAt,
+        CancellationToken cancellationToken)
+    {
+        if (wakeAt is not { } at)
+        {
+            await Task.WhenAny(running).ConfigureAwait(false);
+            return false;
+        }
+
+        var wait = at - _clock.GetUtcNow();
+        using var pauseCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var pause = Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, _clock, pauseCts.Token);
+        var waiters = running.Append(pause).ToList();
+        var completed = await Task.WhenAny(waiters).ConfigureAwait(false);
+
+        await pauseCts.CancelAsync().ConfigureAwait(false);
+
+        return ReferenceEquals(completed, pause);
+    }
+
+    /// <summary>
+    /// Observes the terminal exception of attempts this tick started but will not await because
+    /// it is unwinding (a faulted sibling, or a stopping host). The attempts still end — each
+    /// clears its stream's <c>InFlight</c> in its <c>finally</c> — but a fault raised after the
+    /// unwind (for example the exhausted alert) must not surface later as an unobserved-task
+    /// exception. A task that is awaited normally is unaffected: this only reads its exception.
+    /// </summary>
+    private static void ObserveAbandoned(IEnumerable<Task> running)
+    {
+        foreach (var task in running)
+        {
+            _ = task.ContinueWith(
+                static abandoned => _ = abandoned.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+    }
+
+    /// <summary>
+    /// Starts this instant's due attempts — a scheduled trigger (trading-day gated for the
+    /// chain streams) and/or a due retry — and appends their tasks to
+    /// <paramref name="running"/>. A stream whose attempt is already in flight is skipped:
+    /// its next attempt is decided when that attempt ends (success or the retry ladder).
+    /// Returns how many attempts were started.
+    /// </summary>
+    private int StartDueAttempts(DateTimeOffset now, List<Task> running, CancellationToken cancellationToken)
+    {
+        var due = new List<(ScheduleStream Stream, ActiveRun Run)>();
+        lock (_gate)
+        {
             foreach (var stream in _streams)
             {
+                if (stream.InFlight)
+                {
+                    continue;
+                }
+
                 if (stream.Active is null)
                 {
                     EnsureScheduled(stream, now);
@@ -185,6 +359,7 @@ public sealed class IngestionScheduler
 
                 if (stream.Active is { } active && now >= active.NextAttemptAt)
                 {
+                    stream.InFlight = true;
                     due.Add((stream, active));
                 }
             }
@@ -192,8 +367,10 @@ public sealed class IngestionScheduler
 
         foreach (var (stream, run) in due)
         {
-            await RunAttemptAsync(stream, run, now, cancellationToken).ConfigureAwait(false);
+            running.Add(RunAttemptAsync(stream, run, now, cancellationToken));
         }
+
+        return due.Count;
     }
 
     private static IReadOnlyList<ScheduleStream> BuildStreams(IngestionSchedulerOptions options)
@@ -300,6 +477,28 @@ public sealed class IngestionScheduler
     }
 
     private async Task RunAttemptAsync(
+        ScheduleStream stream,
+        ActiveRun run,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RunAttemptCoreAsync(stream, run, now, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // The attempt is over (succeeded, failed onto the ladder, exhausted, or the host
+            // stopped) whichever way it ended: the stream is schedulable again, so the next
+            // due instant — its own wake or another stream's — can be evaluated.
+            lock (_gate)
+            {
+                stream.InFlight = false;
+            }
+        }
+    }
+
+    private async Task RunAttemptCoreAsync(
         ScheduleStream stream,
         ActiveRun run,
         DateTimeOffset now,
@@ -890,6 +1089,14 @@ public sealed class IngestionScheduler
         public DateTimeOffset? NextScheduled { get; set; }
 
         public ActiveRun? Active { get; set; }
+
+        /// <summary>
+        /// Whether this stream's attempt is running inside a tick (01 v1.5 §10.9.17,
+        /// TKT-foundation-062). An in-flight stream is neither a wake candidate nor a
+        /// due candidate: its attempt owns it until it ends, and the pump keeps the
+        /// <b>other</b> streams' due instants honest meanwhile.
+        /// </summary>
+        public bool InFlight { get; set; }
     }
 
     /// <summary>What day a stream's run targets (01 v1.5 §10.9.16).</summary>
