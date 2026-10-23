@@ -1,0 +1,35 @@
+---
+scope:
+  - src/Ingestion/CorporateActions/CorporateActionsSourceAdapter.cs
+  - src/Ingestion/CorporateActions/CorporateActionsJob.cs
+  - src/Ingestion/CorporateActions/CorporateActionsModels.cs
+  - src/Ingestion/Dividends/DividendsSourceAdapter.cs
+  - src/Ingestion/Dividends/DividendsJob.cs
+  - src/Ingestion/Disclosures/DisclosuresSourceAdapter.cs
+  - src/Ingestion/Disclosures/DisclosuresJob.cs
+  - src/Ingestion/Kap/KapSources.cs
+  - tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs
+  - .pipeline/testing/market-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-061: Event-family per-disclosure resilience — one un-fetchable KAP attachment must yield an honest partial, never kill the chain or block the day's snapshot (TONIGHT'S BLOCKER)
+
+- Status: todo
+- Size: M
+- **Priority: P1 — TONIGHT'S BLOCKER (Friday EOD chain, 17:30 UTC). Dispatch immediately; the file lanes are free (046 merged; 059 in flight touches only `IngestionScheduler.cs` — disjoint).**
+- **Verified evidence (orchestrator, Thursday night's first truly unattended EOD chain, 2026-10-22):**
+  - `corporate-actions` as chain step 5/9 **hung 90 minutes on attempts 1 and 2** → the watchdog correctly bounded both and wrote `RUN_HUNG` rows (185, 190 — verbatim hungJob/step/stepCount; **041's watchdog works**).
+  - Attempt 3 got a fast **HTTP 500 from the gateway on `/disclosureDetail/1185709?fileType=data`** (`SourceFetchException`, run 195, 21:52 UTC) — and because the job reports `failed` on any source exception (the adapter's own documented design: `CorporateActionsSourceAdapter.cs:81` "a `SourceFetchException` … the run is recorded `failed`"), the chain **fail-stopped before metrics-recompute / market-snapshot / medians**. **Thursday's close (2026-10-22) never reached the snapshot and the site ran a day stale.**
+  - The same CA job completed a full 74-minute walk on Thursday morning (run 173, written 302) — so the hang/500 is **per-disclosure (a specific attachment id), not systemic**.
+- **Pinned fix (046's per-constituent precedent, one level down — per disclosure detail):**
+  1. **Per-disclosure quarantine-and-continue:** a single un-fetchable disclosure detail (HTTP 500, fault envelope, or transport error) is **isolated** — the walk continues, the skip is recorded honestly (named reason — e.g. `DISCLOSURE_DETAIL_UNFETCHABLE` — with the disclosure index and the error class), quarantined **with evidence** (the gateway's error verbatim in the quarantine record), counted in the run stats, and the run terminates as an **honest partial** — never `failed`, never a silent omission. **Production-honesty pin (recorded per the grant): the answer to per-item gateway errors is quarantine-with-evidence, never silent omission, and never a whole-run failure.**
+  2. **Bounded per-item fetch timeout:** the hang class (90 min on one attachment) is bounded by a per-detail fetch timeout (config constant, generous default — the healthy walk paces ~12 s/item over 74 min, so a timeout in the low minutes distinguishes hang from pace), interacting correctly with the lane's pacing and cancellation. After a timeout the item takes the same honest-partial skip path as a 500.
+  3. **Family-wide (the 046 scope precedent):** the same per-item isolation lands in all three event-family adapters (dividends, corporate-actions, disclosures — they share the `disclosureDetail` fetch pattern; verified). The chain's step-failure policy is UNTOUCHED — a partial step proceeds, which is what unblocks the chain. **Verification note (not scope):** the statements lane's per-disclosure error posture is checked during implementation; if the identical gap exists there it is recorded on this ticket and sliced as its own follow-up (statements has its own bounded-walk design and is not tonight's evidence).
+  4. **Recovery (live criteria):** after the fix lands, the orchestrator re-runs the chain for **2026-10-22 (the missed close)** so the site stops running a day stale — the backfill/repair path is the existing one (admin-triggered chain run for the date), recorded in the live criteria.
+- Traces to: FR-MDF-003/004/005 (the three family ingests — resilience), FR-MDF-010/011 (honest achieved depth — skips counted, never hidden), FR-MDF-016 (pipeline health — the chain completes); §10.9.15 (046's family isolation doctrine — extended one level down to per-disclosure); §10.9.16/§10.9.17 (the chains and watchdog this unblocks); TKT-foundation-046 heritage (per-constituent precedent), TKT-foundation-041 heritage (the watchdog that bounded the hang — working as designed).
+- Acceptance: **explicit criteria; L2 doubles only, never live sources.** **(i) TC-MDF-094 — per-item isolation (red→green):** a family-lane double where one disclosure detail returns a 500 (and, separately, one that hangs past the timeout) → the walk completes, the item is quarantined with evidence + counted with the named reason, all fetchable items' rows are written, and the run terminates honest-partial (red today: `SourceFetchException` → run `failed`, chain fail-stop). **(ii) TC-MDF-095 — bounded timeout:** a hanging detail double is bounded by the configured timeout and takes the skip path; a healthy paced walk is never falsely timed out (the timeout constant vs pace is asserted). **(iii) Chain composition:** the chain-level tests prove a partial CA step does not block metrics-recompute/market-snapshot/medians (the existing chain test lane). **(iv) Golden stability:** the 046 family-lane tests re-run green with pre-listed deltas only (the new skip-stat shape is additive). **(v) CI green.** **Live criteria (orchestrator, tonight + recovery, honest, recorded verbatim):** (a) the Friday 17:30 UTC EOD chain completes end-to-end with the CA step honestly partial (the un-fetchable attachment — likely still `/disclosureDetail/1185709` — skipped with evidence and counted) and metrics-recompute/market-snapshot/medians all run, landing Friday's close in the snapshot; (b) the 2026-10-22 close is recovered via the admin-triggered chain re-run for that date and the site serves both days.
+- Architecture refs: `01-system-architecture.md` §10.9.15 (extended: per-disclosure isolation + the production-honesty pin for per-item gateway errors), §10.9.16/§10.9.17 (cited — the chain/watchdog interplay), §13.1 **v1.5.40**; test plan: `.pipeline/testing/market-data-foundation.md` TC-MDF-094/095 (delivery-planner-applied, test-planner confirmation pending).
+- UX refs: none (ingestion resilience; the user-visible effect is the site no longer runs a day stale when one attachment fails).
+- Dependencies: none hard — **dispatch-ready immediately**; disjoint from 059 (scheduler file) and 058 (Shares lane; shares `KapSources.cs` — 058 also scopes it: **coordinate — if both are in flight, last-lander rebases on `KapSources.cs`; better: dispatch 061 first tonight, 058 next**). §13.1 v1.5.40 above the pending v1.5.39 (#122) — last-lander rebases.
+- Parallel group: none
