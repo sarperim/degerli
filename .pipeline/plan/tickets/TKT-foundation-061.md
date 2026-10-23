@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-061: Event-family per-disclosure resilience — one un-fetchable KAP attachment must yield an honest partial, never kill the chain or block the day's snapshot (TONIGHT'S BLOCKER)
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P1 — TONIGHT'S BLOCKER (Friday EOD chain, 17:30 UTC). Dispatch immediately; the file lanes are free (046 merged; 059 in flight touches only `IngestionScheduler.cs` — disjoint).**
 - **Verified evidence (orchestrator, Thursday night's first truly unattended EOD chain, 2026-10-22):**
