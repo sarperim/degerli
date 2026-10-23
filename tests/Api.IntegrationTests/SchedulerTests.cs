@@ -346,7 +346,7 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     // ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// Acceptance (ii) — <b>retry punctuality</b>. The EOD attempt fails at 20:30, so the
+    /// TC-MDF-081 (a) — <b>retry punctuality</b> (acceptance ii). The EOD attempt fails at 20:30, so the
     /// ladder arms retry 1 for 20:35. A per-job stream's attempt starts at 20:31 and does not
     /// end on its own, so the tick that started it is still in flight when 20:35 arrives.
     /// <para>
@@ -408,7 +408,7 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     }
 
     /// <summary>
-    /// Acceptance (iii) — <b>morning-chain independence while a retry is in flight</b>. This is
+    /// TC-MDF-081 (b) — <b>morning-chain independence while a retry is in flight</b> (acceptance iii). This is
     /// the 2026-10-22/23 live shape end-to-end: the EOD attempt fails at 20:30, retry 1 starts
     /// at 20:35 and its chain step hangs, and the 08:30 Istanbul (05:30 UTC) morning chain falls
     /// due while that retry attempt is still holding the tick. Live, the morning chain did not
