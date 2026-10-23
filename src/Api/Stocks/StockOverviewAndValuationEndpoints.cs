@@ -1,5 +1,6 @@
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
+using Degerli.Ingestion.Intraday;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,7 @@ public static class StockOverviewAndValuationEndpoints
     private static async Task<IResult> OverviewAsync(
         string symbol,
         DegerliDbContext db,
+        PriceStateService priceStates,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -89,12 +91,19 @@ public static class StockOverviewAndValuationEndpoints
 
         var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
 
+        // The intraday/close price state (01 §10.9.18, TKT-foundation-047 — the frozen
+        // contract TKT-foundation-049's Web half consumes): the sweep's last price while the
+        // session's EOD close is not stored, the stored close once it lands, the change vs.
+        // the previous stored session's close, and the honest asOf of whichever store served.
+        var priceState = await priceStates.GetInstrumentStateAsync(instrumentId, clock.GetUtcNow(), cancellationToken);
+
         if (description is null)
         {
             return Results.Ok(new
             {
                 asOf,
                 stale,
+                priceState,
                 status = "preparing",
                 symbol = instrument.Symbol,
                 name = identityName,
@@ -105,6 +114,7 @@ public static class StockOverviewAndValuationEndpoints
         {
             asOf,
             stale,
+            priceState,
             status = "published",
             textTr = description.TextTr,
             textEn = description.TextEn,

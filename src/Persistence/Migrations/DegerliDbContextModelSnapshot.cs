@@ -989,6 +989,40 @@ namespace Degerli.Persistence.Migrations
                     b.ToTable("instruments", (string)null);
                 });
 
+            modelBuilder.Entity("Degerli.Persistence.Entities.IntradayQuote", b =>
+                {
+                    b.Property<long>("InstrumentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("instrument_id");
+
+                    b.Property<DateOnly>("SessionDate")
+                        .HasColumnType("date")
+                        .HasColumnName("session_date");
+
+                    b.Property<long?>("DayVolume")
+                        .HasColumnType("bigint")
+                        .HasColumnName("day_volume");
+
+                    b.Property<DateTimeOffset>("FetchedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("fetched_at");
+
+                    b.Property<decimal>("LastPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("last_price");
+
+                    b.Property<string>("SourceRef")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_ref");
+
+                    b.HasKey("InstrumentId", "SessionDate")
+                        .HasName("pk_intraday_quotes");
+
+                    b.ToTable("intraday_quotes", (string)null);
+                });
+
             modelBuilder.Entity("Degerli.Persistence.Entities.KapDisclosure", b =>
                 {
                     b.Property<long>("Id")
@@ -1747,6 +1781,16 @@ namespace Degerli.Persistence.Migrations
                         .HasForeignKey("SectorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_instruments_sectors_sector_id");
+                });
+
+            modelBuilder.Entity("Degerli.Persistence.Entities.IntradayQuote", b =>
+                {
+                    b.HasOne("Degerli.Persistence.Entities.Instrument", null)
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_intraday_quotes_instruments_instrument_id");
                 });
 
             modelBuilder.Entity("Degerli.Persistence.Entities.KapDisclosure", b =>

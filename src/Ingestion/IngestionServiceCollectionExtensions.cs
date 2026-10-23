@@ -6,6 +6,7 @@ using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Disclosures;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Funds;
+using Degerli.Ingestion.Intraday;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.Macro;
@@ -143,6 +144,37 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<CoverageRecorder>();
         services.AddScoped<FundCoverageRecorder>();
 
+        // The intraday refresh lane (TKT-foundation-047, 01 §10.9.18): its own source section
+        // mirroring `Ingestion:Prices` (the probe-gated İş/Yahoo choice is config, never a
+        // code fork), its own keyed client (a repoint at the Yahoo contingency must not move
+        // the EOD lane), the intraday fact store and the served price-state resolver.
+        services.Configure<IntradayQuoteSourceOptions>(configuration.GetSection(IntradayQuoteSourceOptions.SectionName));
+        services.AddKeyedSingleton<ISourceClient>(IntradayQuoteSourceOptions.ClientKey, (provider, _) =>
+        {
+            var options = provider.GetRequiredService<IOptions<IntradayQuoteSourceOptions>>().Value;
+            var baseUrl = options.BaseUrl;
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = provider.GetRequiredService<IOptions<PricesSourceOptions>>().Value.BaseUrl;
+            }
+
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = "http://localhost";
+            }
+
+            return new HttpSourceClient(new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl, UriKind.Absolute),
+                Timeout = TimeSpan.FromSeconds(30),
+            });
+        });
+        services.AddScoped(provider => new IntradayQuoteSourceAdapter(
+            provider.GetRequiredKeyedService<ISourceClient>(IntradayQuoteSourceOptions.ClientKey),
+            provider.GetRequiredService<IOptions<IntradayQuoteSourceOptions>>()));
+        services.AddScoped<IntradayQuoteStore>();
+        services.AddScoped<PriceStateService>();
+
         // Universe, sector and index-levels sync (FR-MDF-006/007). The universe source has
         // its own keyed source client bound to its base address (01 v1.5 §10.9.8), so the
         // universe adapters never share the prices client. The real universe resource is a
@@ -259,6 +291,7 @@ public static class IngestionServiceCollectionExtensions
 
         // Per-job registrations (the convention): add one line per job as it lands.
         services.AddScoped<IIngestJob, PricesJob>();
+        services.AddScoped<IIngestJob, IntradayRefreshJob>();
         services.AddScoped<IIngestJob, UniverseSyncJob>();
         services.AddScoped<IIngestJob, StatementsJob>();
         services.AddScoped<IIngestJob, DividendsJob>();

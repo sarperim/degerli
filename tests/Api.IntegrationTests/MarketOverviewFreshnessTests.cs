@@ -6,6 +6,7 @@ using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
+using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -151,8 +152,217 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MDF-085 — the intraday/close price-state contract on the market overview
+    // (the frozen seam TKT-foundation-049 builds the Web half against)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The session the intraday cases describe: Wednesday 2026-10-07 — the fixture Tuesday
+    /// (T) is the last stored session, so this is a fresh trading day whose EOD close has not
+    /// landed. The fake clock only moves forward (the harness clock starts at 18:00 UTC on
+    /// Tuesday), which is why the intraday world is anchored one day after T.
+    /// </summary>
+    private static DateOnly Session => Tuesday.AddDays(1);
+
+    /// <summary>A mid-session instant: 12:30 Istanbul (09:30 UTC).</summary>
+    private static readonly DateTimeOffset MidSessionClock = new(2026, 10, 7, 9, 30, 0, TimeSpan.Zero);
+
+    /// <summary>The sweep's <c>fetched_at</c> (12:15 Istanbul).</summary>
+    private static readonly DateTimeOffset MidSessionAsOf = new(2026, 10, 7, 9, 15, 0, TimeSpan.Zero);
+
+    /// <summary>19:00 Istanbul — past the 18:00 close, before the ~20:30 EOD chain.</summary>
+    private static readonly DateTimeOffset AfterCloseClock = new(2026, 10, 7, 16, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// TC-MDF-085 (i) — <b>before the session's EOD close lands</b>, a world whose only
+    /// same-day prices are the intraday sweeps serves <c>state: "intraday"</c> with the
+    /// sweep's <c>asOf</c> and the session date — the "last update HH:MM — not final" state.
+    /// The numeric fields are NULL on the market overview: this lane ingests instrument
+    /// quotes, not intraday index levels, and fabricating a market aggregate here would be
+    /// computing (BR-MDF-009). <c>state</c>/<c>asOf</c>/<c>sessionDate</c> are the contract.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_085_overview_serves_intraday_state_before_the_eod_close_lands()
+    {
+        await ResetAsync();
+        await DeletePricesAfterAsync(Monday);
+        await RunSnapshotAsync(Tuesday);
+        await InsertIntradayAsync(Session, MidSessionAsOf);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(MidSessionClock);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var priceState = document.RootElement.GetProperty("priceState");
+
+        Assert.Equal("intraday", priceState.GetProperty("state").GetString());
+        Assert.Equal(Session.ToString("yyyy-MM-dd"), priceState.GetProperty("sessionDate").GetString());
+        Assert.Equal(MidSessionAsOf, priceState.GetProperty("asOf").GetDateTimeOffset());
+        // No market-level intraday quote exists in this lane — honest NULLs, never a 0 reading.
+        Assert.Equal(JsonValueKind.Null, priceState.GetProperty("lastPrice").ValueKind);
+        Assert.Equal(JsonValueKind.Null, priceState.GetProperty("prevClose").ValueKind);
+        Assert.Equal(JsonValueKind.Null, priceState.GetProperty("changePct").ValueKind);
+    }
+
+    /// <summary>
+    /// TC-MDF-085 (ii) — <b>between the 18:00 Istanbul close and the ~20:30 EOD chain</b> the
+    /// served state is still <c>intraday</c> with its last <c>asOf</c>: the close-in-formation
+    /// must never be relabelled as final (the planner-pinned honest display, §10.9.18).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_085_overview_between_close_and_eod_keeps_intraday_with_its_last_asof()
+    {
+        await ResetAsync();
+        await DeletePricesAfterAsync(Monday);
+        await RunSnapshotAsync(Tuesday);
+        await InsertIntradayAsync(Session, MidSessionAsOf);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        // 19:00 Istanbul — the session has closed, the EOD chain has not published it yet.
+        factory.Clock.SetUtcNow(AfterCloseClock);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var priceState = document.RootElement.GetProperty("priceState");
+
+        Assert.Equal("intraday", priceState.GetProperty("state").GetString());
+        Assert.Equal(Session.ToString("yyyy-MM-dd"), priceState.GetProperty("sessionDate").GetString());
+        // Unchanged from the sweep: the last honest observation, never frozen into a close.
+        Assert.Equal(MidSessionAsOf, priceState.GetProperty("asOf").GetDateTimeOffset());
+    }
+
+    /// <summary>
+    /// TC-MDF-085 (iii) — <b>once the session's EOD close is stored</b> the state becomes
+    /// <c>close</c>, sourced from <c>daily_prices</c> (an intraday value is never a close).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_085_overview_serves_close_once_the_eod_prices_land()
+    {
+        await ResetAsync();
+        await RunSnapshotAsync(Tuesday);
+        // The day's sweeps happened too; the EOD close supersedes them.
+        await InsertIntradayAsync(Session, MidSessionAsOf);
+        var recordedAt = await InsertSessionCloseAsync(Session, new DateTimeOffset(2026, 10, 7, 17, 45, 0, TimeSpan.Zero));
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        // After the 20:30 Istanbul EOD chain (21:00 Istanbul = 18:00 UTC).
+        factory.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 7, 18, 0, 0, TimeSpan.Zero));
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var priceState = document.RootElement.GetProperty("priceState");
+
+        Assert.Equal("close", priceState.GetProperty("state").GetString());
+        Assert.Equal(Session.ToString("yyyy-MM-dd"), priceState.GetProperty("sessionDate").GetString());
+        // The served close's own write timestamp — never the intraday sweep's asOf.
+        Assert.Equal(recordedAt.ToUniversalTime(), priceState.GetProperty("asOf").GetDateTimeOffset().ToUniversalTime());
+    }
+
+    /// <summary>
+    /// TC-MDF-085 (iv) — <b>weekends/holidays</b> serve the last completed session as
+    /// <c>close</c>: a Saturday clock over a store whose newest session is Tuesday must not
+    /// fabricate a Saturday session (stored prices are the truth, §10.9.13; 048 extends the
+    /// calendar to holidays).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_085_overview_serves_the_last_completed_session_at_the_weekend()
+    {
+        await ResetAsync();
+        await RunSnapshotAsync(Tuesday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero)); // Saturday
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var priceState = document.RootElement.GetProperty("priceState");
+
+        Assert.Equal("close", priceState.GetProperty("state").GetString());
+        Assert.Equal(Tuesday.ToString("yyyy-MM-dd"), priceState.GetProperty("sessionDate").GetString());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Inserts the sweep rows a mid-session world would carry (the sweep itself is pinned by
+    /// <c>IntradayQuotesTests</c> / TC-MDF-084; these cases read its storage).
+    /// </summary>
+    private async Task InsertIntradayAsync(DateOnly session, DateTimeOffset fetchedAt)
+    {
+        await using var db = _postgres.CreateContext();
+        var ids = await db.Instruments
+            .Where(instrument => instrument.Symbol == "ALFA" || instrument.Symbol == "BETA")
+            .ToDictionaryAsync(instrument => instrument.Symbol, instrument => instrument.Id);
+
+        db.IntradayQuotes.AddRange(
+            new IntradayQuote
+            {
+                InstrumentId = ids["ALFA"],
+                SessionDate = session,
+                FetchedAt = fetchedAt,
+                LastPrice = 21.50m,
+                DayVolume = 1_200_000,
+                SourceRef = "isyatirim",
+            },
+            new IntradayQuote
+            {
+                InstrumentId = ids["BETA"],
+                SessionDate = session,
+                FetchedAt = fetchedAt,
+                LastPrice = 10.40m,
+                DayVolume = 5_000_000,
+                SourceRef = "isyatirim",
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Writes the session's stored EOD closes (the 20:30 chain's output) for the two sweep
+    /// symbols, returning their <c>recorded_at</c> — the honest close-state <c>asOf</c>.
+    /// </summary>
+    private async Task<DateTimeOffset> InsertSessionCloseAsync(DateOnly session, DateTimeOffset recordedAt)
+    {
+        await using var db = _postgres.CreateContext();
+        var ids = await db.Instruments
+            .Where(instrument => instrument.Symbol == "ALFA" || instrument.Symbol == "BETA")
+            .ToDictionaryAsync(instrument => instrument.Symbol, instrument => instrument.Id);
+
+        foreach (var (symbol, close) in new[] { ("ALFA", 21.80m), ("BETA", 10.55m) })
+        {
+            db.DailyPrices.Add(new DailyPrice
+            {
+                InstrumentId = ids[symbol],
+                PriceDate = session,
+                Open = close,
+                High = close,
+                Low = close,
+                CloseRaw = close,
+                CloseAdjusted = null,
+                Volume = 1_500_000,
+                SourceRef = "isyatirim",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return recordedAt;
+    }
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -161,13 +371,22 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
             AllowAutoRedirect = false,
         });
 
-    /// <summary>Applies the fixture universe and clears the mutable snapshot state.</summary>
+    /// <summary>
+    /// Applies the fixture universe and clears the mutable state each case creates: the
+    /// snapshot, the intraday rows, the ledger, and every stored price <b>after</b> the fixture
+    /// anchor. The session rows the TC-MDF-085 EOD-close case writes belong to that case; a
+    /// later case in the same class must not inherit them (xUnit gives no intra-class ordering),
+    /// so the class returns to its documented L2 state (last stored session = Tuesday) every
+    /// time — the same hygiene the stock-page class applies in its seed.
+    /// </summary>
     private async Task ResetAsync()
     {
         await using var db = _postgres.CreateContext();
         await FixtureSeeder.ApplyAsync(db, L2);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM market_snapshots");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM intraday_quotes");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM daily_prices WHERE price_date > {0}", Tuesday);
     }
 
     /// <summary>

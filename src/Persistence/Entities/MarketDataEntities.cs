@@ -86,6 +86,33 @@ public class DailyPrice
     public DateTimeOffset RecordedAt { get; set; }
 }
 
+/// <summary>
+/// Intraday last-price observation for one instrument in one session (TKT-foundation-047,
+/// architecture §10.9.18). One row per (instrument, session), <b>updated in place</b> by each
+/// session sweep — the value is the source's current reading, never a close: EOD closes stay
+/// pure in <see cref="DailyPrice"/>. <see cref="FetchedAt"/> is the sweep's observation
+/// instant (UTC) so the served state can say "last update HH:MM — not final";
+/// <see cref="SourceRef"/> records which envelope produced the reading
+/// (<c>isyatirim</c> / <c>yahoo</c> — the probe-gated contingency).
+/// </summary>
+public class IntradayQuote
+{
+    public long InstrumentId { get; set; }
+    public DateOnly SessionDate { get; set; }
+
+    /// <summary>When the sweep observed this value (UTC) — the honest <c>asOf</c>.</summary>
+    public DateTimeOffset FetchedAt { get; set; }
+
+    /// <summary>The source's current (last) price for the session.</summary>
+    public decimal LastPrice { get; set; }
+
+    /// <summary>The session's traded ₺ turnover when the source carries it; NULL is honest
+    /// (Yahoo's share-count volume is a different unit — FLG-09(b)).</summary>
+    public long? DayVolume { get; set; }
+
+    public string SourceRef { get; set; } = null!;
+}
+
 /// <summary>Daily index level; one row per index per trading day (FR-MDF-006).</summary>
 public class IndexLevel
 {
