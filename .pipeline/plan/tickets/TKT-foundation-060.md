@@ -40,6 +40,6 @@ The app side is therefore clean: `LanguageToggle` calls `i18n.changeLanguage` on
 
 **Stability evidence.** Case run 5× consecutively (`--repeat-each=5`): **5/5 pass**. Full E2E suite on a **clean compose.ci stack re-created (`down -v` + `up --wait`) before each run**, 3 consecutive runs: **76/76 pass, 76/76 pass, 76/76 pass**.
 
-**PR:** https://github.com/sarperim/degerli/pull/126
+**PR:** https://github.com/sarperim/degerli/pull/127
 
 **Notes for the review loop.** The standing waiver record lives in the gitignored `.pipeline/plan/reviews/*` files owned by the review-lead; this PR removes the cause, so those records can be updated to cite TKT-foundation-060 and the waiver dropped (this coder lane does not edit review artifacts). The §13.1 change-record row is outside this ticket's file scope (docs are not in `scope:`), hence flagged rather than written. Local full-suite runs used remapped ports (API 18080 / MailPit 18025 / SPA 5273) because the developer's own dev stack owns 8080/8025/5173; two initial failures in `gated-save-lifecycle`/`password-reset` were traced to `APP_URL` in the test stack still pointing at :5173 and vanished once it matched the served SPA — an environment artifact, not a regression.
