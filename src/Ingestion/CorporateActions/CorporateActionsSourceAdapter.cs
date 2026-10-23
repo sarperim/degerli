@@ -77,12 +77,21 @@ public sealed class CorporateActionsSourceOptions
 /// rows. Every gateway call is paced by the run's <see cref="KapRequestPacer"/>.
 /// </para>
 /// <para>
-/// <b>Failure posture (fail-fast, honest).</b> A transport failure, an HTTP error or a gateway
-/// fault is a <see cref="SourceFetchException"/> (the run is recorded <c>failed</c> — the failure
-/// ledger, no fabricated empty success), except a <c>400</c> on a <b>list</b> request whose body is
-/// the gateway's <c>ER005</c> envelope, which is end-of-list (an honest empty, §10.9.15); a
-/// structurally malformed detail body is a
-/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>). A bound
+/// <b>Failure posture (honest, per-item).</b> A transport failure, an HTTP error or a gateway
+/// fault on the <b>list</b> route is a <see cref="SourceFetchException"/> (the run is recorded
+/// <c>failed</c> — the failure ledger, no fabricated empty success), except a <c>400</c> on a
+/// <b>list</b> request whose body is the gateway's <c>ER005</c> envelope, which is end-of-list (an
+/// honest empty, §10.9.15); a structurally malformed detail body is a
+/// <see cref="SourcePayloadException"/> (the job quarantines <c>UNPARSEABLE_PAYLOAD</c>).
+/// <b>An un-fetchable disclosure <i>detail</i> is isolated per disclosure</b> (01 v1.5.40
+/// §10.9.15, TKT-foundation-061 — the 046 per-constituent doctrine one level down): the walk
+/// records the skip with the gateway's error verbatim
+/// (<see cref="VykDisclosureWalker.DisclosureDetailUnfetchable"/> + the disclosure index), keeps
+/// walking, and the job counts and quarantines it so the run ends <c>partial</c> — never a
+/// whole-run failure for one bad attachment (the 2026-10-22 HTTP 500 on
+/// <c>/disclosureDetail/1185709</c> that fail-stopped the chain), and never a silent omission. A
+/// detail that does not answer inside the configured per-item timeout takes the same skip path
+/// (the 90-minute hang class). A bound
 /// symbol the directory cannot map is <b>isolated per constituent</b> (01 v1.5 §10.9.15, the
 /// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): the loop names it
 /// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>, skips it and continues, and the
@@ -94,7 +103,7 @@ public sealed class CorporateActionsSourceOptions
 /// the next run's stale-cursor reset recovers it).
 /// </para>
 /// </summary>
-public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>, IVykIdentityIsolationReporter
+public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-corporate-actions-cursor";
@@ -110,6 +119,7 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     private readonly DegerliDbContext? _db;
     private readonly ILogger<CorporateActionsSourceAdapter>? _logger;
     private readonly List<string> _unresolvedSymbols = [];
+    private readonly List<VykDetailSkip> _detailSkips = [];
 
     public CorporateActionsSourceAdapter(
         IKapSourceClient client,
@@ -150,6 +160,13 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
 
     /// <inheritdoc />
     public IReadOnlyList<string> UnresolvedSymbols => _unresolvedSymbols;
+
+    /// <summary>
+    /// The disclosure details the last walk isolated (01 v1.5.40 §10.9.15, the per-disclosure
+    /// half of the family-isolation doctrine): one un-fetchable attachment yields a recorded skip
+    /// with the gateway's error, never a failed run (TKT-foundation-061).
+    /// </summary>
+    public IReadOnlyList<VykDetailSkip> DetailSkips => _detailSkips;
 
     /// <inheritdoc />
     public async Task<SourcePayload<CorporateActionsPayload>> FetchAsync(
@@ -201,6 +218,7 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         var raw = new StringBuilder();
         var cursors = new List<(string Symbol, string Cursor)>();
         _unresolvedSymbols.Clear();
+        _detailSkips.Clear();
 
         foreach (var symbol in symbols)
         {
@@ -249,7 +267,7 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
         string? cursor,
         CancellationToken cancellationToken)
     {
-        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact);
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
         var walk = await walker.WalkAsync(
                 symbol,
                 companyId,
@@ -262,8 +280,20 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
                 cancellationToken)
             .ConfigureAwait(false);
 
+        // Per-disclosure isolation (01 v1.5.40 §10.9.15): the details the walk could not fetch
+        // ride out with the walk's facts so the job can count and quarantine them.
+        _detailSkips.AddRange(walk.Skips);
+
         return (walk.Facts.ToList(), walk.NextCursor, walk.Raw);
     }
+
+    /// <summary>
+    /// The configured per-item detail-fetch bound (TKT-foundation-061). Unset — the legacy
+    /// single-resource doubles — it is the shared shipped default, so a hang cannot stall a walk
+    /// even without configuration.
+    /// </summary>
+    private TimeSpan DetailFetchTimeout =>
+        _kapOptions?.DetailFetchTimeout ?? TimeSpan.FromMilliseconds(KapSourceOptions.DefaultDetailFetchTimeoutMs);
 
     /// <summary>
     /// Decodes one VYK disclosure detail into canonical corporate actions. The gateway's

@@ -229,6 +229,32 @@ public sealed class KapSourceOptions
     /// </summary>
     public string MemberSecuritiesPath { get; set; } = "/memberSecurities";
 
+    /// <summary>
+    /// The shipped per-item disclosure-detail fetch timeout (01 v1.5.40 §10.9.15,
+    /// TKT-foundation-061): <b>180 s — three minutes</b>. The healthy VYK walk paces
+    /// <b>one call per <see cref="Degerli.Ingestion.Statements.StatementsSourceOptions.RequestDelayMs"/></b> (the shipped
+    /// 10 s; the observed 74-minute walk of 2026-10-22's run 173 was ~12 s/item), so a
+    /// disclosure detail that has not answered after three minutes is a <b>hang</b>, not pace
+    /// — while the constant stays ~18× the shipped pace so a slow-but-healthy gateway is never
+    /// falsely timed out. The 2026-10-22 hang (runs 185/190) sat on one attachment for 90
+    /// minutes; this bound turns that class into a recorded per-item skip instead of a stall
+    /// the 041 watchdog has to kill at the run level.
+    /// </summary>
+    public const int DefaultDetailFetchTimeoutMs = 180_000;
+
+    /// <summary>
+    /// Bounded per-item disclosure-detail fetch timeout (TKT-foundation-061). It is a
+    /// distinct bound from the per-call tension the pacer enforces: <b>pacing is not counted
+    /// against it</b> (the walker paces first, then starts the timeout), so the constant
+    /// bounds the gateway's answer time only. A non-positive value keeps the shipped
+    /// <see cref="DefaultDetailFetchTimeoutMs"/>.
+    /// </summary>
+    public int DetailFetchTimeoutMs { get; set; } = DefaultDetailFetchTimeoutMs;
+
+    /// <summary>The configured per-item detail timeout as a <see cref="TimeSpan"/>.</summary>
+    public TimeSpan DetailFetchTimeout =>
+        TimeSpan.FromMilliseconds(DetailFetchTimeoutMs > 0 ? DetailFetchTimeoutMs : DefaultDetailFetchTimeoutMs);
+
     /// <summary>True when a Basic credential can be attached (an API key or secret is present).</summary>
     public bool HasCredential => !string.IsNullOrWhiteSpace(ApiKey) || !string.IsNullOrWhiteSpace(ApiSecret);
 

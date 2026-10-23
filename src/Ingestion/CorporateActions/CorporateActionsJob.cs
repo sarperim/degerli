@@ -91,6 +91,7 @@ public sealed class CorporateActionsJob : IIngestJob
         var unresolved = _adapter is IVykIdentityIsolationReporter reporter
             ? reporter.UnresolvedSymbols
             : [];
+
         if (unresolved.Count > 0)
         {
             _logger.LogWarning(
@@ -100,10 +101,49 @@ public sealed class CorporateActionsJob : IIngestJob
                 string.Join(", ", unresolved));
         }
 
+        // The adapter's per-disclosure isolation (01 v1.5.40 §10.9.15, TKT-foundation-061): the
+        // disclosure details its walk could not fetch — an HTTP error, a fault envelope, a
+        // transport failure or a per-item timeout (the 2026-10-22 500 on /disclosureDetail/1185709
+        // and the 90-minute hang it bounded) — ride the run as quarantine rows carrying the
+        // gateway's own error, counted with the named reason. One bad attachment is an honest
+        // partial: never a failed run that fail-stops the chain, never a silent omission.
+        var detailSkips = _adapter is IDisclosureIsolationReporter detailReporter
+            ? detailReporter.DetailSkips
+            : [];
+
+        foreach (var skip in detailSkips)
+        {
+            _logger.LogWarning(
+                "{Job}: disclosure detail {Index} for {Symbol} could not be fetched and is quarantined with evidence ({ReasonCode}, {FailureKind}, status {Status}): {Error}",
+                Code,
+                skip.DisclosureIndex,
+                skip.Symbol,
+                skip.ReasonCode,
+                skip.FailureKind,
+                skip.StatusCode,
+                skip.Error);
+            await QuarantineAsync(
+                    fetched,
+                    skip.ToEvidenceJson(),
+                    VykDisclosureWalker.DisclosureDetailUnfetchable,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            quarantined++;
+        }
+
+        // Per-symbol stats carry both isolation classes additively: the 046 identity isolation
+        // (failed) and this ticket's per-disclosure skips (quarantined) — the 046 shape plus the
+        // skip count, so the pre-061 family-lane goldens only see new fields/rows.
+        var symbolStats = unresolved.Select(symbol => new SymbolRunStat(symbol, 0, 0, 0, Failed: true)).ToList();
+        foreach (var group in detailSkips.GroupBy(skip => skip.Symbol, StringComparer.Ordinal))
+        {
+            symbolStats.Add(new SymbolRunStat(group.Key, 0, 0, group.Count(), Failed: false));
+        }
+
         var status = quarantined > 0 || unresolved.Count > 0 ? IngestResult.Partial : IngestResult.Succeeded;
         return new IngestResult(Code, result.Inserted, result.Unchanged, quarantined, status)
         {
-            SymbolStats = unresolved.Select(symbol => new SymbolRunStat(symbol, 0, 0, 0, Failed: true)).ToList(),
+            SymbolStats = symbolStats,
         };
     }
 
