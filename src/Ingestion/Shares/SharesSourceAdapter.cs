@@ -67,10 +67,10 @@ public sealed class SharesSourceAdapter : ISourceAdapter<SharesPayload>
         var payload = Decode(raw);
 
         _logger?.LogInformation(
-            "shares: decoded {Members} member(s), {Lines} security line(s), {Skipped} line(s) without currentCapital",
+            "shares: decoded {Members} member(s), {Lines} security line(s), {Unreadable} line(s) without currentCapital",
             payload.Members.Count,
             payload.Members.Sum(member => member.Lines.Count),
-            payload.SkippedLines);
+            payload.Members.Sum(member => member.Lines.Count(line => line.CurrentCapital is null)));
 
         return new SourcePayload<SharesPayload>(SourceName, payload, raw);
     }
@@ -95,16 +95,71 @@ public sealed class SharesSourceAdapter : ISourceAdapter<SharesPayload>
         }
 
         var members = new List<ShareMember>();
-        var skipped = 0;
-        foreach (var element in VykEnvelopes.Elements(root).ToList())
+        foreach (var element in MemberElements(root))
         {
-            var member = ShareMember.From(MemberSecuritiesInfo.From(element));
-            skipped += member.Lines.Count(line => line.CurrentCapital is null);
-            members.Add(member);
+            members.Add(ShareMember.From(MemberSecuritiesInfo.From(element)));
         }
 
-        return new SharesPayload(members, skipped);
+        return new SharesPayload(members);
     }
+
+    /// <summary>
+    /// The real shape is a root array of <c>{member, securities[]}</c> entries; the schema's
+    /// declared single-object shape is accepted too. A root object that itself carries
+    /// <c>member</c>/<c>securities</c> is <b>one member</b> — it must never be unwrapped by its
+    /// <c>securities</c> array, or every security line would be read as a member (empty members,
+    /// zero rows, a fabricated empty success). A single-array wrapper is unwrapped only when its
+    /// array is member-shaped (or empty); anything else — notably an empty object, which carries
+    /// no member at all — is not this resource.
+    /// </summary>
+    private static IEnumerable<JsonElement> MemberElements(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var element in root.EnumerateArray())
+            {
+                yield return element;
+            }
+
+            yield break;
+        }
+
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            yield break;
+        }
+
+        if (IsMemberShaped(root))
+        {
+            yield return root;
+            yield break;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            if (property.Value.EnumerateArray().Any(element => !IsMemberShaped(element)))
+            {
+                continue;
+            }
+
+            foreach (var element in property.Value.EnumerateArray())
+            {
+                yield return element;
+            }
+
+            yield break;
+        }
+    }
+
+    /// <summary>True when an element carries the member wrapper or its security lines.</summary>
+    private static bool IsMemberShaped(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Object
+        && (element.TryGetProperty("member", out _) || element.TryGetProperty("securities", out _));
 
     /// <summary>
     /// The real shape is a root array of <c>{member, securities[]}</c> entries; the schema's
@@ -124,13 +179,16 @@ public sealed class SharesSourceAdapter : ISourceAdapter<SharesPayload>
             return false;
         }
 
-        if (root.TryGetProperty("member", out _) || root.TryGetProperty("securities", out _))
+        if (IsMemberShaped(root))
         {
             return true;
         }
 
-        // A single-array wrapper (`{ "<something>": [ … ] }`) — the list-shaped VYK convention.
-        return root.EnumerateObject().Any(property => property.Value.ValueKind == JsonValueKind.Array);
+        // A single-array wrapper (`{ "<something>": [ … ] }`) — the list-shaped VYK convention —
+        // but only when its elements are member-shaped (an empty array is an honest empty list).
+        return root.EnumerateObject().Any(property =>
+            property.Value.ValueKind == JsonValueKind.Array
+            && !property.Value.EnumerateArray().Any(element => !IsMemberShaped(element)));
     }
 
     private string Redact(string? message) => _options.Redact(message);

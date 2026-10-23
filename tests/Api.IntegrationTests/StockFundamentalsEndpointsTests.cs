@@ -310,8 +310,13 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         using (var response = await client.GetAsync("/api/v1/stocks/ALFA/balance-sheet"))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(response.Headers.CacheControl?.Public);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = document.RootElement;
+
+            // The honest-data envelope is unchanged by the additive block (`03` §1.2, M-1).
+            Assert.Equal(T.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+            Assert.False(root.GetProperty("stale").GetBoolean());
 
             var shareCount = root.GetProperty("shareCount");
             Assert.Equal(4_560_000_000m, shareCount.GetProperty("sharesOutstanding").GetDecimal());
@@ -329,8 +334,11 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         using (var response = await client.GetAsync("/api/v1/stocks/LAMDA/balance-sheet"))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(response.Headers.CacheControl?.Public);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = document.RootElement;
+
+            Assert.Equal(T.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
 
             var shareCount = root.GetProperty("shareCount");
             Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstanding").ValueKind);

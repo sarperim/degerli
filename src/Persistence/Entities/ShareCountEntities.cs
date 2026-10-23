@@ -21,8 +21,9 @@ public class ShareCount
     /// <summary>
     /// The instrument's current share count. Sourced from the VYK security lines'
     /// <c>currentCapital</c>, aggregated across the instrument's matching tertip lines
-    /// (A + B, 01 v1.5.36's evidenced hypothesis; the unit is live-cross-validated before values
-    /// are trusted).
+    /// (A + B, 01 v1.5.36's evidenced hypothesis). Whether <c>currentCapital</c> is a share count
+    /// or paid-in TL is <b>unresolved</b>: the ticket's post-merge live cross-validation decides
+    /// it, and values are treated as counts only after that table passes.
     /// </summary>
     public decimal SharesOutstanding { get; set; }
 

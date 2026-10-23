@@ -13,11 +13,11 @@ namespace Degerli.Ingestion.Shares;
 /// Admin-triggerable now; a scheduled cadence is a later decision (share capital changes rarely),
 /// deliberately not wired into either ingest chain by this ticket.
 /// <para>
-/// A malformed body quarantines <c>UNPARSEABLE_PAYLOAD</c>; a missing provenance reference
-/// quarantines <c>MISSING_PROVENANCE</c>; a transport failure propagates
+/// A malformed body quarantines <c>UNPARSEABLE_PAYLOAD</c>; a transport failure propagates
 /// (<see cref="SourceFetchException"/>) so the runner records the run <c>failed</c> — never a
-/// fabricated empty success. Lines the source carried without a <c>currentCapital</c> are skipped,
-/// <b>counted</b> in the run's <c>skipped</c> stat, and never zero-filled.
+/// fabricated empty success. Lines the source carried without a <c>currentCapital</c> on one of
+/// <b>our</b> matched instruments are skipped, <b>counted</b> in the run's <c>skipped</c> stat,
+/// and never zero-filled.
 /// </para>
 /// </summary>
 public sealed class SharesJob : IIngestJob
@@ -66,15 +66,8 @@ public sealed class SharesJob : IIngestJob
             return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
         }
 
-        if (string.IsNullOrWhiteSpace(fetched.SourceRef))
-        {
-            _logger.LogWarning("shares: payload carries no provenance (MISSING_PROVENANCE)");
-            await QuarantineAsync(fetched, fetched.RawJson, "MISSING_PROVENANCE", cancellationToken).ConfigureAwait(false);
-            return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
-        }
-
         var result = await _store
-            .UpsertAsync(fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload, cancellationToken)
+            .UpsertAsync(fetched.SourceRef ?? _adapter.SourceName, _clock.GetUtcNow(), fetched.Payload, cancellationToken)
             .ConfigureAwait(false);
 
         if (result.SkippedLines > 0)
@@ -83,8 +76,17 @@ public sealed class SharesJob : IIngestJob
             // written as a zero, and a matched group containing it is withheld rather than
             // served as a partial tertip sum.
             _logger.LogWarning(
-                "shares: {Skipped} security line(s) carry no currentCapital and were skipped (never zero-filled)",
+                "shares: {Skipped} security line(s) of our instruments carry no currentCapital and were skipped (never zero-filled)",
                 result.SkippedLines);
+        }
+
+        if (result.Removed > 0)
+        {
+            // A group withheld this run loses its previously stored row: a stale count is never
+            // left being served (the ticket's "a matched-but-unreadable group must yield no row").
+            _logger.LogWarning(
+                "shares: {Removed} previously stored row(s) withdrawn because this run withheld the instrument's group",
+                result.Removed);
         }
 
         // The run succeeded when the source answered and the write completed: a skipped line is

@@ -156,6 +156,165 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
     }
 
     /// <summary>
+    /// TC-MDF-092 — the trading-open flag is honoured across its observed/tolerated spellings: a
+    /// string <c>"1"</c> and a numeric <c>1</c> open the line's group (a row is written), while a
+    /// string <c>"0"</c> / numeric <c>0</c> leave it closed (no row). Before the tolerant decode
+    /// the <c>"1"</c>/numeric spellings read as closed and both instruments silently vanished.
+    /// An unreadable line on a member we do not cover is out of scope, not a skip.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_092_trading_open_flag_spelling_variants_are_honoured()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        StubBody(
+            """
+            [
+              {
+                "member": { "id": "9101", "sirketUnvan": "STRING FLAG A.Ş. (derived spelling variant)" },
+                "securities": [
+                  { "isin": "TRESPE100011", "borsaKodu": "SPELL1", "currentCapital": 100, "borsadaIslemeAcik": "1" }
+                ]
+              },
+              {
+                "member": { "id": "9102", "sirketUnvan": "NUMERIC FLAG A.Ş. (derived spelling variant)" },
+                "securities": [
+                  { "isin": "TRESPE200018", "borsaKodu": "SPELL2", "currentCapital": 200, "borsadaIslemeAcik": 1 }
+                ]
+              },
+              {
+                "member": { "id": "9103", "sirketUnvan": "CLOSED FLAGS A.Ş. (derived spelling variant)" },
+                "securities": [
+                  { "isin": "TRESPE000012", "borsaKodu": "SPELL0", "currentCapital": 300, "borsadaIslemeAcik": "0" },
+                  { "isin": "TRESPE000020", "borsaKodu": "SPELL0", "currentCapital": 400, "borsadaIslemeAcik": 0 }
+                ]
+              },
+              {
+                "member": { "id": "9104", "sirketUnvan": "NOT OURS A.Ş." },
+                "securities": [
+                  { "isin": "TRENOTOU00011", "borsaKodu": "NOTOURS", "borsadaIslemeAcik": true }
+                ]
+              }
+            ]
+            """);
+
+        var host = BuildIngestion();
+        var result = await RunAsync(host);
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(2, result.Written);
+        // NOTOURS's unreadable line belongs to a member we do not cover: out of scope, no skip.
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var rows = await RowsBySymbolAsync(db);
+
+        Assert.Equal(100m, rows["SPELL1"].SharesOutstanding);
+        Assert.Equal(200m, rows["SPELL2"].SharesOutstanding);
+        Assert.False(rows.ContainsKey("SPELL0"));
+        Assert.DoesNotContain(rows.Values, row => row.SharesOutstanding == 0m);
+    }
+
+    /// <summary>
+    /// TC-MDF-092 — the schema's declared single-object shape (one member object carrying
+    /// <c>member</c>/<c>securities</c>) decodes as <b>one member</b>, not as its own security
+    /// lines: before the fix the root object was unwrapped by its first array property, so every
+    /// line became an empty member and the body silently produced zero rows.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_092_single_object_body_decodes_as_one_member()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        StubBody(
+            """
+            {
+              "member": { "id": "866", "sirketUnvan": "ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş." },
+              "securities": [
+                {
+                  "isin": "TREASLS00018", "borsaKodu": "ASELS", "tertipGroup": " A  ",
+                  "capital": 2421818181.816, "currentCapital": 2421818181.816,
+                  "borsadaIslemeAcik": false
+                },
+                {
+                  "isin": "TRAASELS91H2", "borsaKodu": "ASELS", "tertipGroup": " B  ",
+                  "capital": 2138181818.184, "currentCapital": 2138181818.184,
+                  "borsadaIslemeAcik": true
+                }
+              ]
+            }
+            """);
+
+        var host = BuildIngestion();
+        var result = await RunAsync(host);
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(1, result.Written);
+        Assert.Equal(0, result.Skipped);
+
+        await using var db = _postgres.CreateContext();
+        var rows = await RowsBySymbolAsync(db);
+        Assert.Equal(4_560_000_000m, rows["ASELS"].SharesOutstanding);
+    }
+
+    /// <summary>
+    /// TC-MDF-092 — a group withheld this run yields <b>no row</b> even when a previous run stored
+    /// one: the stale count is removed rather than left served under its old <c>asOf</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_092_withheld_group_removes_a_previously_stored_row()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+
+        // A complete DRVE row is stored first.
+        StubBody(
+            """
+            [
+              {
+                "member": { "id": "9001", "sirketUnvan": "DERİVE HOLDİNG A.Ş." },
+                "securities": [
+                  { "isin": "TREDRVE00011", "borsaKodu": "DRVE", "tertipGroup": "A", "currentCapital": 1000000000, "borsadaIslemeAcik": true }
+                ]
+              }
+            ]
+            """);
+
+        var host = BuildIngestion();
+        await RunAsync(host);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(1_000_000_000m, (await RowsBySymbolAsync(db))["DRVE"].SharesOutstanding);
+        }
+
+        // The next run withholds the group (one tertip lost its currentCapital): no row may remain.
+        StubBody(
+            """
+            [
+              {
+                "member": { "id": "9001", "sirketUnvan": "DERİVE HOLDİNG A.Ş." },
+                "securities": [
+                  { "isin": "TREDRVE00011", "borsaKodu": "DRVE", "tertipGroup": "A", "currentCapital": 1000000000, "borsadaIslemeAcik": true },
+                  { "isin": "TREDRVE00029", "borsaKodu": "DRVE", "tertipGroup": "B", "capital": 500000000, "borsadaIslemeAcik": true }
+                ]
+              }
+            ]
+            """);
+
+        var withheldRun = await RunAsync(host);
+        Assert.Equal(IngestResult.Succeeded, withheldRun.Status);
+        Assert.Equal(1, withheldRun.Written);
+        Assert.Equal(1, withheldRun.Skipped);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.False((await RowsBySymbolAsync(db)).ContainsKey("DRVE"));
+            Assert.Equal(0, await db.ShareCounts.CountAsync());
+        }
+    }
+
+    /// <summary>
     /// TC-MDF-092 — a security line without <c>currentCapital</c> is <b>skipped and counted</b>,
     /// never written as a zero: the sole-line case yields no row, and a matched group with one
     /// unreadable tertip is withheld (a partial sum would be a fabricated count).
@@ -321,6 +480,11 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
     private static readonly string[] TestSymbols =
     [
         "ASELS", "THYAO", "TUPRS", "GARAN", "AEFES", "ISDMR", "DRVFM", "OTHER", "GLRMK", "CLSDR",
+        // The withheld-group class must be *matched* to be exercised: DRVE's B tertip and
+        // NOCAP's sole line carry no currentCapital, so binding them makes the skip count real.
+        "DRVE", "NOCAP",
+        // Spelling-variant instruments for the tolerant trading-open flag decode.
+        "SPELL1", "SPELL2", "SPELL0",
     ];
 
     /// <summary>

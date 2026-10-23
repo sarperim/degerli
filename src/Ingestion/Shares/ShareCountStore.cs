@@ -6,15 +6,16 @@ namespace Degerli.Ingestion.Shares;
 
 /// <summary>
 /// What one <c>shares</c> store pass did (TKT-foundation-058, 01 v1.5.36 §10.9.11).
-/// <see cref="Inserted"/> + <see cref="Updated"/> are the run's <c>written</c> facts;
-/// <see cref="SkippedLines"/> counts the security lines the source carried without a
-/// <c>currentCapital</c> (skipped, never zero-filled) — including the lines of a matched group
-/// withheld because one of its tertips was unreadable.
+/// <see cref="Inserted"/> + <see cref="Updated"/> + <see cref="Removed"/> are the run's
+/// <c>written</c> facts (a withdrawn stale row is a write); <see cref="SkippedLines"/> counts the
+/// unreadable security lines of <b>our</b> instruments (a matched group withheld because one of
+/// its tertips carried no <c>currentCapital</c>) — a line the source carries for a member we do
+/// not cover is out of scope, not a skip.
 /// </summary>
-public sealed record ShareCountWriteResult(int Inserted, int Updated, int Unchanged, int SkippedLines)
+public sealed record ShareCountWriteResult(int Inserted, int Updated, int Unchanged, int Removed, int SkippedLines)
 {
-    /// <summary>The run's <c>written</c> count (new rows + repaired rows).</summary>
-    public int Written => Inserted + Updated;
+    /// <summary>The run's <c>written</c> count (new rows + repaired rows + withdrawn stale rows).</summary>
+    public int Written => Inserted + Updated + Removed;
 }
 
 /// <summary>
@@ -29,18 +30,24 @@ public sealed record ShareCountWriteResult(int Inserted, int Updated, int Unchan
 /// — a delisted/closed line never seeds a count on its own.
 /// </para>
 /// <para>
-/// <b>Tertip aggregation (evidenced hypothesis):</b> a matched instrument's count is the sum of
-/// its lines' <c>currentCapital</c> — ASELS's A+B lines sum to the real 4.56B count (live
-/// 2026-10-22), which is what the shared line carries across tertips. The live cross-validation
-/// on the ticket confirms or refutes the rule per company; a refuted rule is recorded, never
-/// shipped as a fabricated number.
+/// <b>Tertip aggregation (evidenced hypothesis, unit unresolved):</b> a matched instrument's count
+/// is the sum of its lines' <c>currentCapital</c> — ASELS's A+B lines sum to the real 4.56B count
+/// (live 2026-10-22), which is what the shared line carries across tertips. Whether
+/// <c>currentCapital</c> is a <b>share count</b> or <b>paid-in TL</b> remains <b>unresolved</b>
+/// pending the ticket's post-merge live cross-validation (the committed double carries
+/// <c>capital == currentCapital</c> on every line, so a matching value cannot discriminate the
+/// unit); values are treated as counts only after that table passes, and a refuted rule is
+/// recorded on the ticket, never shipped as a fabricated number.
 /// </para>
 /// <para>
 /// <b>Honest absence:</b> an instrument with no line produces no row (never a zero). A matched
 /// group whose lines are not all readable is <b>withheld</b> (its total is unknown — a partial sum
-/// would be a fabricated count) and its unreadable lines are counted as skipped. A re-run is
-/// input-aware: an unchanged count writes nothing, a changed count repairs the row in place
-/// (the TKT-foundation-042/050 doctrine).
+/// would be a fabricated count) and its unreadable lines are counted as skipped; a previously
+/// stored row for a withheld group is <b>removed</b>, so a stale count is never left being served.
+/// An instrument simply <b>absent</b> from a snapshot is left alone (last known wins — the
+/// 042/050 "a stored row the current run no longer computes is left alone" doctrine): only a
+/// matched-but-unreadable group is withdrawn. A re-run is input-aware: an unchanged count writes
+/// nothing, a changed count repairs the row in place.
 /// </para>
 /// </summary>
 public sealed class ShareCountStore
@@ -76,7 +83,7 @@ public sealed class ShareCountStore
 
         var counts = new SortedDictionary<long, decimal>();
         var withheld = new HashSet<long>();
-        var skipped = payload.SkippedLines;
+        var skipped = 0;
         foreach (var member in payload.Members)
         {
             var groups = new Dictionary<long, List<ShareSecurityLine>>();
@@ -110,11 +117,13 @@ public sealed class ShareCountStore
                 if (lines.Any(line => line.CurrentCapital is null))
                 {
                     // A partial tertip sum is not the instrument's count. The group is withheld
-                    // (honest absence) and its unreadable lines were already counted as skipped
-                    // by the adapter. A withheld group wins over a complete group for the same
-                    // instrument — an unknown total is never replaced by a partial one.
+                    // (honest absence) and its unreadable lines are counted as skipped — a line
+                    // the source carries for a member we do not cover is out of scope, not a
+                    // skip. A withheld group wins over a complete group for the same instrument
+                    // — an unknown total is never replaced by a partial one.
                     withheld.Add(instrumentId);
                     counts.Remove(instrumentId);
+                    skipped += lines.Count(line => line.CurrentCapital is null);
                     continue;
                 }
 
@@ -125,11 +134,24 @@ public sealed class ShareCountStore
             }
         }
 
-        var instrumentIds = counts.Keys.ToList();
+        var instrumentIds = counts.Keys.Concat(withheld).ToList();
         var existing = await _db.ShareCounts
             .Where(row => instrumentIds.Contains(row.InstrumentId))
             .ToDictionaryAsync(row => row.InstrumentId, cancellationToken)
             .ConfigureAwait(false);
+
+        var removed = 0;
+        foreach (var instrumentId in withheld)
+        {
+            // The instrument's group is withheld this run: no row may be served for it, so a row
+            // a previous run stored is removed rather than left carrying its stale asOf (the
+            // ticket's literal "a matched-but-unreadable group must yield no row").
+            if (existing.Remove(instrumentId, out var stale))
+            {
+                _db.ShareCounts.Remove(stale);
+                removed++;
+            }
+        }
 
         var inserted = 0;
         var updated = 0;
@@ -163,12 +185,12 @@ public sealed class ShareCountStore
             updated++;
         }
 
-        if (inserted + updated > 0)
+        if (inserted + updated + removed > 0)
         {
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return new ShareCountWriteResult(inserted, updated, unchanged, skipped);
+        return new ShareCountWriteResult(inserted, updated, unchanged, removed, skipped);
     }
 
     /// <summary>
