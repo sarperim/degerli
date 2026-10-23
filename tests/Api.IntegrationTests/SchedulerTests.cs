@@ -340,6 +340,138 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         Assert.DoesNotContain(host.Logs.Events, logEvent => logEvent.RenderMessage().Contains("Hung run detected"));
     }
 
+    // ---------------------------------------------------------------------------------
+    // TKT-foundation-062 — retry-delay starvation: a due instant that falls while another
+    // stream's attempt holds the tick. Both cases are doubles-only over the fake clock.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Acceptance (ii) — <b>retry punctuality</b>. The EOD attempt fails at 20:30, so the
+    /// ladder arms retry 1 for 20:35. A per-job stream's attempt starts at 20:31 and does not
+    /// end on its own, so the tick that started it is still in flight when 20:35 arrives.
+    /// <para>
+    /// Pre-fix the tick awaits one stream's attempt to its end before it evaluates anything
+    /// else, so the retry armed for 20:35 is not re-evaluated until the holding attempt ends:
+    /// it fires late (or, in the live 2026-10-22 trace, ~11h49m late) and the ladder's
+    /// punctuality is lost. Post-fix the tick honours the armed instant on the injected clock
+    /// and the retry's attempt starts at exactly 20:35 — the ledger row's <c>started_at</c>
+    /// is the assertion, not merely "a retry eventually happened".
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_081_Retry_fires_at_its_scheduled_instant_while_another_stream_holds_the_tick()
+    {
+        await ResetAsync();
+
+        var retryTarget = new FailOnceStep();
+        var holder = new ControllableStep();
+        await using var host = BuildStarvationHost(
+            maxRunDuration: "02:00:00",
+            eodChain: [retryTarget],
+            perJobHolder: holder,
+            perJobCron: "0 31 20 * * *");
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        // 20:30 — attempt 1 fails; the ladder arms retry 1 for 20:35 (+5 min).
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
+        var first = Assert.Single(await LedgerAsync());
+        Assert.Equal(FailOnceStep.Code, first.JobCode);
+        Assert.Equal(IngestResult.Failed, first.Status);
+        Assert.Equal(1, Attempt(first));
+
+        // 20:31 — the per-job stream's attempt starts and holds the tick (it ends only when the
+        // test releases it), so the tick is still in flight when the retry falls due.
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 31));
+        var holdingTick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 31));
+        await holder.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:35 — the retry's scheduled instant. Pre-fix nothing observes it here and this wait
+        // times out: the retry is frozen behind the unrelated stream's attempt.
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 35));
+        await retryTarget.SecondCallEntered.Task.WaitAsync(LivenessBound);
+
+        // Release the holding attempt; the tick that started it drains and returns.
+        holder.Complete();
+        await AwaitTickAsync(holdingTick);
+
+        // The retry ran at its own instant — 20:35, not at the release instant.
+        var ledger = await LedgerAsync();
+        var retried = Assert.Single(ledger, run => run.JobCode == FailOnceStep.Code && Attempt(run) == 2);
+        Assert.Equal(IngestResult.Succeeded, retried.Status);
+        Assert.Equal(Trt(2026, 10, 5, 20, 35), retried.StartedAt!.Value);
+        Assert.Equal(1, Retries(retried));
+
+        // Exactly two attempts of the retrying run: the retry succeeded, so the rest of the
+        // ladder stayed silent (the holding stream's own row is a different stream).
+        Assert.Equal(2, ledger.Count(run => run.JobCode == FailOnceStep.Code));
+    }
+
+    /// <summary>
+    /// Acceptance (iii) — <b>morning-chain independence while a retry is in flight</b>. This is
+    /// the 2026-10-22/23 live shape end-to-end: the EOD attempt fails at 20:30, retry 1 starts
+    /// at 20:35 and its chain step hangs, and the 08:30 Istanbul (05:30 UTC) morning chain falls
+    /// due while that retry attempt is still holding the tick. Live, the morning chain did not
+    /// fire at 05:30 — it started at 12:11:24Z, the instant the EOD attempt released the loop,
+    /// ~6h41m late.
+    /// <para>
+    /// Pre-fix nothing runs at 05:30 (the tick is inside the retry's attempt) and this test's
+    /// morning-step wait times out. Post-fix the morning stream's attempt starts at 05:30 —
+    /// independently of the EOD attempt still in flight — for its previous trading day
+    /// (2026-10-05) on attempt 1.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_081_Morning_chain_fires_on_schedule_while_a_retry_attempt_holds_the_tick()
+    {
+        await ResetAsync();
+
+        var eod = new RetryThenHangStep();
+        var morningSteps = MorningIngestChain.JobCodes.Select(code => new NamedSuccessStep(code)).ToList();
+        await using var host = BuildStarvationHost(
+            // 12 h: the retry attempt must still be in flight when 05:30 UTC arrives the next
+            // morning, so the watchdog's own bound is not what releases it inside this window.
+            maxRunDuration: "12:00:00",
+            eodChain: [eod],
+            morningChain: morningSteps,
+            morningCron: "0 30 8 * * *");
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        // 20:30 — attempt 1 fails; retry 1 is armed for 20:35.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
+        Assert.Equal(IngestResult.Failed, Assert.Single(await LedgerAsync()).Status);
+
+        // 20:35 — the retry (attempt 2) starts and its step hangs: the tick holds across the night.
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 35));
+        var holdingTick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 35));
+        await eod.Hung.Task.WaitAsync(LivenessBound);
+
+        // 2026-10-06 08:30 Istanbul = 05:30Z — the morning chain's own instant. The EOD retry is
+        // still in flight; the morning chain must fire anyway (here: its whole chain runs).
+        clock.SetUtcNow(Trt(2026, 10, 6, 8, 30));
+        await morningSteps[^1].Entered.WaitAsync(LivenessBound);
+
+        // Release the EOD retry so the holding tick can drain and return.
+        eod.Release();
+        await AwaitTickAsync(holdingTick);
+
+        // Every morning step ran at 05:30Z, attempt 1, for the previous trading day (Monday).
+        var ledger = await LedgerAsync();
+        foreach (var step in morningSteps)
+        {
+            var row = Assert.Single(ledger, run => run.JobCode == step.JobCode && Attempt(run) == 1 && run.StartedAt == Trt(2026, 10, 6, 8, 30));
+            Assert.Equal(IngestResult.Succeeded, row.Status);
+        }
+
+        Assert.All(morningSteps, step => Assert.Equal(new DateOnly(2026, 10, 5), step.RequestedDate));
+
+        // The EOD stream's own retry ran at its instant too (20:35) — the two streams never
+        // waited on each other.
+        var eodRetry = Assert.Single(ledger, run => run.JobCode == RetryThenHangStep.Code && Attempt(run) == 2);
+        Assert.Equal(Trt(2026, 10, 5, 20, 35), eodRetry.StartedAt!.Value);
+    }
+
     /// <summary>Completes the tick within the liveness bound, never hanging the suite.</summary>
     private static async Task AwaitTickAsync(Task tick)
     {
@@ -458,6 +590,69 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         // interleavings below are deterministic; the dispatcher, ledger table, scheduler
         // engine, retry ladder and watchdog are all the production code paths.
         services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, chain));
+
+        var provider = services.BuildServiceProvider();
+        var scheduler = provider.GetRequiredService<IngestionScheduler>();
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail, logs);
+    }
+
+    /// <summary>
+    /// The TKT-foundation-062 harness: the same real scheduler engine and fake clock, with the
+    /// EOD and (optionally) the morning stream composed entirely of doubles and the job runner
+    /// doubled. It exists to place a <b>second</b> stream's attempt in flight across another
+    /// stream's due instant — the starvation interaction, not any single chain's behaviour.
+    /// </summary>
+    private IngestionSchedulerHost BuildStarvationHost(
+        string maxRunDuration,
+        IReadOnlyList<IIngestJob> eodChain,
+        IReadOnlyList<IIngestJob>? morningChain = null,
+        IIngestJob? perJobHolder = null,
+        string? perJobCron = null,
+        string? morningCron = null)
+    {
+        var mail = new RecordingMailDispatcher();
+        var logs = new InMemorySerilogSink();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
+            ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
+            ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
+            ["Ingestion:Scheduler:MaxRunDuration"] = maxRunDuration,
+        };
+        for (var index = 0; index < eodChain.Count; index++)
+        {
+            settings[$"Ingestion:Scheduler:JobCodes:{index}"] = eodChain[index].JobCode;
+        }
+
+        if (morningCron is not null)
+        {
+            settings["Ingestion:Scheduler:MorningCron"] = morningCron;
+        }
+
+        if (perJobHolder is not null)
+        {
+            settings["Ingestion:Scheduler:JobSchedules:0:JobCode"] = perJobHolder.JobCode;
+            settings["Ingestion:Scheduler:JobSchedules:0:Cron"] = perJobCron;
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Sink(logs).CreateLogger();
+
+        var jobs = eodChain
+            .Concat(morningChain ?? [])
+            .Concat(perJobHolder is null ? [] : [perJobHolder])
+            .ToList();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IIngestionAlerter>(new HarnessMailAlerter(mail));
+        services.AddMarketDataIngestion(configuration);
+        services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, jobs));
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetRequiredService<IngestionScheduler>();
@@ -669,6 +864,95 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
 
         /// <summary>Lets the step finish successfully — the "completes at the bound" signal.</summary>
         public void Complete() => _done.TrySetResult();
+    }
+
+    /// <summary>
+    /// A chain step that fails its first call and succeeds afterwards — the shape the retry
+    /// ladder exists for. <see cref="SecondCallEntered"/> completes when the retry's attempt
+    /// reaches the step, which is the instant the test asserts punctuality on.
+    /// </summary>
+    private sealed class FailOnceStep : IIngestJob
+    {
+        public const string Code = "eod-fail-once";
+
+        private int _calls;
+
+        /// <summary>Completes when the retry attempt has entered the step.</summary>
+        public TaskCompletionSource SecondCallEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                throw new InvalidOperationException($"{Code}: source step failed (doubled).");
+            }
+
+            SecondCallEntered.TrySetResult();
+            return Task.FromResult(new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded));
+        }
+    }
+
+    /// <summary>
+    /// A chain step that fails its first call and <b>hangs</b> on its second (the retry's
+    /// attempt) until <see cref="Release"/> — the live 2026-10-22 shape, where the retry's own
+    /// attempt is what holds the tick across the morning chain's instant.
+    /// </summary>
+    private sealed class RetryThenHangStep : IIngestJob
+    {
+        public const string Code = "eod-retry-hang";
+
+        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls;
+
+        /// <summary>Completes when the retry attempt's step has reached its hanging await.</summary>
+        public TaskCompletionSource Hung { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                throw new InvalidOperationException($"{Code}: source step failed (doubled).");
+            }
+
+            Hung.TrySetResult();
+            await _released.Task.ConfigureAwait(false);
+            return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
+        }
+
+        /// <summary>Ends the hanging retry attempt (successfully).</summary>
+        public void Release() => _released.TrySetResult();
+    }
+
+    /// <summary>
+    /// A healthy chain step that announces its first entry (<see cref="Entered"/>) and succeeds —
+    /// the morning chain's eight pinned steps composed without any source call. It also records
+    /// the run date it was asked for, which is how the morning stream's previous-trading-day
+    /// resolution is asserted.
+    /// </summary>
+    private sealed class NamedSuccessStep : IIngestJob
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public NamedSuccessStep(string code) => JobCode = code;
+
+        public string JobCode { get; }
+
+        /// <summary>Completes when the step's first call is reached.</summary>
+        public Task Entered => _entered.Task;
+
+        /// <summary>The day the step was asked to run for (first call).</summary>
+        public DateOnly RequestedDate { get; private set; }
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            RequestedDate = request.Date;
+            _entered.TrySetResult();
+            return Task.FromResult(new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded));
+        }
     }
 
     /// <summary>
