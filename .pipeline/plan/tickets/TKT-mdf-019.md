@@ -13,7 +13,7 @@ scope:
 
 # TKT-mdf-019: (Optional — promotable) CPI-deflated multi-year CAGRs
 
-- Status: blocked — coder blocker (run 2026-10-17): OPTIONAL/promotable ticket, never promoted; no acceptance contract exists — TC-MDF-060 (test plan v1.4 §7) is regime-break only (nominal CAGRs); no deflation golden/TC/fixture anywhere, and `02-data-model.md` §6.2 defers CPI deflation ("the value stays nominal"). Ticket requires the builder's explicit promotion before landing; none recorded. Human decision: promote (with a test-planner §7 deflation TC + pinned real-terms goldens + architecture §6.2 update) or drop/defer. Not a dependency block (TKT-mdf-018 merged).
+- Status: deferred — **USER DECISION 2026-10-23 (Option A): NOT in v0.** No acceptance contract ever existed (no deflation TC, no golden, no fixture; `02-data-model.md` §6.2 defers CPI deflation: "the value stays nominal") and no CPI series is ingested to deflate with. Nominal values are served and labelled; promoting this needs a test-planner pass. Do not dispatch.
 - Size: M
 - Scope: **Optional / promotable — the builder may promote or drop this** (decision D2, 2026-10-15; the regime-break flag TKT-mdf-018 is the Must-scope alternative). If promoted: deflate historical FY revenue/earnings to current purchasing power using `TUIK_CPI` before computing multi-year CAGRs, marking them `is_adjusted`. Additive to TKT-mdf-018; changes the *meaning* of historical CAGRs to real-terms, so it must not land without the builder's explicit promotion.
 - Traces to: FR-MDF-013, FR-MDF-014, FR-MDF-018; UC-MOV-002, UC-MDF-005

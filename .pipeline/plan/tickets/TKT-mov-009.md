@@ -9,7 +9,7 @@ scope:
 
 # TKT-mov-009: Manual independent-CPI entry (admin)
 
-- Status: blocked
+- Status: blocked — **USER DECISION 2026-10-23 (Option A): stays parked.** The ENAG-class independent inflation source webpage itself is unreachable for now ("even the webpage is unreachable"); nothing depends on it and SCR-001 serves official CPI only. Re-probe the source once before release; do not build a scraper against an unreachable site.
 - Size: S/M
 - Blocker: the ENAG-class independent inflation source is currently unreachable (builder observation 2026-10-15); the manual-vs-scrape approach is to be re-confirmed once the source site is back up. Builder decision D4 (2026-10-15). Contained — nothing depends on this ticket; meanwhile SCR-001 shows official CPI only with the existing "independent measure unavailable" note (UXR-MOV-008). **The v1.4 design record (manual admin entry) is provisional until the source is reachable again.**
 - Scope: the manual path for the independent inflation measure — `POST /api/v1/admin/macro/indep-cpi {valueDate, value}` (builder-only) appending a `macro_values` row for `INDEP_CPI` (canonical = latest `recorded_at`), replacing an impossible automated scraper (ENAG-class sources have no API/stable HTML). The SCR-012 entry control is a deferred alignment ticket (server-side lands here). Must NOT touch the EVDS adapter (TKT-mov-008).
