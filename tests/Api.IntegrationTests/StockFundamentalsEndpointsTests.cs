@@ -279,6 +279,65 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         AssertFigure(root, "bookValuePerShare", 10.0m, restated: false);
     }
 
+    // -- TC-MDF-093 — the market-data share count serves (TKT-foundation-058) ---
+
+    [Fact]
+    public async Task TC_MDF_093_balance_sheet_serves_market_share_count_and_honest_null_when_absent()
+    {
+        await SeedAsync();
+
+        // The share_counts store is populated by the `shares` lane; the serving seam is
+        // verified here against a directly seeded row (the ingest path is TC-MDF-092).
+        var recordedAt = new DateTimeOffset(T.ToDateTime(new TimeOnly(6, 0)), TimeSpan.Zero);
+        await using (var db = _postgres.CreateContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM share_counts");
+            var alfa = await db.Instruments.SingleAsync(instrument => instrument.Symbol == "ALFA");
+            db.ShareCounts.Add(new ShareCount
+            {
+                InstrumentId = alfa.Id,
+                SharesOutstanding = 4_560_000_000m,
+                RecordedAt = recordedAt,
+                SourceRef = "kap",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        // (1) A stored count serves as sharesOutstanding + asOf.
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/balance-sheet"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+
+            var shareCount = root.GetProperty("shareCount");
+            Assert.Equal(4_560_000_000m, shareCount.GetProperty("sharesOutstanding").GetDecimal());
+            Assert.Equal(T.ToString("yyyy-MM-dd"), shareCount.GetProperty("asOf").GetString());
+
+            // The statement-reported figures are untouched (golden stability): the market
+            // count is a distinct field, not a replacement for the BS line.
+            AssertFigure(root.GetProperty("lines"), "sharesOutstanding", 100m, restated: false);
+            AssertFigure(root.GetProperty("lines"), "sharesDiluted", 100m, restated: false);
+            Assert.Equal(10.0m, root.GetProperty("bookValuePerShare").GetProperty("value").GetDecimal());
+        }
+
+        // (2) An instrument with no stored count is honestly absent: nulls, never zeros —
+        // while the balance-sheet section itself still serves.
+        using (var response = await client.GetAsync("/api/v1/stocks/LAMDA/balance-sheet"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+
+            var shareCount = root.GetProperty("shareCount");
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstanding").ValueKind);
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("asOf").ValueKind);
+        }
+    }
+
     // -- TC-RES-013 — Dividends section; never-paid state ----------------------
 
     [Fact]

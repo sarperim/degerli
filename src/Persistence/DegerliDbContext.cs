@@ -27,6 +27,7 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     public DbSet<FinancialStatement> FinancialStatements => Set<FinancialStatement>();
     public DbSet<FinLineItem> FinLineItems => Set<FinLineItem>();
     public DbSet<Dividend> Dividends => Set<Dividend>();
+    public DbSet<ShareCount> ShareCounts => Set<ShareCount>();
     public DbSet<CorporateAction> CorporateActions => Set<CorporateAction>();
     public DbSet<KapDisclosure> KapDisclosures => Set<KapDisclosure>();
     public DbSet<DerivedMetric> DerivedMetrics => Set<DerivedMetric>();
@@ -209,6 +210,16 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.ToTable("dividends");
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedOnAdd();
+            b.Property(x => x.SourceRef).IsRequired();
+            b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ShareCount>(b =>
+        {
+            // 01 v1.5.36 §10.9.11 — the per-instrument share-count store: one row per
+            // instrument (PK), honest absence (no row) for an instrument with no security line.
+            b.ToTable("share_counts");
+            b.HasKey(x => x.InstrumentId);
             b.Property(x => x.SourceRef).IsRequired();
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
         });

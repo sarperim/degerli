@@ -120,6 +120,134 @@ public sealed record VykFault(string? Code, string? Message)
 }
 
 /// <summary>
+/// One security line of a VYK <c>/memberSecurities</c> member (01 v1.5 §10.9.11). The real
+/// per-line shape (live-verified 2026-10-22, dev gateway) is
+/// <c>isin, isinDesc, borsaKodu, takasKodu, tertipGroup, capital, currentCapital, groupCode,
+/// groupCodeDesc, borsadaIslemeAcik</c>: the BIST trading code is <c>borsaKodu</c> (a member's
+/// several tertips share it, e.g. ASELS A+B), <c>isin</c> is the fallback identity, and
+/// <c>borsadaIslemeAcik</c> flags a line that is actually trading. <see cref="CurrentCapital"/> is
+/// the value the share-count store carries — the unit interpretation is live-cross-validated by
+/// the ticket's pinned criterion, never assumed here.
+/// </summary>
+public sealed record SecurityLineInfo(
+    string? Isin,
+    string? IsinDescription,
+    string? BorsaKodu,
+    string? TakasKodu,
+    string? TertipGroup,
+    string? GroupCode,
+    string? GroupCodeDescription,
+    decimal? Capital,
+    decimal? CurrentCapital,
+    bool TradingOpen)
+{
+    /// <summary>Reads one line, tolerating numeric values sent as strings and a string flag.</summary>
+    public static SecurityLineInfo From(JsonElement element) => new(
+        ReadString(element, "isin"),
+        ReadString(element, "isinDesc"),
+        ReadString(element, "borsaKodu"),
+        ReadString(element, "takasKodu"),
+        ReadString(element, "tertipGroup"),
+        ReadString(element, "groupCode"),
+        ReadString(element, "groupCodeDesc"),
+        ReadDecimal(element, "capital"),
+        ReadDecimal(element, "currentCapital"),
+        ReadBoolean(element, "borsadaIslemeAcik"));
+
+    private static string? ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    /// <summary>
+    /// A decimal that may arrive as a JSON number (the real shape) or a dotted string (a gateway
+    /// variant). An absent/null member is <c>null</c> — an unreadable value is <b>not</b> a zero.
+    /// </summary>
+    private static decimal? ReadDecimal(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetDecimal(out var number) => number,
+            JsonValueKind.String when decimal.TryParse(
+                value.GetString(),
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out var parsed) => parsed,
+            _ => null,
+        };
+    }
+
+    /// <summary>A boolean that may arrive as a JSON boolean (the real shape) or a string.</summary>
+    private static bool ReadBoolean(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+        {
+            return false;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.String => bool.TryParse(value.GetString(), out var parsed) && parsed,
+            _ => false,
+        };
+    }
+}
+
+/// <summary>
+/// One member of the VYK <c>/memberSecurities</c> response: the member's identity and its
+/// security lines. The response is a list of these — 671 members / 1,062 lines on the live
+/// 2026-10-22 dev gateway — and a member may carry <b>no</b> securities at all (the codeless
+/// auditor-type/financing members), which decodes to an empty line list, never a fabricated line.
+/// </summary>
+public sealed record MemberSecuritiesInfo(
+    string? MemberId,
+    string? Title,
+    IReadOnlyList<SecurityLineInfo> Securities)
+{
+    public static MemberSecuritiesInfo From(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return new MemberSecuritiesInfo(null, null, []);
+        }
+
+        string? memberId = null;
+        string? title = null;
+        if (element.TryGetProperty("member", out var member) && member.ValueKind == JsonValueKind.Object)
+        {
+            memberId = ReadString(member, "id");
+            title = ReadString(member, "sirketUnvan");
+        }
+
+        var securities = new List<SecurityLineInfo>();
+        if (element.TryGetProperty("securities", out var lines) && lines.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var line in lines.EnumerateArray())
+            {
+                securities.Add(SecurityLineInfo.From(line));
+            }
+        }
+
+        return new MemberSecuritiesInfo(memberId, title, securities);
+    }
+
+    private static string? ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+}
+
+/// <summary>
 /// Tolerant parsers for the VYK list-shaped responses whose array-vs-object wrapping the
 /// OpenAPI leaves undeclared (01 v1.5 §10.9.11). A root array is the real shape; a single
 /// object (the schema's declared shape) and a single-property wrapper object are also accepted

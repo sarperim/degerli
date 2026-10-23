@@ -50,6 +50,7 @@ public static class CannedSourceCatalog
     public const string StatementsBankBanka = "statements-bank-banka";
     public const string StatementsInsuranceSigorta = "statements-insurance-sigorta";
     public const string DividendsOk = "dividends-ok";
+    public const string MemberSecuritiesOk = "member-securities-ok";
     public const string CorporateActionsOk = "corporate-actions-ok";
     public const string DisclosuresOk = "disclosures-ok";
     public const string UniverseAddRemove = "universe-add-remove";
@@ -98,6 +99,7 @@ public static class CannedSourceCatalog
         StatementsBankBanka,
         StatementsInsuranceSigorta,
         DividendsOk,
+        MemberSecuritiesOk,
         CorporateActionsOk,
         DisclosuresOk,
         UniverseAddRemove,
@@ -142,6 +144,7 @@ public static class CannedSourceCatalog
             [StatementsBankBanka] = Payload(StatementsBankBanka, "kap", BuildBankBankaBody()),
             [StatementsInsuranceSigorta] = Payload(StatementsInsuranceSigorta, "kap", BuildInsuranceSigortaBody()),
             [DividendsOk] = Payload(DividendsOk, "kap", BuildDividendsBody(set)),
+            [MemberSecuritiesOk] = Payload(MemberSecuritiesOk, "kap", BuildMemberSecuritiesBody()),
             [CorporateActionsOk] = Payload(CorporateActionsOk, "kap", BuildCorporateActionsBody(set)),
             [DisclosuresOk] = Payload(DisclosuresOk, "kap", BuildDisclosuresBody(set)),
             [UniverseAddRemove] = Payload(UniverseAddRemove, "kap", BuildUniverseChangeSetBody(set)),
@@ -574,6 +577,355 @@ public static class CannedSourceCatalog
                 .Select(k => new DisclosureItem(k.Id, k.Symbol, k.DisclosureType, k.PublishDate, k.Title, k.SourceUrl))
                 .ToList(),
         });
+
+    /// <summary>
+    /// The VYK <c>/memberSecurities</c> (Menkul Kıymet Listesi) double for the <c>shares</c> lane
+    /// (TKT-foundation-058, 01 v1.5.36 §10.9.11). It is <b>committed to the repo</b> and
+    /// <b>derived from the live 2026-10-22 dev-gateway capture</b> (671 members / 1,062 security
+    /// lines); the capture itself is an ephemeral <c>/tmp</c> snapshot and is deliberately not
+    /// referenced.
+    /// <para>
+    /// Shape-faithful and verbatim for the real members it keeps: the wrapper
+    /// <c>{member:{id, sirketUnvan, …}, securities:[{isin, isinDesc, borsaKodu, takasKodu,
+    /// tertipGroup, capital, currentCapital, groupCode, groupCodeDesc, borsadaIslemeAcik}]}</c>;
+    /// ASELS's A (closed) + B (open) tertips summing to the real 4.56B count; THYAO's C (closed)
+    /// + A (open) lines; TUPRS A + C; GARAN and AEFES single lines; ISDMR's two <b>open</b> tertips
+    /// (A+B = 2.9B); the padded <c>" A  "</c> tertip spelling; a member with <b>no</b> securities
+    /// (AK FAKTÖRİNG — the codeless financing/auditor class).
+    /// </para>
+    /// <para>
+    /// <b>Derived anomalies (not in the capture, deliberately constructed, real shape):</b>
+    /// <c>DRVE</c> carries one line <b>without</b> <c>currentCapital</c> beside a readable one (the
+    /// skip-not-zero branch; the live capture only carries the missing-value class on a single line,
+    /// so the shape is reproduced here); <c>NOCAP</c>'s only line has no <c>currentCapital</c>;
+    /// <c>DRVFB</c>'s <c>borsaKodu</c> matches no instrument and its <c>isin</c> does (the
+    /// isin-fallback branch); <c>CLSDR</c>'s lines are all closed (no trading-open line — honest
+    /// absence). No field or wrapping is invented.
+    /// </para>
+    /// </summary>
+    private static string BuildMemberSecuritiesBody() =>
+        """
+        [
+          {
+            "member": {
+              "id": "866",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "kayitliSermayeTavani": 10000000000,
+              "kstSonGecerlilikTarihi": "2027.12.31 00:00:00",
+              "sirketUnvan": "ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.",
+              "mksMbrId": "TRASELS"
+            },
+            "securities": [
+              {
+                "isin": "TREASLS00018",
+                "isinDesc": "ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş. İMTİYAZLI",
+                "borsaKodu": "ASELS",
+                "takasKodu": "ASELS",
+                "tertipGroup": " A  ",
+                "capital": 2421818181.816,
+                "currentCapital": 2421818181.816,
+                "groupCode": "I",
+                "groupCodeDesc": "İMTİYAZ",
+                "borsadaIslemeAcik": false
+              },
+              {
+                "isin": "TRAASELS91H2",
+                "isinDesc": "ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.",
+                "borsaKodu": "ASELS",
+                "takasKodu": "ASELS",
+                "tertipGroup": " B  ",
+                "capital": 2138181818.184,
+                "currentCapital": 2138181818.184,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "1107",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "kayitliSermayeTavani": 5000000000,
+              "kstSonGecerlilikTarihi": "2024.12.31 00:00:00",
+              "sirketUnvan": "TÜRK HAVA YOLLARI A.O.",
+              "mksMbrId": "TRTHYAO"
+            },
+            "securities": [
+              {
+                "isin": "TRETHYA00012",
+                "isinDesc": "TÜRK HAVA YOLLARI A.O. İMTİYAZLI",
+                "borsaKodu": "THYAO",
+                "takasKodu": "THYAO",
+                "tertipGroup": "C",
+                "capital": 0.01,
+                "currentCapital": 0.01,
+                "groupCode": "I",
+                "groupCodeDesc": "İMTİYAZ",
+                "borsadaIslemeAcik": false
+              },
+              {
+                "isin": "TRATHYAO91M5",
+                "isinDesc": "TÜRK HAVA YOLLARI A.O",
+                "borsaKodu": "THYAO",
+                "takasKodu": "THYAO",
+                "tertipGroup": "A",
+                "capital": 1379999999.99,
+                "currentCapital": 1379999999.99,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "1105",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "kayitliSermayeTavani": 500000000,
+              "kstSonGecerlilikTarihi": "2025.12.31 00:00:00",
+              "sirketUnvan": "TÜPRAŞ-TÜRKİYE PETROL RAFİNERİLERİ A.Ş.",
+              "mksMbrId": "TRTUPRS"
+            },
+            "securities": [
+              {
+                "isin": "TRATUPRS91E8",
+                "isinDesc": "TÜPRAŞ TÜRKİYE PETROL RAFİNERİLERİ A.Ş.",
+                "borsaKodu": "TUPRS",
+                "takasKodu": "TUPRS",
+                "tertipGroup": "A",
+                "capital": 1926795597.99,
+                "currentCapital": 1926795597.99,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              },
+              {
+                "isin": "TRETPRS00011",
+                "isinDesc": "TÜPRAŞ TÜRKİYE PETROL RAFİNERİLERİ A.Ş.İMTİYAZLI",
+                "borsaKodu": "TUPRS",
+                "takasKodu": "TUPRS",
+                "tertipGroup": "C",
+                "capital": 0.01,
+                "currentCapital": 0.01,
+                "groupCode": "I",
+                "groupCodeDesc": "İMTİYAZ",
+                "borsadaIslemeAcik": false
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "2422",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "kayitliSermayeTavani": 25000000000,
+              "kstSonGecerlilikTarihi": "2028.12.31 00:00:00",
+              "sirketUnvan": "TÜRKİYE GARANTİ BANKASI A.Ş.",
+              "mksMbrId": "TRGARAN"
+            },
+            "securities": [
+              {
+                "isin": "TRAGARAN91N1",
+                "isinDesc": "TÜRKİYE GARANTİ BANKASI A.Ş.",
+                "borsaKodu": "GARAN",
+                "takasKodu": "GARAN",
+                "capital": 4200000000,
+                "currentCapital": 4200000000,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "858",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "kayitliSermayeTavani": 900000000,
+              "kstSonGecerlilikTarihi": "2025.12.31 00:00:00",
+              "sirketUnvan": "ANADOLU EFES BİRACILIK VE MALT SANAYİİ A.Ş.",
+              "mksMbrId": "TRAEFES"
+            },
+            "securities": [
+              {
+                "isin": "TRAAEFES91A9",
+                "isinDesc": "ANADOLU EFES BİRACILIK VE MALT SANAYİİ A.Ş. ",
+                "borsaKodu": "AEFES",
+                "takasKodu": "AEFES",
+                "capital": 592105263,
+                "currentCapital": 592105263,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "2528",
+              "memberType": "IGS",
+              "sermayeSistemi": "ES",
+              "sirketUnvan": "İSKENDERUN DEMİR VE ÇELİK A.Ş.",
+              "mksMbrId": "TRISDMR"
+            },
+            "securities": [
+              {
+                "isin": "TREISDC00012",
+                "isinDesc": "İSKENDERUN DEMİR VE ÇELİK A.Ş.",
+                "borsaKodu": "ISDMR",
+                "takasKodu": "ISDMR",
+                "tertipGroup": "A",
+                "capital": 20,
+                "currentCapital": 20,
+                "groupCode": "FG",
+                "groupCodeDesc": "FARKLI GRUP",
+                "borsadaIslemeAcik": true
+              },
+              {
+                "isin": "TREISDC00020",
+                "isinDesc": "İSKENDERUN DEMİR VE ÇELİK A.Ş.",
+                "borsaKodu": "ISDMR",
+                "takasKodu": "ISDMR",
+                "tertipGroup": "B",
+                "capital": 2899999980,
+                "currentCapital": 2899999980,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "2085",
+              "memberType": "IGS",
+              "sermayeSistemi": "ES",
+              "sirketUnvan": "AK FAKTORİNG A.Ş.",
+              "mksMbrId": "TRAKSFA"
+            },
+            "securities": []
+          },
+          {
+            "member": {
+              "id": "9001",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "sirketUnvan": "DERİVE HOLDİNG A.Ş. (derived anomaly — missing currentCapital)",
+              "mksMbrId": "TRDRVE"
+            },
+            "securities": [
+              {
+                "isin": "TREDRVE00011",
+                "isinDesc": "DERİVE HOLDİNG A.Ş. A GRUBU",
+                "borsaKodu": "DRVE",
+                "takasKodu": "DRVE",
+                "tertipGroup": "A",
+                "capital": 1000000000,
+                "currentCapital": 1000000000,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              },
+              {
+                "isin": "TREDRVE00029",
+                "isinDesc": "DERİVE HOLDİNG A.Ş. B GRUBU",
+                "borsaKodu": "DRVE",
+                "takasKodu": "DRVE",
+                "tertipGroup": "B",
+                "capital": 500000000,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": false
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "9002",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "sirketUnvan": "NO CAPİTAL A.Ş. (derived anomaly — sole line without currentCapital)",
+              "mksMbrId": "TRNOCAP"
+            },
+            "securities": [
+              {
+                "isin": "TRENOCA00018",
+                "isinDesc": "NO CAPİTAL A.Ş.",
+                "borsaKodu": "NOCAP",
+                "takasKodu": "NOCAP",
+                "tertipGroup": "A",
+                "capital": 7000000,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "9003",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "sirketUnvan": "DERİVE FALLBACK A.Ş. (derived anomaly — isin fallback)",
+              "mksMbrId": "TRDRVFB"
+            },
+            "securities": [
+              {
+                "isin": "TREDRVF00019",
+                "isinDesc": "DERİVE FALLBACK A.Ş.",
+                "borsaKodu": "DRVFB",
+                "takasKodu": "DRVFB",
+                "tertipGroup": "A",
+                "capital": 1234567,
+                "currentCapital": 1234567,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": true
+              }
+            ]
+          },
+          {
+            "member": {
+              "id": "9004",
+              "memberType": "IGS",
+              "sermayeSistemi": "KS",
+              "sirketUnvan": "CLOSED HOLDİNG A.Ş. (derived anomaly — no trading-open line)",
+              "mksMbrId": "TRCLSDR"
+            },
+            "securities": [
+              {
+                "isin": "TRECLSD00011",
+                "isinDesc": "CLOSED HOLDİNG A.Ş. A GRUBU",
+                "borsaKodu": "CLSDR",
+                "takasKodu": "CLSDR",
+                "tertipGroup": "A",
+                "capital": 500,
+                "currentCapital": 500,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": false
+              },
+              {
+                "isin": "TRECLSD00029",
+                "isinDesc": "CLOSED HOLDİNG A.Ş. B GRUBU",
+                "borsaKodu": "CLSDR",
+                "takasKodu": "CLSDR",
+                "tertipGroup": "B",
+                "capital": 700,
+                "currentCapital": 700,
+                "groupCode": "E",
+                "groupCodeDesc": "ESKİ",
+                "borsadaIslemeAcik": false
+              }
+            ]
+          }
+        ]
+        """;
 
     private static string BuildUniverseBody(FixtureSet set) =>
         Serialize(new
