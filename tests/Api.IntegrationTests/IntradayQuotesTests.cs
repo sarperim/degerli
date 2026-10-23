@@ -163,9 +163,12 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
 
         var intraday = ingestion.GetProperty("Intraday");
         Assert.StartsWith("https://www.isyatirim.com.tr", intraday.GetProperty("BaseUrl").GetString(), StringComparison.Ordinal);
-        // The same probe-gated resource the EOD prices lane uses ({symbol} + {date} tokens).
+        // The intraday resource is İş Yatırım's delayed chart feed (the 2026-10-23 probe found
+        // HisseTekil lagging: no same-day row mid-session, while IntradayDelay served the live
+        // session's bars). The EOD prices lane keeps HisseTekil — only this lane moved, and the
+        // chart feed needs no {date} token because the sweep narrows by the bars' own stamps.
         Assert.Contains("{symbol}", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
-        Assert.Contains("{date}", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("ChartData.aspx/IntradayDelay", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
         // The politeness posture: sequential requests paced between calls (01 §10.9.2).
         Assert.Equal(500, intraday.GetProperty("RequestDelayMs").GetInt32());
         // The sweep bound follows the covered universe (XU100 at launch).
