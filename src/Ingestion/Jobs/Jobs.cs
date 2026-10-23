@@ -44,8 +44,22 @@ public sealed record IngestResult(string JobCode, int Written, int Unchanged, in
 /// One constituent's contribution to a run (TC-MDF-072/073). <see cref="Failed"/> marks a
 /// per-symbol transport failure — a source-down, not a parse/validation event: it quarantines
 /// nothing but is named in the run's aggregate alert.
+/// <para>
+/// <see cref="Reason"/> is the explicit outcome class when the counts alone would be
+/// indistinguishable from "nothing to do" — today the prices lane's
+/// <c>NO_ROW_FOR_DATE</c> (the source answered with a valid payload carrying no session row
+/// for the requested date, so the symbol was skipped for a stated reason rather than
+/// silently). <c>null</c> when the counts speak for themselves; optional so every existing
+/// job's stats shape is unchanged.
+/// </para>
 /// </summary>
-public sealed record SymbolRunStat(string Symbol, int Written, int Unchanged, int Quarantined, bool Failed);
+public sealed record SymbolRunStat(
+    string Symbol,
+    int Written,
+    int Unchanged,
+    int Quarantined,
+    bool Failed,
+    string? Reason = null);
 
 /// <summary>
 /// Retry-ladder context for a run-ledger row (C3c, NFR-MDF-001): which attempt this is

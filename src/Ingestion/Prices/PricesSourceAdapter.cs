@@ -40,6 +40,39 @@ public sealed class PricesSourceOptions
     /// <c>0</c> so the loop is deterministic.
     /// </summary>
     public int RequestDelayMs { get; set; } = 500;
+
+    /// <summary>
+    /// How many <b>passes</b> one incremental run may make over the bound to complete the
+    /// day's coverage (01 v1.5 §10.9.2 amendment — the completeness gate). İş Yatırım
+    /// publishes a session progressively: a symbol answers EMPTY shortly after the close
+    /// and its full OHLCV row appears later the same evening, so a single pass can leave the
+    /// day partly covered while the source still has the data coming. <c>1</c> disables the
+    /// re-sweep (single pass); the default allows a first pass plus two bounded re-sweeps of
+    /// only the symbols that answered empty. Never an unbounded loop: this bound and
+    /// <see cref="CoverageBudget"/> both apply.
+    /// </summary>
+    public int CoverageMaxPasses { get; set; } = 3;
+
+    /// <summary>
+    /// Settle wait between coverage passes (bound as a <see cref="TimeSpan"/>). <b>Default
+    /// <c>00:00:00</c> — no extra wait</b>: a pass is already spaced from the next by its own
+    /// pacing (the pinned sequential posture makes a 100-symbol pass ≈ 50 s at
+    /// <see cref="RequestDelayMs"/> 500 ms and ≈ 5 minutes at İş's ≥3 s politeness floor), so a
+    /// re-sweep that starts when the previous paced pass ends is already minutes later, and
+    /// every L2 run stays free of real timers. Raise it (e.g. <c>00:05:00</c>) to space passes
+    /// further apart; <c>&lt;= 0</c> skips the wait entirely.
+    /// </summary>
+    public TimeSpan CoverageSettleDelay { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Wall-clock budget for the run's completeness effort (default 25 minutes: three
+    /// 100-symbol passes at the politeness floor plus slack). Once the budget is spent the run
+    /// stops re-sweeping and reports the coverage it actually achieved — it never spins.
+    /// Deliberately well under the scheduler's per-attempt <c>MaxRunDuration</c> (90 min), which
+    /// also bounds the whole EOD chain. Bound as a <see cref="TimeSpan"/>; <c>&lt;= 0</c> means
+    /// "no time budgeted for re-sweeps" (single pass).
+    /// </summary>
+    public TimeSpan CoverageBudget { get; set; } = TimeSpan.FromMinutes(25);
 }
 
 /// <summary>

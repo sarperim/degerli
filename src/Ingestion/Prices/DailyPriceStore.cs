@@ -73,6 +73,48 @@ public sealed class DailyPriceStore
         return new PriceDayCoverage(total, covered);
     }
 
+    /// <summary>
+    /// The symbols of one bound index's current membership that have <b>no</b> stored
+    /// <c>daily_prices</c> row for a given day — the read side of the <c>prices</c> job's
+    /// completeness gate (01 v1.5 §10.9.2 amendment): the still-missing names a bounded
+    /// re-sweep targets and the names an honest <see cref="IngestResult.Partial"/> summary
+    /// reports. The membership filter is exactly <see cref="GetDayCoverageAsync"/>'s
+    /// (<c>index_constituents</c> with <c>effective_to IS NULL</c>), so the count and the
+    /// names can never disagree; an unknown/empty bound reports no missing symbols.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetMissingConstituentSymbolsAsync(
+        string indexCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexCode);
+
+        var indexId = await _db.Indices
+            .Where(index => index.Code == indexCode)
+            .Select(index => (long?)index.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (indexId is null)
+        {
+            return [];
+        }
+
+        var constituents = _db.IndexConstituents
+            .Where(constituent => constituent.IndexId == indexId.Value && constituent.EffectiveTo == null)
+            .Select(constituent => constituent.InstrumentId);
+
+        var stored = _db.DailyPrices
+            .Where(price => price.PriceDate == date)
+            .Select(price => price.InstrumentId);
+
+        return await _db.Instruments
+            .Where(instrument => constituents.Contains(instrument.Id) && !stored.Contains(instrument.Id))
+            .Select(instrument => instrument.Symbol)
+            .OrderBy(symbol => symbol)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public Task<PriceWriteResult> UpsertAsync(
         DateOnly date,
         string sourceRef,
