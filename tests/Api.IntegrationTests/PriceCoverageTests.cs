@@ -31,8 +31,10 @@ namespace Degerli.Api.IntegrationTests;
 /// pass 1 from pass 2.
 /// </para>
 /// <para>
-/// The settle delay is bound to <c>00:00:00</c> (the documented "no wait") and the wall-clock
-/// budget is exercised through a stepping fake clock, so no test waits on a real timer.
+/// The settle delay is bound to <c>00:00:00</c> (the documented "no wait") everywhere except the
+/// settle-path case, which binds a real delay and advances a <see cref="FakeTimeProvider"/> to
+/// elapse it; the wall-clock budget is exercised through a stepping fake clock. No test waits on
+/// a real timer.
 /// </para>
 /// </summary>
 public sealed class PriceCoverageTests : IClassFixture<PostgresFixture>
@@ -234,6 +236,58 @@ public sealed class PriceCoverageTests : IClassFixture<PostgresFixture>
         Assert.Equal(1, source.Calls("EPSL"));
     }
 
+    /// <summary>
+    /// The settle-delay case: a non-zero <c>Ingestion:Prices:CoverageSettleDelay</c> is a real
+    /// wait on the <b>injected</b> clock (<c>SettleAsync</c> awaits
+    /// <c>Task.Delay(delay, TimeProvider)</c>), so the test pumps a
+    /// <see cref="FakeTimeProvider"/> until that wait elapses. Nothing sleeps on a real timer:
+    /// the clock is only advanced once the settle is actually pending (the job logs it before
+    /// awaiting), and the run then proceeds to its one bounded re-sweep.
+    /// </summary>
+    [Fact]
+    public async Task Prices_coverage_settle_delay_paces_the_re_sweep_on_the_injected_clock()
+    {
+        await ResetAsync(["ALFA"]);
+        var source = new ScriptedSourceClient((_, _) => EmptyBody());
+        var start = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var clock = new FakeTimeProvider(start);
+
+        await using var host = BuildIngestion(
+            source,
+            maxPasses: 2,
+            settle: "00:05:00",
+            clock: clock);
+
+        var run = RunAsync(host);
+        var guard = System.Diagnostics.Stopwatch.StartNew();
+        while (!run.IsCompleted && guard.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            if (host.Logs.Contains(evt => evt.RenderMessage().Contains("settling", StringComparison.OrdinalIgnoreCase)))
+            {
+                // The settle is pending on the fake clock — advancing fires it.
+                clock.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            await Task.Delay(1);
+        }
+
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // One pass, one settle, one re-sweep: the second fetch is the re-sweep's.
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(2, source.Calls("ALFA"));
+
+        // The wait elapsed on the injected clock (>= the configured five minutes), not in real time.
+        Assert.True(
+            clock.GetUtcNow() - start >= TimeSpan.FromMinutes(5),
+            "the configured settle delay did not elapse on the injected clock");
+        Assert.True(
+            host.Logs.Contains(evt =>
+                evt.RenderMessage().Contains("settling", StringComparison.OrdinalIgnoreCase)
+                && evt.RenderMessage().Contains("00:05:00", StringComparison.Ordinal)),
+            "no settle log line naming the configured delay");
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -242,7 +296,8 @@ public sealed class PriceCoverageTests : IClassFixture<PostgresFixture>
     /// The production ingestion composition, retargeted at the Testcontainers database and at a
     /// scripted in-process source double (registered last, so it wins over the HTTP client the
     /// composition installs — <b>no live source is ever called</b>). Pacing is disabled and the
-    /// settle delay is bound to zero so the coverage loop is deterministic.
+    /// settle delay defaults to zero so the coverage loop is deterministic; a case that exercises
+    /// the settle binds a non-zero delay together with the fake clock that elapses it.
     /// </summary>
     private IngestionHost BuildIngestion(
         ScriptedSourceClient source,
