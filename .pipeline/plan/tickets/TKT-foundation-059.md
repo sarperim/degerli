@@ -62,6 +62,16 @@ Passed! - Failed: 0, Passed: 41, Skipped: 0, Total: 41
 
 No existing assertion was weakened, skipped or re-interpreted. CI verdict is the PR's.
 
+### CI evidence (run 39945081372, head `257afcf`)
+
+```
+Backend (restore · build · test)                  pass  2m49s
+Web (lint · typecheck · test · i18n · build)      pass  1m17s
+E2E (compose · Playwright · MailPit)              fail  3m43s
+```
+
+The E2E failure is the **standing-waived class**: the single red case is `global-ux.spec.ts:97` **TC-XC-004 — language switch preserves context › SCR-002 keeps the sector filter, search term, scroll and data cache** (the scroll-harness assertion), 75/76 green; it fails identically on `dev` and is the class TKT-foundation-060 was sliced to repair. This PR touches no Web/E2E file (its diff is `src/Ingestion/Scheduling/IngestionScheduler.cs`, `tests/Api.IntegrationTests/SchedulerTests.cs`, `01-system-architecture.md`, this ticket). Recorded, not waived silently.
+
 ### Live symptom seen on 2026-10-22 → investigation note (out of scope, routed)
 
 Thursday's chain gives two facts: the watchdog **fired correctly** (`RUN_HUNG` ledger rows 185 and 190 carrying `hungJob`/`step`/`stepCount`, naming the `corporate-actions` step 5 — 041 working as designed), and then — after attempt 3 failed at 21:52 UTC and `Retry 3 … scheduled at 2026-10-22T22:52:29` was logged — the scheduler emitted **zero** lines for ~12.8 h and the retry ran at 10:41 UTC Friday.
