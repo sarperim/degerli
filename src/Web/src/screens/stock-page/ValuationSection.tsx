@@ -290,6 +290,13 @@ export function ValuationSection({ symbol }: { symbol: string }) {
       >
         {data ? (
           <div className="flex flex-col gap-4">
+            {/*
+              The stock's own canonical multiples stay machine-addressable
+              (`data-metric` / `data-slot="stock-value"`) regardless of the
+              vs.-sector strip: the strip states an honest empty when no peer
+              median is served, but the canonical own P/E and friends are still
+              the figures TC-RES-028 / TC-XC-008 read off this region.
+            */}
             <div className="flex flex-col gap-2">
               <h3 className="text-xs font-medium text-muted-foreground">
                 {t('stockPage.valuation.current.title')}
@@ -300,12 +307,16 @@ export function ValuationSection({ symbol }: { symbol: string }) {
                   return (
                     <div
                       key={code}
+                      data-metric={code}
                       className="flex items-center justify-between gap-3"
                     >
                       <dt className="text-xs text-muted-foreground">
                         {t(VALUATION_METRIC_LABEL_KEYS[code])}
                       </dt>
-                      <dd className="text-sm font-medium tabular-nums text-foreground">
+                      <dd
+                        data-slot="stock-value"
+                        className="text-sm font-medium tabular-nums text-foreground"
+                      >
                         {value === null ? (
                           <NotMeaningful />
                         ) : (
