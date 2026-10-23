@@ -409,9 +409,9 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
 
     /// <summary>
     /// TC-MDF-081 (b) — <b>morning-chain independence while a retry is in flight</b> (acceptance iii). This is
-    /// the 2026-10-22/23 live shape end-to-end: the EOD attempt fails at 20:30, retry 1 starts
-    /// at 20:35 and its chain step hangs, and the 08:30 Istanbul (05:30 UTC) morning chain falls
-    /// due while that retry attempt is still holding the tick. Live, the morning chain did not
+    /// the live shape at the interaction level — the retry's step hangs at an await: the EOD attempt
+    /// fails at 20:30, retry 1 starts at 20:35 and its chain step hangs, and the 08:30 Istanbul
+    /// (05:30 UTC) morning chain falls due while that retry attempt is still holding the tick. Live, the morning chain did not
     /// fire at 05:30 — it started at 12:11:24Z, the instant the EOD attempt released the loop,
     /// ~6h41m late.
     /// <para>

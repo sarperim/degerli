@@ -55,8 +55,11 @@ namespace Degerli.Ingestion.Scheduling;
 /// every other stream's due instant — so a retry armed for T, or the 05:30Z morning chain,
 /// started only when the loop was released (live: ~6h41m late). <see cref="TickAsync"/>
 /// therefore keeps evaluating due-ness on the injected clock while attempts are in flight: each
-/// stream's armed retry and each cron occurrence starts at its own instant, and an in-flight
-/// stream is neither a wake nor a due candidate until its attempt ends.
+/// stream's armed retry and each cron occurrence starts at its own instant <b>for as long as the
+/// in-flight attempt is at an await</b> — a step that blocks synchronously still holds the pump
+/// thread and still postpones the other streams' due instants (the unbounded class under "Scope
+/// of the guarantee") — and an in-flight stream is neither a wake nor a due candidate until its
+/// attempt ends.
 /// </para>
 /// </remarks>
 public sealed class IngestionScheduler
@@ -180,8 +183,10 @@ public sealed class IngestionScheduler
     /// at its own (the live 2026-10-22/23 trace: morning chain at 12:11:24Z, ~6h41m late).
     /// The pump therefore keeps evaluating due-ness on the injected clock itself while
     /// attempts are in flight: each stream's armed retry and each cron occurrence starts at
-    /// its own instant, independently of what else is running. Lateness is then bounded by
-    /// nothing this engine adds — the only remaining bound on an attempt is its own
+    /// its own instant <b>for as long as the in-flight attempt is at an await</b>. A step that
+    /// blocks synchronously still holds the pump thread and still postpones the other streams'
+    /// due instants (the unbounded class under "Scope of the guarantee"). Lateness is then
+    /// bounded by nothing this engine adds — the only remaining bound on an attempt is its own
     /// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> watchdog.
     /// </remarks>
     public async Task TickAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
@@ -204,7 +209,19 @@ public sealed class IngestionScheduler
             foreach (var ended in running.Where(task => task.IsCompleted).ToList())
             {
                 running.Remove(ended);
-                await ended.ConfigureAwait(false);
+                try
+                {
+                    await ended.ConfigureAwait(false);
+                }
+                catch
+                {
+                    // This tick is unwinding on the attempt's failure (or the host's stop): the
+                    // siblings it already started end on their own — each clears its stream's
+                    // InFlight in its finally — but this returning tick will never await them,
+                    // so their terminal faults are observed here rather than left unobserved.
+                    ObserveAbandoned(running);
+                    throw;
+                }
             }
 
             if (running.Count == 0)
@@ -216,6 +233,15 @@ public sealed class IngestionScheduler
             var next = NextWake(current);
             if (next is { } immediate && immediate <= current)
             {
+                // A stopping host is not a due instant: do not start an attempt it would only
+                // cancel. The siblings already started end on their own; observe their faults
+                // since this tick is about to unwind without awaiting them.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ObserveAbandoned(running);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 if (StartDueAttempts(current, running, cancellationToken) == 0)
                 {
                     // Nothing was startable at an instant `NextWake` reported as due: the
@@ -229,8 +255,14 @@ public sealed class IngestionScheduler
             var pause = await AwaitAnyRunningAsync(running, next, cancellationToken).ConfigureAwait(false);
             if (pause)
             {
-                // A stopping host is not a due instant: unwind instead of starting work.
-                cancellationToken.ThrowIfCancellationRequested();
+                // A stopping host is not a due instant: unwind instead of starting work. The
+                // siblings already started end on their own (their finally clears InFlight);
+                // observe their faults since this tick unwinds without awaiting them.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ObserveAbandoned(running);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
 
                 // Another stream's due instant arrived while an attempt held the tick: start it
                 // now, at its own instant, never at this tick's release instant.
@@ -265,6 +297,25 @@ public sealed class IngestionScheduler
         await pauseCts.CancelAsync().ConfigureAwait(false);
 
         return ReferenceEquals(completed, pause);
+    }
+
+    /// <summary>
+    /// Observes the terminal exception of attempts this tick started but will not await because
+    /// it is unwinding (a faulted sibling, or a stopping host). The attempts still end — each
+    /// clears its stream's <c>InFlight</c> in its <c>finally</c> — but a fault raised after the
+    /// unwind (for example the exhausted alert) must not surface later as an unobserved-task
+    /// exception. A task that is awaited normally is unaffected: this only reads its exception.
+    /// </summary>
+    private static void ObserveAbandoned(IEnumerable<Task> running)
+    {
+        foreach (var task in running)
+        {
+            _ = task.ContinueWith(
+                static abandoned => _ = abandoned.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 
     /// <summary>
