@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+import type { MacroResponse } from '@/lib/api/contracts'
 import { MacroStrip } from '@/routes/MacroStrip'
 import { catalogValue } from '@/test/i18n'
 import {
@@ -234,5 +235,129 @@ describe('macro strip failure domain', () => {
 
     await screen.findByTestId('macro-TUIK_CPI')
     expect(within(strip).queryByRole('alert')).toBeNull()
+  })
+})
+
+/**
+ * TKT-foundation-072 (i)/(ii) — display-side unit semantics.
+ *
+ * `03` §1 principle 1: codes and numbers from the server, words from the client. A
+ * served `unit` is a **code** (`% YoY`, `TRY/g`, `USD/oz`, …), never display prose;
+ * the strip renders the localized label from the single unit map (`src/lib/units.ts`).
+ * An unrecognized code degrades to an explicit "unit not specified" label — the raw
+ * code is never shown and no unit is guessed (a label is a claim about the data,
+ * FR-RES-017).
+ */
+describe('TKT-foundation-072 (i) — macro-strip units are localized labels, not server codes', () => {
+  /** Every unit code the fixture universe serves, with its catalog key. */
+  const UNIT_KEYS: Record<string, string> = {
+    TUIK_CPI: 'units.percentYoY',
+    INDEP_CPI: 'units.percentYoY',
+    CBRT_REPO: 'units.percent',
+    USD_TRY: 'units.currencyTry',
+    EUR_TRY: 'units.currencyTry',
+    GOLD: 'units.usdPerOunce',
+  }
+
+  it('renders the Turkish unit label for every series and leaks no prose code', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip('tr')
+    await screen.findByTestId('market-block-macro')
+
+    for (const [code, key] of Object.entries(UNIT_KEYS)) {
+      const unit = await screen.findByTestId(`macro-unit-${code}`)
+      expect(unit).toHaveTextContent(tr(key))
+    }
+
+    // The prose codes the server serves never reach the screen as display text.
+    expect(screen.queryByText('% YoY')).toBeNull()
+    expect(screen.queryByText('USD/oz')).toBeNull()
+  })
+
+  it('renders the English unit label for every series and leaks no prose code', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    renderStrip('en')
+    await screen.findByTestId('market-block-macro')
+
+    for (const [code, key] of Object.entries(UNIT_KEYS)) {
+      const unit = await screen.findByTestId(`macro-unit-${code}`)
+      expect(unit).toHaveTextContent(catalogValue('en', key))
+    }
+
+    expect(screen.queryByText('% YoY')).toBeNull()
+    expect(screen.queryByText('USD/oz')).toBeNull()
+  })
+
+  it('renders the TRY-per-gram code as a localized label, not the raw code', async () => {
+    const perGram: MacroResponse = {
+      asOf: '2026-10-06',
+      stale: false,
+      series: [
+        {
+          code: 'GOLD',
+          value: 2450.75,
+          unit: 'TRY/g',
+          source: 'CBRT',
+          asOf: '2026-09-26',
+          stale: false,
+          state: 'available',
+        },
+      ],
+    }
+    server.use(marketMacroHandler(perGram))
+    renderStrip('tr')
+
+    const gold = await screen.findByTestId('macro-unit-GOLD')
+    expect(gold).toHaveTextContent(tr('units.tryPerGram'))
+    expect(screen.queryByText('TRY/g')).toBeNull()
+  })
+
+  it('degrades an unrecognized unit code to an explicit label, never the raw code', async () => {
+    const unknownUnit: MacroResponse = {
+      asOf: '2026-10-06',
+      stale: false,
+      series: [
+        {
+          code: 'GOLD',
+          value: 5200,
+          unit: 'XAU/ons_v2',
+          source: 'Gold',
+          asOf: '2026-10-04',
+          stale: false,
+          state: 'available',
+        },
+      ],
+    }
+    server.use(marketMacroHandler(unknownUnit))
+    renderStrip('tr')
+
+    const unit = await screen.findByTestId('macro-unit-GOLD')
+    expect(unit).toHaveTextContent(tr('units.unknown'))
+    expect(unit).not.toHaveTextContent('XAU/ons_v2')
+    expect(screen.queryByText(/XAU\/ons_v2/)).toBeNull()
+  })
+
+  it('degrades an unrecognized unit code in English too', async () => {
+    const unknownUnit: MacroResponse = {
+      asOf: '2026-10-06',
+      stale: false,
+      series: [
+        {
+          code: 'GOLD',
+          value: 5200,
+          unit: 'XAU/ons_v2',
+          source: 'Gold',
+          asOf: '2026-10-04',
+          stale: false,
+          state: 'available',
+        },
+      ],
+    }
+    server.use(marketMacroHandler(unknownUnit))
+    renderStrip('en')
+
+    const unit = await screen.findByTestId('macro-unit-GOLD')
+    expect(unit).toHaveTextContent(catalogValue('en', 'units.unknown'))
+    expect(unit).not.toHaveTextContent('XAU/ons_v2')
   })
 })

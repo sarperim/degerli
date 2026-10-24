@@ -18,7 +18,7 @@ scope:
 
 # TKT-foundation-072: Units branding — display-side unit semantics (server unit codes are not display prose)
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 8 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -45,3 +45,24 @@ scope:
 - UX refs: SCR-001 (macro strip), SCR-002 (screener results), SCR-005 (balance sheet / share-count block); UXR-MOV-008/009 (macro markers), UXR-SCR-0xx (screener result units), UXR-RES-0xx (balance-sheet labels) — the ux-designer confirms the exact entries during flow-back.
 - Dependencies: **TKT-foundation-065** (its recorded decision defines the paid-in-capital label and the TRY unit; the rest of the unit map is independent and may be built first).
 - Parallel group: none (shares the i18n catalogs with 073).
+
+## Implementation record (2026-10-24)
+
+- **PR:** https://github.com/sarperim/degerli/pull/137 (link filled at open).
+- **Delivered:** single unit-code → localized label map in `src/Web/src/lib/units.ts`, applied at every raw-unit render.
+  - `UNIT_LABEL_KEYS` covers the seeded macro/screener vocabulary (`%`, `% YoY`, `x`, `TRY`, `USD/oz`) plus `TRY/g`, which appears only in the MSW test fixtures.
+  - `unitLabel` / `unitSuffix` / `isPercentUnit` are the only way a component resolves a served `unit`.
+  - Surfaces: `MacroStrip.tsx` (per-series unit), `screener/ScreenerScreen.tsx` (metric select + criterion row + result values), `screener/criteria.ts` (`formatMetricValue` now takes `t`), `savedScreens/criteria.ts` (semantic branch uses `isPercentUnit`), `stock-page/StockSections.tsx` (paid-in-capital line).
+- **Unknown-code decision (pinned):** an unrecognized or empty unit code renders the explicit label **"Birim belirtilmemiş" / "Unit not specified"** (`units.unknown`). The raw code is never shown and no unit is guessed — a label is a claim about the data (FR-RES-017). Covered by TR and EN tests in `MacroStrip.test.tsx`.
+- **Paid-in capital (065 / USER DECISION D4, Option A):** the balance-sheet line served as `sharesOutstanding` is labelled **"Ödenmiş sermaye" / "Paid-in capital"** and carries the localized **TRY** unit (`PAID_IN_CAPITAL_UNIT_CODE`; the value is money — 64/556 rows carry sub-unit precision). The old "Ödenmiş pay sayısı" / "Shares outstanding" copy is removed from both catalogs; the row is never rendered as a share count. `lines.sharesDiluted` keeps its statement meaning and label. The served field name is unchanged (display-only ticket; the API rename belongs to the 065 implementation slice).
+- **Acceptance mapping:**
+  - **(i)** `grep -rn "\.unit\b" src/Web/src --include=*.tsx --include=*.ts` (excluding tests/contracts) shows only mapped calls (`unitLabel`/`unitSuffix`/`isPercentUnit`) and the pre-existing DCF `unitKey` pattern — no `{…unit}` render remains. One test per surface: `MacroStrip.test.tsx` (`TKT-foundation-072 (i)`), `ScreenerBuilder.test.tsx` (`(i)`, select + criterion + result cell), `StockPage.test.tsx` (`(iii)`).
+  - **(ii)** Every served code has TR and EN labels; unknown code covered in both languages.
+  - **(iii)** Paid-in capital label + TRY unit tested in TR and EN, with explicit "no count noun" assertions.
+  - **(iv)** `vitest run` 360/360 Web tests pass; `tsc --noEmit` clean; ESLint clean; `check:i18n` 673 keys in sync; `check:advice` clean.
+  - **(v)** **No architecture change needed:** `03` §2/§4 do not pin a unit-code vocabulary (they pin the percentage-as-fraction rule and call `unit` a display field per endpoint), so no §13.1 row is warranted and `03-api-design.md` is untouched.
+- **Test placement note:** `src/Web/src/lib/units.ts` is new but the ticket's `scope:` list has no `units.test.ts`, so the mapping behaviour is proven through the three in-scope component tests (known code → TR/EN label, unknown → honest fallback, paid-in capital → TRY, never a count). A dedicated `units.test.ts` would need a scope amendment.
+- **Flow-back / flagged items:**
+  - **TKT-foundation-065's file still reads `Status: blocked — USER DECISION REQUIRED`.** The implemented direction follows USER DECISION D4 as dispatched (**Option A**: paid-in capital, TRY). 065 should record the decision verbatim; this ticket consumed it as instructed.
+  - **UX wording flow-back (non-blocking, per the ticket):** the ux-designer should confirm the SCR-001/SCR-002/SCR-005 unit wordings — `units.percentYoY` ("% (yıllık)" / "% year-on-year"), `units.usdPerOunce` ("USD/ons" / "USD per ounce"), `units.tryPerGram` ("₺/g" / "TRY per gram"), `units.unknown`, and the paid-in-capital label.
+  - The statement-reported `lines.sharesOutstanding` (`SHARES_OUT`) is not produced by the XBRL decoder today (no production mapping); the label change therefore rides only on 065's `currentCapital` figure, as intended.

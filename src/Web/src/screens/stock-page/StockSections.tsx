@@ -21,6 +21,7 @@ import {
   formatNumber,
   formatPercent,
 } from '@/lib/format'
+import { PAID_IN_CAPITAL_UNIT_CODE, unitLabel } from '@/lib/units'
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import {
@@ -66,10 +67,13 @@ function FigureValue({
   figure,
   locale,
   percent = false,
+  unit,
 }: {
   figure: FinancialFigure
   locale: string
   percent?: boolean
+  /** Localized unit label appended to the value (`TKT-foundation-072`). */
+  unit?: string
 }) {
   const { t } = useTranslation()
   if (figure.value === null) {
@@ -84,6 +88,7 @@ function FigureValue({
       {percent
         ? formatPercent(locale, figure.value, 2)
         : formatNumber(locale, figure.value)}
+      {unit ? <span data-slot="unit"> {unit}</span> : null}
       {figure.restated ? (
         <>
           {' '}
@@ -487,8 +492,14 @@ const BALANCE_SHEET_LINE_KEYS: Record<
   currentAssets: 'stockPage.balanceSheet.lines.currentAssets',
   currentLiabilities: 'stockPage.balanceSheet.lines.currentLiabilities',
   sharesDiluted: 'stockPage.balanceSheet.lines.sharesDiluted',
-  sharesOutstanding: 'stockPage.balanceSheet.lines.sharesOutstanding',
+  // TKT-foundation-065 / USER DECISION D4 (Option A): the figure served under this
+  // line is paid-in capital in TRY (`currentCapital`), not a proven count of shares
+  // — 64/556 instruments carry sub-unit precision. The label and the unit say money.
+  sharesOutstanding: 'stockPage.balanceSheet.lines.paidInCapital',
 }
+
+/** The balance-sheet line whose served figure is money, not a share count (065/D4). */
+const PAID_IN_CAPITAL_LINE: (typeof BALANCE_SHEET_LINES)[number] = 'sharesOutstanding'
 
 /** SCR-005 §6 — Balance Sheet (FR-RES-011/027). */
 export function BalanceSheetSection({ symbol }: { symbol: string }) {
@@ -528,7 +539,11 @@ export function BalanceSheetSection({ symbol }: { symbol: string }) {
             </p>
             <dl className="grid gap-3 sm:grid-cols-2">
               {BALANCE_SHEET_LINES.map((code) => (
-                <div key={code} className="flex items-center justify-between gap-3">
+                <div
+                  key={code}
+                  data-line={code}
+                  className="flex items-center justify-between gap-3"
+                >
                   <dt className="text-xs text-muted-foreground">
                     {t(BALANCE_SHEET_LINE_KEYS[code])}
                   </dt>
@@ -538,6 +553,11 @@ export function BalanceSheetSection({ symbol }: { symbol: string }) {
                         sectionData.lines[code] ?? { value: null, restated: false }
                       }
                       locale={locale}
+                      unit={
+                        code === PAID_IN_CAPITAL_LINE
+                          ? unitLabel(PAID_IN_CAPITAL_UNIT_CODE, t)
+                          : undefined
+                      }
                     />
                   </dd>
                 </div>
