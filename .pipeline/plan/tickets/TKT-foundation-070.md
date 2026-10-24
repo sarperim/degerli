@@ -18,7 +18,7 @@ scope:
 
 # TKT-foundation-070: Metric formula versioning — recompute provenance across formula changes
 
-- Status: in-review — **PR https://github.com/sarperim/degerli/pull/138** (branch `feature/TKT-foundation-070`, head **`6e28ab0`** — the rebased implementation commit, with this rebase/ticket-note commit on top; **rebased onto `origin/dev@f12c1b5`**, TKT-foundation-064 merged)
+- Status: in-review — **PR https://github.com/sarperim/degerli/pull/138** (branch `feature/TKT-foundation-070`, head **`0ca7009`** — the rebased implementation commit, with this rebase/ticket-note commit on top; **rebased onto `origin/dev@aa2d0b8`**, TKT-foundation-064, 078 and 048 merged)
 - **PR:** https://github.com/sarperim/degerli/pull/138
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 6 unparked).**
@@ -116,4 +116,39 @@ squash-merged as #133). Rebased `feature/TKT-foundation-070` onto `origin/dev@f1
 - **Re-verification after the rebase** (`dotnet build Degerli.sln` **0 warnings / 0 errors**):
   `MetricsRecomputeIdempotencyTests` **9/9**, `SchedulerTests` + `EodStallWatchdogTests` **23/23** —
   both exactly as before the rebase, so the rebase disturbed nothing.
+
+## Rebase record 2 (2026-10-24, rebase only — no redesign, no re-scope, no re-review)
+
+PR #138 went `CONFLICTING` a second time because `dev` advanced from `f12c1b5` to **`aa2d0b8`**:
+**#139 / TKT-foundation-078** (disclosures, which took `01` **v1.5.52** and test-plan **§17 / v1.18–v1.20**)
+and **#140 / TKT-foundation-048** (holiday calendar, which took `01` **v1.5.44** and test-plan **§18 / v1.21**).
+Rebased `feature/TKT-foundation-070` onto `origin/dev@aa2d0b8`; the rebased implementation commit is
+**`0ca7009`** and this note commit sits on top.
+
+- **Overlap was again exactly the two predicted doc files**, and again **no conflict at all in
+  `src/Ingestion/Scheduling/`** (064's per-step bound, then 048's holiday gate) — this ticket does not touch it.
+- **`01`**: 070's §13.1 row stays **v1.5.48**. `aa2d0b8` carries 43 (064), 44 (048) and 52 (078); **48 is
+  still free**, so no renumber was required. 048's `v1.5.44` and 078's `v1.5.52` rows are kept verbatim,
+  and 070's "Definition versioning" subsection in §10.9.13 is intact.
+- **Test plan**: 078 claimed §17 **and** TC-MDF-099/100/101 **and** v1.18–v1.20; 048 then claimed §18 and
+  v1.21. The earlier rebase's "§17 / v1.18" placement recorded above is therefore **superseded**: 070's
+  block moves to **§19** and its change record to **v1.22** (the next free section and version),
+  leaving **every** 078 and 048 section, case and change-record entry untouched.
+- **Case-ID collision resolved (new finding, not in the original brief):** 078 landed **TC-MDF-099**
+  (`StatementsAndEventsIngestionTests.cs`, the bootstrap-window case) while this ticket's case was also
+  **TC-MDF-099** — a duplicate TC ID in both the test plan and the test source, which would have made
+  TC coverage attribution ambiguous. 078 merged first, so it keeps the ID; 070's case is renumbered to
+  **TC-MDF-102** (the next free ID) in §19, in its change record, in the §5 coverage-matrix rows
+  (`FR-MDF-013`, `FR-MDF-014`, `NFR-MDF-001`), and in `MetricsRecomputeIdempotencyTests.cs` (six
+  occurrences: method names and doc comments **only** — reversing the rename reproduces the file
+  byte-for-byte, so no assertion was added, removed, skipped or weakened).
+- **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
+  *"No changes have been made to the model since the last migration"* (**no snapshot drift**); the
+  migration list still ends at `20261024024109_MetricFormulaVersion`; the freshly-migrated Testcontainers
+  fixture applies it cleanly. Neither 078 nor 048 added a migration.
+- **Re-verification after the rebase** (`dotnet build Degerli.sln` **0 warnings / 0 errors**):
+  `MetricsRecomputeIdempotencyTests` **9/9**; `SchedulerTests` **11/11** + `EodStallWatchdogTests`
+  **13/13** = **24/24** — one higher than the pre-rebase 23/23, which is exactly 048's new per-job
+  holiday-gate case landing in `SchedulerTests` (whose amended `TC_MDF_011_Holiday_calendar_is_config`,
+  green, now asserts the `holiday-skip` ledger row and "no job ran"). Nothing was dropped or weakened.
 
