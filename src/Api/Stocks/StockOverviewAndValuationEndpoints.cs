@@ -1,6 +1,7 @@
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
 using Degerli.Ingestion.Intraday;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -63,6 +64,7 @@ public static class StockOverviewAndValuationEndpoints
         string symbol,
         DegerliDbContext db,
         PriceStateService priceStates,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -89,7 +91,7 @@ public static class StockOverviewAndValuationEndpoints
             .Select(row => new { row.TextTr, row.TextEn, row.LastReviewedAt })
             .FirstOrDefaultAsync(cancellationToken);
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await FreshnessAsync(db, clock, calendar, cancellationToken);
 
         // The intraday/close price state (01 §10.9.18, TKT-foundation-047 — the frozen
         // contract TKT-foundation-049's Web half consumes): the sweep's last price while the
@@ -133,6 +135,7 @@ public static class StockOverviewAndValuationEndpoints
     private static async Task<IResult> ValuationAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -149,7 +152,7 @@ public static class StockOverviewAndValuationEndpoints
         var asOf = await db.DerivedMetrics
             .MaxAsync(metric => (DateOnly?)metric.AsOfDate, cancellationToken)
             ?? today;
-        var stale = asOf < LatestTradingDayOnOrBefore(today);
+        var stale = IsStale(asOf, today, calendar);
 
         // Current multiples — the canonical rows every other surface serves (BR-RES-004).
         var metricRows = await db.DerivedMetrics
@@ -236,11 +239,25 @@ public static class StockOverviewAndValuationEndpoints
 
     /// <summary>
     /// The section freshness: the latest canonical daily-price date serves as the as-of date;
-    /// it is stale when that date trails the latest trading day (`03` §1.2, FR-MDF-016).
+    /// it is stale when that date trails the last <b>completed trading day</b> (`03` §1.2,
+    /// FR-MDF-016).
     /// </summary>
+    /// <remarks>
+    /// <b>Staleness is a missing completed session, never a non-trading day</b>
+    /// (01 §10.9.19, TKT-foundation-048). The pre-ticket rule compared the as-of date against
+    /// the latest <i>Mon–Fri</i> day on or before today, which conflated two different things:
+    /// a <b>holiday</b> (the market did not trade — Friday's data is the freshest that exists)
+    /// and a <b>missed run</b> (a session traded and its data never arrived). The reference is
+    /// now the calendar's <see cref="IIngestionCalendar.LastCompletedTradingDay"/> — the last
+    /// trading day strictly before today, so the in-progress session never counts as owed.
+    /// A date the configured list does not carry still fails conservatively (<c>stale</c>),
+    /// and a calendar that cannot resolve any trading day makes no claim (<c>stale: false</c>)
+    /// rather than inventing one.
+    /// </remarks>
     private static async Task<(DateOnly AsOf, bool Stale)> FreshnessAsync(
         DegerliDbContext db,
         TimeProvider clock,
+        IIngestionCalendar calendar,
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
@@ -248,19 +265,15 @@ public static class StockOverviewAndValuationEndpoints
             .MaxAsync(price => (DateOnly?)price.PriceDate, cancellationToken)
             ?? today;
 
-        return (asOf, asOf < LatestTradingDayOnOrBefore(today));
+        return (asOf, IsStale(asOf, today, calendar));
     }
 
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
-    }
+    /// <summary>
+    /// Whether <paramref name="asOf"/> trails the last completed trading day. An unresolvable
+    /// calendar window is no evidence of staleness, so it makes no claim.
+    /// </summary>
+    private static bool IsStale(DateOnly asOf, DateOnly today, IIngestionCalendar calendar) =>
+        calendar.LastCompletedTradingDay(today) is { } lastCompleted && asOf < lastCompleted;
 
     private static IResult NotFound(string symbol)
         => Results.Problem(ApiProblem.Create(

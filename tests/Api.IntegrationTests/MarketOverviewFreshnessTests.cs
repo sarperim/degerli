@@ -295,8 +295,113 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MDF-087 (ii) — freshness honesty across a configured BIST holiday
+    // (TKT-foundation-048: the calendar seam populated; 037's stored-trading-day rule
+    // extended so a holiday Monday is not "a missing session we failed to fetch")
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The configured holiday these cases describe: the fixture's Monday (2026-10-05) as a
+    /// BIST holiday — the world of a holiday Monday followed by a Tuesday morning.
+    /// </summary>
+    private static DateOnly HolidayMonday => Monday;
+
+    /// <summary>The preceding Friday — the last completed session a holiday Monday leaves.</summary>
+    private static DateOnly Friday => Monday.AddDays(-3);
+
+    /// <summary>
+    /// TC-MDF-087 (ii) — <b>the market overview reads fresh on the morning after a holiday</b>:
+    /// with Monday configured as a holiday and Friday the last completed session, Tuesday's
+    /// overview serves Friday's snapshot <c>stale: false</c>. A holiday is a day the market did
+    /// not trade, never a session the platform failed to fetch (037's stored-prices rule, the
+    /// calendar extension of TKT-foundation-048).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_market_overview_reads_fresh_the_morning_after_a_holiday()
+    {
+        await ResetAsync();
+        await DeletePricesAfterAsync(Friday);
+        // The job resolves Tuesday to the latest stored trading day (Friday) — the write
+        // path's §10.9.13 rule, unchanged by the calendar.
+        await RunSnapshotAsync(Tuesday);
+
+        await using var host = new DegerliAppFactory(_postgres.ConnectionString);
+        host.Clock.SetUtcNow(TuesdayClock);
+        await using var factory = WithHoliday(host, HolidayMonday);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        // Friday is the last completed session — a holiday leaves nothing uncovered.
+        Assert.False(root.GetProperty("stale").GetBoolean());
+
+        // The price state agrees: the last completed stored session, never a fabricated
+        // holiday-Monday session (01 §10.9.18).
+        var priceState = root.GetProperty("priceState");
+        Assert.Equal("close", priceState.GetProperty("state").GetString());
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), priceState.GetProperty("sessionDate").GetString());
+    }
+
+    /// <summary>
+    /// TC-MDF-087 (ii) — <b>the stock-page section freshness reads fresh on the morning after a
+    /// holiday</b>. This is the surface the pre-ticket weekday rule broke: it compared the served
+    /// as-of date against the latest <i>Mon–Fri</i> day on or before today, so a Tuesday after a
+    /// holiday Monday demanded Monday's data and flagged Friday's honest last session as
+    /// <c>stale: true</c>. The rule is now the calendar's last <b>completed</b> trading day
+    /// (Monday is a holiday → Friday), the same doctrine the market overview already served.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_stock_page_reads_fresh_the_morning_after_a_holiday()
+    {
+        await ResetAsync();
+        await DeletePricesAfterAsync(Friday);
+
+        await using var host = new DegerliAppFactory(_postgres.ConnectionString);
+        host.Clock.SetUtcNow(TuesdayClock);
+        await using var factory = WithHoliday(host, HolidayMonday);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/ALFA/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The same host with a BIST holiday configured through the host's own configuration seam
+    /// (`Ingestion:TradingCalendar:Holidays` — the list `appsettings.json` ships, bound to
+    /// <c>TradingCalendarOptions</c>). The case's holiday is written at index 0 so it binds
+    /// deterministically and survives the shipped list: the entry it displaces is a past-year
+    /// date far outside this class's fixture world, and the shipped dates this world could see
+    /// (late October 2026) never fall inside the 2026-10-02…06 window the cases serve.
+    /// </summary>
+    private static WebApplicationFactory<Program> WithHoliday(
+        DegerliAppFactory host,
+        params DateOnly[] holidays)
+    {
+        var settings = new Dictionary<string, string?>();
+        for (var index = 0; index < holidays.Length; index++)
+        {
+            settings[$"Ingestion:TradingCalendar:Holidays:{index}"] = holidays[index].ToString("yyyy-MM-dd");
+        }
+
+        return host.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
+            (_, configuration) => configuration.AddInMemoryCollection(settings)));
+    }
 
     /// <summary>
     /// Inserts the sweep rows a mid-session world would carry (the sweep itself is pinned by
