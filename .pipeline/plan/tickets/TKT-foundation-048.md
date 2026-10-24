@@ -24,7 +24,32 @@ scope:
 
 # TKT-foundation-048: BIST holiday calendar — populate the existing `TradingCalendar.Holidays` seam, extend freshness honesty to holidays, and gate holiday runs (user's auto-update requirement, part 2)
 
-- Status: in-review
+- Status: done — **merged 2026-10-24** as PR **#140** (squash, `dev@75144fa`), final head `8e78d4d`.
+  Review loop ran **3 rounds**: `.pipeline/plan/reviews/TKT-foundation-048-round-{1,2,3}.md`.
+  **Round 1 found the one unsafe direction in a "never falsely fresh" ticket:** the serve-side re-ask in
+  `MarketEndpoints.ResolveLatestStoredTradingDayAsync` could walk off the end of a holiday-only store
+  and return `null`, flipping `stale` → **`fresh`**. Also found that the skip-dedupe marker was set
+  *before* the ledger write, so a failed write was never retried. Both fixed.
+  **Round 2** was a mergeability fix (078 merged first and took test-plan §17/v1.18–v1.20; rebased,
+  048's block renumbered to §18/v1.21, 078 intact).
+  **Round 3** delta-verified all findings closed; one red-CI event on `CrashEvidenceTests` (045) was an
+  unrelated host/sink race — green on re-run at the same commit, no code manufactured for it.
+  Independence checks that were **verified rather than accepted**: the holiday gate `continue`s before
+  `stream.Active` is set, so no `ActiveRun`, no step timer armed, no `RUN_HUNG` path, no retry ladder;
+  the amended `TC_MDF_011` assertion is **genuinely stronger** than `dev`'s empty-ledger assertion
+  (single-row identity + gate/outcome/holiday stats + request delta + zero `daily_prices`); and
+  §13.1 **v1.5.44** is correct **by reservation** for 048 (landed max is now v1.5.52 from 078), with
+  no row dropped.
+  **⚠ DELIVERY CORRECTION to the live criterion as originally written:** the criterion above says
+  "the overview/**stock price state** fresh-not-stale". **This PR does NOT cover the stock page.**
+  `StockOverviewAndValuationEndpoints.FreshnessAsync` keeps its pre-048 weekday rule, so on the Tuesday
+  after a holiday Monday **SCR-001 reads fresh while a stock page reads `stale`**. The user's
+  requirement ("holidays it should display it too") is therefore **half delivered**. Correct live
+  criterion for what actually shipped: **market overview** reads fresh-not-stale on the first trading
+  morning after a configured holiday, with the `holiday-skip` ledger row present for gated streams.
+  **Owed follow-up:** stock-page freshness must join the holiday calendar (needs a ticket). Also
+  `MarketSnapshotStore.cs:49-50` still says `TradingCalendar.Holidays` "ships empty" — stale comment,
+  out of this ticket's scope.
 - PR: https://github.com/sarperim/degerli/pull/140
 - Size: S
 - **Priority: P2.** The user's requirement (2026-10-22): "at weekends it should display it too and also holidays it should display it too" — weekends already read fresh via 037's stored-trading-day rule; **the missing piece is the BIST holiday calendar** so a holiday Monday doesn't render `stale: true` on Tuesday morning.
