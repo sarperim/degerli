@@ -8,14 +8,14 @@
 
 ## 1. The claim this document makes
 
-**A green CI run is not evidence that the product works.** It is evidence that the code compiles, that the contracts hold against doubles, and that the seeded stack behaves. Nothing more. On 2026-10-23 CI was green while the product failed to publish a market for the third consecutive day.
+**A green CI run is not evidence that the product works.** It is evidence that the code compiles, that the contracts hold against doubles, and that the seeded stack behaves. Nothing more. On 2026-10-23 CI was green while the scheduled EOD chain failed to publish a market — the rows were rebuilt by a manual repair, not by the schedule.
 
-The failure mode this document exists to prevent is not ignorance of the source — it is **the wrong proof accepted as the right one**. Every incident in §5 was found by a live run, and every one of them was invisible to a passing suite.
+The failure mode this document exists to prevent is not ignorance of the source — it is **the wrong proof accepted as the right one**. Four of the five incidents in §5 were found by a live run and were invisible to a passing suite; the fifth (§5.5) is the inverse — a CI red that ran on every PR for days and that the process had agreed to ignore. In all five, what failed was the same thing: a green-or-waived check read as proof.
 
 Two rules follow, and they are the whole document:
 
 1. **Every acceptance criterion is classified at planning time as `CI`, `live`, or `manual`.** An unclassified criterion is a planning defect, not an implicit CI test.
-2. **The absence of a live criterion is a recorded gap — never a pass.** A ticket whose live criterion was not executed is not done; it is done-for-CI with a named, dated, owned gap.
+2. **The absence of an executed live criterion is a recorded gap — never a pass.** A ticket whose live criterion was not executed is not done; it is done-for-CI with a named, dated, owned gap. A criterion that has no live dimension is not a gap: it is classified `CI` or `manual` like any other — a documentation or inspection criterion is `manual`, with a named reviewer, a date, and an outcome.
 
 ---
 
@@ -23,7 +23,7 @@ Two rules follow, and they are the whole document:
 
 | | **CI proves** | **Only a live run proves** | **Neither proves** |
 |---|---|---|---|
-| **What it establishes** | Compiled contracts; unit/integration behaviour on doubles; E2E on a seeded stack; migrations apply on a fresh database; lint, typecheck, i18n parity, secrets scan, dependency audit | Real source shapes and status semantics; pacing against a real gateway; end-to-end chain completion; honest states under real publication lag; actual market aggregates; per-source unit cross-validation | Operator intent; third-party access legality and availability; data correctness against an external authority; disaster recovery; the future; load beyond the tested universe |
+| **What it establishes** | Compiled contracts; unit/integration behaviour on doubles; E2E on a seeded stack; migrations apply on a fresh database; lint, typecheck, i18n parity | Real source shapes and status semantics; pacing against a real gateway; end-to-end chain completion; honest states under real publication lag; actual market aggregates; per-source unit cross-validation | Operator intent; third-party access legality and availability; data correctness against an external authority; disaster recovery; the future; load beyond the tested universe |
 | **Evidence type** | Deterministic, repeatable, environment-controlled | Dated, non-repeatable, environment-dependent | Attestation, contract, drill, or external assertion |
 | **Responsible** | The PR's required checks + the review gates | The orchestrator's post-merge live run (or the builder on the dev/prod stack) | The builder (named human) |
 | **Recorded in** | CI run URL on the PR; review artifacts `.pipeline/plan/reviews/TKT-*-round-N.md` | The ticket file's live-criterion record (verbatim ledger rows, HTTP bodies, symbol names); `.pipeline/plan/run-report.md` (the gitignored live ledger) | The coverage-matrix Method column (§9.4 ledger entry); ticket record; drill record |
@@ -37,10 +37,12 @@ The four automated levels of the test strategy, plus the CI scripts:
 - **L2** — endpoints and workers against a real Postgres (Testcontainers) with **every external source doubled** at the HTTP boundary (WireMock.Net), SMTP via MailPit, time via `TimeProvider`.
 - **L3** — SPA modules against MSW handlers that mirror the API contract.
 - **L4** — the full compose stack with the **synthetic fixture universe** (§8.1 of the strategy), a real browser, MailPit for tokens.
-- **Scripts** — i18n parity, advice-vocabulary grep, OpenAPI served.
+- **Scripts** — i18n parity, advice-vocabulary grep. (*OpenAPI served* is marked integration-level in strategy §5.5 "for visibility"; no CI step calls it, so it is not credited here.)
 - **Schema** — EF migrations apply cleanly on a fresh container. This is genuinely proven here and needs no live run.
 
-The common property: **every external input is a double we wrote.** CI therefore proves our logic *given the world we assumed*. It cannot prove the world is that shape. See strategy §7 for the doubles policy and §4.2 for the explicit statement that external sources are not test items.
+The common property: **every external input is a double we wrote.** CI therefore proves our logic *given the world we assumed*. It cannot prove the world is that shape. See strategy §7 for the doubles policy and §4 item 2 for the explicit statement that external sources are not test items.
+
+**Not run today:** CI has exactly three jobs (backend restore·build·test; web lint·typecheck·test·i18n·advice-vocabulary·build; E2E compose·health·Playwright). It runs **no secrets scan and no dependency audit** — a green run says nothing about either. Both are open items, not checks that a ticket may cite as evidence.
 
 ### 2.2 What only a live run proves
 
@@ -50,7 +52,7 @@ The common property: **every external input is a double we wrote.** CI therefore
 4. **Honest states under real publication lag.** Whether the product says `partial` (and names what is missing) or quietly publishes a sliver as the whole market.
 5. **Actual market aggregates.** The numbers a user sees: breadth, volume, index levels.
 6. **Per-source unit cross-validation.** That a field means what we think it means — e.g. whether `currentCapital` is a share count or paid-in capital.
-7. **Operational statements that are only observable over time**: uptime (NFR-MOV-003), the SC-006 research session, RTO/RPO.
+7. **Operational statements that are only observable over time**: uptime (NFR-MOV-003). (The SC-006 research session is `manual`, not live — a scripted human session with a named owner, date, and outcome (§3). RTO/RPO is a drill, §2.3 — no run establishes it.)
 
 ### 2.3 What neither proves
 
@@ -68,12 +70,12 @@ The common property: **every external input is a double we wrote.** CI therefore
 
 | Verification class | Owner | Gate / step | Artifact of record |
 |---|---|---|---|
-| `CI` | Coder (writes it), review-lead (gates on it) | PR required checks: backend, web, E2E, lint, typecheck, secrets scan, dependency audit | CI run URL in the PR body; review round artifacts under `.pipeline/plan/reviews/` |
+| `CI` | Coder (writes it), review-lead (gates on it) | PR required checks: backend, web, E2E (lint, typecheck, i18n parity, advice-vocabulary grep, Playwright) | CI run URL in the PR body; review round artifacts under `.pipeline/plan/reviews/` |
 | `live` — declared pre-merge | Ticket author (writes the pass/fail condition before the run) | **Post-merge** live run on the deployed stack; the merge itself is gated on CI only | The ticket file: run IDs, statuses, counts, gateway bodies, dates — verbatim. `.pipeline/plan/run-report.md` for the session narrative |
 | `live` — discovered during a run | Orchestrator (observes and routes) | Triggered by an anomaly, not by the ticket | New ticket (e.g. 043, 044, 063, 064) or chore (e.g. #130), with the observation verbatim |
 | `manual` | Builder | Pre-launch checklist, per-release review, or the SC-006 session | Coverage-matrix Method column entry (`manual`), with owner and trigger (strategy §9.4, §10) |
-| `operational` | Builder / operator | UptimeRobot monthly, run-ledger monitoring | Matrix entry (`operational`); the live ledger for run-level facts |
-| Unprovable today | Builder | Recorded as a gap, escalated | The ticket's gap note + the matrix row; never a pass |
+| `operational` — a Matrix Method sub-case, not a fourth acceptance class | Builder / operator | UptimeRobot monthly, run-ledger monitoring | Matrix entry (`operational`); the acceptance class it resolves to is `live` when a deployed run produces it, `manual` when a human observes it (§4); the live ledger for run-level facts |
+| Unprovable today | Builder | Recorded as a gap, escalated: the matrix row keeps its own Method and links a dated gap note on the ticket (§9.4 has no `gap` value and none is added) | The ticket's gap note (rationale, date, owner); never a pass |
 
 ---
 
@@ -84,7 +86,7 @@ Every acceptance criterion in a ticket carries exactly one label:
 - **`CI`** — an automated case at L1–L4 or a CI script can decide it, deterministically, on doubles or on the seeded stack. It must name its TC ID(s).
 - **`live`** — only a real run against a real source / deployed stack can decide it. It must be written as a **pass/fail condition before the run** and recorded **verbatim after it**: run ID, status, counts, the source's own bytes where relevant. "It worked" is not a record.
 - **`manual`** — a named human step with a date and an outcome, per strategy §10 ("pass = checklist item recorded with date and outcome by the owner").
-- **Recorded gap** — the criterion is real but was not executed. It carries the rationale, the date, and the owner, and it is **not a pass**.
+- **Recorded gap** — the criterion is real but was not executed. It carries the rationale, the date, and the owner, and it is **not a pass**. The gap is a dated note on the ticket, linked from the matrix row: the row keeps its Method (there is no `gap` value in §9.4), and the note is what records the omission. A criterion that has no live dimension is not a gap — it is classified `CI` or `manual` (an inspection or documentation criterion is `manual`).
 
 This is the same classification the coverage matrix already carries in its **Method** column (`unit | integration | component | e2e | script | manual | operational`, strategy §9.4), read from the ticket's side:
 
@@ -100,7 +102,7 @@ This is the same classification the coverage matrix already carries in its **Met
 
 ## 5. Worked examples — 2026-10-18 → 2026-10-24
 
-Each example is a real incident from this week, chosen because the suite was green when it happened.
+Each example is a real incident from this week. Four of the five below were live-run finds that a passing suite could not see; §5.5 is the fifth, and it is the inverse — a CI failure that was visible on every run and ignored under a standing waiver.
 
 ### 5.1 CI was fully green while the product was broken
 
@@ -111,7 +113,7 @@ HTTP 400
 {"code":"ER005","message":"Bildirim bulunamadı. Disclosure not found."}
 ```
 
-Runs **227 / 233 / 236 / 244** each reported `failed` on that world, and the EOD chain **fail-stopped six times** before `metrics-recompute`, `market-snapshot`, and `medians`. **TKT-foundation-063** (PR #128) replaced the duplicated statements walk with the shared `VykDisclosureWalker`, reset the stale cursor once per company (persisting the outcome), isolated per disclosure detail, and made a zero-write honest-skip run end `partial` instead of `failed`. Its live criterion was then met: **run 249** (paced, 22:21 → 22:46 UTC) reported `partial` — written 0 / unchanged 60 / quarantined 25 — with **2 cursor resets**, one each for TTKOM and TOASO, and no repeated reset.
+Runs **227 / 233 / 236 / 244** each reported `failed` on that world, and the EOD chain fail-stopped on six attempts that week before `metrics-recompute`, `market-snapshot`, and `medians`. **TKT-foundation-063** (PR #128) replaced the duplicated statements walk with the shared `VykDisclosureWalker`, reset the stale cursor once per company (persisting the outcome), isolated per disclosure detail, and made a zero-write honest-skip run end `partial` instead of `failed`. Its live criterion was then met: **run 249** (paced, 22:21 → 22:46 UTC) reported `partial` — written 0 / unchanged 60 / quarantined 25 — with **2 cursor resets**, one each for TTKOM and TOASO, and no repeated reset.
 
 **Why CI could not see it.** The L2 doubles answer whatever index the fixture asks for; they are not a cursor that has drifted past a moving gateway tail. The gateway's `ER005` is not a transport failure — it is a *business* answer to a question we should not have asked. No unit, integration, or E2E case in the suite contained the concept "the record we persisted last week no longer exists".
 
@@ -121,21 +123,21 @@ Runs **227 / 233 / 236 / 244** each reported `failed` on that world, and the EOD
 
 **The record.** `IngestionSchedulerOptions.MaxRunDuration` shipped at **90 minutes** and bounded **one whole chain attempt**. A healthy paced chain legitimately needs **100–120 minutes** (prices ~5 min @3 s, statements ~13 min @12 s, dividends ~16 min, corporate-actions **58–74 min** at ≥12 s/item, then disclosures + metrics + snapshot + medians). A healthy chain could therefore never finish.
 
-`RUN_HUNG` rows **203** (corporate-actions, step 5 of 9, attempt 4) and **208** (disclosures, step 5; ledger span 10:41:24 → 13:41:24, i.e. exactly the bound) named a "hung step" that was never hung. 203's cancellation at 12:11:24 was **90 minutes after the attempt started**. The operational unblock was a configuration override, `Ingestion__Scheduler__MaxRunDuration=04:00:00` — the system then behaved, and the shipped default was still broken. **TKT-foundation-064** replaces the whole-attempt bound with a **per-step bound (120 min)** plus a **4 h chain ceiling**, and makes the ledger state which bound fired.
+`RUN_HUNG` rows **203** (corporate-actions, step 5 of 9, attempt 4) and **208** (disclosures, step 5) named a "hung step" that was never hung. 203's cancellation at 12:11:24 was **90 minutes after the attempt started**. 208's row carries the span **10:41:24 → 13:41:24**, but the instant that proves the bound is its cancellation at **13:41:24** — exactly 90 minutes after the *morning chain's* attempt started at **12:11:24**, not the three-hour span. The operational unblock was a configuration override, `Ingestion__Scheduler__MaxRunDuration=04:00:00` — the system then behaved, and the shipped default was still broken. **TKT-foundation-064** replaces the whole-attempt bound with a **per-step bound (120 min)** plus a **4 h chain ceiling**, and makes the ledger state which bound fired.
 
 **Why CI could not see it.** The fake-clock scheduler tests never constructed a *slow but healthy* chain; they simulated hangs. The suite proved `RUN_HUNG` fires; it could not prove it fires for the right reason at the right scope.
 
-**The lesson.** A green suite plus a tuned environment is the signature of a defect being managed, not fixed. The evidence that mattered was a wall-clock span in a ledger row: 10:41:24 → 13:41:24.
+**The lesson.** A green suite plus a tuned environment is the signature of a defect being managed, not fixed. The evidence that mattered was a cancellation instant in a ledger row: 13:41:24, exactly 90 minutes after the attempt start at 12:11:24 — not the three-hour span the same row also carries.
 
 ### 5.3 A thin day published as "the market"
 
-**The record.** İş Yatırım's daily feed publishes **progressively**. On 2026-10-23 only **9 of 100** symbols had a bar at **17:36 UTC**; the day reached **100/100 by 21:53 UTC**. The `market-snapshot` job computed from whatever was present and published:
+**The record.** İş Yatırım's daily feed publishes **progressively**. On 2026-10-23 only **9 of 100** symbols had a bar at **17:36 UTC**. The `market-snapshot` job computed from whatever was present and published:
 
-> `breadth { advancing: 0, declining: 9 }`, volume **₺8.6 B**
+> `breadth { advancing: 0, declining: 9 }`
 
-Real numbers, false picture: it reads as "the whole market fell". A manual repair of runs **245–248** (prices re-sweep → metrics → snapshot → medians) restored a real aggregate — **27 advancing / 72 declining / 1 unchanged, ₺148.8 B**.
+Real numbers, false picture: it reads as "the whole market fell". The ledger's own record of that evening is that coverage reached **64 of 100 by 20:09 UTC**, with the `prices` → `metrics-recompute` → `market-snapshot` → `medians` re-run still *planned*, not completed — so the repaired breadth and volume were never captured verbatim, and are not quoted here. What the record does carry is where the sliver came from, below.
 
-The root cause was ours, not the source's: run **243** (`succeeded`, written 18 / unchanged 71 / quarantined 0) recorded **11 constituents as `written=0 unchanged=0 quarantined=0 failed=false`** — nothing at all. Forty minutes later, direct probes showed **9 of those 11 had a real session** at the source (ALARK 101.30, CIMSA 37.44, DOHOL 16.38, EGEEN 3895.00, GRSEL 247.00, KRDMD 38.60, LMKDC 19.50, MPARK 387.00, TKFEN 174.80); only ANSGR and BERA genuinely returned empty. The EOD step never asserted day coverage. **Chore #130** (`chore(prices): complete the day's coverage before reporting success`, PR #130, merged 2026-10-24T00:09Z) now records the honest per-symbol empty reason, re-sweeps missing symbols within a bounded budget, and reports **`partial` naming the missing symbols** instead of claiming success. **TKT-foundation-043** was closed as superseded by it (USER DECISION D8-A).
+The root cause was ours, not the source's: run **243** (`succeeded`, written 18 / unchanged 71 / quarantined 0) recorded **11 constituents as `written=0 unchanged=0 quarantined=0 failed=false`** — nothing at all. Forty minutes later, direct probes showed **9 of those 11 had a real session** at the source (ALARK 101.30, CIMSA 37.44, DOHOL 16.38, EGEEN 3895.00, GRSEL 247.00, KRDMD 38.60, LMKDC 19.50, MPARK 387.00, TKFEN 174.80); only ANSGR and BERA genuinely returned empty. The EOD step never asserted day coverage. **Chore #130** (`chore(prices): complete the day's coverage before reporting success`, PR #130, merged 2026-10-24T00:09Z) now records the honest per-symbol empty reason, re-sweeps missing symbols within a bounded budget, and reports **`partial` naming the missing symbols** instead of claiming success. **TKT-foundation-043** was closed as superseded by it (USER DECISION D8-A); its record is also where the recovery is written down: a re-run wrote exactly those 11 → **100/100**.
 
 **Why CI could not see it.** Every fixture symbol has a bar; the fixture universe has no concept of "the source is 9% published". The suite asserted an aggregate computed from 100 of 100, always.
 
@@ -169,7 +171,7 @@ The root cause was ours, not the source's: run **243** (`succeeded`, written 18 
 Paste evidence **here**, or the ticket is not done:
 
 1. **Classify before implementing.** Every acceptance bullet carries `CI` / `live` / `manual` (or an explicit `gap`). No bullet is unlabelled.
-2. **`CI` bullets** — named TC IDs, tests tagged with them, and the **green CI run URL** in the PR body. A red lint/typecheck/secrets/dependency check is a red ticket, exactly like a failing test.
+2. **`CI` bullets** — named TC IDs, tests tagged with them, and the **green CI run URL** in the PR body. A red lint, typecheck, i18n-parity, or advice-vocabulary check is a red ticket, exactly like a failing test. (CI runs no secrets scan and no dependency audit today; neither may be cited as evidence.)
 3. **`live` bullets** — the pass/fail condition is written **before** the run (in the ticket, at planning or PR time). After merge, paste **verbatim**: run IDs and timestamps, the resulting status, the written/unchanged/quarantined/failed counts, symbol names where they matter, and the source's own bytes for any error class. If it was not run, say so in one line with the date, the reason, and the owner — that is a **gap**, mark it, do not tick it.
 4. **`manual` bullets** — the checklist item, its date, its outcome, and the owner's name.
 5. **Deviations** — a design change is recorded in the architecture and test-plan documents **first**, then in the ticket. Never only in the code, never only in the ticket (strategy §14).
