@@ -3,6 +3,9 @@ scope:
   - src/Core/Metrics/CanonicalMetrics.cs
   - src/Ingestion/Metrics/MetricsEngine.cs
   - src/Ingestion/Metrics/SectorMedianEngine.cs
+  - src/Ingestion/Metrics/DerivedMetricStore.cs
+  - src/Ingestion/Metrics/SectorMedianStore.cs
+  - src/Ingestion/Jobs/Jobs.cs
   - src/Persistence/Entities/MarketDataEntities.cs
   - src/Persistence/Entities/ResearchEntities.cs
   - src/Persistence/DegerliDbContext.cs
@@ -39,5 +42,9 @@ scope:
 - Traces to: FR-MDF-013/014 (recompute mechanics + honest accounting), FR-MDF-015/NFR-MDF-002 (append-only, historical immutability), BR-MDF-009 (one definition per number), `01` §10.9.13.
 - Architecture refs: `01-system-architecture.md` §10.9.13 (recompute doctrine), §13.1; `02-data-model.md` §3.1 (`derived_metrics` / `sector_metric_medians`), §8 (forward-only migrations); test plan `market-data-foundation.md` §14.
 - UX refs: none.
-- Dependencies: none. (Do **not** touch `src/Ingestion/Jobs/Jobs.cs` — TKT-foundation-044's active scope; the engine can stamp rows without it.)
+- Dependencies: none. **SCOPE AMENDED 2026-10-24 (orchestrator, from the coder's blocked report; USER GRANT "dispatch whatever can run in parallel").** The original scope was structurally insufficient and the parenthetical banning `Jobs.cs` was wrong — corrected by evidence:
+  1. **The engines never write rows.** `MetricsEngine.PlanWriteAsync` and `SectorMedianEngine.PlanWriteAsync` only classify and return results; every INSERT of `derived_metrics` / `sector_metric_medians` happens in `DerivedMetricStore.cs:64` and `SectorMedianStore.cs:52` (verified by grep: `new DerivedMetric` / `new SectorMetricMedian` appear nowhere else). A `FormulaVersion` on the engine result would never reach the database → a permanently-NULL column, i.e. exactly the 058 ambiguity this ticket exists to prevent. **Both store files are now in scope** (stamp on insert *and* on the repair path).
+  2. **The trigger cannot reach the engine.** `IngestionRunContext` is built by the scheduler (`IngestionScheduler.cs:718`) and omitted by the admin path (`AdminOpsEndpoints.cs:384`), but is consumed only by the runner; `IIngestJob.RunAsync(IngestionRequest)` carries `Date` + `BackfillFrom` only. So **`src/Ingestion/Jobs/Jobs.cs` is now in scope** (option B1: extend `IngestionRequest`/context with the trigger, runner stamps it). The original ban referenced 044 as an active conflict — **044 is merged** (PR #132, 2026-10-24T01:09Z), so `Jobs.cs` is free.
+  3. Chosen approach is **A + B1** (2 store files + `Jobs.cs`), *not* B2's four-file DI trigger service — it reuses the mechanism the runner already owns. No other widening is sanctioned.
+  4. Test design (for whoever implements): no test-only hook is needed — set stored rows' `formula_version` to an older value directly in the DB (as `MetricsRecomputeIdempotencyTests` already does for facts), then assert the recompute rewrites, stamps the current version, and reports the distinct count; the migration/backfill case is the same DB-level exercise. `CanonicalMetrics.Version` can stay a plain `const`.
 - Parallel group: none (touches `01`/`02`).
