@@ -8,7 +8,7 @@ scope:
 # TKT-foundation-074: IMPLEMENTATION_STATUS.md — a standing implementation-status surface
 
 - Status: in-review
-- PR: (filled below)
+- PR: https://github.com/sarperim/degerli/pull/136
 - Size: S
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 11 unparked).**
 - **Evidence (gathered 2026-10-24):**
