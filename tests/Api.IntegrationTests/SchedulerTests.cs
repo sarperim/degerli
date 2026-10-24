@@ -429,9 +429,12 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         var eod = new RetryThenHangStep();
         var morningSteps = MorningIngestChain.JobCodes.Select(code => new NamedSuccessStep(code)).ToList();
         await using var host = BuildStarvationHost(
-            // 12 h: the retry attempt must still be in flight when 05:30 UTC arrives the next
-            // morning, so the watchdog's own bound is not what releases it inside this window.
+            // TC-MDF-081 (b) premise: 12 h is chosen so the retry attempt must still be in flight
+            // when 05:30 UTC arrives the next morning, so neither watchdog bound is what releases
+            // it inside this window — the per-step bound (shipped 120 min) is raised alongside the
+            // ceiling (TKT-foundation-064).
             maxRunDuration: "12:00:00",
+            maxStepDuration: "12:00:00",
             eodChain: [eod],
             morningChain: morningSteps,
             morningCron: "0 30 8 * * *");
@@ -608,7 +611,8 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         IReadOnlyList<IIngestJob>? morningChain = null,
         IIngestJob? perJobHolder = null,
         string? perJobCron = null,
-        string? morningCron = null)
+        string? morningCron = null,
+        string? maxStepDuration = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -631,6 +635,14 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         if (morningCron is not null)
         {
             settings["Ingestion:Scheduler:MorningCron"] = morningCron;
+        }
+
+        // The trading-day gate (TC-MDF-011) stays out of this harness's path: both starvation
+        // cases start on the 2026-10-05 trading day, so no bound added here can change whether
+        // their due instants are skipped.
+        if (maxStepDuration is not null)
+        {
+            settings["Ingestion:Scheduler:MaxStepDuration"] = maxStepDuration;
         }
 
         if (perJobHolder is not null)
