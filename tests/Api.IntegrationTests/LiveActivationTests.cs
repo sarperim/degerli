@@ -366,14 +366,22 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
         {
             var result = await RunAsync(loopHost, "prices");
 
-            Assert.Equal("succeeded", result.Status);
+            // Honest terminal status (01 v1.5 §10.9.2 completeness gate, chore(prices) 2026-10-24):
+            // the double serves the FU canonical envelope, which carries none of these real
+            // BIST tickers, so every one of the 30 members answers empty for T — 0 rows stored.
+            // That is an uncovered day and can no longer be reported as `succeeded` (the
+            // pre-chore golden encoded exactly the silent no-op the dev-stack run 243 exposed).
+            Assert.Equal(IngestResult.Partial, result.Status);
             Assert.Equal(Xu030LaunchSeed.Symbols.Count, _wireMock.RequestsFor(PricesPath));
 
             // The loop resolved exactly the seeded current members — the run's per-symbol
-            // breakdown names each one (composes with TC-MDF-072).
+            // breakdown names each one (composes with TC-MDF-072), each carrying the explicit
+            // honest-empty reason rather than an indistinguishable `0/0/0`.
             Assert.Equal(
                 Xu030LaunchSeed.Symbols.OrderBy(s => s, StringComparer.Ordinal).ToArray(),
                 result.SymbolStats.Select(s => s.Symbol).OrderBy(s => s, StringComparer.Ordinal).ToArray());
+            Assert.All(result.SymbolStats, stat => Assert.Equal(PricesJob.NoRowForDate, stat.Reason));
+            Assert.All(result.SymbolStats, stat => Assert.False(stat.Failed));
         }
     }
 
@@ -517,6 +525,13 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
             ["Ingestion:Prices:Path"] = PricesPath,
             ["Ingestion:Prices:RequestDelayMs"] = requestDelayMs.ToString(CultureInfo.InvariantCulture),
+            // This class pins the per-ticker loop's shape (one fetch per current member) and the
+            // launch-seed composition, not the coverage sweep: the re-sweep is pinned by
+            // `PriceCoverageTests`. A single pass keeps TC-MDF-076's "exactly one fetch per
+            // seeded member" assertion meaningful, and the zero settle keeps every case free of
+            // a real timer (01 v1.5 §10.9.2 completeness gate).
+            ["Ingestion:Prices:CoverageMaxPasses"] = "1",
+            ["Ingestion:Prices:CoverageSettleDelay"] = "00:00:00",
         };
         if (universeIndex is not null)
         {

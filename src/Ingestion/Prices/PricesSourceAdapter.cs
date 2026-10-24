@@ -40,6 +40,45 @@ public sealed class PricesSourceOptions
     /// <c>0</c> so the loop is deterministic.
     /// </summary>
     public int RequestDelayMs { get; set; } = 500;
+
+    /// <summary>
+    /// How many <b>passes</b> one incremental run may make over the bound to complete the
+    /// day's coverage (01 v1.5 §10.9.2 amendment — the completeness gate). İş Yatırım
+    /// publishes a session progressively: a symbol answers EMPTY shortly after the close
+    /// and its full OHLCV row appears later the same evening, so a single pass can leave the
+    /// day partly covered while the source still has the data coming. <c>1</c> disables the
+    /// re-sweep (single pass); the default allows a first pass plus two bounded re-sweeps of
+    /// only the symbols that answered empty. Never an unbounded loop: this bound and
+    /// <see cref="CoverageBudget"/> both apply.
+    /// </summary>
+    public int CoverageMaxPasses { get; set; } = 3;
+
+    /// <summary>
+    /// Settle wait between coverage passes (bound as a <see cref="TimeSpan"/>). <b>Default
+    /// <c>00:00:00</c> — no extra wait.</b> The in-run sweep is <b>best effort only</b>: a
+    /// 100-symbol pass takes ≈ 50 s at <see cref="RequestDelayMs"/> 500 ms (≈ 5 minutes at İş's
+    /// ≥3 s politeness floor), but a re-sweep targets only the few symbols that answered empty
+    /// (≈ 11 in the dev-stack evidence), so with the shipped defaults the whole completeness
+    /// effort — pass 1 plus two short re-sweeps — is ≈ 1–2 minutes against the ≈ 40-minute
+    /// progressive-publication window §10.9.2 records. The in-run sweep therefore usually ends
+    /// the day <c>partial</c>; the real catch-up is the §10.9.16 morning repair gate, which
+    /// re-runs exactly the uncovered subset. Raise this (e.g. <c>00:05:00</c>) to space passes
+    /// further apart — each pass then adds one settle to the EOD chain's wall clock, far under
+    /// the 90-minute <c>MaxRunDuration</c> attempt bound. Every L2 run binds <c>00:00:00</c>, so
+    /// the suite stays free of real timers; <c>&lt;= 0</c> skips the wait entirely.
+    /// </summary>
+    public TimeSpan CoverageSettleDelay { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Wall-clock budget for the run's completeness effort (default 25 minutes: three
+    /// 100-symbol passes at the politeness floor plus slack). No re-sweep is <b>started</b>
+    /// once the budget is spent; a settle already in flight and its pass still run to their
+    /// end, so the run may overshoot the budget by at most one settle plus one pass — under the
+    /// scheduler's per-attempt <c>MaxRunDuration</c> (90 min), which also bounds the whole EOD
+    /// chain. Bound as a <see cref="TimeSpan"/>; <c>&lt;= 0</c> means "no time budgeted for
+    /// re-sweeps" (single pass).
+    /// </summary>
+    public TimeSpan CoverageBudget { get; set; } = TimeSpan.FromMinutes(25);
 }
 
 /// <summary>

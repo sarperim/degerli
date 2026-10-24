@@ -28,6 +28,22 @@ namespace Degerli.Ingestion.Prices;
 /// When the request carries a <c>backfillFrom</c> the job runs in <b>backfill mode</b>
 /// (FR-MDF-010, UC-MDF-002): it ingests the source's historical range per ticker and records
 /// the achieved depth per instrument — never fabricating rows before the source limit.
+/// <para>
+/// <b>Completeness gate (01 v1.5 §10.9.2 amendment).</b> İş Yatırım publishes a day's rows
+/// progressively, so a symbol can legitimately answer with a valid payload carrying <b>no
+/// session row</b> for the requested date — the honest empty, counted and named as
+/// <see cref="NoRowForDate"/> rather than recorded as "nothing happened". After the first
+/// pass the job reads the day's stored coverage of the bound index
+/// (<see cref="DailyPriceStore.GetDayCoverageAsync"/>, the same read the morning chain's repair
+/// gate uses) and, while it is not <see cref="PriceDayCoverage.IsComplete"/>, re-sweeps only
+/// the symbols that answered empty — bounded by
+/// <see cref="PricesSourceOptions.CoverageMaxPasses"/> and
+/// <see cref="PricesSourceOptions.CoverageBudget"/>, spaced by
+/// <see cref="PricesSourceOptions.CoverageSettleDelay"/>. Only a <b>fully covered</b> day is
+/// <see cref="IngestResult.Succeeded"/>; a day that still has uncovered constituents is
+/// <see cref="IngestResult.Partial"/> with the missing names in the run stats and the summary
+/// line. `Failed` keeps its meaning (transport-level, retry-worthy).
+/// </para>
 /// </summary>
 public sealed class PricesJob : IIngestJob
 {
@@ -36,6 +52,17 @@ public sealed class PricesJob : IIngestJob
 
     /// <summary>Reason code for a per-symbol transport failure (a source-down, not a parse event).</summary>
     public const string SourceFetchFailed = "SOURCE_FETCH_FAILED";
+
+    /// <summary>
+    /// Reason code for the honest empty (01 v1.5 §10.9.2 amendment): the source answered with
+    /// a valid payload that carries <b>no session row for the requested date</b>. This is the
+    /// progressive-publication class — İş Yatırım publishes a day's rows some time after the
+    /// close, so the same symbol legitimately answers EMPTY at 17:36 and full OHLCV at 20:42.
+    /// It is <i>not</i> a source failure (nothing to alert or quarantine) and it is <i>not</i>
+    /// "nothing to do": a symbol carrying this reason is named in the run stats and in the
+    /// summary line, and an uncovered day is never reported as <see cref="IngestResult.Succeeded"/>.
+    /// </summary>
+    public const string NoRowForDate = "NO_ROW_FOR_DATE";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -82,6 +109,26 @@ public sealed class PricesJob : IIngestJob
             ? RunBackfillAsync(request, cancellationToken)
             : RunIncrementalAsync(request, cancellationToken);
 
+    /// <summary>
+    /// The incremental EOD run over the bound index's current constituents, repeated — bounded
+    /// — until the day's coverage is complete (01 v1.5 §10.9.2 amendment, the completeness
+    /// gate). The first pass fetches every constituent; if the day is still not complete
+    /// (<see cref="PriceDayCoverage.IsComplete"/> on the bound) and some constituents answered
+    /// <see cref="NoRowForDate"/>, only those are re-swept, after the configured settle delay,
+    /// up to <see cref="PricesSourceOptions.CoverageMaxPasses"/> passes and within
+    /// <see cref="PricesSourceOptions.CoverageBudget"/>. A symbol that was empty on pass 1 and
+    /// has data on pass 2 is <b>written</b>; a day that still ends uncovered is reported
+    /// <see cref="IngestResult.Partial"/> and the missing names ride the run stats and the
+    /// summary line — never a silent success.
+    /// <para>
+    /// Re-sweeps target the honest-empty class <b>only</b>: a quarantined symbol
+    /// (<c>MISSING_PROVENANCE</c>/<c>UNPARSEABLE_PAYLOAD</c>/<c>NEGATIVE_PRICE</c>/conflict) and
+    /// a transport failure are already terminal for this run — re-fetching them would multiply
+    /// quarantine noise (the TKT-foundation-035 lesson) or paper over a source-down the retry
+    /// ladder owns. Both still make the run <see cref="IngestResult.Partial"/> through the
+    /// coverage read.
+    /// </para>
+    /// </summary>
     private async Task<IngestResult> RunIncrementalAsync(
         IngestionRequest request,
         CancellationToken cancellationToken)
@@ -101,72 +148,131 @@ public sealed class PricesJob : IIngestJob
         var quarantined = 0;
         var failedSymbols = new List<string>();
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
+        // Where each symbol's stat lives, so a re-swept symbol replaces its entry instead of
+        // appending a duplicate — one entry per constituent, merged across passes.
+        var statSlots = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        for (var index = 0; index < constituents.Count; index++)
+        var maxPasses = Math.Max(1, _options.CoverageMaxPasses);
+        var sweepStartedAt = _clock.GetUtcNow();
+        var pending = constituents;
+        var coverage = new PriceDayCoverage(0, 0);
+        // Run-global, not pass-local: the politeness posture (§10.9.2 — strictly sequential,
+        // spaced) is a property of the whole run, so a re-sweep's first fetch must wait after
+        // the previous pass's last fetch too. Only the run's very first request is unpaced.
+        var requestsMade = 0;
+
+        for (var pass = 1; ; pass++)
         {
-            await PaceAsync(index, cancellationToken).ConfigureAwait(false);
-            var symbol = constituents[index];
+            var answeredEmpty = new List<string>();
 
-            try
+            for (var index = 0; index < pending.Count; index++)
             {
-                var fetched = await _adapter
-                    .FetchSymbolAsync(symbol, request.Date, cancellationToken)
-                    .ConfigureAwait(false);
+                await PaceAsync(requestsMade, cancellationToken).ConfigureAwait(false);
+                requestsMade++;
+                var symbol = pending[index];
 
-                if (string.IsNullOrWhiteSpace(fetched.SourceRef))
+                var sweep = await SweepSymbolAsync(symbol, request, cancellationToken).ConfigureAwait(false);
+
+                written += sweep.Stat.Written;
+                unchanged += sweep.Stat.Unchanged;
+                quarantined += sweep.Quarantined;
+                if (sweep.Stat.Failed && !failedSymbols.Contains(symbol, StringComparer.Ordinal))
                 {
-                    // Provenance is required on every fact (FR-MDF-008): refuse this symbol's payload.
-                    _logger.LogWarning(
-                        "prices: symbol {Symbol} payload for {Date} carries no provenance (MISSING_PROVENANCE)",
-                        symbol,
-                        request.Date);
-                    await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
-                        .ConfigureAwait(false);
-                    quarantined++;
-                    symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
-                    continue;
+                    failedSymbols.Add(symbol);
                 }
 
-                var outcome = await _store
-                    .UpsertAsync(request.Date, fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload.Items, cancellationToken)
-                    .ConfigureAwait(false);
+                // Invariant: the totals above accumulate across passes while statSlots keeps
+                // exactly one merged entry per symbol. They cannot disagree, because a re-swept
+                // symbol is only ever one that answered empty on the previous pass — AnsweredEmpty
+                // is set exclusively on the all-zero path (written/unchanged/quarantined all 0) —
+                // so replacing its slot never drops a count the totals still carry. A duplicated
+                // open membership row for the same symbol would be the one way to break this
+                // (GetCurrentConstituentSymbolsAsync applies no Distinct); none exists today.
+                if (statSlots.TryGetValue(symbol, out var slot))
+                {
+                    symbolStats[slot] = sweep.Stat;
+                }
+                else
+                {
+                    statSlots[symbol] = symbolStats.Count;
+                    symbolStats.Add(sweep.Stat);
+                }
 
-                var symbolQuarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
-                    .ConfigureAwait(false);
-
-                written += outcome.Inserted;
-                unchanged += outcome.Unchanged;
-                quarantined += symbolQuarantined;
-
-                // The per-symbol counts ride the run-ledger row (TC-MDF-072); they are no
-                // longer emitted only as structured logs.
-                symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false));
+                if (sweep.AnsweredEmpty)
+                {
+                    answeredEmpty.Add(symbol);
+                }
             }
-            catch (SourcePayloadException exception)
+
+            coverage = await _store
+                .GetDayCoverageAsync(_options.UniverseIndex, request.Date, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (coverage.IsComplete)
             {
-                // A per-symbol parse failure is isolated: it quarantines and the loop continues.
-                _logger.LogWarning(
-                    "prices: symbol {Symbol} payload for {Date} unparseable (UNPARSEABLE_PAYLOAD)",
-                    symbol,
-                    request.Date);
-                await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
-                    .ConfigureAwait(false);
-                quarantined++;
-                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false));
+                _logger.LogInformation(
+                    "prices: coverage complete for {Date} after pass {Pass} — {Covered}/{Constituents} {Index} constituents stored",
+                    request.Date,
+                    pass,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    _options.UniverseIndex);
+                break;
             }
-            catch (SourceFetchException exception)
+
+            if (answeredEmpty.Count == 0)
             {
-                // A transport failure is NOT a parse/validation event: no quarantine. The
-                // symbol is marked failed; the run continues and is alerted once at the end.
+                // Nothing in the progressive-publication class is left to retry: the gap is a
+                // quarantine or a source-down, both of which stay with this run's status and
+                // the retry ladder.
                 _logger.LogWarning(
-                    exception,
-                    "prices: symbol {Symbol} fetch failed for {Date} (SOURCE_FETCH_FAILED)",
-                    symbol,
-                    request.Date);
-                failedSymbols.Add(symbol);
-                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true));
+                    "prices: coverage incomplete for {Date} after pass {Pass} — {Covered}/{Constituents} {Index} constituents stored; nothing answered empty, so no re-sweep applies",
+                    request.Date,
+                    pass,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    _options.UniverseIndex);
+                break;
             }
+
+            if (pass >= maxPasses)
+            {
+                _logger.LogWarning(
+                    "prices: coverage incomplete for {Date} after {Passes} pass(es) — {Covered}/{Constituents} {Index} constituents stored; {Missing} symbol(s) still answered empty ({Symbols}); pass bound reached (Ingestion:Prices:CoverageMaxPasses)",
+                    request.Date,
+                    pass,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    _options.UniverseIndex,
+                    answeredEmpty.Count,
+                    string.Join(", ", answeredEmpty));
+                break;
+            }
+
+            if (CoverageBudgetExhausted(sweepStartedAt))
+            {
+                _logger.LogWarning(
+                    "prices: coverage incomplete for {Date} after pass {Pass} — {Covered}/{Constituents} {Index} constituents stored; {Missing} symbol(s) still answered empty ({Symbols}); wall-clock budget {Budget} spent (Ingestion:Prices:CoverageBudget)",
+                    request.Date,
+                    pass,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    _options.UniverseIndex,
+                    answeredEmpty.Count,
+                    string.Join(", ", answeredEmpty),
+                    _options.CoverageBudget);
+                break;
+            }
+
+            await SettleAsync(cancellationToken).ConfigureAwait(false);
+            pending = answeredEmpty;
         }
+
+        var uncovered = coverage.IsComplete
+            ? (IReadOnlyList<string>)[]
+            : await _store
+                .GetMissingConstituentSymbolsAsync(_options.UniverseIndex, request.Date, cancellationToken)
+                .ConfigureAwait(false);
 
         return await CompleteAsync(
             request,
@@ -176,8 +282,127 @@ public sealed class PricesJob : IIngestJob
             quarantined,
             failedSymbols,
             symbolStats,
+            uncovered,
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// One symbol's fetch/store/validate step, isolated exactly as before (a per-symbol failure
+    /// never aborts the run). Returns the stat it contributes and whether the source answered
+    /// honestly empty for the date — the only outcome a coverage re-sweep retries.
+    /// </summary>
+    private async Task<SymbolSweep> SweepSymbolAsync(
+        string symbol,
+        IngestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var fetched = await _adapter
+                .FetchSymbolAsync(symbol, request.Date, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(fetched.SourceRef))
+            {
+                // Provenance is required on every fact (FR-MDF-008): refuse this symbol's payload.
+                _logger.LogWarning(
+                    "prices: symbol {Symbol} payload for {Date} carries no provenance (MISSING_PROVENANCE)",
+                    symbol,
+                    request.Date);
+                await QuarantineAsync(request, null, fetched.RawJson, QuarantineReason.MissingProvenance, cancellationToken)
+                    .ConfigureAwait(false);
+                return new SymbolSweep(new SymbolRunStat(symbol, 0, 0, 1, false), 1, AnsweredEmpty: false);
+            }
+
+            if (fetched.Payload.Items.Count == 0)
+            {
+                // The honest empty: a valid payload with no session row for this date. Named
+                // and counted rather than recorded as "nothing happened" (01 v1.5 §10.9.2).
+                _logger.LogInformation(
+                    "prices: symbol {Symbol} answered empty for {Date} ({ReasonCode}) — the source has published no session row yet",
+                    symbol,
+                    request.Date,
+                    NoRowForDate);
+                return new SymbolSweep(
+                    new SymbolRunStat(symbol, 0, 0, 0, false, NoRowForDate),
+                    0,
+                    AnsweredEmpty: true);
+            }
+
+            var outcome = await _store
+                .UpsertAsync(request.Date, fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload.Items, cancellationToken)
+                .ConfigureAwait(false);
+
+            var symbolQuarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
+                .ConfigureAwait(false);
+
+            // The per-symbol counts ride the run-ledger row (TC-MDF-072); they are no
+            // longer emitted only as structured logs.
+            return new SymbolSweep(
+                new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, symbolQuarantined, false),
+                symbolQuarantined,
+                AnsweredEmpty: false);
+        }
+        catch (SourcePayloadException exception)
+        {
+            // A per-symbol parse failure is isolated: it quarantines and the loop continues.
+            _logger.LogWarning(
+                "prices: symbol {Symbol} payload for {Date} unparseable (UNPARSEABLE_PAYLOAD)",
+                symbol,
+                request.Date);
+            await QuarantineAsync(request, null, exception.RawJson, QuarantineReason.UnparseablePayload, cancellationToken)
+                .ConfigureAwait(false);
+            return new SymbolSweep(new SymbolRunStat(symbol, 0, 0, 1, false), 1, AnsweredEmpty: false);
+        }
+        catch (SourceFetchException exception)
+        {
+            // A transport failure is NOT a parse/validation event: no quarantine. The
+            // symbol is marked failed; the run continues and is alerted once at the end.
+            _logger.LogWarning(
+                exception,
+                "prices: symbol {Symbol} fetch failed for {Date} (SOURCE_FETCH_FAILED)",
+                symbol,
+                request.Date);
+            return new SymbolSweep(new SymbolRunStat(symbol, 0, 0, 0, true), 0, AnsweredEmpty: false);
+        }
+    }
+
+    /// <summary>
+    /// Whether the run has spent its completeness budget (<see cref="PricesSourceOptions.CoverageBudget"/>)
+    /// — the second bound beside the pass count, so a slow source can never extend a run
+    /// indefinitely. Read from the injected <see cref="TimeProvider"/> so the budget is
+    /// deterministic under a fake clock. A non-positive budget budgets no re-sweep at all.
+    /// </summary>
+    private bool CoverageBudgetExhausted(DateTimeOffset startedAt)
+    {
+        if (_options.CoverageBudget <= TimeSpan.Zero)
+        {
+            return true;
+        }
+
+        return _clock.GetUtcNow() - startedAt >= _options.CoverageBudget;
+    }
+
+    /// <summary>
+    /// The settle wait between coverage passes (<see cref="PricesSourceOptions.CoverageSettleDelay"/>):
+    /// a real, configurable pause on the injected clock, skipped entirely when non-positive so
+    /// L2 runs never wait on a timer.
+    /// </summary>
+    private async Task SettleAsync(CancellationToken cancellationToken)
+    {
+        if (_options.CoverageSettleDelay <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "prices: settling {Delay} before re-sweeping the symbols the source has not published yet",
+            _options.CoverageSettleDelay);
+        await Task.Delay(_options.CoverageSettleDelay, _clock, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>One symbol's outcome for one pass of the coverage loop.</summary>
+    private sealed record SymbolSweep(SymbolRunStat Stat, int Quarantined, bool AnsweredEmpty);
 
     /// <summary>
     /// Backfill mode (FR-MDF-010, UC-MDF-002) over the same per-ticker loop: ingests each
@@ -208,10 +433,12 @@ public sealed class PricesJob : IIngestJob
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
         var coveredSymbols = new HashSet<string>(StringComparer.Ordinal);
         DateOnly? achievedFrom = null;
+        var requestsMade = 0;
 
         for (var index = 0; index < constituents.Count; index++)
         {
-            await PaceAsync(index, cancellationToken).ConfigureAwait(false);
+            await PaceAsync(requestsMade, cancellationToken).ConfigureAwait(false);
+            requestsMade++;
             var symbol = constituents[index];
 
             try
@@ -293,6 +520,8 @@ public sealed class PricesJob : IIngestJob
                 .ConfigureAwait(false);
         }
 
+        // Backfill rides its own achieved-depth contract (FR-MDF-010): the coverage gate is the
+        // incremental day's, never a historical range's, so no uncovered names are reported.
         return await CompleteAsync(
             request,
             constituents.Count,
@@ -301,15 +530,20 @@ public sealed class PricesJob : IIngestJob
             quarantined,
             failedSymbols,
             symbolStats,
+            uncoveredSymbols: [],
             cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// The run's terminal outcome: aggregate the per-symbol counts, emit the run summary and
     /// raise a single aggregate alert naming the failed symbols (TC-MDF-073). Status semantics
-    /// (01 v1.5 §10.9.2): every symbol failed → <see cref="IngestResult.Failed"/> (so the retry
-    /// ladder applies); some failed, or none failed but some facts were quarantined →
-    /// <see cref="IngestResult.Partial"/>; otherwise <see cref="IngestResult.Succeeded"/>.
+    /// (01 v1.5 §10.9.2, amended by the completeness gate): every symbol failed →
+    /// <see cref="IngestResult.Failed"/> (so the retry ladder applies); some failed, some facts
+    /// quarantined, or any current constituent still <b>uncovered</b> after the bounded sweeps →
+    /// <see cref="IngestResult.Partial"/>; only a day whose bound is fully stored is
+    /// <see cref="IngestResult.Succeeded"/>. A symbol the source honestly answered empty for
+    /// raises <b>no</b> alert (it is not a source failure) — but it can never be reported as
+    /// success.
     /// </summary>
     private async Task<IngestResult> CompleteAsync(
         IngestionRequest request,
@@ -319,6 +553,7 @@ public sealed class PricesJob : IIngestJob
         int quarantined,
         List<string> failedSymbols,
         IReadOnlyList<SymbolRunStat> symbolStats,
+        IReadOnlyList<string> uncoveredSymbols,
         CancellationToken cancellationToken)
     {
         if (failedSymbols.Count > 0)
@@ -336,18 +571,36 @@ public sealed class PricesJob : IIngestJob
 
         var status = failedSymbols.Count == constituentCount
             ? IngestResult.Failed
-            : failedSymbols.Count > 0 || quarantined > 0
+            : failedSymbols.Count > 0 || quarantined > 0 || uncoveredSymbols.Count > 0
                 ? IngestResult.Partial
                 : IngestResult.Succeeded;
 
+        var noRowCount = symbolStats.Count(stat => stat.Reason == NoRowForDate);
+        if (uncoveredSymbols.Count > 0)
+        {
+            // Named, never silent: the day is not complete and nothing about the run may imply
+            // that it is (the 243-run shape: "written 18, unchanged 71, quarantined 0" over 11
+            // symbols the source had not published yet, reported as success).
+            _logger.LogWarning(
+                "prices: {Date} is NOT fully covered — {Uncovered} of {Constituents} {Index} constituents have no stored price ({Symbols}) ({Status})",
+                request.Date,
+                uncoveredSymbols.Count,
+                constituentCount,
+                _options.UniverseIndex,
+                string.Join(", ", uncoveredSymbols),
+                status);
+        }
+
         _logger.LogInformation(
-            "prices: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed} ({Status})",
+            "prices: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, noRow {NoRow}, uncovered {Uncovered} ({Status})",
             request.Date,
             constituentCount,
             written,
             unchanged,
             quarantined,
             failedSymbols.Count,
+            noRowCount,
+            uncoveredSymbols.Count,
             status);
 
         return new IngestResult(Code, written, unchanged, quarantined, status) { SymbolStats = symbolStats };
@@ -407,14 +660,17 @@ public sealed class PricesJob : IIngestJob
 
     /// <summary>
     /// Paces the strictly sequential loop (01 v1.5 §10.9.2): waits
-    /// <see cref="PricesSourceOptions.RequestDelayMs"/> between requests, never before the
-    /// first. A non-positive delay disables the wait (deterministic L2 runs). The wait is a
-    /// real wall-clock timer — the delay is a politeness measure, not a scheduling decision —
-    /// so the TC-MDF-074 lower-bound timing assertion reflects the live posture.
+    /// <see cref="PricesSourceOptions.RequestDelayMs"/> between requests of the run, and never
+    /// before its very first request. <paramref name="requestsMadeSoFar"/> is the run-global
+    /// count, not the index within the current pass — a coverage re-sweep is a continuation of
+    /// the same loop, so its first fetch is spaced from the previous pass's last fetch too. A
+    /// non-positive delay disables the wait (deterministic L2 runs). The wait is a real
+    /// wall-clock timer — the delay is a politeness measure, not a scheduling decision — so the
+    /// TC-MDF-074 lower-bound timing assertion reflects the live posture.
     /// </summary>
-    private async Task PaceAsync(int index, CancellationToken cancellationToken)
+    private async Task PaceAsync(int requestsMadeSoFar, CancellationToken cancellationToken)
     {
-        if (index == 0 || _options.RequestDelayMs <= 0)
+        if (requestsMadeSoFar == 0 || _options.RequestDelayMs <= 0)
         {
             return;
         }
