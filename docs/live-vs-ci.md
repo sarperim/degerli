@@ -52,7 +52,7 @@ The common property: **every external input is a double we wrote.** CI therefore
 4. **Honest states under real publication lag.** Whether the product says `partial` (and names what is missing) or quietly publishes a sliver as the whole market.
 5. **Actual market aggregates.** The numbers a user sees: breadth, volume, index levels.
 6. **Per-source unit cross-validation.** That a field means what we think it means — e.g. whether `currentCapital` is a share count or paid-in capital.
-7. **Operational statements that are only observable over time**: uptime (NFR-MOV-003). (The SC-006 research session is `manual`, not live — a scripted human session with a named owner, date, and outcome (§3). RTO/RPO is a drill, §2.3 — no run establishes it.)
+7. **Operational statements that are only observable over time**: uptime (NFR-MOV-003). "Observable only over time" is a property of the evidence, not an acceptance class: human-read uptime resolves to `manual` per §4 (UptimeRobot), and only a deployed run that produces the figure resolves to `live`. (The SC-006 research session is `manual`, not live — a scripted human session with a named owner, date, and outcome (§3). RTO/RPO is a drill, §2.3 — no run establishes it.)
 
 ### 2.3 What neither proves
 
@@ -135,7 +135,7 @@ Runs **227 / 233 / 236 / 244** each reported `failed` on that world, and the EOD
 
 > `breadth { advancing: 0, declining: 9 }`
 
-Real numbers, false picture: it reads as "the whole market fell". The ledger's own record of that evening is that coverage reached **64 of 100 by 20:09 UTC**, with the `prices` → `metrics-recompute` → `market-snapshot` → `medians` re-run still *planned*, not completed — so the repaired breadth and volume were never captured verbatim, and are not quoted here. What the record does carry is where the sliver came from, below.
+Real numbers, false picture: it reads as "the whole market fell". The ledger's own record of that evening is that coverage reached **64 of 100 by 20:09 UTC**, with the `prices` → `metrics-recompute` → `market-snapshot` → `medians` re-run still *planned*, not completed — so the aggregate a full-coverage re-run would have produced was never captured verbatim, and is not quoted here. What the record does carry is where the sliver came from, below.
 
 The root cause was ours, not the source's: run **243** (`succeeded`, written 18 / unchanged 71 / quarantined 0) recorded **11 constituents as `written=0 unchanged=0 quarantined=0 failed=false`** — nothing at all. Forty minutes later, direct probes showed **9 of those 11 had a real session** at the source (ALARK 101.30, CIMSA 37.44, DOHOL 16.38, EGEEN 3895.00, GRSEL 247.00, KRDMD 38.60, LMKDC 19.50, MPARK 387.00, TKFEN 174.80); only ANSGR and BERA genuinely returned empty. The EOD step never asserted day coverage. **Chore #130** (`chore(prices): complete the day's coverage before reporting success`, PR #130, merged 2026-10-24T00:09Z) now records the honest per-symbol empty reason, re-sweeps missing symbols within a bounded budget, and reports **`partial` naming the missing symbols** instead of claiming success. **TKT-foundation-043** was closed as superseded by it (USER DECISION D8-A); its record is also where the recovery is written down: a re-run wrote exactly those 11 → **100/100**.
 
@@ -184,6 +184,6 @@ A ticket whose live criterion is `pending` may be **merged**, because CI is the 
 
 ## 7. Why this is not pessimism about CI
 
-CI is what makes the product maintainable: it catches regressions in the 90% of behaviour that is deterministic and ours. The incidents above are not CI failures; they are **boundary failures** — cases where a green check was read as a statement about the world. The remedy is not more doubles. It is stating, once and in the same language every time, which claims the doubles can support.
+CI is what makes the product maintainable: it catches regressions in the 90% of behaviour that is deterministic and ours. The incidents above are not CI failures; they are **boundary failures** — cases where a green check was read as a statement about the world, or a waived red as a statement about the product. The remedy is not more doubles. It is stating, once and in the same language every time, which claims the doubles can support.
 
 The one thing this document forbids is the quiet substitution: presenting a `live` criterion as satisfied because CI is green, or presenting a `manual` step as done because it was described.
