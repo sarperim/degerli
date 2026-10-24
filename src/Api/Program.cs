@@ -1,4 +1,5 @@
 using Degerli.Api.Admin;
+using Degerli.Api.Diagnostics;
 using Degerli.Api.Identity;
 using Degerli.Api.Infrastructure;
 using Degerli.Api.Market;
@@ -62,6 +63,21 @@ builder.Services.AddHostedService<IngestionHostedService>();
 builder.Services.AddHostedService<Degerli.Ingestion.Scheduling.IngestionSchedulerHostedService>();
 
 var app = builder.Build();
+
+// Crash-evidence capture (`01` §13.1 v1.5.26, §10.3/§10.4). The dev stack's API exited
+// with SIGABRT (exit 134) on 2026-10-20 leaving no stack, no log tail and no artifact at
+// all, so the abort was undiagnosable. Two passive managed hooks now hand any unhandled
+// exception to a bounded, redacted, never-throwing writer that lands one artifact beside
+// the rolling logs; the startup line reports any artifact a previous run left behind.
+// Installed after the host is built so the merged configuration (appsettings + env +
+// composition overrides) decides the paths. Honest limit, stated in the artifact itself:
+// a native abort cannot run managed hooks — that class is covered only by the runtime's
+// dump knobs (`DOTNET_DbgEnableMiniDump`), whose absence the startup line reports.
+var crashEvidenceOptions = CrashEvidenceOptions.FromConfiguration(app.Configuration);
+crashEvidenceOptions.Environment = app.Environment.EnvironmentName;
+var crashEvidenceHooks = new CrashEvidenceHooks(new CrashEvidenceWriter(crashEvidenceOptions));
+crashEvidenceHooks.Install();
+CrashEvidenceStartupReport.Report(crashEvidenceOptions, app.Logger);
 
 app.UseSerilogRequestLogging();
 app.UseApiInfrastructure();
