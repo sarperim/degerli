@@ -18,7 +18,8 @@ scope:
 
 # TKT-foundation-070: Metric formula versioning — recompute provenance across formula changes
 
-- Status: todo
+- Status: in-review
+- **PR:** https://github.com/sarperim/degerli/pull/138
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 6 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -48,3 +49,48 @@ scope:
   3. Chosen approach is **A + B1** (2 store files + `Jobs.cs`), *not* B2's four-file DI trigger service — it reuses the mechanism the runner already owns. No other widening is sanctioned.
   4. Test design (for whoever implements): no test-only hook is needed — set stored rows' `formula_version` to an older value directly in the DB (as `MetricsRecomputeIdempotencyTests` already does for facts), then assert the recompute rewrites, stamps the current version, and reports the distinct count; the migration/backfill case is the same DB-level exercise. `CanonicalMetrics.Version` can stay a plain `const`.
 - Parallel group: none (touches `01`/`02`).
+
+## Implementation record (070 lane, 2026-10-24)
+
+Implemented on `feature/TKT-foundation-070` (PR #138) against the amended scope (A + B1), exactly as
+pinned — **no further widening was needed or taken**.
+
+- **Version**: `CanonicalMetrics.Version` (`const int` = 1, `/src/Core`) — the single source of truth;
+  bumped in the same change as any formula / input-assembly / not-meaningful-rule edit.
+- **Stamp**: `formula_version` (`int NULL`, CHECK `IS NULL OR >= 1`) on `derived_metrics` and
+  `sector_metric_medians`, written by `DerivedMetricStore.UpsertAsync` and
+  `SectorMedianStore.UpsertAsync` on the **insert and repair** paths (the only two `new DerivedMetric` /
+  `new SectorMetricMedian` sites — the engines classify, they never insert).
+- **Classification**: `MetricsEngine.PlanWriteAsync` / `SectorMedianEngine.PlanWriteAsync` treat
+  `formula_version != CanonicalMetrics.Version` as rewrite-worthy even with identical values and count
+  it as `FormulaVersionRewritten` (a subset of `Rewritten`); same values **and** same version stay
+  `unchanged` (050's idempotency untouched).
+- **Migration**: `20261024024109_MetricFormulaVersion` — additive, nullable, forward-only, **no data
+  write** (an honest empty backfill: existing rows were produced by the then-current definition, but no
+  per-row record of it exists, so a stamp would be invented; `NULL` = "produced before versioning
+  existed"). The next recompute of a day stamps it; historical days keep `NULL` until recomputed.
+- **Trigger**: `IngestionTrigger` + optional `IngestionRequest.Trigger` / `IngestionRunContext.Trigger`;
+  the runner records `stats_json.trigger` (`scheduled` for the scheduler's context, `admin` for the bare
+  admin-trigger overload, an explicit request value wins). Additive and optional — no job, test or 044
+  reason-code behaviour changes (neighbour suites re-run green).
+- **Exposure (vi)**: DB-only; no API/audit surface serves the version, `03` payloads unchanged —
+  recorded in `01` §10.9.13.
+- **Docs**: `02` header/§1/§3.1/§8 (v1.4), `01` §10.9.13 (new "Definition versioning" subsection) and
+  §13.1 **v1.5.48**, test plan **§17** + coverage matrix (FR-MDF-013/014, NFR-MDF-001) + change record
+  v1.17.
+- **Tests**: TC-MDF-099, 5 cases in `tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs`
+  (no test-only hook; the stale-stamp state is a direct `UPDATE`, per the test-design note).
+- **Evidence**: red = 5 failed / 4 passed (`42703 column "formula_version" does not exist` on both
+  tables; ledger `trigger` absent); green = lane 9/9, backend integration 528/528, core unit 54/54,
+  content pipeline 2/2, `dotnet build` 0 warnings.
+- **Flagged**: (1) the distinct `FormulaVersionRewritten` count is plan-level, not a `stats_json` key —
+  the two metric **job** classes were outside the amended scope, so the ledger's `written` carries the
+  total repairs as 044 established (recorded in `01` §10.9.13 as a follow-up); the demanded *trigger*
+  distinction **is** in the ledger. (2) The ticket pointed this case at test plan "§14", which is the
+  §14 share-count section (TKT-foundation-058); the case is authored as a new §17 instead — recorded in
+  the plan's change record, test-planner confirmation pending. (3) The migration applies no backfill, by
+  design (above). (4) Live criterion for the orchestrator post-merge: after deploy the first
+  `metrics-recompute` stamps that day's rows, a second same-day run reports `unchanged`, and the ledger
+  row reads `trigger: scheduled|admin` — recorded verbatim, never fabricated.
+- The shared dev DB was **not** migrated from this lane; the migration is exercised by every
+  Testcontainers fixture in the suite.
