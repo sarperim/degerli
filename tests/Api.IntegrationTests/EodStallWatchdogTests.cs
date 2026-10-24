@@ -380,14 +380,68 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         Assert.Equal(Trt(2026, 10, 5, 21, 10), slowRow.StartedAt!.Value);
         Assert.Equal(Trt(2026, 10, 5, 22, 10), slowRow.FinishedAt!.Value);
 
-        // The step's own duration is asserted against the step bound: 60 minutes of healthy
-        // pacing, comfortably inside the shipped 120-minute per-step bound (and the healthy
-        // chain's ~100 minutes, which the old 90-minute whole-attempt bound could not fit).
+        // The step's own duration is exactly the 60 minutes it paced — and the chain's ~100
+        // minutes is what the old 90-minute whole-attempt bound could not fit.
         var slowDuration = slowRow.FinishedAt.Value - slowRow.StartedAt.Value;
         Assert.Equal(TimeSpan.FromMinutes(60), slowDuration);
-        Assert.True(
-            slowDuration < new IngestionSchedulerOptions().MaxStepDuration,
-            $"a healthy {slowDuration} step must sit inside the {new IngestionSchedulerOptions().MaxStepDuration} step bound");
+
+        // Exactly the chain's two steps: no retry, no duplicate row.
+        Assert.Equal(2, runs.Count);
+    }
+
+    /// <summary>
+    /// TC-MDF-098(a) (supporting) — <b>the step bound is armed per step, not once at the attempt's
+    /// start</b>. Two healthy steps of 100 minutes each (200 minutes in total, comfortably inside
+    /// the shipped 4-hour ceiling) both sit inside the shipped 120-minute <b>step</b> bound and
+    /// must both complete: zero <c>RUN_HUNG</c>, one succeeded row per step.
+    /// <para>
+    /// This is the case that distinguishes the two arming strategies. A timer armed once at the
+    /// attempt's start with <c>MaxStepDuration</c> would expire at 20:30 + 120 min = 22:30, in the
+    /// middle of the second healthy step, and declare it hung — the exact false positive this
+    /// ticket exists to remove, and a regression TC-MDF-098(a)/(b)/(c) would not see.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Per_step_bound_is_armed_per_step_not_once_at_attempt_start()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var first = new PacedStep(PreludeStepCode, clock, TimeSpan.FromMinutes(100));
+        var second = new PacedStep(SlowStepCode, clock, TimeSpan.FromMinutes(100));
+
+        // No bound overrides: the shipped 120-minute step bound and 4-hour ceiling apply.
+        await using var host = BuildChainHost(clock, [first, second]);
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await first.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:30 → 22:10: the first step's 100 minutes — already 100 minutes into a timer armed
+        // at the attempt's start.
+        clock.Advance(TimeSpan.FromMinutes(100));
+        await second.Entered.Task.WaitAsync(LivenessBound);
+
+        // 22:10 → 23:50: the second step's 100 minutes. A cumulative step timer expires at 22:30,
+        // inside this step; a per-step timer (armed at 22:10) is not due until 00:10.
+        clock.Advance(TimeSpan.FromMinutes(100));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        Assert.DoesNotContain(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.DoesNotContain(runs, run => run.Status == IngestResult.Failed);
+        Assert.Empty(host.Mail.Sent);
+
+        var firstRow = Assert.Single(runs, run => run.JobCode == PreludeStepCode);
+        Assert.Equal(IngestResult.Succeeded, firstRow.Status);
+        Assert.Equal(Trt(2026, 10, 5, 20, 30), firstRow.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 22, 10), firstRow.FinishedAt!.Value);
+
+        var secondRow = Assert.Single(runs, run => run.JobCode == SlowStepCode);
+        Assert.Equal(IngestResult.Succeeded, secondRow.Status);
+        Assert.Equal(Trt(2026, 10, 5, 22, 10), secondRow.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 23, 50), secondRow.FinishedAt!.Value);
 
         // Exactly the chain's two steps: no retry, no duplicate row.
         Assert.Equal(2, runs.Count);
@@ -466,6 +520,67 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     }
 
     /// <summary>
+    /// TC-MDF-098(b) (supporting) — <b>a step that honours the cancellation is still reported as
+    /// the step bound's hung step</b>. The production shape of a bounded step is one that ends
+    /// when its token is cancelled (the KAP pacer, any adapter awaiting its token), not an
+    /// uninterruptible hang. Such a step makes <c>ExecuteChainAsync</c> return <b>successfully</b>
+    /// carrying a non-null failure, so the attempt-level watchdog's "the chain genuinely
+    /// completed" test must also require that failure to be null; otherwise the step bound would
+    /// publish <b>no</b> <c>RUN_HUNG</c> row and <b>no</b> alert for the common production case.
+    /// <para>
+    /// Distinct from TC-MDF-098(b), whose double never returns and therefore takes the
+    /// abandon-the-attempt path.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Responsive_step_that_honours_cancellation_is_still_reported_hung()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var prelude = new InstantStep(PreludeStepCode);
+        var responsive = new ResponsiveStep();
+        await using var host = BuildChainHost(
+            clock,
+            [prelude, responsive],
+            maxStepDuration: "00:10:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await responsive.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — the step's own bound expires; the step observes the cancellation and ends.
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(ResponsiveStep.Code, hung.JobCode);
+        Assert.Equal(IngestResult.Failed, hung.Status);
+        Assert.Equal(ResponsiveStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+        Assert.Equal("step", StatString(hung, "bound"));
+        Assert.Equal(600, Stat(hung, "maxStepDurationSeconds"));
+        Assert.Equal(1, Stat(hung, "attempt"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(ResponsiveStep.Code, alert.Subject);
+        Assert.Contains("per-step", alert.Subject);
+
+        // The ladder still takes over from the attempt's end (20:40 + 5 min) and recovers.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        var recovered = await LedgerAsync();
+        var recoveredStep = Assert.Single(
+            recovered,
+            run => run.JobCode == ResponsiveStep.Code && run.Status == IngestResult.Succeeded);
+        Assert.Equal(2, Stat(recoveredStep, "attempt"));
+        Assert.Equal(1, recovered.Count(run => ReasonCode(run) == "RUN_HUNG"));
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+    }
+
+    /// <summary>
     /// TC-MDF-098(c) — <b>the whole-chain ceiling still bites</b>, and is distinguishable from
     /// the step bound. Individually-healthy steps whose total exceeds a small configured
     /// <c>MaxRunDuration</c> produce exactly one <c>RUN_HUNG</c> naming the in-flight step
@@ -519,10 +634,104 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     }
 
     /// <summary>
+    /// TC-MDF-098 (supporting) — <b>a zero per-step bound disables only the step bound</b>. With
+    /// <c>MaxStepDuration = 0</c> the step bound is never armed, and the still-armed whole-chain
+    /// ceiling is what catches a hung step: one <c>RUN_HUNG</c> row with <c>bound: "chain"</c>
+    /// (and <c>maxStepDurationSeconds: 0</c>) — the two bounds disable independently.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Zero_step_bound_leaves_the_chain_ceiling_independent()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var stall = new StallStep(StallMode.HangOnFirstAttempt);
+        await using var host = BuildChainHost(
+            clock,
+            [new InstantStep(PreludeStepCode), stall],
+            maxRunDuration: "00:10:00",
+            maxStepDuration: "00:00:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — only the 10-minute ceiling could have fired.
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Equal(StallStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+        Assert.Equal("chain", StatString(hung, "bound"));
+        Assert.Equal(0, Stat(hung, "maxStepDurationSeconds"));
+        Assert.Equal(600, Stat(hung, "maxRunDurationSeconds"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("whole-chain"));
+
+        // The ladder still owns the retry (no hot loop, no second row).
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        Assert.Equal(1, (await LedgerAsync()).Count(run => ReasonCode(run) == "RUN_HUNG"));
+    }
+
+    /// <summary>
+    /// TC-MDF-098 (supporting) — <b>a zero whole-chain ceiling disables only the ceiling</b>. With
+    /// <c>MaxRunDuration = 0</c> no attempt deadline is created, and the still-armed per-step bound
+    /// catches a hung step: one <c>RUN_HUNG</c> row with <c>bound: "step"</c> and
+    /// <c>maxRunDurationSeconds: 0</c> — the mirror of the case above.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Zero_chain_ceiling_leaves_the_step_bound_independent()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var stall = new StallStep(StallMode.HangOnFirstAttempt);
+        await using var host = BuildChainHost(
+            clock,
+            [new InstantStep(PreludeStepCode), stall],
+            maxRunDuration: "00:00:00",
+            maxStepDuration: "00:10:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — only the 10-minute step bound could have fired.
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Equal(StallStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+        Assert.Equal("step", StatString(hung, "bound"));
+        Assert.Equal(600, Stat(hung, "maxStepDurationSeconds"));
+        Assert.Equal(0, Stat(hung, "maxRunDurationSeconds"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("per-step"));
+
+        // The ladder still owns the retry (no hot loop, no second row).
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        Assert.Equal(1, (await LedgerAsync()).Count(run => ReasonCode(run) == "RUN_HUNG"));
+    }
+
+    /// <summary>
     /// TC-MDF-098 (supporting) — a <b>mis-typed per-step bound</b> (60 days, beyond the timer's
     /// ~49.7-day range) is an ordinary failed attempt on the 5/15/60 ladder — the 059 DR-1 path —
     /// never an escape that leaves the attempt overdue and refires it in a hot loop, and never a
     /// <c>RUN_HUNG</c> row.
+    /// <para>
+    /// The throw happens inside <c>RunStepUnderBoundAsync</c>'s <c>CreateTimer</c> call, i.e. after
+    /// <c>ExecuteChainAsync</c> has already started; it is that method's <c>catch (Exception)</c>
+    /// which converts it into a returned failure and so reaches the ladder as an ordinary failed
+    /// attempt — not a prologue throw before the attempt's first await.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task TC_MDF_098_Mistyped_step_bound_is_an_ordinary_failed_attempt_never_a_hot_refire()
@@ -663,6 +872,48 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
         public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded));
+    }
+
+    /// <summary>
+    /// A chain step that <b>honours</b> the watchdog's cancellation — the production shape of a
+    /// bounded step (the KAP pacer, any adapter awaiting its token). Its first call ends with the
+    /// cancellation, so the chain returns a plainly-failed outcome rather than an abandoned task;
+    /// afterwards it succeeds, so the retry ladder can recover the stream.
+    /// </summary>
+    private sealed class ResponsiveStep : IIngestJob
+    {
+        public const string Code = "responsive-step";
+
+        private int _calls;
+
+        /// <summary>Completes when the doubled step has entered its awaiting branch.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) > 1)
+            {
+                return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
+            }
+
+            // A plain (non-run-continuations-asynchronously) source completed from a
+            // cancellation callback: the continuation runs inline when the watchdog cancels, so
+            // the cancellation unwinds the chain before the attempt token is cancelled — the
+            // "a cancellation that is NOT ours" shape ExecuteChainAsync turns into an outcome.
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.None);
+            using var registration = cancellationToken.Register(
+                static state => ((TaskCompletionSource)state!).TrySetResult(),
+                cancelled);
+
+            Entered.TrySetResult();
+            await cancelled.Task;
+
+            // Honour the cancellation: the step ends, and the chain fails with the OCE.
+            cancellationToken.ThrowIfCancellationRequested();
+            return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
+        }
     }
 
     /// <summary>A healthy per-job stream target: proof that the loop keeps waking.</summary>

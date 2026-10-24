@@ -152,9 +152,17 @@ public sealed class IngestionScheduler
             _options.TimeZone,
             _options.JobSchedules.Count,
             _options.MaxStepDuration > TimeSpan.Zero || _options.MaxRunDuration > TimeSpan.Zero
-                ? $"bounded at {_options.MaxStepDuration} per step and {_options.MaxRunDuration} per chain attempt (RUN_HUNG)"
+                ? $"bounded at {DescribeConfiguredBound(_options.MaxStepDuration)} per step and {DescribeConfiguredBound(_options.MaxRunDuration)} per chain attempt (RUN_HUNG)"
                 : "DISABLED — a hung step can hold every stream silently");
     }
+
+    /// <summary>
+    /// A configured bound for the operator line: the duration when it is armed, or
+    /// <c>disabled</c> when zero/negative turned that bound off — never the raw <c>00:00:00</c>,
+    /// which reads like a bound that fires immediately.
+    /// </summary>
+    private static string DescribeConfiguredBound(TimeSpan bound) =>
+        bound > TimeSpan.Zero ? bound.ToString() : "disabled";
 
     /// <summary>Whether the scheduler is enabled in configuration.</summary>
     public bool Enabled => _options.Enabled;
@@ -542,10 +550,12 @@ public sealed class IngestionScheduler
 
         // The attempt's owned resources are created inside the failure-classifying try (DR-1,
         // TKT-foundation-059) and disposed in its finally. Anything that throws before the
-        // attempt's first await — most realistically a mis-typed `MaxRunDuration`/`MaxStepDuration`
-        // beyond Task.Delay's accepted range — used to escape RunAttemptAsync with `Attempts`
-        // already bumped and `NextAttemptAt` still in the past, so the hosted loop refired the
-        // attempt immediately and forever. A prologue failure is now a failed attempt on the ladder.
+        // attempt's first await — most realistically a mis-typed `MaxRunDuration` beyond
+        // Task.Delay's accepted range — used to escape RunAttemptAsync with `Attempts` already
+        // bumped and `NextAttemptAt` still in the past, so the hosted loop refired the attempt
+        // immediately and forever. A prologue failure is now a failed attempt on the ladder.
+        // (A mis-typed `MaxStepDuration` is caught earlier still, inside ExecuteChainAsync's own
+        // catch — either way it is a failed attempt, never a hot refire.)
         IServiceScope? ownedScope = null;
         CancellationTokenSource? ownedAttemptCts = null;
         CancellationTokenSource? ownedDeadlineCts = null;
@@ -587,14 +597,18 @@ public sealed class IngestionScheduler
             // from whichever task `WhenAny` happened to return: a step that answers the bound's
             // cancellation can complete the chain in the same window, and `WhenAny` may then hand
             // back the chain task — the attempt is still a hung one, never an ordinary failure.
+            // The step bound is checked first because it is the more actionable attribution: if it
+            // completed at all, a step really did exceed its own bound, and the ceiling having
+            // expired in the same window does not change that. A ceiling-only expiry is untouched
+            // by the reorder — `boundSignal` is completed exclusively by a per-step timer.
             ChainBoundExpiry? boundExpiry;
-            if (deadline is not null && ReferenceEquals(winner, deadline))
-            {
-                boundExpiry = new ChainBoundExpiry(ChainBoundNames.Chain, step.Snapshot());
-            }
-            else if (boundSignal.Task.IsCompleted)
+            if (boundSignal.Task.IsCompleted)
             {
                 boundExpiry = boundSignal.Task.Result;
+            }
+            else if (deadline is not null && ReferenceEquals(winner, deadline))
+            {
+                boundExpiry = new ChainBoundExpiry(ChainBoundNames.Chain, step.Snapshot());
             }
             else
             {
@@ -864,6 +878,13 @@ public sealed class IngestionScheduler
 
         using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+        // The identity this arm is armed for. `step` is the chain-wide cursor and `Begin(...)`
+        // overwrites it at every step, so a callback that outlives its step would otherwise name
+        // whichever step is in flight when it happens to run — the DR-3 wrong-step class
+        // (TKT-foundation-059) on the per-step bound. The arm therefore carries the identity and
+        // the callback matches on it before publishing anything.
+        var arm = new StepBoundArm(step.CurrentJobCode, step.Index, step.Total);
+
         // The bound is armed as a clock-driven timer over *this step only*: on expiry it records
         // the step's progress (before any cancellation, DR-3/TKT-foundation-059) and hands the
         // finding to the attempt-level watchdog, which owns the cancellation of the attempt, the
@@ -880,7 +901,18 @@ public sealed class IngestionScheduler
                     return;
                 }
 
-                boundSignal.TrySetResult(new ChainBoundExpiry(ChainBoundNames.Step, step.Snapshot()));
+                // Only the step this timer was armed for may be declared hung: a callback that
+                // runs after its step returned (and, in the worst case, after the chain moved on
+                // to the next step) must publish nothing at all. This guard precedes every line
+                // that could declare a hung run.
+                if (arm.Retired || !arm.Matches(step))
+                {
+                    return;
+                }
+
+                // The snapshot is the armed identity itself — already immutable, and therefore
+                // necessarily taken before any cancellation in this callback.
+                boundSignal.TrySetResult(new ChainBoundExpiry(ChainBoundNames.Step, arm.Snapshot));
 
                 try
                 {
@@ -896,7 +928,16 @@ public sealed class IngestionScheduler
             dueTime: _options.MaxStepDuration,
             period: Timeout.InfiniteTimeSpan);
 
-        return await stepCall(stepCts.Token).ConfigureAwait(false);
+        try
+        {
+            return await stepCall(stepCts.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Whatever ended the step (completion, its own exception, the attempt's cancellation)
+            // retires this arm, so a queued callback can never declare it hung afterwards.
+            arm.Retire();
+        }
     }
 
     /// <summary>
@@ -1304,6 +1345,35 @@ public sealed class IngestionScheduler
     /// <summary>The chain step the watchdog caught, captured before any await (see
     /// <see cref="ChainStepProgress.Snapshot"/>).</summary>
     private readonly record struct ChainStepSnapshot(string JobCode, int Index, int Total);
+
+    /// <summary>
+    /// One arm of the per-step bound (TKT-foundation-064): the identity of the step the timer was
+    /// armed for, plus whether that step has already ended. The timer callback matches the live
+    /// chain-wide cursor against this arm rather than trusting the cursor alone — the cursor is
+    /// <c>Begin</c>-ed for the next step the moment this one returns, so a late callback reading
+    /// it would name a step that was never over its bound.
+    /// </summary>
+    private sealed class StepBoundArm
+    {
+        private int _retired;
+
+        public StepBoundArm(string? jobCode, int index, int total) =>
+            Snapshot = new ChainStepSnapshot(jobCode ?? "scheduler-chain", index, total);
+
+        /// <summary>The step this arm names — immutable, so necessarily a pre-cancel snapshot.</summary>
+        public ChainStepSnapshot Snapshot { get; }
+
+        /// <summary>Set once the step this arm was armed for has ended, one way or another.</summary>
+        public bool Retired => Volatile.Read(ref _retired) != 0;
+
+        public void Retire() => Interlocked.Exchange(ref _retired, 1);
+
+        /// <summary>Whether the live cursor still points at the step this arm was armed for.</summary>
+        public bool Matches(ChainStepProgress step) =>
+            step.Index == Snapshot.Index
+            && step.Total == Snapshot.Total
+            && string.Equals(step.CurrentJobCode, Snapshot.JobCode, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Which of the two watchdog bounds fired, and the step that was in flight when it did
