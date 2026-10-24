@@ -6,7 +6,8 @@ scope:
 
 # TKT-foundation-075: Live-vs-CI verification doc — state what CI proves and what only live criteria prove
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/135
 - Size: S
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 12 unparked).**
 - **Evidence (gathered 2026-10-24 — this week is the worked example):**
