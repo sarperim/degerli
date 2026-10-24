@@ -130,19 +130,73 @@ public sealed class DisclosuresJob : IIngestJob
             quarantined++;
         }
 
+        // The adapter's bootstrap provenance (TKT-foundation-078, 01 §10.9.15): a run that seeded a
+        // cursor from the platform head's window says so — a start-of-read decision, never a claim
+        // that the company (or the market) had no disclosures before it. The count is logged and
+        // the entries ride the run's per-symbol stats with the named reason, so the ledger carries
+        // the provenance rather than a fabricated "no disclosures" state.
+        var bootstrapped = _adapter is IDisclosureBootstrapReporter bootstrapReporter
+            ? bootstrapReporter.Bootstrapped
+            : [];
+
+        if (bootstrapped.Count > 0)
+        {
+            _logger.LogInformation(
+                "{Job}: bootstrapped {Count} cursor(s) from the platform head's window ({ReasonCode}): {Cursors}",
+                Code,
+                bootstrapped.Count,
+                DisclosuresSourceAdapter.BootstrappedCursor,
+                string.Join(", ", bootstrapped));
+        }
+
+        var outOfBound = _adapter is IDisclosureBootstrapReporter bp ? bp.OutOfBoundRows : 0;
+        var listPages = _adapter is IDisclosureBootstrapReporter lp ? lp.ListPages : 0;
+        var truncated = _adapter is IDisclosureBootstrapReporter t ? t.Truncated : false;
+
+        if (outOfBound > 0)
+        {
+            _logger.LogInformation(
+                "{Job}: {Count} market row(s) outside the bound universe were counted, not fetched ({ReasonCode})",
+                Code,
+                outOfBound,
+                DisclosuresSourceAdapter.OutsideBoundUniverse);
+        }
+
+        // A pass that stops at its configured budget is bounded, not broken: the cursor names the
+        // last index it completed and the next run resumes there (TKT-foundation-078's "the run
+        // must finish" pin). It is logged so an operator can see the lane is behind, not stalled.
+        _logger.LogInformation(
+            "{Job}: walk finished — {Pages} list page(s), {Bootstrapped} bootstrap(s), {OutOfBound} out-of-bound row(s), truncated {Truncated}",
+            Code,
+            listPages,
+            bootstrapped.Count,
+            outOfBound,
+            truncated);
+
         // Per-symbol stats carry both isolation classes additively: the 046 identity isolation
-        // (failed) and this ticket's per-disclosure skips (quarantined) — the 046 shape plus the
-        // skip count, so the pre-061 family-lane goldens only see new fields/rows.
+        // (failed), this ticket's per-disclosure skips (quarantined) and — new here — the bootstrap
+        // provenance (written 0, not failed: the symbol's walk is bounded, not empty).
         var symbolStats = unresolved.Select(symbol => new SymbolRunStat(symbol, 0, 0, 0, Failed: true)).ToList();
         foreach (var group in detailSkips.GroupBy(skip => skip.Symbol, StringComparer.Ordinal))
         {
             symbolStats.Add(new SymbolRunStat(group.Key, 0, 0, group.Count(), Failed: false));
         }
 
+        foreach (var symbol in bootstrapped.Where(cursor =>
+                     !string.Equals(cursor, DisclosuresSourceAdapter.MarketCursorName, StringComparison.Ordinal)))
+        {
+            // The market cursor names no instrument, so it rides the counted log line above and the
+            // out-of-bound `skipped` count — a per-symbol stat must name a symbol (TKT-foundation-078).
+            symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, Failed: false, DisclosuresSourceAdapter.BootstrappedCursor));
+        }
+
         var status = quarantined > 0 || unresolved.Count > 0 ? IngestResult.Partial : IngestResult.Succeeded;
         return new IngestResult(Code, result.Inserted, result.Unchanged, quarantined, status)
         {
             SymbolStats = symbolStats,
+            // Market rows outside the bound universe are a counted skip (never an omission, never
+            // a fabricated row) — they ride the ledger's own `skipped` count.
+            Skipped = outOfBound,
         };
     }
 

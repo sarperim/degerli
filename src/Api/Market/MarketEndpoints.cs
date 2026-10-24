@@ -4,6 +4,7 @@ using Degerli.Api.Infrastructure;
 using Degerli.Ingestion.Intraday;
 using Degerli.Ingestion.Macro;
 using Degerli.Ingestion.Metrics;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -78,6 +79,7 @@ public static class MarketEndpoints
         DegerliDbContext db,
         MarketSnapshotStore store,
         PriceStateService priceStates,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken,
         string? period = null)
@@ -138,8 +140,11 @@ public static class MarketEndpoints
         // the store and the row lacks them (a genuinely missed `market-snapshot` run).
         // Stored prices are the truth, never a weekday rule: on a Tuesday whose EOD has
         // not landed, Monday IS the freshest completed session, so Monday's row is fresh.
-        var latestStoredTradingDay = await store
-            .ResolveLatestStoredTradingDayAsync(today, cancellationToken);
+        var latestStoredTradingDay = await ResolveLatestStoredTradingDayAsync(
+            store,
+            calendar,
+            today,
+            cancellationToken);
         var stale = latestStoredTradingDay is not null
             && snapshot.SnapshotDate < latestStoredTradingDay.Value;
 
@@ -190,6 +195,49 @@ public static class MarketEndpoints
     /// The supported sector-performance period tokens (`03` §3, FR-MOV-017 Could).
     /// </summary>
     private static readonly string[] SupportedPeriods = ["1w", "1m", "ytd"];
+
+    /// <summary>
+    /// The latest stored <b>trading</b> day at or before <paramref name="onOrBefore"/>
+    /// (<c>01</c> §10.9.13 as extended by TKT-foundation-048).
+    /// <para>
+    /// The stored maximum is the truth, but a row dated on a <b>non-trading</b> date —
+    /// <c>weekend ∪ configured holiday</c> — is not a session: a source that answers a closed
+    /// date with the previous close, or a backfill that fills calendar days, would otherwise make
+    /// the served row read <c>stale</c> for a market that simply never traded (the 2026-10-22
+    /// requirement: a holiday must display like a weekend does). A date the calendar discredits
+    /// is therefore skipped and the store is <b>re-asked below it</b> — the answer stays a
+    /// genuinely stored session, never a fabricated one, and a genuinely newer <i>trading</i>
+    /// session still proves the served row is behind.
+    /// </para>
+    /// <para>
+    /// When the re-ask walks off the end of the store (every stored date at or before
+    /// <paramref name="onOrBefore"/> is non-trading), there is no session left to prove the row
+    /// fresh, so the discredited stored maximum is returned — the conservative answer, never a
+    /// silent flip to fresh.
+    /// </para>
+    /// </summary>
+    private static async Task<DateOnly?> ResolveLatestStoredTradingDayAsync(
+        MarketSnapshotStore store,
+        IIngestionCalendar calendar,
+        DateOnly onOrBefore,
+        CancellationToken cancellationToken)
+    {
+        var stored = await store.ResolveLatestStoredTradingDayAsync(onOrBefore, cancellationToken);
+        var latest = stored;
+        while (latest is { } candidate && !calendar.IsTradingDay(candidate))
+        {
+            latest = await store.ResolveLatestStoredTradingDayAsync(
+                candidate.AddDays(-1),
+                cancellationToken);
+        }
+
+        // A walk that ends empty discredited every stored date at or before `onOrBefore` — the
+        // store holds no genuinely stored session to compare against, so "fresh" is unprovable.
+        // Fall back to the discredited stored maximum (the pre-048 answer) to keep `stale: true`
+        // rather than flipping the flag in the unsafe direction. Only a non-trading store reaches
+        // this; a trading-day maximum returns unchanged from the loop above.
+        return latest ?? stored;
+    }
 
     /// <summary>
     /// Resolves the optional sector-performance <paramref name="period"/> query value.

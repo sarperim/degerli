@@ -79,7 +79,18 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
 
     /// <summary>
     /// TC-MDF-011 (supporting) — the holiday calendar is configuration: a weekday listed
-    /// as a holiday is a non-trading day, and its 20:30 occurrence is skipped.
+    /// as a holiday is a non-trading day, and its 20:30 occurrence runs no job.
+    /// <para>
+    /// <b>Amended by TKT-foundation-048 (planner pin 3).</b> The pre-048 contract asserted a
+    /// <i>completely</i> empty ledger — the skip was silent, and an operator reading the ledger
+    /// could not tell "the market was closed" from "the scheduler never fired". The pinned rule is
+    /// now <b>never a silent no-run</b>: the skip writes exactly one short, named and dated
+    /// run-ledger row (<c>holiday-skip</c>), and still runs no job. The assertion is therefore
+    /// "no job ran" plus "the one row is the skip", which is the same guarantee plus the intent.
+    /// A <i>weekend</i> occurrence is untouched and stays fully silent
+    /// (<see cref="TC_MDF_011_No_trigger_on_non_trading_days"/>) — a Sunday needs no explanation,
+    /// a holiday is the thing the calendar has to explain.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task TC_MDF_011_Holiday_calendar_is_config()
@@ -92,9 +103,69 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         var clock = host.Clock;
         clock.SetUtcNow(Trt(2026, 10, 5, 0, 0));
 
+        // The WireMock server is a class fixture shared with the earlier cases (which do fetch),
+        // so the honest "no source call" measure is the delta across this case's window.
+        var requestsBefore = _wireMock.RequestsFor(PricesPath);
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 23, 59));
 
-        Assert.Equal(0, await LedgerCountAsync());
+        var runs = await LedgerAsync();
+        var skip = Assert.Single(runs);
+        Assert.Equal(IngestionScheduler.HolidaySkipJobCode, skip.JobCode);
+        Assert.Equal("trading-calendar", StatString(skip, "gate"));
+        Assert.Equal("skipped", StatString(skip, "gateOutcome"));
+        Assert.Equal("2026-10-05", StatString(skip, "holiday"));
+
+        // No job ran: zero source calls, zero stored prices (the gate is before the chain).
+        Assert.Equal(requestsBefore, _wireMock.RequestsFor(PricesPath));
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.DailyPrices.CountAsync());
+    }
+
+    /// <summary>
+    /// TC-MDF-087 (iii) — <b>a per-job stream is gated by the same calendar.</b> The intraday
+    /// sweep's production cadence (047's cron) is a weekday cron, so a configured holiday inside
+    /// the week is the one non-trading day it can still land on: the stream runs its job on
+    /// <b>no</b> occurrence of that holiday and records exactly <b>one</b> holiday-skip row for it
+    /// — one per gated stream per holiday, not one per skipped occurrence, so the 11:15/13:15/
+    /// 15:15/17:15 cadence does not flood the ledger — while the next trading day's occurrences
+    /// run normally.
+    /// <para>
+    /// This is the switch that makes <c>JobSchedules[].TradingDaysOnly</c> real: the macro/fund
+    /// streams stay ungated (published every day, the default), only the shipped intraday entry
+    /// sets it (pinned by <c>TradingCalendarTests</c> on the shipped configuration).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_trading_day_gated_per_job_stream_skips_a_configured_holiday()
+    {
+        await ResetAsync();
+
+        var intraday = new NamedSuccessStep("intraday-quotes");
+        await using var host = BuildPerJobHost(
+            intraday,
+            cron: "0 15 11,13,15,17 * * 1-5",
+            tradingDaysOnly: true,
+            holiday: "2026-10-05");
+        var clock = host.Clock;
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 0, 0));
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 23, 59));
+
+        // All four Monday occurrences were consumed, the job never ran, and the ledger holds the
+        // single skip row that says why.
+        var runs = await LedgerAsync();
+        var skip = Assert.Single(runs);
+        Assert.Equal(IngestionScheduler.HolidaySkipJobCode, skip.JobCode);
+        Assert.Equal("2026-10-05", StatString(skip, "holiday"));
+        Assert.Equal("job:intraday-quotes", StatString(skip, "stream"));
+
+        // Tuesday 2026-10-06 is not a holiday: the same stream runs at its own cadence.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 6, 11, 15));
+
+        var afterTuesday = await LedgerAsync();
+        Assert.Equal(2, afterTuesday.Count);
+        Assert.Equal("intraday-quotes", afterTuesday[1].JobCode);
+        Assert.Equal(IngestResult.Succeeded, afterTuesday[1].Status);
     }
 
     /// <summary>TC-MDF-012 — Source failure retries per the 5/15/60 ladder.</summary>
@@ -429,9 +500,12 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         var eod = new RetryThenHangStep();
         var morningSteps = MorningIngestChain.JobCodes.Select(code => new NamedSuccessStep(code)).ToList();
         await using var host = BuildStarvationHost(
-            // 12 h: the retry attempt must still be in flight when 05:30 UTC arrives the next
-            // morning, so the watchdog's own bound is not what releases it inside this window.
+            // TC-MDF-081 (b) premise: 12 h is chosen so the retry attempt must still be in flight
+            // when 05:30 UTC arrives the next morning, so neither watchdog bound is what releases
+            // it inside this window — the per-step bound (shipped 120 min) is raised alongside the
+            // ceiling (TKT-foundation-064).
             maxRunDuration: "12:00:00",
+            maxStepDuration: "12:00:00",
             eodChain: [eod],
             morningChain: morningSteps,
             morningCron: "0 30 8 * * *");
@@ -555,6 +629,54 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     }
 
     /// <summary>
+    /// The TKT-foundation-048 harness: one <b>per-job</b> stream on the real engine, with the
+    /// trading-day gate switchable and a holiday configurable — the intraday sweep's production
+    /// shape (047's cron), which pre-048 had no way to gate. The EOD stream is parked on a
+    /// Saturday cron so it cannot enter the case's Monday–Tuesday window: this harness observes
+    /// the per-job stream's gate, never the chain's.
+    /// </summary>
+    private IngestionSchedulerHost BuildPerJobHost(
+        IIngestJob job,
+        string cron,
+        bool tradingDaysOnly,
+        string? holiday = null)
+    {
+        var mail = new RecordingMailDispatcher();
+        var logs = new InMemorySerilogSink();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            // Out of the window: a Saturday-only EOD cron never occurs Mon–Tue.
+            ["Ingestion:Scheduler:Cron"] = "0 30 20 * * 6",
+            ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
+            ["Ingestion:Scheduler:JobSchedules:0:JobCode"] = job.JobCode,
+            ["Ingestion:Scheduler:JobSchedules:0:Cron"] = cron,
+            ["Ingestion:Scheduler:JobSchedules:0:TradingDaysOnly"] = tradingDaysOnly ? "true" : "false",
+        };
+
+        if (holiday is not null)
+        {
+            settings["Ingestion:TradingCalendar:Holidays:0"] = holiday;
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IIngestionAlerter>(new HarnessMailAlerter(mail));
+        services.AddMarketDataIngestion(configuration);
+        services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, [job]));
+
+        var provider = services.BuildServiceProvider();
+        var scheduler = provider.GetRequiredService<IngestionScheduler>();
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail, logs);
+    }
+
+    /// <summary>
     /// The TKT-foundation-059 harness: the same real scheduler engine and fake clock, with the
     /// chain composed entirely of doubles and the job runner doubled so the ledger write lands
     /// deterministically (see <see cref="RecordingJobRunner"/>).
@@ -608,7 +730,8 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         IReadOnlyList<IIngestJob>? morningChain = null,
         IIngestJob? perJobHolder = null,
         string? perJobCron = null,
-        string? morningCron = null)
+        string? morningCron = null,
+        string? maxStepDuration = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -631,6 +754,14 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         if (morningCron is not null)
         {
             settings["Ingestion:Scheduler:MorningCron"] = morningCron;
+        }
+
+        // The trading-day gate (TC-MDF-011) stays out of this harness's path: both starvation
+        // cases start on the 2026-10-05 trading day, so no bound added here can change whether
+        // their due instants are skipped.
+        if (maxStepDuration is not null)
+        {
+            settings["Ingestion:Scheduler:MaxStepDuration"] = maxStepDuration;
         }
 
         if (perJobHolder is not null)

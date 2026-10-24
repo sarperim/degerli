@@ -5,6 +5,8 @@ import type {
   MetricFamily,
   ScreenerCriterion,
 } from '@/lib/api/contracts'
+import type { TFunction } from 'i18next'
+import { isPercentUnit, unitSuffix } from '@/lib/units'
 
 /**
  * Client-side criterion model for the SCR-003 builder (UXR-SCR-001..003).
@@ -43,7 +45,7 @@ export const CAGR_WINDOWS: CagrWindow[] = [3, 5, 10]
 
 /** True when the metric's canonical value is a fraction displayed as a percent. */
 export function isPercentMetric(metric: CatalogMetric): boolean {
-  return metric.unit === '%'
+  return isPercentUnit(metric.unit)
 }
 
 /** Plain-language metric label in the active language (NFR-SCR-002). */
@@ -127,11 +129,16 @@ export function draftToCriterion(
   return criterion
 }
 
-/** Format a canonical value for display: percent for `%` metrics, raw otherwise. */
+/**
+ * Format a canonical value for display: percent for `%` metrics, raw otherwise —
+ * with the unit resolved to its localized label (`src/lib/units.ts`), never the raw
+ * server code (TKT-foundation-072).
+ */
 export function formatMetricValue(
   value: number | null | undefined,
   metric: CatalogMetric | undefined,
   locale: string,
+  t: TFunction,
 ): string {
   if (value === null || value === undefined) return '—'
   const percent = metric ? isPercentMetric(metric) : false
@@ -139,8 +146,7 @@ export function formatMetricValue(
   const formatted = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 2,
   }).format(display)
-  if (percent) return `${formatted}%`
-  if (metric && metric.unit && metric.unit !== 'x') return `${formatted} ${metric.unit}`
-  if (metric && metric.unit === 'x') return `${formatted}x`
-  return formatted
+  // A metric the catalog no longer carries makes no unit claim at all.
+  if (!metric) return formatted
+  return `${formatted}${unitSuffix(metric.unit, t)}`
 }

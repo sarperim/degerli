@@ -7,6 +7,7 @@ import { SkeletonText } from '@/components/ui/skeleton'
 import { fetchMarketMacro, marketQueryKeys } from '@/lib/api/market'
 import type { MacroSeries } from '@/lib/api/contracts'
 import { formatNumber } from '@/lib/format'
+import { unitLabel } from '@/lib/units'
 
 /**
  * SCR-001 macro strip (UX `market-overview.md` §3.7; UXR-MOV-007..010;
@@ -114,7 +115,9 @@ function MacroIndicator({ series }: { series: MacroSeries }) {
               data-testid={`macro-unit-${series.code}`}
               className="text-sm text-muted-foreground"
             >
-              {series.unit}
+              {/* The served `unit` is a code, not prose (`03` §1): localized here,
+                  with an honest "unit not specified" fallback (TKT-foundation-072). */}
+              {unitLabel(series.unit, t)}
             </span>
           </span>
         )}

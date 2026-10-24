@@ -7,7 +7,11 @@ scope:
 
 # TKT-foundation-065: Share-count unit — the served value is `currentCapital` (paid-in capital), not a proven share count; decide the contract
 
-- Status: blocked — **USER DECISION REQUIRED ON THE DIRECTION**
+- Status: partially resolved — **USER DECISION D4 = OPTION A recorded verbatim (2026-10-24); display half landed, contract half still owed.**
+  - **The decision, verbatim:** *"D4 (065 share-count unit): A — relabel as paid-in capital (TRY); no `sharesOutstanding` claim from that lane."*
+  - **Landed half (PR #137, TKT-foundation-072):** the **display** side is done — the served figure is labelled **"Ödenmiş sermaye" / "Paid-in capital"** with a localized **TRY** unit, and the old "Ödenmiş pay sayısı" / "Shares outstanding" copy was removed from both TR and EN catalogues. No UI surface now reads it as a count.
+  - **Still owed (why this is not `done`):** acceptance (ii) also requires the **contract and model text** to stop claiming a count — `01` §10.9.11 corrected to paid-in capital, `03-api-design.md` §3 `shareCount` block renamed/aliased, `02-data-model.md` §3.1 `share_counts` column semantics reconciled, plus an implementation slice with exact file scope. **072 was presentation-only by design and explicitly changed no server contract or value**, so the API still serves `shareCount.sharesOutstanding` naming a monetary `currentCapital` figure. That is the remaining honesty gap and it needs its own ticket.
+  - **Note for the planner:** the reserved §13.1 **v1.5.44** row was consumed by another ticket while this was blocked — **TKT-foundation-048** (BIST holiday calendar) appended it in PR #140. The contract half must allocate **above the landed max** when it lands (v1.5.52 was taken by 078, v1.5.48 by 070), not reuse 44.
 - Size: S
 - **Priority: P2 — 058 follow-up / contract honesty (USER GRANT 2026-10-23 afternoon).** The `shares` lane is landed and serving (`shareCount.sharesOutstanding`), but the live unit cross-validation did **not** pass; the contract currently names a monetary capital figure as a share count.
 - **Verified evidence (live, dev stack, 2026-10-23):**
@@ -47,3 +51,23 @@ scope:
 | **AYCES** | **7,181,451.329** | (not a count) | **fractional → money** |
 
 - **64 / 556 rows carry sub-unit precision.** The five matches prove nominal = 1 TL for those five; they do **not** prove a share count for the other 551. The store and the served field are monetary paid-in capital (`currentCapital`).
+
+## CRITICAL refinement of the record (orchestrator, 2026-10-24 04:05 UTC) — D4 has **not** yet been applied to the field it was about
+
+The 072 review surfaced this as `DR-4`, and I verified it against the live store. It materially changes what the contract half owes:
+
+**There are two different `sharesOutstanding` in the stock payload, and they are not the same thing:**
+
+| Field | Source | Live state | What D4 said |
+|---|---|---|---|
+| `shareCount.sharesOutstanding` (`StockFundamentalsEndpoints.cs:317`) | `share_counts` store ← `/memberSecurities` `currentCapital` (058) | **556 rows populated** — this is the monetary figure | **This is the field D4/Option A is about.** Still served under a count name. |
+| `lines.sharesOutstanding` (`StockFundamentalsEndpoints.cs:332`) | statement line `SHARES_OUT` ← `StatementMapper` | **0 rows** — never decoded; always renders a dash | Not 065's field at all |
+
+**Consequence 1 — the decision is still unapplied where it matters.** D4 says "relabel as paid-in capital (TRY); no `sharesOutstanding` claim from that lane". The lane's field is `shareCount.sharesOutstanding`, it is populated for 556 instruments, and it **still claims to be a count**. 072 could not fix this — it was presentation-only by design and the Web does not render `shareCount` at all. The contract half is therefore the *whole* of D4, not a tidy-up.
+
+**Consequence 2 — 072's relabel landed on the other field, and may be wrong in advance.** 072 labelled `lines.sharesOutstanding` as "Ödenmiş sermaye" / "Paid-in capital" with a TRY unit. That field is **not** paid-in capital: it is a *statement-reported share count* line (`SHARES_OUT`), a genuinely different quantity from the `currentCapital` money figure. Today this is harmless and honest — `SHARES_OUT` has never been decoded, so the row is always a dash, and no false claim is displayed. But the label is a claim-in-waiting: **the moment a statements decoder starts emitting `SHARES_OUT`, that row will show a share count wearing a TRY paid-in-capital unit — a fabricated unit, which is exactly the class of error D4 exists to prevent.** Do not lose this in the contract slice; either the row reverts to a share-count label (once a real count exists) or it stays empty.
+
+**Required in the implementation slice (in addition to acceptance (ii)):**
+1. Rename/alias `shareCount.sharesOutstanding` → `paidInCapital` (+ `asOf`, unit TRY) — the 556 populated rows.
+2. Decide `lines.sharesOutstanding` explicitly: it is **not** paid-in capital. Restore its count semantics, and keep it honestly null until a decoder produces `SHARES_OUT` with a unit that is actually a count.
+3. A test that pins the distinction, so the two fields can never be relabelled into each other again.

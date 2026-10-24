@@ -1,4 +1,5 @@
 import type { CatalogMetric, ScreenerCriterion } from '@/lib/api/contracts'
+import { isPercentUnit } from '@/lib/units'
 import type { CriterionDraft } from '@/screens/screener/criteria'
 
 /**
@@ -16,7 +17,7 @@ export function screenCriteriaToDrafts(
 ): CriterionDraft[] {
   return criteria.map((criterion, index) => {
     const metric = metricsByCode.get(criterion.metricCode)
-    const percent = metric?.unit === '%'
+    const percent = isPercentUnit(metric?.unit)
     return {
       id: `criterion-${criterion.metricCode}-${index}`,
       metricCode: criterion.metricCode,

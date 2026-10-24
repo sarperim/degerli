@@ -10,6 +10,15 @@
     "cancel": "Cancel",
     "close": "Close"
   },
+  "units": {
+    "percent": "%",
+    "percentYoY": "% year-on-year",
+    "ratio": "x",
+    "currencyTry": "TRY",
+    "usdPerOunce": "USD per ounce",
+    "tryPerGram": "TRY per gram",
+    "unknown": "Unit not specified"
+  },
   "header": {
     "ariaLabel": "Site header",
     "primaryNav": "Primary navigation",
@@ -174,7 +183,7 @@
         "currentAssets": "Current assets",
         "currentLiabilities": "Current liabilities",
         "sharesDiluted": "Diluted shares",
-        "sharesOutstanding": "Shares outstanding"
+        "paidInCapital": "Paid-in capital"
       },
       "bookValue": "Book value",
       "bookValuePerShare": "Book value per share"

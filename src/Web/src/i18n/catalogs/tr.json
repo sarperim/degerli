@@ -10,6 +10,15 @@
     "cancel": "Vazgeç",
     "close": "Kapat"
   },
+  "units": {
+    "percent": "%",
+    "percentYoY": "% (yıllık)",
+    "ratio": "x",
+    "currencyTry": "₺",
+    "usdPerOunce": "USD/ons",
+    "tryPerGram": "₺/g",
+    "unknown": "Birim belirtilmemiş"
+  },
   "header": {
     "ariaLabel": "Site başlığı",
     "primaryNav": "Ana menü",
@@ -174,7 +183,7 @@
         "currentAssets": "Dönen varlıklar",
         "currentLiabilities": "Kısa vadeli yükümlülükler",
         "sharesDiluted": "Seyreltilmiş pay sayısı",
-        "sharesOutstanding": "Ödenmiş pay sayısı"
+        "paidInCapital": "Ödenmiş sermaye"
       },
       "bookValue": "Defter değeri",
       "bookValuePerShare": "Hisse başına defter değeri"
