@@ -7,7 +7,11 @@ scope:
 
 # TKT-foundation-065: Share-count unit — the served value is `currentCapital` (paid-in capital), not a proven share count; decide the contract
 
-- Status: blocked — **USER DECISION REQUIRED ON THE DIRECTION**
+- Status: partially resolved — **USER DECISION D4 = OPTION A recorded verbatim (2026-10-24); display half landed, contract half still owed.**
+  - **The decision, verbatim:** *"D4 (065 share-count unit): A — relabel as paid-in capital (TRY); no `sharesOutstanding` claim from that lane."*
+  - **Landed half (PR #137, TKT-foundation-072):** the **display** side is done — the served figure is labelled **"Ödenmiş sermaye" / "Paid-in capital"** with a localized **TRY** unit, and the old "Ödenmiş pay sayısı" / "Shares outstanding" copy was removed from both TR and EN catalogues. No UI surface now reads it as a count.
+  - **Still owed (why this is not `done`):** acceptance (ii) also requires the **contract and model text** to stop claiming a count — `01` §10.9.11 corrected to paid-in capital, `03-api-design.md` §3 `shareCount` block renamed/aliased, `02-data-model.md` §3.1 `share_counts` column semantics reconciled, plus an implementation slice with exact file scope. **072 was presentation-only by design and explicitly changed no server contract or value**, so the API still serves `shareCount.sharesOutstanding` naming a monetary `currentCapital` figure. That is the remaining honesty gap and it needs its own ticket.
+  - **Note for the planner:** the reserved §13.1 **v1.5.44** row was consumed by another ticket while this was blocked; the contract half must allocate above the landed max rather than reuse 44.
 - Size: S
 - **Priority: P2 — 058 follow-up / contract honesty (USER GRANT 2026-10-23 afternoon).** The `shares` lane is landed and serving (`shareCount.sharesOutstanding`), but the live unit cross-validation did **not** pass; the contract currently names a monetary capital figure as a share count.
 - **Verified evidence (live, dev stack, 2026-10-23):**
