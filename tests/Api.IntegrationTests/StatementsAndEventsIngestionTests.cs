@@ -12,6 +12,7 @@ using Degerli.Ingestion.Disclosures;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
@@ -876,11 +877,25 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.Equal(
             disclosures.MaxDetailFetches.ToString(CultureInfo.InvariantCulture),
             disclosuresSection.GetProperty("MaxDetailFetches").GetString());
+        Assert.Equal(
+            disclosures.MaxWalkDuration.ToString(),
+            disclosuresSection.GetProperty("MaxWalkDuration").GetString());
         Assert.Equal(DisclosuresSourceOptions.FeedMarket, disclosures.Feed);
         Assert.Equal(5_000L, disclosures.BootstrapLookback);
         Assert.Equal(1_000L, disclosures.MarketBootstrapLookback);
         Assert.Equal(24, disclosures.MaxListPages);
         Assert.Equal(200, disclosures.MaxDetailFetches);
+        Assert.Equal(TimeSpan.FromMinutes(90), disclosures.MaxWalkDuration);
+
+        // TKT-foundation-078 (review DR-1): the walk's self-truncation deadline must sit strictly
+        // inside the scheduler's per-step bound, so a slow pass saves its cursor instead of being
+        // watchdog-cancelled (RUN_HUNG) and losing every completed page.
+        Assert.True(
+            disclosures.MaxWalkDuration > TimeSpan.Zero,
+            "the shipped MaxWalkDuration must be a positive bound (<= 0 disables the deadline)");
+        Assert.True(
+            disclosures.MaxWalkDuration < IngestionSchedulerOptions.DefaultMaxStepDuration,
+            $"MaxWalkDuration ({disclosures.MaxWalkDuration}) must be strictly inside MaxStepDuration ({IngestionSchedulerOptions.DefaultMaxStepDuration})");
 
         static void AssertFamily(
             JsonElement family,
@@ -2254,6 +2269,146 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
     }
 
     /// <summary>
+    /// TC-MDF-101 (wall-clock deadline, review DR-1) — a pass whose detail fetches are slow enough
+    /// to cross <c>Ingestion:Disclosures:MaxWalkDuration</c> <b>self-truncates</b> instead of being
+    /// watchdog-cancelled: it records <c>truncated</c>, persists the last index it <b>completed</b>,
+    /// and the next run resumes exactly there — so a degraded gateway never loses the completed
+    /// pages (the run-208 <c>RUN_HUNG</c> signature). The clock is a deterministic fake that
+    /// advances one minute per read; no real sleep and no live gateway are involved.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_f_a_walk_deadline_self_truncates_and_resumes_from_its_last_completed_index()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+
+        var rows = Enumerable.Range(0, 6)
+            .Select(offset => new MarketRow(1_230_017L + offset, "1001", "ODA"))
+            .ToList();
+
+        // The first page carries all six rows; the walk then asks once more from the last completed
+        // index (the head-confirmation page, review DR-4) — the double answers ER005 there.
+        StubMarketArchive(rows, new[] { 1_230_017L, 1_230_020L, 1_230_022L });
+        foreach (var row in rows)
+        {
+            StubDetail(
+                row.Index.ToString(CultureInfo.InvariantCulture),
+                DisclosureDetailBody(row.Index.ToString(CultureInfo.InvariantCulture), "ODA"));
+        }
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(
+            vyk: true,
+            logs: logs,
+            minimumLevel: LogEventLevel.Information,
+            clock: new SteppingTimeProvider(TimeSpan.FromMinutes(1)),
+            extraSettings: new Dictionary<string, string?>(MarketFeed)
+            {
+                ["Ingestion:Disclosures:MaxWalkDuration"] = "00:10:00",
+            });
+
+        var first = await RunAsync(provider, "disclosures");
+
+        // Four details are paid before the 10-minute deadline expires (one minute per clock read:
+        // a deadline check before each request plus the pacer's stamp). The walk stops honestly —
+        // it is not a failed run and it is not a watchdog kill.
+        Assert.Equal(IngestResult.Succeeded, first.Status);
+        Assert.Equal(4, first.Written);
+        Assert.Contains(logs.Events, evt =>
+            evt.RenderMessage().Contains("truncated True", StringComparison.Ordinal));
+
+        await using var db = _postgres.CreateContext();
+        var cursor = await db.CoverageMetadata.AsNoTracking()
+            .SingleAsync(c => c.DataType == "kap-disclosures-market-cursor");
+        Assert.Equal("1230020", cursor.Notes);
+        Assert.Equal(4, await db.KapDisclosures.CountAsync());
+
+        // The next run resumes at the persisted cursor, not at the bootstrap window and not after
+        // it: the boundary row it already completed is not re-fetched, the remaining rows are.
+        _wireMock.Server.ResetLogEntries();
+        await using var resumed = BuildIngestion(
+            vyk: true,
+            clock: new SteppingTimeProvider(TimeSpan.FromMinutes(1)),
+            extraSettings: new Dictionary<string, string?>(MarketFeed)
+            {
+                ["Ingestion:Disclosures:MaxWalkDuration"] = "00:10:00",
+            });
+
+        var second = await RunAsync(resumed, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, second.Status);
+        Assert.Equal(2, second.Written);
+        Assert.Equal("1230020", MarketRequests().First().Index);
+        Assert.DoesNotContain(
+            _wireMock.Server.LogEntries,
+            entry => entry.RequestMessage?.Path == DetailPath("1230020"));
+        Assert.Equal(
+            "1230022",
+            (await db.CoverageMetadata.AsNoTracking()
+                .SingleAsync(c => c.DataType == "kap-disclosures-market-cursor")).Notes);
+    }
+
+    /// <summary>
+    /// TC-MDF-101 (deadline semantics, review DR-1) — a non-positive
+    /// <c>Ingestion:Disclosures:MaxWalkDuration</c> <b>disables</b> the deadline (the documented
+    /// semantics, matching the other bounds' ≤ 0 values). The same aggressive fake clock that
+    /// truncates the case above writes the whole pass when the bound is 0.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_g_a_non_positive_walk_deadline_disables_the_bound()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+
+        var rows = Enumerable.Range(0, 6)
+            .Select(offset => new MarketRow(1_230_017L + offset, "1001", "ODA"))
+            .ToList();
+        StubMarketArchive(rows, new[] { 1_230_017L, 1_230_022L });
+        foreach (var row in rows)
+        {
+            StubDetail(
+                row.Index.ToString(CultureInfo.InvariantCulture),
+                DisclosureDetailBody(row.Index.ToString(CultureInfo.InvariantCulture), "ODA"));
+        }
+
+        await using var provider = BuildIngestion(
+            vyk: true,
+            clock: new SteppingTimeProvider(TimeSpan.FromMinutes(1)),
+            extraSettings: new Dictionary<string, string?>(MarketFeed)
+            {
+                ["Ingestion:Disclosures:MaxWalkDuration"] = "00:00:00",
+            });
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(6, result.Written);
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(
+            "1230022",
+            (await db.CoverageMetadata.AsNoTracking()
+                .SingleAsync(c => c.DataType == "kap-disclosures-market-cursor")).Notes);
+    }
+
+    /// <summary>
+    /// A deterministic wall clock for the TKT-foundation-078 deadline cases: every read advances
+    /// <paramref name="step"/> (default 1 min), so a run crosses a configured deadline after a
+    /// fixed number of request checks — no <c>Task.Delay</c>, no real time, no live gateway.
+    /// </summary>
+    private sealed class SteppingTimeProvider(TimeSpan step) : TimeProvider
+    {
+        private DateTimeOffset _now = new(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var value = _now;
+            _now = _now.Add(step);
+            return value;
+        }
+    }
+
+    /// <summary>
     /// TC-MDF-099/101 helper world — a company archive that spans a <b>huge</b> index range: 2,000
     /// dense rows at 1,000,000…1,001,999 (≈41 pages when walked from zero, the run-208 shape)
     /// carrying a non-target type, plus two recent <c>ODA</c> disclosures inside the head's
@@ -2601,9 +2756,10 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         bool vyk = false,
         InMemorySerilogSink? logs = null,
         IReadOnlyDictionary<string, string?>? extraSettings = null,
-        LogEventLevel minimumLevel = LogEventLevel.Warning)
+        LogEventLevel minimumLevel = LogEventLevel.Warning,
+        TimeProvider? clock = null)
     {
-        var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+        clock ??= new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
         var settings = new Dictionary<string, string?>
         {

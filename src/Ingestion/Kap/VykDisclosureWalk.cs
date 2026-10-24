@@ -252,11 +252,13 @@ public sealed record VykCompanyWalk<TFact>(IReadOnlyList<TFact> Facts, string? N
 /// walk finite: it stops at the bound, persists the last index it <b>completed</b>, records that it
 /// was truncated, and the next run resumes exactly there.
 /// <para>
-/// <b>What the bound is not.</b> It bounds <i>work</i> (pages, details), not wall clock: the worst
-/// case of a walk is <c>pages × request cost + details × max(pace, per-item timeout)</c>, and an
-/// unreachable gateway can drive a detail to its 180 s per-item bound — so a degraded world can
-/// outlive a step bound. That class is the scheduler's per-step watchdog's (01 §10.9.17), not this
-/// count's; the option doc of the disclosures lane records the numbers.
+/// <b>Work bound, not the only bound.</b> This record bounds <i>work</i> (pages, details); the
+/// wall-clock half is the caller's deadline (TKT-foundation-078). A degraded gateway can drive a
+/// detail to its 180 s per-item bound, so a work-only bound can outlive a step; the disclosures
+/// lane therefore passes a <c>MaxWalkDuration</c> deadline (90 min, strictly inside the 120-min
+/// per-step bound) and the walk self-truncates at it, persisting the last index it completed. The
+/// scheduler's watchdog (01 §10.9.17) is the backstop for a single request that outlives its own
+/// per-item timeout, not the lane's normal terminator.
 /// </para>
 /// <para>
 /// A non-positive value disables that bound (<see cref="Unbounded"/>), which is the pre-078
@@ -330,6 +332,7 @@ public sealed class VykDisclosureWalker
     private readonly string _family;
     private readonly Func<string, string> _redact;
     private readonly TimeSpan _detailFetchTimeout;
+    private readonly TimeProvider _clock;
 
     public VykDisclosureWalker(
         IKapSourceClient client,
@@ -337,13 +340,18 @@ public sealed class VykDisclosureWalker
         ILogger? logger,
         string family,
         Func<string, string>? redact = null,
-        TimeSpan? detailFetchTimeout = null)
+        TimeSpan? detailFetchTimeout = null,
+        TimeProvider? clock = null)
     {
         _client = client;
         _pacer = pacer;
         _logger = logger;
         _family = family;
         _redact = redact ?? (message => message);
+        // The wall-clock deadline is read from the injected provider (TKT-foundation-078): the
+        // disclosures adapter passes the host/job clock, so a fake clock drives the bound in tests
+        // and no code path reads DateTime.UtcNow directly.
+        _clock = clock ?? TimeProvider.System;
 
         // The per-item bound (TKT-foundation-061). The shipped default is the shared
         // KapSourceOptions constant (three minutes vs a ~10–12 s healthy pace), so a caller that
@@ -394,6 +402,16 @@ public sealed class VykDisclosureWalker
     /// applies only to the very first request made from the persisted cursor — never to later
     /// pages and never to the post-reset re-walk.
     /// </para>
+    /// <para>
+    /// <b>Wall-clock deadline (TKT-foundation-078).</b> <paramref name="deadline"/> is the
+    /// <b>pass's</b> deadline, not this walk's: the adapter starts one clock per pass and shares it
+    /// across the company feed's constituent loop. It is checked before every list and detail
+    /// request against the injected <see cref="TimeProvider"/>. On expiry the walk stops as an
+    /// honest bounded pass — <c>truncated</c>, with the cursor naming the last index it
+    /// <b>completed</b> — and the caller persists it, so the next run resumes exactly there. If the
+    /// deadline expires before any row is handled, no cursor is advanced. <c>null</c> (a
+    /// non-positive <c>MaxWalkDuration</c>) disables the deadline.
+    /// </para>
     /// </summary>
     public async Task<VykCompanyWalk<TFact>> WalkAsync<TFact>(
         string symbol,
@@ -406,7 +424,8 @@ public sealed class VykDisclosureWalker
         Func<string, string, DisclosureInfo, IEnumerable<TFact>> decode,
         CancellationToken cancellationToken,
         bool replayPersistedIndex = false,
-        VykWalkBudget? budget = null)
+        VykWalkBudget? budget = null,
+        DateTimeOffset? deadline = null)
     {
         var bounds = budget ?? VykWalkBudget.Unbounded;
         var early = ParseIndex(earlyDisclosureIndex)
@@ -430,6 +449,7 @@ public sealed class VykDisclosureWalker
         var resetAttempted = false;
         VykCursorReset? reset = null;
         var completed = processed;
+        var anyCompleted = false;
         var pagesFetched = 0;
         var detailsFetched = 0;
         var truncated = false;
@@ -445,6 +465,16 @@ public sealed class VykDisclosureWalker
             // page: a budget that could not fetch one page would make no progress at all and the
             // next run would repeat it forever (TKT-foundation-078).
             if (bounds.LimitsPages && pagesFetched >= bounds.MaxPages)
+            {
+                truncated = true;
+                break;
+            }
+
+            // The wall-clock deadline (TKT-foundation-078): checked before every list and detail
+            // request, using the injected clock. On expiry the walk stops as an honest bounded
+            // pass and the cursor names the last index it completed, so the next run resumes
+            // there instead of the scheduler discarding the whole pass (RUN_HUNG).
+            if (IsDeadlineExpired(deadline))
             {
                 truncated = true;
                 break;
@@ -525,12 +555,21 @@ public sealed class VykDisclosureWalker
                     || !isFamily(disclosure))
                 {
                     completed = Math.Max(completed, index.Value);
+                    anyCompleted = true;
                     continue;
                 }
 
                 // The detail ceiling (TKT-foundation-078): stop before a detail that the budget
                 // cannot pay for, so the cursor names only indexes whose facts were handled.
                 if (bounds.LimitsDetails && detailsFetched >= bounds.MaxDetailFetches)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                // The pass deadline, checked before the request: a slow gateway stops the walk
+                // gracefully here, never by a watchdog cancellation that loses the pages.
+                if (IsDeadlineExpired(deadline))
                 {
                     truncated = true;
                     break;
@@ -577,6 +616,7 @@ public sealed class VykDisclosureWalker
 
                 detailsFetched++;
                 completed = Math.Max(completed, index.Value);
+                anyCompleted = true;
             }
 
             if (truncated)
@@ -589,6 +629,7 @@ public sealed class VykDisclosureWalker
             {
                 processed = maxIndex;
                 completed = Math.Max(completed, maxIndex);
+                anyCompleted = true;
                 nextCursor = maxIndex.ToString(CultureInfo.InvariantCulture);
             }
 
@@ -605,8 +646,13 @@ public sealed class VykDisclosureWalker
         if (truncated)
         {
             // Resume exactly where the walk stopped: the last index it completed, never the page's
-            // highest row (whose detail the budget did not pay for) — 078's no-silent-gap pin.
-            nextCursor = (completed > 0 ? completed : processed).ToString(CultureInfo.InvariantCulture);
+            // highest row (whose detail the budget did not pay for) — 078's no-silent-gap pin. If
+            // the deadline expired before any row was handled, no cursor is advanced at all (the
+            // persisted value, if any, stays exactly where it was).
+            if (anyCompleted)
+            {
+                nextCursor = (completed > 0 ? completed : processed).ToString(CultureInfo.InvariantCulture);
+            }
         }
 
         return new VykCompanyWalk<TFact>(facts, nextCursor, raw.ToString())
@@ -662,6 +708,14 @@ public sealed class VykDisclosureWalker
     /// <paramref name="bootstrapIndex"/> and reads that index, which is a start-of-read position,
     /// not a row an earlier pass completed.
     /// </para>
+    /// <para>
+    /// <b>Wall-clock deadline (TKT-foundation-078).</b> <paramref name="deadline"/> is the pass's
+    /// deadline (the market feed is one walk per pass). It is checked before every list and detail
+    /// request against the injected <see cref="TimeProvider"/>; on expiry the walk stops as an
+    /// honest bounded pass, advances the cursor to the last index it <b>completed</b> and the next
+    /// run resumes there. If it expires before any row is handled, the cursor is left unchanged.
+    /// <c>null</c> (a non-positive <c>MaxWalkDuration</c>) disables the deadline.
+    /// </para>
     /// </summary>
     public async Task<VykMarketWalk<TFact>> WalkMarketAsync<TFact>(
         long? cursor,
@@ -673,7 +727,8 @@ public sealed class VykDisclosureWalker
         Func<DisclosureInfo, bool> isFamily,
         Func<string, string, DisclosureInfo, IEnumerable<TFact>> decode,
         VykWalkBudget? budget,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? deadline = null)
     {
         ArgumentNullException.ThrowIfNull(symbolsByCompanyId);
         var bounds = budget ?? VykWalkBudget.Unbounded;
@@ -685,6 +740,7 @@ public sealed class VykDisclosureWalker
         var from = processed;
         long? next = cursor;
         var completed = processed;
+        var anyCompleted = false;
         var pagesFetched = 0;
         var detailsFetched = 0;
         var outOfBound = 0;
@@ -700,6 +756,15 @@ public sealed class VykDisclosureWalker
         while (true)
         {
             if (bounds.LimitsPages && pagesFetched >= bounds.MaxPages)
+            {
+                truncated = true;
+                break;
+            }
+
+            // The wall-clock deadline (TKT-foundation-078): checked before every list and detail
+            // request. On expiry the walk stops as an honest bounded pass at the last index it
+            // completed, so the market cursor advances and the next run resumes there.
+            if (IsDeadlineExpired(deadline))
             {
                 truncated = true;
                 break;
@@ -748,16 +813,25 @@ public sealed class VykDisclosureWalker
                     // Outside the bound universe: counted, never fetched, never fabricated.
                     outOfBound++;
                     completed = Math.Max(completed, index);
+                    anyCompleted = true;
                     continue;
                 }
 
                 if (index < processed || (index == processed && boundaryCompleted) || !isFamily(disclosure))
                 {
                     completed = Math.Max(completed, index);
+                    anyCompleted = true;
                     continue;
                 }
 
                 if (bounds.LimitsDetails && detailsFetched >= bounds.MaxDetailFetches)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                // The pass deadline, checked before the detail request (see WalkAsync).
+                if (IsDeadlineExpired(deadline))
                 {
                     truncated = true;
                     break;
@@ -790,6 +864,7 @@ public sealed class VykDisclosureWalker
 
                 detailsFetched++;
                 completed = Math.Max(completed, index);
+                anyCompleted = true;
             }
 
             if (truncated)
@@ -802,6 +877,7 @@ public sealed class VykDisclosureWalker
             {
                 processed = pageMax;
                 completed = Math.Max(completed, pageMax);
+                anyCompleted = true;
                 next = pageMax;
                 moved = true;
             }
@@ -835,7 +911,12 @@ public sealed class VykDisclosureWalker
         // would re-open the platform-history walk — 078's defect).
         if (truncated)
         {
-            next = completed > 0 ? completed : processed;
+            // Resume at the last index the walk completed; if the deadline expired before any row
+            // was handled, leave the cursor exactly where it was (no invented advance).
+            if (anyCompleted)
+            {
+                next = completed > 0 ? completed : processed;
+            }
         }
         else if (!moved)
         {
@@ -950,6 +1031,14 @@ public sealed class VykDisclosureWalker
                 _redact(exception.Message),
                 null),
         };
+
+    /// <summary>
+    /// True when the walk's wall-clock deadline has been reached (TKT-foundation-078). A null
+    /// deadline never expires; the clock is the injected <see cref="TimeProvider"/>, never
+    /// <c>DateTime.UtcNow</c>, so the bound is deterministic on a fake clock.
+    /// </summary>
+    private bool IsDeadlineExpired(DateTimeOffset? deadline) =>
+        deadline is { } bound && _clock.GetUtcNow() >= bound;
 
     private async Task<string> GetVykAsync(string path, CancellationToken cancellationToken)
     {

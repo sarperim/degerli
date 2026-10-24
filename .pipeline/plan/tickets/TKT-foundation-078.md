@@ -67,8 +67,10 @@ Trigger `disclosures` on the merged dev stack: `kap_disclosures` > 0 rows, newes
 
 - **PR:** https://github.com/sarperim/degerli/pull/139 — branch `feature/TKT-foundation-078`.
 - **§13.1:** v1.5.52 (allocated above the landed max v1.5.42 and the reservations v1.5.43–51).
-- **Tests:** TC-MDF-099 (a/b), TC-MDF-100 (a–d), TC-MDF-101 (a–e) in
+- **Tests:** TC-MDF-099 (a/b), TC-MDF-100 (a–d), TC-MDF-101 (a–g) in
   `tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs` — L2 doubles only, no live gateway.
+  (101 f/g are the round-2 wall-clock deadline cases; the shipped-config guard lives in
+  `TKT_foundation_034_config_wiring_ships_vyk_event_routes`.)
 - **Red→green:** pre-078 from-zero start restored → **3 failed / 5 passed** (`TC_MDF_099_a`
   `Expected: 2, Actual: 0` — the from-zero walk exhausts its 24-page budget inside the dense archive
   before the recent window; `TC_MDF_099_b` window ignored; `TC_MDF_100_b` reset target `0`).
@@ -76,19 +78,40 @@ Trigger `disclosures` on the merged dev stack: `kap_disclosures` > 0 rows, newes
   the reset-clears-cursor case leaving the stale row, the anchor-down incremental case throwing,
   the 30-row-then-more short-page case writing 30 of 50 rows, and the market walk's row-count
   stop). **11/11 green** after; neighbouring suites green; `dotnet build` 0 warnings.
-- **One walk's cost (not a wall-clock bound):** the budget is **per walk** — `MaxListPages = 24`
-  and `MaxDetailFetches = 200`. The pacing actually in force is
+- **The pass is bounded in work *and* wall clock:** the work budget is **per walk** —
+  `MaxListPages = 24` and `MaxDetailFetches = 200`. The pacing actually in force is
   `Ingestion:Statements:RequestDelayMs` = **10 s** (`Ingestion:Kap` carries no delay), so one
   `market` walk is nominally 24 × 10 s + 200 × 10 s ≈ **37.3 min**; the shipped `market` feed is
   one walk per run. The detail cap bounds the *number* of details, not their time: a stall is
-  bounded per item at **180 s** (`Ingestion:Kap:DetailFetchTimeoutMs`), so a degraded gateway can
-  drive 200 × 180 s ≈ **10 h** (+ ≤ 12 min of list calls at the 30 s client timeout) out of one
-  walk — past the **120-min per-step bound** (§10.9.17, v1.5.43; the 90-min whole-attempt bound no
-  longer exists). That class is the scheduler watchdog's (`RUN_HUNG`), not the budget's; this is
-  recorded rather than claimed as a hard bound. In the shipped market feed the detail term cannot
-  even bind (~36 bound rows over 24 × 50 rows), so the pass is bounded by its pages in practice.
-  `Feed = company` builds one walk per constituent: ≈ 37.3 min × 30 ≈ **18.7 h** nominal per pass —
-  a recorded, resumable multi-run backfill, never one chain step.
+  bounded per item at **180 s** (`Ingestion:Kap:DetailFetchTimeoutMs`), so a work-only bound could
+  let a degraded gateway drive 200 × 180 s ≈ **10 h** (+ ≤ 12 min of list calls at the 30 s client
+  timeout) out of one walk — past the **120-min per-step bound** (§10.9.17, v1.5.43; the 90-min
+  whole-attempt bound no longer exists). The walk therefore also carries a **wall-clock deadline**:
+  `Ingestion:Disclosures:MaxWalkDuration` = **90 min** (strictly below the 120-min `MaxStepDuration`,
+  leaving ≈30 min for the job's store write). One clock is started per pass in `FetchVykAsync` and
+  shared by the walk(s) — the market feed is one walk, the company feed shares it across the
+  constituent loop — and the walker checks it before every list and detail request on the injected
+  `TimeProvider`. On expiry the walk self-truncates: it records `truncated`, persists the last index
+  it **completed** (and every already-completed company's cursor), and the next run resumes exactly
+  there. A deadline stop is an honest bounded pass (`succeeded`/`partial` with counts), never
+  `failed` and never a watchdog `RUN_HUNG` that loses the whole pass (the run-208 signature). The
+  worst case is `min(work bound, MaxWalkDuration)`; the scheduler watchdog is now only the backstop
+  for a single request that outlives its own per-item timeout. `MaxWalkDuration ≤ 0` disables the
+  deadline (the pre-078 behaviour). In the shipped market feed the detail term cannot even bind
+  (~36 bound rows over 24 × 50 rows), so the pass is bounded by its pages in practice.
+  `Feed = company` builds one walk per constituent but shares the pass deadline, so one run is
+  bounded as a whole (the pre-deadline nominal was ≈ 37.3 min × 30 ≈ **18.7 h**): it is now a
+  recorded, resumable multi-run backfill, never one chain step.
+- **Review round 2 (DR-1) — the walk enforces its own wall clock.** `MaxWalkDuration` (code default
+  and shipped config: `01:30:00`), one deadline per pass, checked before every list/detail request
+  via the injected `TimeProvider`. Truncation sets `truncated` and persists the last **completed**
+  index (and every completed company's cursor); a deadline stop is `succeeded`/`partial` with
+  counts. If the deadline expires before any row is handled, no cursor is advanced. Tests:
+  `TC_MDF_101_f` (a fake clock that crosses a 10-min deadline truncates after four details,
+  persists `1230020`, and the next run resumes there without re-fetching the boundary row) and
+  `TC_MDF_101_g` (a non-positive bound disables the deadline; the same clock writes all six rows).
+  The shipped-config guard asserts `DefaultMaxWalkDuration < IngestionSchedulerOptions.DefaultMaxStepDuration`
+  and config ↔ code equality.
 - **Live criterion** (orchestrator post-merge) is unchanged and remains open.
 
 ## Dependencies

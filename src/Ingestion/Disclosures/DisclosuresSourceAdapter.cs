@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Statements;
 using Degerli.Ingestion.Universe;
@@ -133,9 +134,12 @@ public sealed class DisclosuresSourceOptions
     /// stalls is bounded per item at 180 s
     /// (<see cref="KapSourceOptions.DefaultDetailFetchTimeoutMs"/>), so a degraded gateway can
     /// drive 200 × 180 s = 36,000 s ≈ <b>10 h</b> out of one walk (+ ≤ 12 min of list calls at the
-    /// 30 s client timeout) — more than a 120-min step bound. That class is the scheduler's
-    /// per-step watchdog's to catch (01 §10.9.17, <c>RUN_HUNG</c>), not this count's; the numbers
-    /// are recorded here rather than claimed as a wall-clock bound.
+    /// 30 s client timeout) — more than a 120-min step bound. That is why this count is paired with
+    /// <see cref="MaxWalkDuration"/> (90 min, strictly inside the 120-min per-step bound): the walk
+    /// self-truncates at the deadline and persists the last index it completed, so a degraded
+    /// gateway costs a bounded pass with a saved cursor instead of a watchdog cancellation that
+    /// discards every completed page (the run-208 class). The watchdog remains the backstop for a
+    /// single request that outlives its own per-item timeout.
     /// <para>
     /// In the shipped <c>market</c> feed the detail term cannot bind: 24 pages × 50 rows at the
     /// bound-universe share (~30 of 1,037 companies) is ≈ 36 bound rows, so a pass is bounded by
@@ -151,6 +155,41 @@ public sealed class DisclosuresSourceOptions
     /// <b>completed</b> and records the truncation; nothing is skipped over.
     /// </summary>
     public int MaxDetailFetches { get; set; } = DefaultMaxDetailFetches;
+
+    /// <summary>
+    /// The shipped <b>per-pass wall-clock</b> bound: <b>90 minutes</b>. It sits strictly below the
+    /// scheduler's <b>120-minute per-step</b> bound (01 v1.5.43 §10.9.17,
+    /// <see cref="IngestionSchedulerOptions.DefaultMaxStepDuration"/>), leaving
+    /// ≈30 min for the job's store write and the rest of the step — so the walk truncates itself
+    /// <i>inside</i> the step and persists the last index it completed, instead of being cancelled
+    /// by the watchdog with every completed page discarded (the run-208 class: <c>RUN_HUNG</c>,
+    /// no counts, no cursor advance, the identical pass repeated next time).
+    /// </summary>
+    public static readonly TimeSpan DefaultMaxWalkDuration = TimeSpan.FromMinutes(90);
+
+    /// <summary>
+    /// The wall-clock bound of one <b>pass</b> (TKT-foundation-078): one clock is started in
+    /// <c>FetchVykAsync</c> and shared by every walk the pass runs. The <c>market</c> feed is one
+    /// walk per run, so this is that walk's deadline; the <c>company</c> feed shares it across the
+    /// constituent loop, so one pass (and therefore one run) is bounded as a whole — the already
+    /// completed companies' cursors are still persisted when it stops.
+    /// <para>
+    /// The walk checks the deadline before each list and detail request, using the injected
+    /// <see cref="TimeProvider"/> (no real sleeps, deterministic on a fake clock). On expiry it
+    /// records <c>truncated</c>, stops at the last index it <b>completed</b> and persists that index
+    /// — a deadline stop is an honest bounded pass (<c>succeeded</c>/<c>partial</c> with counts),
+    /// never a failure and never a lost page. The remaining work resumes exactly there next run.
+    /// The worst case of a pass is therefore <c>min(work bound, MaxWalkDuration)</c>; the scheduler
+    /// watchdog remains the backstop for a single request that outlives its own per-item timeout.
+    /// </para>
+    /// <para>
+    /// The shipped value is <see cref="DefaultMaxWalkDuration"/> (90 min) and the shipped
+    /// <c>appsettings.json</c> carries the identical value, so config and code cannot drift. A
+    /// value ≤ 0 disables the deadline (the pre-078 behaviour), just as the other bounds' ≤ 0
+    /// values disable theirs.
+    /// </para>
+    /// </summary>
+    public TimeSpan MaxWalkDuration { get; set; } = DefaultMaxWalkDuration;
 
     /// <summary>
     /// The listed row's <c>disclosureType</c> this adapter keeps. <b>Empty = every type</b> (the
@@ -248,6 +287,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private readonly UniverseSyncStore? _universe;
     private readonly DegerliDbContext? _db;
     private readonly ILogger<DisclosuresSourceAdapter>? _logger;
+    private readonly TimeProvider _clock;
     private readonly List<string> _unresolvedSymbols = [];
     private readonly List<VykDetailSkip> _detailSkips = [];
     private readonly List<string> _bootstrapped = [];
@@ -256,7 +296,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private bool _truncated;
 
     public DisclosuresSourceAdapter(IKapSourceClient client, IOptions<DisclosuresSourceOptions> options)
-        : this(client, options, kapOptions: null, directory: null, pacer: null, universe: null, db: null, logger: null)
+        : this(client, options, kapOptions: null, directory: null, pacer: null, universe: null, db: null, logger: null, clock: null)
     {
     }
 
@@ -268,7 +308,8 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         KapRequestPacer? pacer,
         UniverseSyncStore? universe,
         DegerliDbContext? db,
-        ILogger<DisclosuresSourceAdapter>? logger)
+        ILogger<DisclosuresSourceAdapter>? logger,
+        TimeProvider? clock = null)
     {
         _client = client;
         _options = options.Value;
@@ -278,6 +319,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         _universe = universe;
         _db = db;
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <summary>True when the VYK company-scoped source is active (§10.9.11).</summary>
@@ -351,6 +393,14 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         _listPages = 0;
         _truncated = false;
 
+        // One clock per pass (TKT-foundation-078): the deadline is computed once, here, and shared
+        // by every walk of the pass. The market feed is one walk; the company feed shares it across
+        // the constituent loop, so a pass (and therefore a run) has one wall-clock bound. A value
+        // ≤ 0 disables it (the pre-078 behaviour).
+        var deadline = _options.MaxWalkDuration > TimeSpan.Zero
+            ? _clock.GetUtcNow() + _options.MaxWalkDuration
+            : (DateTimeOffset?)null;
+
         var market = string.Equals(_options.Feed, DisclosuresSourceOptions.FeedMarket, StringComparison.OrdinalIgnoreCase);
 
         if (_logger is not null)
@@ -365,8 +415,8 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         }
 
         return market
-            ? await FetchMarketAsync(symbols, snapshot, cancellationToken).ConfigureAwait(false)
-            : await FetchCompaniesAsync(symbols, snapshot, cancellationToken).ConfigureAwait(false);
+            ? await FetchMarketAsync(symbols, snapshot, deadline, cancellationToken).ConfigureAwait(false)
+            : await FetchCompaniesAsync(symbols, snapshot, deadline, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -380,6 +430,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private async Task<SourcePayload<DisclosuresPayload>> FetchMarketAsync(
         IReadOnlyCollection<string> symbols,
         VykDirectorySnapshot snapshot,
+        DateTimeOffset? deadline,
         CancellationToken cancellationToken)
     {
         var anchor = ParseIndex(snapshot.LastDisclosureIndex);
@@ -425,7 +476,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             byCompanyId[companyId] = symbol;
         }
 
-        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout, _clock);
         var walk = await walker.WalkMarketAsync<DisclosureFact>(
                 persisted,
                 cursor,
@@ -436,7 +487,8 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 IsFamily,
                 (detailRaw, walkedSymbol, listed) => [DecodeDetail(detailRaw, walkedSymbol, listed)],
                 WalkBudget,
-                cancellationToken)
+                cancellationToken,
+                deadline)
             .ConfigureAwait(false);
 
         _detailSkips.AddRange(walk.Skips);
@@ -485,6 +537,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private async Task<SourcePayload<DisclosuresPayload>> FetchCompaniesAsync(
         IReadOnlyCollection<string> symbols,
         VykDirectorySnapshot snapshot,
+        DateTimeOffset? deadline,
         CancellationToken cancellationToken)
     {
         var anchor = ParseIndex(snapshot.LastDisclosureIndex);
@@ -495,6 +548,19 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
         foreach (var symbol in symbols)
         {
+            // The pass's one wall clock (TKT-foundation-078): when it expires, stop starting new
+            // companies. Every cursor collected so far is persisted after the loop, so completed
+            // work is never lost — the next run resumes from the last started company's cursor.
+            if (IsDeadlineExpired(deadline))
+            {
+                _truncated = true;
+                _logger?.LogWarning(
+                    "disclosures: company pass reached its {Duration} wall-clock bound after {Completed} cursor(s); the remaining constituents resume next run (TKT-foundation-078)",
+                    _options.MaxWalkDuration,
+                    cursors.Count);
+                break;
+            }
+
             if (!snapshot.BySymbol.TryGetValue(symbol, out var companyId))
             {
                 // Per-constituent identity isolation (FR-MDF-008/FR-MDF-012, §10.9.10/§10.9.11):
@@ -538,6 +604,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                     companyId,
                     cursor,
                     early,
+                    deadline,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -664,9 +731,10 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         string companyId,
         string? cursor,
         string earlyDisclosureIndex,
+        DateTimeOffset? deadline,
         CancellationToken cancellationToken)
     {
-        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout, _clock);
         var walk = await walker.WalkAsync<DisclosureFact>(
                 symbol,
                 companyId,
@@ -678,7 +746,8 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 (detailRaw, walkedSymbol, listed) => [DecodeDetail(detailRaw, walkedSymbol, listed)],
                 cancellationToken,
                 replayPersistedIndex: false,
-                budget: WalkBudget)
+                budget: WalkBudget,
+                deadline: deadline)
             .ConfigureAwait(false);
 
         // Per-disclosure isolation (01 v1.5.40 §10.9.15): the details the walk could not fetch
@@ -706,6 +775,15 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     /// option docs, review DR-2).
     /// </summary>
     private VykWalkBudget WalkBudget => new(_options.MaxListPages, _options.MaxDetailFetches);
+
+    /// <summary>
+    /// True when the pass's wall-clock deadline has been reached. Read from the injected
+    /// <see cref="TimeProvider"/>, so the deadline is deterministic on a fake clock and no real
+    /// sleep is involved; a null deadline (a non-positive <see cref="DisclosuresSourceOptions.MaxWalkDuration"/>)
+    /// never expires.
+    /// </summary>
+    private bool IsDeadlineExpired(DateTimeOffset? deadline) =>
+        deadline is { } bound && _clock.GetUtcNow() >= bound;
 
     /// <summary>
     /// The configured per-item detail-fetch bound (TKT-foundation-061). Unset — the legacy
