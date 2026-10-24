@@ -41,14 +41,99 @@ public sealed class DisclosuresSourceOptions
     /// <summary>
     /// The index whose current constituents the run loops over (01 v1.5 §10.9.2/§10.9.15) — its own
     /// key, independent of the prices and statements bounds (AD-14). Launch default <c>XU030</c>.
+    /// It bounds both feeds: the company feed walks these constituents, and the market feed keeps
+    /// only rows whose owning company is one of them.
     /// </summary>
     public string UniverseIndex { get; set; } = "XU030";
 
     /// <summary>
-    /// The disclosure index a company with no persisted cursor starts from (the first pass is the
-    /// backfill; the achieved depth is whatever the source returns — never fabricated).
+    /// The disclosure index a company with no persisted cursor starts from when the bootstrap
+    /// window is disabled (<see cref="BootstrapLookback"/> ≤ 0). It is the pre-078 behaviour —
+    /// a walk from the beginning of KAP's platform history — and is kept only as the documented
+    /// escape hatch for a deliberate archive re-walk; the shipped default never uses it.
     /// </summary>
     public string EarlyDisclosureIndex { get; set; } = "0";
+
+    /// <summary>The market feed's name in <see cref="Feed"/> (TKT-foundation-078).</summary>
+    public const string FeedMarket = "market";
+
+    /// <summary>The company feed's name in <see cref="Feed"/> (TKT-foundation-078).</summary>
+    public const string FeedCompany = "company";
+
+    /// <summary>
+    /// Which feed a run walks (TKT-foundation-078, 01 §10.9.15). <see cref="FeedMarket"/> (the
+    /// shipped default) pages the <b>market-wide</b> list from one cursor — recent disclosures
+    /// across the market, a handful of pages per run. <see cref="FeedCompany"/> is the bounded
+    /// first-seed/backfill walk over the bound index's constituents.
+    /// </summary>
+    public string Feed { get; set; } = FeedMarket;
+
+    /// <summary>
+    /// The shipped company bootstrap window, in <b>index positions</b> below the platform head
+    /// (<c>/lastDisclosureIndex</c>): <b>5,000</b>. Live arithmetic (2026-10-24 probes):
+    /// a company's own rows are <i>sparse</i> in index space — ASELS' 39-row page spanned
+    /// 1092199 → 1142913 (50,040 positions), so one page usually covers the whole window
+    /// (≈1–2 list calls of ≤50 rows). Before this window existed the walk started at
+    /// <see cref="EarlyDisclosureIndex"/> = <c>0</c>, i.e. ~138,818 positions ≈ 39 pages per
+    /// company ≈ 4 hours at the ≥12 s pace for one XU030 pass (run 208: 10:41:24 → 13:41:24,
+    /// exactly 3h00m, <c>written=0</c>).
+    /// </summary>
+    public const long DefaultBootstrapLookback = 5_000;
+
+    /// <summary>
+    /// The company bootstrap window in index positions (TKT-foundation-078). A company with
+    /// <b>no</b> persisted cursor starts this far below the platform head instead of at
+    /// <see cref="EarlyDisclosureIndex"/>; the window is recorded on the run as provenance
+    /// (never as "this company has no disclosures"). A value ≤ 0 disables the window and restores
+    /// the pre-078 from-zero start.
+    /// </summary>
+    public long BootstrapLookback { get; set; } = DefaultBootstrapLookback;
+
+    /// <summary>
+    /// The shipped <b>market</b> bootstrap window, in index positions below the platform head:
+    /// <b>1,000</b>. Market-wide rows are <i>dense</i> (live probe 2026-10-24: the page at index
+    /// 1230970 carried 48 rows and reached 1231017 — essentially one row per index), so 1,000
+    /// positions ≈ 1,000 rows ≈ 20 pages of 50 ≈ 4 min of list pacing at 12 s/call, and
+    /// immediately covers the newest disclosures (the live criterion's "within ~50 of
+    /// <c>lastDisclosureIndex</c>").
+    /// </summary>
+    public const long DefaultMarketBootstrapLookback = 1_000;
+
+    /// <summary>
+    /// The market bootstrap window in index positions (TKT-foundation-078). Used only when the
+    /// market feed has no persisted cursor. A value ≤ 0 starts at the platform head itself.
+    /// </summary>
+    public long MarketBootstrapLookback { get; set; } = DefaultMarketBootstrapLookback;
+
+    /// <summary>
+    /// The shipped per-walk list-page ceiling: <b>24</b>. 24 pages × 12 s = 288 s ≈ 4.8 min of
+    /// list pacing for one pass — inside a step bound with room for the detail fetches — and more
+    /// than the 20 pages a 1,000-position market bootstrap needs, so the first run still reaches
+    /// the head.
+    /// </summary>
+    public const int DefaultMaxListPages = 24;
+
+    /// <summary>
+    /// The per-walk list-page ceiling (TKT-foundation-078). The walk stops at the bound, records
+    /// the truncation, persists the last index it completed and the next run resumes there — so a
+    /// pass is finite by construction even when the archive is larger than the window.
+    /// </summary>
+    public int MaxListPages { get; set; } = DefaultMaxListPages;
+
+    /// <summary>
+    /// The shipped per-run disclosure-detail ceiling: <b>200</b>. 200 details × 12 s = 40 min of
+    /// pacing — the dominant cost of the lane — so pages (≤ 4.8 min) plus details stay inside a
+    /// step bound; a normal incremental market run spends a handful (the bound-universe rows among
+    /// the newest disclosures). The remainder is resumed by the next run, never skipped.
+    /// </summary>
+    public const int DefaultMaxDetailFetches = 200;
+
+    /// <summary>
+    /// The per-run disclosure-detail ceiling (TKT-foundation-078): the number of details one pass
+    /// may fetch (or isolate). A walk that exhausts it stops at the last index it <b>completed</b>
+    /// and records the truncation; nothing is skipped over.
+    /// </summary>
+    public int MaxDetailFetches { get; set; } = DefaultMaxDetailFetches;
 
     /// <summary>
     /// The listed row's <c>disclosureType</c> this adapter keeps. <b>Empty = every type</b> (the
@@ -103,12 +188,37 @@ public sealed class DisclosuresSourceOptions
 /// residual: a post-fetch store failure can skip the indexes the cursor covers).
 /// </para>
 /// </summary>
-public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter
+public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter, IDisclosureBootstrapReporter
 {
     /// <summary>The <c>coverage_metadata.data_type</c> of this family's per-instrument cursor.</summary>
     internal const string CursorDataType = "kap-disclosures-cursor";
 
+    /// <summary>
+    /// The <c>coverage_metadata.data_type</c> of the <b>market-wide</b> cursor (TKT-foundation-078):
+    /// one row at <c>market</c> scope, no instrument, advancing with each paged pass over
+    /// <c>GET /disclosures?disclosureIndex={n}</c>.
+    /// </summary>
+    internal const string MarketCursorDataType = "kap-disclosures-market-cursor";
+
+    /// <summary>The market scope name of the market-wide cursor row.</summary>
+    internal const string MarketCursorScope = "market";
+
+    /// <summary>
+    /// The bootstrap provenance entry of the market feed (see <see cref="IDisclosureBootstrapReporter"/>).
+    /// </summary>
+    public const string MarketCursorName = "market";
+
     private const string InstrumentScope = "instrument";
+
+    /// <summary>
+    /// The named reason recorded for a market row whose owning company is outside the bound
+    /// universe (TKT-foundation-078): counted in the run's <c>skipped</c> stat and logged, never
+    /// fetched and never written under a fabricated identity.
+    /// </summary>
+    public const string OutsideBoundUniverse = "OUTSIDE_BOUND_UNIVERSE";
+
+    /// <summary>The named reason recorded for the bootstrap provenance entries (TKT-foundation-078).</summary>
+    public const string BootstrappedCursor = "BOOTSTRAPPED";
 
     private readonly IKapSourceClient _client;
     private readonly DisclosuresSourceOptions _options;
@@ -120,6 +230,10 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private readonly ILogger<DisclosuresSourceAdapter>? _logger;
     private readonly List<string> _unresolvedSymbols = [];
     private readonly List<VykDetailSkip> _detailSkips = [];
+    private readonly List<string> _bootstrapped = [];
+    private int _outOfBoundRows;
+    private int _listPages;
+    private bool _truncated;
 
     public DisclosuresSourceAdapter(IKapSourceClient client, IOptions<DisclosuresSourceOptions> options)
         : this(client, options, kapOptions: null, directory: null, pacer: null, universe: null, db: null, logger: null)
@@ -155,12 +269,23 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     /// <inheritdoc />
     public IReadOnlyList<string> UnresolvedSymbols => _unresolvedSymbols;
 
-    /// <summary>
-    /// The disclosure details the last walk isolated (01 v1.5.40 §10.9.15): one un-fetchable
+    /// <summary>The disclosure details the last walk isolated (01 v1.5.40 §10.9.15): one un-fetchable
     /// attachment yields a recorded skip with the gateway's error, never a failed run
     /// (TKT-foundation-061).
     /// </summary>
     public IReadOnlyList<VykDetailSkip> DetailSkips => _detailSkips;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> Bootstrapped => _bootstrapped;
+
+    /// <inheritdoc />
+    public int OutOfBoundRows => _outOfBoundRows;
+
+    /// <inheritdoc />
+    public int ListPages => _listPages;
+
+    /// <inheritdoc />
+    public bool Truncated => _truncated;
 
     /// <inheritdoc />
     public async Task<SourcePayload<DisclosuresPayload>> FetchAsync(
@@ -176,7 +301,12 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         return await FetchVykAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>The VYK run (§10.9.15): one paced pass over the bound index's constituents.</summary>
+    /// <summary>
+    /// The VYK run (§10.9.15): one paced pass over the configured feed. <b>Market</b> (the shipped
+    /// default, TKT-foundation-078) pages the market-wide list from one cursor — recent
+    /// disclosures across the market, bounded and incremental; <b>company</b> is the bounded
+    /// first-seed/backfill walk over the bound index's constituents.
+    /// </summary>
     private async Task<SourcePayload<DisclosuresPayload>> FetchVykAsync(CancellationToken cancellationToken)
     {
         var symbols = await _universe!.GetCurrentConstituentSymbolsAsync(_options.UniverseIndex, cancellationToken)
@@ -194,19 +324,152 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 $"VYK members directory unavailable; cannot resolve company identities for '{_options.UniverseIndex}' ({snapshot.FailureReason}).");
         }
 
+        _unresolvedSymbols.Clear();
+        _detailSkips.Clear();
+        _bootstrapped.Clear();
+        _outOfBoundRows = 0;
+        _listPages = 0;
+        _truncated = false;
+
+        var market = string.Equals(_options.Feed, DisclosuresSourceOptions.FeedMarket, StringComparison.OrdinalIgnoreCase);
+
         if (_logger is not null)
         {
             _logger.LogInformation(
-                "disclosures: walking {Count} current constituents of {Index} via the VYK gateway",
+                "disclosures: {Feed} feed over {Count} current constituents of {Index} via the VYK gateway (list pages ≤ {MaxPages}, details ≤ {MaxDetails})",
+                market ? DisclosuresSourceOptions.FeedMarket : DisclosuresSourceOptions.FeedCompany,
                 symbols.Count,
-                _options.UniverseIndex);
+                _options.UniverseIndex,
+                _options.MaxListPages,
+                _options.MaxDetailFetches);
         }
 
+        return market
+            ? await FetchMarketAsync(symbols, snapshot, cancellationToken).ConfigureAwait(false)
+            : await FetchCompaniesAsync(symbols, snapshot, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The <b>market-wide</b> feed (TKT-foundation-078, 01 §10.9.15): one paged pass over
+    /// <c>GET /disclosures?disclosureIndex={cursor}</c>. The cursor is the persisted market row;
+    /// with none the walk bootstraps from the platform head's window
+    /// (<see cref="DisclosuresSourceOptions.MarketBootstrapLookback"/>) — recorded as provenance,
+    /// never as an empty market. Only rows whose owning company is a bound constituent are fetched
+    /// and stored; the rest are counted as <see cref="OutsideBoundUniverse"/>.
+    /// </summary>
+    private async Task<SourcePayload<DisclosuresPayload>> FetchMarketAsync(
+        IReadOnlyCollection<string> symbols,
+        VykDirectorySnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var anchor = ParseIndex(snapshot.LastDisclosureIndex);
+        var persisted = await GetMarketCursorAsync(cancellationToken).ConfigureAwait(false);
+        long cursor;
+        if (persisted is not null)
+        {
+            // A persisted cursor always wins: the run is incremental, exactly as before.
+            cursor = persisted.Value;
+        }
+        else
+        {
+            if (anchor is null)
+            {
+                // Without the platform head there is no honest place to start, and the only
+                // alternative — index 0 — is precisely the ~1.2 million -position re-walk that
+                // never completed (run 208). Fail loudly instead of walking from zero.
+                throw new SourceFetchException(
+                    "VYK lastDisclosureIndex anchor unavailable; cannot bootstrap the market-wide disclosure cursor from the platform head (refusing to walk the archive from index 0).");
+            }
+
+            cursor = BootstrapIndex(anchor.Value, _options.MarketBootstrapLookback);
+            _bootstrapped.Add(MarketCursorName);
+            _logger?.LogInformation(
+                "disclosures: market cursor bootstrapped at index {Cursor} (head {Head} − window {Window}); this is a start-of-read decision, not a claim that earlier disclosures do not exist (TKT-foundation-078)",
+                cursor,
+                anchor.Value,
+                _options.MarketBootstrapLookback);
+        }
+
+        var byCompanyId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var symbol in symbols)
+        {
+            if (!snapshot.BySymbol.TryGetValue(symbol, out var companyId))
+            {
+                // Per-constituent identity isolation (FR-MDF-008/FR-MDF-012): a bound symbol the
+                // directory cannot map is named and counted — it simply never matches a market row.
+                LogIdentityUnresolved(symbol);
+                _unresolvedSymbols.Add(symbol);
+                continue;
+            }
+
+            byCompanyId[companyId] = symbol;
+        }
+
+        var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
+        var walk = await walker.WalkMarketAsync<DisclosureFact>(
+                cursor,
+                cursor,
+                _options.Path,
+                _options.DetailPath,
+                byCompanyId,
+                IsFamily,
+                (detailRaw, walkedSymbol, listed) => [DecodeDetail(detailRaw, walkedSymbol, listed)],
+                WalkBudget,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        _detailSkips.AddRange(walk.Skips);
+        _outOfBoundRows = walk.OutOfBoundRows;
+        _listPages += walk.PagesFetched;
+        _truncated |= walk.Truncated;
+
+        if (_outOfBoundRows > 0)
+        {
+            _logger?.LogInformation(
+                "disclosures: {Count} market row(s) belong to companies outside the '{Index}' bound and were counted, not fetched ({ReasonCode})",
+                _outOfBoundRows,
+                _options.UniverseIndex,
+                OutsideBoundUniverse);
+        }
+
+        if (walk.NextCursor is not null)
+        {
+            await SetMarketCursorAsync(walk.NextCursor, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_logger is not null)
+        {
+            _logger.LogInformation(
+                "disclosures: market walk done — {Facts} fact(s), {Pages} page(s), {Details} detail fetch(es), {OutOfBound} out-of-bound row(s), truncated {Truncated}, cursor {Cursor}",
+                walk.Facts.Count,
+                walk.PagesFetched,
+                walk.DetailsFetched,
+                walk.OutOfBoundRows,
+                walk.Truncated,
+                walk.NextCursor ?? "(unchanged)");
+        }
+
+        var payload = new DisclosuresPayload(SourceName, walk.Facts.ToList());
+        return new SourcePayload<DisclosuresPayload>(SourceName, payload, walk.Raw);
+    }
+
+    /// <summary>
+    /// The <b>company-scoped</b> feed (§10.9.15, pre-078 semantics): one bounded walk per bound
+    /// constituent. A company with <b>no</b> persisted cursor bootstraps from the platform head's
+    /// window (<see cref="DisclosuresSourceOptions.BootstrapLookback"/>) — recorded as provenance —
+    /// instead of re-reading the archive from <see cref="DisclosuresSourceOptions.EarlyDisclosureIndex"/>;
+    /// a persisted cursor is honoured unchanged (one incremental page), and a stale one resets once
+    /// to the <b>same bounded window</b>, never to index 0.
+    /// </summary>
+    private async Task<SourcePayload<DisclosuresPayload>> FetchCompaniesAsync(
+        IReadOnlyCollection<string> symbols,
+        VykDirectorySnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var anchor = ParseIndex(snapshot.LastDisclosureIndex);
         var disclosures = new List<DisclosureFact>();
         var raw = new StringBuilder();
         var cursors = new List<(string Symbol, string Cursor)>();
-        _unresolvedSymbols.Clear();
-        _detailSkips.Clear();
 
         foreach (var symbol in symbols)
         {
@@ -221,9 +484,31 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             }
 
             var cursor = await GetCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
-            var (companyDisclosures, nextCursor, companyRaw) = await FetchCompanyAsync(symbol, companyId, cursor, cancellationToken)
+
+            // The walk's early index is the reset target *and* the start of a first pass. Both are
+            // the bounded window whenever one is configured, so no path of this lane can start (or
+            // restart) at the beginning of platform history (TKT-foundation-078).
+            var early = ResolveEarlyIndex(symbol, anchor);
+            if (cursor is null && _options.BootstrapLookback > 0)
+            {
+                _bootstrapped.Add(symbol);
+                _logger?.LogInformation(
+                    "disclosures: {Symbol} had no persisted cursor; bootstrapping at index {Early} (head {Head} − window {Window}) — a start-of-read decision, not a claim that earlier disclosures do not exist (TKT-foundation-078)",
+                    symbol,
+                    early,
+                    anchor,
+                    _options.BootstrapLookback);
+            }
+
+            var (companyDisclosures, nextCursor, companyRaw, truncated) = await FetchCompanyAsync(
+                    symbol,
+                    companyId,
+                    cursor,
+                    early,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
+            _truncated |= truncated;
             disclosures.AddRange(companyDisclosures);
             raw.Append(companyRaw);
             if (nextCursor is not null)
@@ -242,14 +527,58 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     }
 
     /// <summary>
+    /// The start-of-read (and reset) index of a company walk: the bounded bootstrap window when one
+    /// is configured and the platform head is known, otherwise the configured
+    /// <see cref="DisclosuresSourceOptions.EarlyDisclosureIndex"/> (the pre-078 behaviour).
+    /// </summary>
+    private string ResolveEarlyIndex(string symbol, long? anchor)
+    {
+        if (_options.BootstrapLookback <= 0)
+        {
+            return _options.EarlyDisclosureIndex;
+        }
+
+        if (anchor is null)
+        {
+            // The anchor is a secondary read (01 §10.9.11) and may be unavailable. A company that
+            // already has a cursor does not need it; a first pass does — and the only fallback,
+            // index 0, is the walk that never finishes. Fail loudly rather than start at zero.
+            _logger?.LogWarning(
+                "disclosures: {Symbol} has no persisted cursor and the lastDisclosureIndex anchor is unavailable; the bootstrap window cannot be computed ({ReasonCode})",
+                symbol,
+                IngestFailureReasonForBootstrap);
+
+            throw new SourceFetchException(
+                $"VYK lastDisclosureIndex anchor unavailable; cannot bootstrap the disclosure cursor for '{symbol}' from the platform head (refusing to walk the archive from index 0).");
+        }
+
+        return BootstrapIndex(anchor.Value, _options.BootstrapLookback).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The named reason of an unbootstrappable walk (see <see cref="ResolveEarlyIndex"/>).</summary>
+    private const string IngestFailureReasonForBootstrap = "BOOTSTRAP_ANCHOR_UNAVAILABLE";
+
+    /// <summary>
+    /// The window start: <paramref name="lookback"/> index positions below
+    /// <paramref name="anchor"/> (never below zero). With a non-positive window the anchor itself is
+    /// the start — "from the head", still never the beginning of history.
+    /// </summary>
+    internal static long BootstrapIndex(long anchor, long lookback)
+    {
+        var start = lookback > 0 ? anchor - lookback : anchor;
+        return start > 0 ? start : 0;
+    }
+
+    /// <summary>
     /// One company's walk (cursor <b>inclusive</b>; the shared <see cref="VykDisclosureWalker"/>
     /// owns the ER005 honest-empty, stale-cursor reset, non-list body and strict-cursor semantics —
-    /// 01 v1.5 §10.9.15).
+    /// 01 v1.5 §10.9.15), bounded by this run's budget (TKT-foundation-078).
     /// </summary>
-    private async Task<(List<DisclosureFact> Disclosures, string? Cursor, string Raw)> FetchCompanyAsync(
+    private async Task<(List<DisclosureFact> Disclosures, string? Cursor, string Raw, bool Truncated)> FetchCompanyAsync(
         string symbol,
         string companyId,
         string? cursor,
+        string earlyDisclosureIndex,
         CancellationToken cancellationToken)
     {
         var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
@@ -257,20 +586,36 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 symbol,
                 companyId,
                 cursor,
-                _options.EarlyDisclosureIndex,
+                earlyDisclosureIndex,
                 _options.Path,
                 _options.DetailPath,
                 IsFamily,
                 (detailRaw, walkedSymbol, listed) => [DecodeDetail(detailRaw, walkedSymbol, listed)],
-                cancellationToken)
+                cancellationToken,
+                replayPersistedIndex: false,
+                budget: WalkBudget)
             .ConfigureAwait(false);
 
         // Per-disclosure isolation (01 v1.5.40 §10.9.15): the details the walk could not fetch
         // ride out with the walk's facts so the job can count and quarantine them.
         _detailSkips.AddRange(walk.Skips);
+        _listPages += walk.PagesFetched;
 
-        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw);
+        if (walk.Truncated && _logger is not null)
+        {
+            _logger.LogWarning(
+                "disclosures: {Symbol} walk stopped at the configured budget after {Pages} page(s) / {Details} detail fetch(es); the cursor resumes at {Cursor} (TKT-foundation-078)",
+                symbol,
+                walk.PagesFetched,
+                walk.DetailsFetched,
+                walk.NextCursor ?? "(unchanged)");
+        }
+
+        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw, walk.Truncated);
     }
+
+    /// <summary>This run's walk budget (TKT-foundation-078).</summary>
+    private VykWalkBudget WalkBudget => new(_options.MaxListPages, _options.MaxDetailFetches);
 
     /// <summary>
     /// The configured per-item detail-fetch bound (TKT-foundation-061). Unset — the legacy
@@ -380,6 +725,56 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             .Select(c => c.Notes)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The persisted <b>market-wide</b> cursor (TKT-foundation-078): the highest market index the
+    /// last completed pass reached, read from one <c>market</c>-scope row. Null when the lane has
+    /// never completed a market pass — that is the only case in which the walk bootstraps.
+    /// </summary>
+    private async Task<long?> GetMarketCursorAsync(CancellationToken cancellationToken)
+    {
+        var notes = await _db!.CoverageMetadata
+            .Where(c => c.Scope == MarketCursorScope
+                && c.InstrumentId == null
+                && c.FundId == null
+                && c.DataType == MarketCursorDataType)
+            .Select(c => c.Notes)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return ParseIndex(notes);
+    }
+
+    /// <summary>Persists the market-wide cursor in place (one row per lane, idempotent upsert).</summary>
+    private async Task SetMarketCursorAsync(string cursor, CancellationToken cancellationToken)
+    {
+        var row = await _db!.CoverageMetadata
+            .FirstOrDefaultAsync(
+                c => c.Scope == MarketCursorScope
+                    && c.InstrumentId == null
+                    && c.FundId == null
+                    && c.DataType == MarketCursorDataType,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (row is null)
+        {
+            _db.CoverageMetadata.Add(new CoverageMetadata
+            {
+                Scope = MarketCursorScope,
+                InstrumentId = null,
+                FundId = null,
+                DataType = MarketCursorDataType,
+                Notes = cursor,
+            });
+        }
+        else
+        {
+            row.Notes = cursor;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SetCursorAsync(string symbol, string cursor, CancellationToken cancellationToken)

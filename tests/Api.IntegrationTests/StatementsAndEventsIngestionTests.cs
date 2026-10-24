@@ -859,6 +859,29 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.Equal("CA", corporateActions.DisclosureType);
         Assert.Equal(string.Empty, disclosures.DisclosureType);
 
+        // TKT-foundation-078: the disclosures lane's feed, bootstrap windows and budgets are shipped
+        // keys too, compared against their code defaults so the shipped default can never drift from
+        // the documented arithmetic (§10.9.15).
+        var disclosuresSection = ingestion.GetProperty("Disclosures");
+        Assert.Equal(disclosures.Feed, disclosuresSection.GetProperty("Feed").GetString());
+        Assert.Equal(
+            disclosures.BootstrapLookback.ToString(CultureInfo.InvariantCulture),
+            disclosuresSection.GetProperty("BootstrapLookback").GetString());
+        Assert.Equal(
+            disclosures.MarketBootstrapLookback.ToString(CultureInfo.InvariantCulture),
+            disclosuresSection.GetProperty("MarketBootstrapLookback").GetString());
+        Assert.Equal(
+            disclosures.MaxListPages.ToString(CultureInfo.InvariantCulture),
+            disclosuresSection.GetProperty("MaxListPages").GetString());
+        Assert.Equal(
+            disclosures.MaxDetailFetches.ToString(CultureInfo.InvariantCulture),
+            disclosuresSection.GetProperty("MaxDetailFetches").GetString());
+        Assert.Equal(DisclosuresSourceOptions.FeedMarket, disclosures.Feed);
+        Assert.Equal(5_000L, disclosures.BootstrapLookback);
+        Assert.Equal(1_000L, disclosures.MarketBootstrapLookback);
+        Assert.Equal(24, disclosures.MaxListPages);
+        Assert.Equal(200, disclosures.MaxDetailFetches);
+
         static void AssertFamily(
             JsonElement family,
             string path,
@@ -1666,6 +1689,572 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             evt => evt.RenderMessage().Contains("stale disclosure cursor reset", StringComparison.Ordinal));
     }
 
+    // ---------------------------------------------------------------------------------
+    // TKT-foundation-078 — the disclosures lane completes: bootstrap near the platform
+    // head, a persisted cursor wins, and the market-wide feed carries recent KAP data
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The shipped disclosures feed (TKT-foundation-078): the <c>vyk: true</c> harness pins the
+    /// company-scoped lane, so the market cases select the market feed — and the shipped head
+    /// window — explicitly, exactly as <c>appsettings.json</c> ships them.
+    /// </summary>
+    private static Dictionary<string, string?> MarketFeed => new()
+    {
+        ["Ingestion:Disclosures:Feed"] = DisclosuresSourceOptions.FeedMarket,
+        ["Ingestion:Disclosures:MarketBootstrapLookback"] =
+            DisclosuresSourceOptions.DefaultMarketBootstrapLookback.ToString(CultureInfo.InvariantCulture),
+    };
+
+    /// <summary>
+    /// TC-MDF-099 (TKT-foundation-078, architecture §10.9.15) — a company with <b>no</b> persisted
+    /// cursor bootstraps from the platform head's configured window instead of the beginning of
+    /// platform history, so one pass is finite.
+    /// <para>
+    /// The double is the live shape: a company archive spanning a huge index range (rows from
+    /// 1,000,000 up to the 1,231,017 head, ~200,000 positions ≈ 41 pages when walked from zero —
+    /// ASELS' 138,818 positions ≈ 39 pages) whose <i>recent</i> rows live inside the window. Before
+    /// the fix the walk requested index <c>0</c> and paged the whole archive (~4 hours at the ≥12 s
+    /// pace; run 208's 3h00m/`written=0` ledger row); now the first request is
+    /// <c>head − BootstrapLookback</c>.
+    /// </para>
+    /// Expected: the run is <c>succeeded</c>, both in-window disclosures are written, the walk's
+    /// first (and only) list request is the bootstrap index, the persisted cursor is the last
+    /// disclosure read, and the bootstrap is recorded as <b>provenance</b> on the run (a counted
+    /// log event plus the per-symbol <c>BOOTSTRAPPED</c> stat) — never as "this company has no
+    /// disclosures".
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_099_a_cursor_less_company_bootstraps_from_the_head_window()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+
+        // The archive: 2,000 dense rows far below the head (the "huge range" the from-zero walk
+        // re-reads) plus the two recent rows that the window actually covers. The dense rows carry
+        // another disclosure type, so they cost no detail fetch while still advancing pagination.
+        var archive = HugeRangeCompanyArchive();
+        var bootstrap = 1231017L - 5000L;
+        StubCompanyArchive("1001", archive, PagedStarts(archive, 0).Concat(PagedStarts(archive, bootstrap)));
+        StubDetail("1226100", DisclosureDetailBody("1226100", "ODA"));
+        StubDetail("1230900", DisclosureDetailBody("1230900", "ODA"));
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, minimumLevel: LogEventLevel.Information, extraSettings: new Dictionary<string, string?>
+        {
+            ["Ingestion:Disclosures:Feed"] = "company",
+            ["Ingestion:Disclosures:BootstrapLookback"] = "5000",
+            ["Ingestion:Disclosures:DisclosureType"] = "ODA",
+        });
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(2, result.Written);
+
+        // The walk starts at the window (head − 5,000) and never at the beginning of history; one
+        // page covers the window because a company's own rows are sparse in index space.
+        var requests = DisclosureRequestIndexesFor("1001");
+        Assert.Equal("1226017", requests.First());
+        Assert.DoesNotContain("0", requests);
+        Assert.True(
+            requests.Count <= DisclosuresSourceOptions.DefaultMaxListPages,
+            $"the walk must stay inside the page budget, made {requests.Count} list calls");
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(2, await db.KapDisclosures.CountAsync(k => k.InstrumentId == alfa));
+        Assert.Equal(
+            "1230900",
+            (await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-disclosures-cursor")).Notes);
+
+        // Provenance, not a claim of emptiness: one counted bootstrap event naming the symbol, and
+        // the per-symbol stat that rides stats_json.
+        Assert.Contains(logs.Events, evt =>
+            evt.RenderMessage().Contains("bootstrapped 1 cursor(s)", StringComparison.Ordinal)
+            && evt.RenderMessage().Contains("ALFA", StringComparison.Ordinal)
+            && evt.RenderMessage().Contains(DisclosuresSourceAdapter.BootstrappedCursor, StringComparison.Ordinal));
+        Assert.DoesNotContain(logs.Events, evt =>
+            evt.RenderMessage().Contains("no disclosures", StringComparison.OrdinalIgnoreCase));
+
+        var run = await db.IngestRuns.Where(r => r.JobCode == "disclosures").OrderByDescending(r => r.Id).FirstAsync();
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Contains(
+            stats.RootElement.GetProperty("symbols").EnumerateArray(),
+            entry => entry.GetProperty("symbol").GetString() == "ALFA"
+                && entry.GetProperty("reason").GetString() == DisclosuresSourceAdapter.BootstrappedCursor);
+    }
+
+    /// <summary>
+    /// TC-MDF-099 (second half) — the window is <b>configuration</b>, and the arithmetic is the
+    /// documented one: <c>bootstrap = lastDisclosureIndex − BootstrapLookback</c>. With a 200-index
+    /// window over the same archive the walk starts at 1,230,817 and reads only the disclosure above
+    /// it, so the value — not a magic number in the walk — decides how much history a first pass
+    /// covers.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_099_b_the_bootstrap_window_is_configuration()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+
+        var archive = HugeRangeCompanyArchive();
+        var bootstrap = 1231017L - 200L;
+        StubCompanyArchive("1001", archive, PagedStarts(archive, bootstrap));
+        StubDetail("1230900", DisclosureDetailBody("1230900", "ODA"));
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: new Dictionary<string, string?>
+        {
+            ["Ingestion:Disclosures:Feed"] = "company",
+            ["Ingestion:Disclosures:BootstrapLookback"] = "200",
+            ["Ingestion:Disclosures:DisclosureType"] = "ODA",
+        });
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(1, result.Written);
+        Assert.Equal(new[] { "1230817" }, DisclosureRequestIndexesFor("1001").ToArray());
+
+        // The shipped default is the documented 5,000 (pages × pace arithmetic in the option's doc).
+        Assert.Equal(5_000, DisclosuresSourceOptions.DefaultBootstrapLookback);
+        Assert.Equal(1_000, DisclosuresSourceOptions.DefaultMarketBootstrapLookback);
+        Assert.Equal(24, DisclosuresSourceOptions.DefaultMaxListPages);
+        Assert.Equal(200, DisclosuresSourceOptions.DefaultMaxDetailFetches);
+    }
+
+    /// <summary>
+    /// TC-MDF-100 (TKT-foundation-078, the 063 precedent) — a <b>persisted</b> cursor always wins:
+    /// the run is one incremental page from that cursor, it never resets, and it never re-walks or
+    /// re-bootstraps. This is the no-regression half of the fix — the cursor semantics of the
+    /// existing incremental lane are untouched.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_100_a_persisted_cursor_is_one_incremental_page_and_never_resets()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        await SeedCursor("ALFA", "kap-disclosures-cursor", "1225000");
+
+        var archive = HugeRangeCompanyArchive();
+        StubCompanyArchive("1001", archive, new long[] { 1225000, 1230900 });
+        StubDetail("1226100", DisclosureDetailBody("1226100", "ODA"));
+        StubDetail("1230900", DisclosureDetailBody("1230900", "ODA"));
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, minimumLevel: LogEventLevel.Information, extraSettings: new Dictionary<string, string?>
+        {
+            ["Ingestion:Disclosures:Feed"] = "company",
+            ["Ingestion:Disclosures:BootstrapLookback"] = "5000",
+            ["Ingestion:Disclosures:DisclosureType"] = "ODA",
+        });
+
+        var first = await RunAsync(provider, "disclosures");
+        Assert.Equal(IngestResult.Succeeded, first.Status);
+        Assert.Equal(2, first.Written);
+
+        // One page, from the persisted cursor only: no reset to the window, none to zero.
+        Assert.Equal(new[] { "1225000" }, DisclosureRequestIndexesFor("1001").ToArray());
+        Assert.DoesNotContain(logs.Events, evt =>
+            evt.RenderMessage().Contains("bootstrapped", StringComparison.Ordinal));
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(
+            "1230900",
+            (await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-disclosures-cursor")).Notes);
+
+        // The second run is incremental: one page from the stored cursor, no re-walk, no reset.
+        _wireMock.Server.ResetLogEntries();
+        var second = await RunAsync(provider, "disclosures");
+        Assert.Equal(IngestResult.Succeeded, second.Status);
+        // Nothing past the cursor: no detail is re-fetched and no fact is re-emitted (the 046
+        // lane's proven semantics — a re-run is 0 written / 0 unchanged).
+        Assert.Equal(0, second.Written);
+        Assert.Equal(0, second.Unchanged);
+        Assert.Equal(new[] { "1230900" }, DisclosureRequestIndexesFor("1001").ToArray());
+    }
+
+    /// <summary>
+    /// TC-MDF-100 (stale cursor, the 063 precedent kept but <b>bounded</b>) — a persisted cursor
+    /// past the tail answers HTTP 400 <c>ER005</c>; the walk resets <b>once</b> and the reset target
+    /// is the same bounded window, never index <c>0</c> (which would re-open the multi-hour archive
+    /// walk this ticket closes). ER005 is an honest end-of-list, and the reset can never repeat.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_100_b_a_stale_cursor_resets_once_to_the_bounded_window()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        await SeedCursor("ALFA", "kap-disclosures-cursor", "1231018");
+
+        var archive = HugeRangeCompanyArchive();
+        StubCompanyArchive("1001", archive, new long[] { 1231018, 1231017 - 5000, 1230900 });
+        StubDetail("1226100", DisclosureDetailBody("1226100", "ODA"));
+        StubDetail("1230900", DisclosureDetailBody("1230900", "ODA"));
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, minimumLevel: LogEventLevel.Information, extraSettings: new Dictionary<string, string?>
+        {
+            ["Ingestion:Disclosures:Feed"] = "company",
+            ["Ingestion:Disclosures:BootstrapLookback"] = "5000",
+            ["Ingestion:Disclosures:DisclosureType"] = "ODA",
+        });
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+
+        // The window (head − 5,000) holds both target disclosures (1,226,100 and 1,230,900): the
+        // stale cursor costs no re-walk, and the reset reads only the bounded window.
+        Assert.Equal(2, result.Written);
+
+        // Stale cursor first, then exactly one reset — to the bounded window (head − 5,000), not 0.
+        Assert.Equal(new[] { "1231018", "1226017" }, DisclosureRequestIndexesFor("1001").ToArray());
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(
+            "1230900",
+            (await db.CoverageMetadata.SingleAsync(
+                c => c.Scope == "instrument" && c.InstrumentId == alfa && c.DataType == "kap-disclosures-cursor")).Notes);
+
+        // The corrected state is persisted: the next run is one page with no second reset.
+        _wireMock.Server.ResetLogEntries();
+        await RunAsync(provider, "disclosures");
+        Assert.Equal(new[] { "1230900" }, DisclosureRequestIndexesFor("1001").ToArray());
+    }
+
+    /// <summary>
+    /// TC-MDF-101 (TKT-foundation-078, architecture §10.9.15) — the <b>market-wide</b> feed is the
+    /// lane's normal pass: one cursor pages <c>GET /disclosures?disclosureIndex={n}</c> (no
+    /// <c>companyId</c>), the run stores recent disclosures for the <b>bound</b> instruments, counts
+    /// the rows owned by companies outside the bound universe (<c>OUTSIDE_BOUND_UNIVERSE</c> —
+    /// named, counted, never fetched), and advances its own persisted cursor. A second run resumes
+    /// from that cursor with a single page: no re-walk of the window.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_a_the_market_feed_walks_the_market_list_and_advances_its_cursor()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        var market = MarketArchive();
+        // The bootstrap window's pages, plus the cursor's own page for the incremental second run.
+        StubMarketArchive(
+            market,
+            PagedStarts(market, 1231017L - 1000L).Concat(new[] { 1_230_077L }));
+        foreach (var row in market.Where(r => r.CompanyId == "1001"))
+        {
+            StubDetail(row.Index.ToString(CultureInfo.InvariantCulture), DisclosureDetailBody(row.Index.ToString(CultureInfo.InvariantCulture), "ODA"));
+        }
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, minimumLevel: LogEventLevel.Information, extraSettings: MarketFeed);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(market.Count(r => r.CompanyId == "1001"), result.Written);
+
+        // The market route carries the cursor only — the whole point of the feed.
+        var requests = MarketRequests();
+        Assert.Equal(new[] { "1230017", "1230066" }, requests.Select(request => request.Index).ToArray());
+        Assert.All(requests, request => Assert.Null(request.CompanyId));
+
+        // Rows outside the bound universe are counted, never fetched.
+        Assert.True(result.Skipped > 0, "the out-of-bound rows must be counted");
+        Assert.Contains(logs.Events, evt =>
+            evt.RenderMessage().Contains(DisclosuresSourceAdapter.OutsideBoundUniverse, StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            _wireMock.Server.LogEntries,
+            entry => entry.RequestMessage?.Path == DetailPath("1230066"));
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        Assert.Equal(market.Count(r => r.CompanyId == "1001"), await db.KapDisclosures.CountAsync(k => k.InstrumentId == alfa));
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+
+        // The market cursor advanced to the last market index the pass completed.
+        var cursor = await db.CoverageMetadata.SingleAsync(c => c.DataType == "kap-disclosures-market-cursor");
+        Assert.Equal("market", cursor.Scope);
+        Assert.Null(cursor.InstrumentId);
+        Assert.Equal("1230077", cursor.Notes);
+
+        // Second run: one page from the cursor, no re-walk of the bootstrap window.
+        _wireMock.Server.ResetLogEntries();
+        var second = await RunAsync(provider, "disclosures");
+        Assert.Equal(IngestResult.Succeeded, second.Status);
+        Assert.Equal(new[] { "1230077" }, MarketRequests().Select(r => r.Index).ToArray());
+        Assert.Equal(0, second.Written);
+    }
+
+    /// <summary>
+    /// TC-MDF-101 (honest empty, market feed) — HTTP <c>400</c> <c>ER005</c> on the market list is
+    /// the gateway's "no disclosure at/after this index": an honest empty (<c>succeeded</c>, zero
+    /// rows, zero quarantine). The market cursor is never reset backwards, so an ER005 cannot
+    /// become a repeating or infinite walk.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_b_market_er005_is_an_honest_end_of_list()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(MembersPath, """[{"id":"1001","title":"ALFA","stockCode":"ALFA","memberType":"stock"}]""");
+        _wireMock.StubJson(AnchorPath, """{"lastDisclosureIndex":"1231017"}""");
+        StubMarketListError(1230017L, 400, Status400Er005);
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: MarketFeed);
+
+        var result = await RunAsync(provider, "disclosures");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(0, result.Written);
+        Assert.Equal(0, result.Quarantined);
+        Assert.Equal(new[] { "1230017" }, MarketRequests().Select(r => r.Index).ToArray());
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        Assert.Equal(0, await db.CoverageMetadata.CountAsync(c => c.DataType == "kap-disclosures-market-cursor"));
+    }
+
+    /// <summary>
+    /// TC-MDF-101 (source down, unchanged) — a genuine gateway failure on the market list is still
+    /// a <c>failed</c> run with no rows and no quarantine: the fix must never soften the
+    /// source-down posture into an honest empty.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_c_market_source_down_is_still_a_failed_run()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubMarketListError(1230017L, 500, """{"fault":{"faultCode":"OI005","faultString":"Unhandled backend failure"}}""");
+
+        await using var provider = BuildIngestion(vyk: true, extraSettings: MarketFeed);
+
+        await Assert.ThrowsAsync<SourceFetchException>(() => RunAsync(provider, "disclosures"));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapDisclosures.CountAsync());
+        Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
+        Assert.Equal(
+            "failed",
+            Assert.Single(await db.IngestRuns.Where(r => r.JobCode == "disclosures").ToListAsync()).Status);
+        Assert.Equal(0, await db.CoverageMetadata.CountAsync(c => c.DataType == "kap-disclosures-market-cursor"));
+    }
+
+    /// <summary>
+    /// TC-MDF-101 (the budget, TKT-foundation-078's "the run must finish" pin) — a pass that hits
+    /// the configured page ceiling stops there, records the truncation, persists the <b>last index
+    /// it completed</b>, and the next run resumes exactly there. No page is skipped over, and no run
+    /// is unbounded: pages × 12 s stays inside a step bound by construction.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_101_d_a_budget_truncated_walk_resumes_from_its_cursor()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        var market = MarketArchive();
+        StubMarketArchive(market, PagedStarts(market, 1231017L - 1000L));
+        foreach (var row in market.Where(r => r.CompanyId == "1001"))
+        {
+            StubDetail(row.Index.ToString(CultureInfo.InvariantCulture), DisclosureDetailBody(row.Index.ToString(CultureInfo.InvariantCulture), "ODA"));
+        }
+
+        var logs = new InMemorySerilogSink();
+        await using var provider = BuildIngestion(vyk: true, logs: logs, minimumLevel: LogEventLevel.Information, extraSettings: new Dictionary<string, string?>
+        {
+            ["Ingestion:Disclosures:Feed"] = DisclosuresSourceOptions.FeedMarket,
+            ["Ingestion:Disclosures:MaxListPages"] = "1",
+        });
+
+        var first = await RunAsync(provider, "disclosures");
+        Assert.Equal(IngestResult.Succeeded, first.Status);
+        Assert.Equal(new[] { "1230017" }, MarketRequests().Select(r => r.Index).ToArray());
+        Assert.Contains(logs.Events, evt =>
+            evt.RenderMessage().Contains("truncated True", StringComparison.Ordinal));
+
+        await using var db = _postgres.CreateContext();
+        var cursor = await db.CoverageMetadata.SingleAsync(c => c.DataType == "kap-disclosures-market-cursor");
+        Assert.Equal("1230066", cursor.Notes);
+
+        // The next run resumes from the truncation point and finishes the window.
+        _wireMock.Server.ResetLogEntries();
+        var second = await RunAsync(provider, "disclosures");
+        Assert.Equal(IngestResult.Succeeded, second.Status);
+        Assert.Equal(new[] { "1230066" }, MarketRequests().Select(r => r.Index).ToArray());
+        Assert.Equal(
+            "1230077",
+            (await db.CoverageMetadata.AsNoTracking().SingleAsync(c => c.DataType == "kap-disclosures-market-cursor")).Notes);
+    }
+
+    /// <summary>
+    /// TC-MDF-099/101 helper world — a company archive that spans a <b>huge</b> index range: 2,000
+    /// dense rows at 1,000,000…1,001,999 (≈41 pages when walked from zero, the run-208 shape)
+    /// carrying a non-target type, plus two recent <c>ODA</c> disclosures inside the head's
+    /// 5,000-position window.
+    /// </summary>
+    private static List<MarketRow> HugeRangeCompanyArchive()
+    {
+        var rows = new List<MarketRow>();
+        for (var index = 1_000_000L; index < 1_002_000L; index++)
+        {
+            rows.Add(new MarketRow(index, "1001", "DG"));
+        }
+
+        rows.Add(new MarketRow(1_226_100L, "1001", "ODA"));
+        rows.Add(new MarketRow(1_230_900L, "1001", "ODA"));
+        return rows;
+    }
+
+    /// <summary>
+    /// TC-MDF-101 helper world — 60 <b>dense</b> market rows from 1,230,017 (the 1,000-position
+    /// market window below the 1,231,017 head) to 1,230,076 plus one row at 1,230,077: every other
+    /// row belongs to ALFA (company <c>1001</c>, the bound constituent), the rest to company
+    /// <c>9999</c>, which is outside the bound universe.
+    /// </summary>
+    private static List<MarketRow> MarketArchive()
+    {
+        var rows = new List<MarketRow>();
+        for (var offset = 0L; offset < 60; offset++)
+        {
+            rows.Add(new MarketRow(1_230_017L + offset, offset % 2 == 0 ? "1001" : "9999", "ODA"));
+        }
+
+        rows.Add(new MarketRow(1_230_077L, "1001", "ODA"));
+        return rows;
+    }
+
+    /// <summary>One market-wide list row of the TKT-foundation-078 doubles.</summary>
+    private sealed record MarketRow(long Index, string CompanyId, string Type);
+
+    /// <summary>
+    /// The page starts a walk will request from <paramref name="first"/> over a row set: the cursor
+    /// it starts at, then each full page's last index (the walk re-requests it inclusively — the
+    /// verified gateway semantics).
+    /// </summary>
+    private static List<long> PagedStarts(IReadOnlyList<MarketRow> rows, long first)
+    {
+        var starts = new List<long>();
+        var from = first;
+        while (true)
+        {
+            starts.Add(from);
+            var page = rows.Where(r => r.Index >= from).OrderBy(r => r.Index).Take(VykDisclosureWalker.PageSize).ToList();
+            if (page.Count < VykDisclosureWalker.PageSize)
+            {
+                return starts;
+            }
+
+            var max = page.Max(r => r.Index);
+            if (max <= from)
+            {
+                return starts;
+            }
+
+            from = max;
+        }
+    }
+
+    /// <summary>
+    /// Stubs one <b>company-scoped</b> archive page per start (TKT-foundation-078): the rows at or
+    /// after the start, ascending, at most one page; a start past the archive is the gateway's
+    /// honest <c>400 ER005</c> end-of-list.
+    /// </summary>
+    private void StubCompanyArchive(string companyId, IReadOnlyList<MarketRow> rows, IEnumerable<long> starts)
+    {
+        foreach (var start in starts.Distinct())
+        {
+            var page = rows
+                .Where(r => r.Index >= start)
+                .OrderBy(r => r.Index)
+                .Take(VykDisclosureWalker.PageSize)
+                .Select(r => (Index: r.Index.ToString(CultureInfo.InvariantCulture), Type: r.Type))
+                .ToArray();
+
+            if (page.Length == 0)
+            {
+                StubDisclosureListError(companyId, start, 400, Status400Er005);
+            }
+            else
+            {
+                StubDisclosureList(companyId, start, page);
+            }
+        }
+    }
+
+    /// <summary>Stubs one <b>market-wide</b> page per start (no <c>companyId</c>, TKT-foundation-078).</summary>
+    private void StubMarketArchive(IReadOnlyList<MarketRow> rows, IEnumerable<long> starts)
+    {
+        foreach (var start in starts.Distinct())
+        {
+            var page = rows
+                .Where(r => r.Index >= start)
+                .OrderBy(r => r.Index)
+                .Take(VykDisclosureWalker.PageSize)
+                .ToArray();
+
+            var request = Request.Create()
+                .WithPath(DisclosuresPath)
+                .UsingGet()
+                .WithParam("disclosureIndex", start.ToString(CultureInfo.InvariantCulture));
+
+            if (page.Length == 0)
+            {
+                _wireMock.Server
+                    .Given(request)
+                    .RespondWith(
+                        Response.Create()
+                            .WithStatusCode(400)
+                            .WithHeader("Content-Type", "application/json")
+                            .WithBody(Status400Er005));
+                continue;
+            }
+
+            var body = JsonSerializer.Serialize(page.Select(row => new
+            {
+                disclosureIndex = row.Index.ToString(CultureInfo.InvariantCulture),
+                disclosureType = row.Type,
+                disclosureClass = "ODA",
+                subReportIds = Array.Empty<string>(),
+                title = "ALFA",
+                companyId = row.CompanyId,
+                acceptedDataFileTypes = new[] { "html", "flat" },
+            }));
+
+            _wireMock.Server
+                .Given(request)
+                .RespondWith(
+                    Response.Create()
+                        .WithStatusCode(200)
+                        .WithHeader("Content-Type", "application/json")
+                        .WithBody(body));
+        }
+    }
+
+    /// <summary>A market-wide list mapping for one exact index returning a failure status.</summary>
+    private void StubMarketListError(long disclosureIndex, int statusCode, string body)
+    {
+        var request = Request.Create()
+            .WithPath(DisclosuresPath)
+            .UsingGet()
+            .WithParam("disclosureIndex", disclosureIndex.ToString(CultureInfo.InvariantCulture));
+
+        _wireMock.Server
+            .Given(request)
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(statusCode)
+                    .WithHeader("Content-Type", "application/json")
+                    .WithBody(body));
+    }
+
+    /// <summary>The market-wide list requests (no <c>companyId</c>) the run sent, in call order.</summary>
+    private List<(string? Index, string? CompanyId)> MarketRequests() =>
+        DisclosureRequests().Where(request => request.CompanyId is null).ToList();
+
     /// <summary>
     /// TC-MDF-094 (chain composition) — a <b>partial</b> corporate-actions step does not block the
     /// chain: the steps that Thursday's failure never reached (metrics-recompute /
@@ -1816,7 +2405,8 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         string? documentRoot = null,
         bool vyk = false,
         InMemorySerilogSink? logs = null,
-        IReadOnlyDictionary<string, string?>? extraSettings = null)
+        IReadOnlyDictionary<string, string?>? extraSettings = null,
+        LogEventLevel minimumLevel = LogEventLevel.Warning)
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
@@ -1849,6 +2439,13 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
                 settings[$"Ingestion:{section}:UniverseIndex"] = StatementBound.IndexCode;
                 settings[$"Ingestion:{section}:EarlyDisclosureIndex"] = "0";
             }
+
+            // The 034/046/061/063 company-scoped lane pins the per-company walk from
+            // EarlyDisclosureIndex, so it selects that feed explicitly. The lane's shipped default
+            // is the market-wide feed with a bootstrap window; TKT-foundation-078's own cases
+            // (TC-MDF-099/100/101) pin the new default's behaviour and its arithmetic.
+            settings["Ingestion:Disclosures:Feed"] = DisclosuresSourceOptions.FeedCompany;
+            settings["Ingestion:Disclosures:BootstrapLookback"] = "0";
         }
 
         if (extraSettings is not null)
@@ -1871,7 +2468,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             // The failure-forensics lane (test strategy §6): the application's log events land in
             // the in-memory sink so a test can assert the named reason of an isolated symbol.
             var logger = new LoggerConfiguration()
-                .MinimumLevel.Warning()
+                .MinimumLevel.Is(minimumLevel)
                 .WriteTo.Sink(logs)
                 .CreateLogger();
             services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
@@ -1906,7 +2503,7 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         await db.Database.ExecuteSqlRawAsync("DELETE FROM quarantined_facts");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
         await db.Database.ExecuteSqlRawAsync(
-            "DELETE FROM coverage_metadata WHERE data_type IN ('kap-dividends-cursor','kap-corporate-actions-cursor','kap-disclosures-cursor','kap-disclosure-cursor')");
+            "DELETE FROM coverage_metadata WHERE data_type IN ('kap-dividends-cursor','kap-corporate-actions-cursor','kap-disclosures-cursor','kap-disclosure-cursor','kap-disclosures-market-cursor')");
         await StatementBound.ReplaceAsync(db, "ALFA");
     }
 
