@@ -278,6 +278,10 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     // ---------------------------------------------------------------------------------
     // TKT-foundation-064 — the watchdog's two bounds: per-step (120 min shipped) and the
     // whole-chain ceiling (4 h shipped). Doubles only, fake clock, no real delays.
+    // TC-MDF-079's hung-step semantics are re-verified under the per-step bound: its own cases
+    // configure a 10-minute whole-chain ceiling and leave the shipped 120-minute step bound in
+    // effect, so the ceiling is still what catches their stall and they pass unmodified;
+    // TC-MDF-098(b) below is the per-step analogue of the same hung step.
     // ---------------------------------------------------------------------------------
 
     /// <summary>
