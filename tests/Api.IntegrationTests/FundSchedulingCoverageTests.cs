@@ -292,6 +292,46 @@ public sealed class FundSchedulingCoverageTests : IClassFixture<PostgresFixture>
         Assert.Equal(knownBefore, knownAfter);
     }
 
+    /// <summary>TC-FDF-014 (f) — through the scheduler path every failing attempt's ledger row
+    /// names its reason (red before: all four rows were <c>failed</c> with an EMPTY
+    /// <c>error</c> — the dev-stack defect). The retry ladder and alerts are unchanged
+    /// (TC-FDF-008).</summary>
+    [Fact]
+    public async Task TC_FDF_014_Every_scheduled_failure_carries_its_reason()
+    {
+        await ResetAsync();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(UniverseRoute, "{}", statusCode: 500);
+
+        await using var host = BuildSchedulerHost(new Dictionary<string, string?>
+        {
+            ["Ingestion:Scheduler:JobSchedules:0:JobCode"] = "fund-nav",
+            ["Ingestion:Scheduler:JobSchedules:0:Cron"] = "0 0 19 * * *",
+        });
+
+        host.Clock.SetUtcNow(Trt(2026, 10, 6, 18, 0));
+        await AdvanceToAsync(host.Scheduler, host.Clock, Trt(2026, 10, 6, 19, 0));   // attempt 1
+        await AdvanceToAsync(host.Scheduler, host.Clock, Trt(2026, 10, 6, 19, 5));   // retry 1 (+5m)
+        await AdvanceToAsync(host.Scheduler, host.Clock, Trt(2026, 10, 6, 19, 20));  // retry 2 (+15m)
+        await AdvanceToAsync(host.Scheduler, host.Clock, Trt(2026, 10, 6, 20, 20));  // retry 3 (+60m) → exhausted
+
+        await using var db = _postgres.CreateContext();
+        var runs = await db.IngestRuns
+            .Where(row => row.JobCode == "fund-nav")
+            .OrderBy(row => row.Id)
+            .ToListAsync();
+        Assert.Equal(4, runs.Count);
+        Assert.All(runs, run => Assert.Equal(IngestResult.Failed, run.Status));
+        Assert.All(runs, run =>
+        {
+            Assert.False(
+                string.IsNullOrWhiteSpace(run.Error),
+                "a failed run must never carry an empty reason (FR-MDF-009)");
+            Assert.StartsWith("SOURCE_FETCH_FAILED", run.Error);
+            Assert.Contains("HTTP 500", run.Error);
+        });
+    }
+
     /// <summary>TC-FDF-008 (freshness side) — a failed fund run surfaces as stale in the
     /// admin summary's freshness (FR-FDF-005, v_data_freshness).</summary>
     [Fact]

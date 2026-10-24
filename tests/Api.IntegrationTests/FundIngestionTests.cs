@@ -8,6 +8,7 @@ using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Sources;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -290,22 +291,244 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-FDF-014 — run-ledger failure-reason honesty (FR-MDF-009)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>TC-FDF-014 (a) — the dev-stack signature reproduced: the fund-universe endpoint
+    /// is unreachable (transport refusal — the source-down class), so the run fails in
+    /// milliseconds with zero symbols. The failed <c>ingest_runs</c> row must now carry the
+    /// reason (red before: <c>error</c> was EMPTY, the observed defect); the ledger, not the
+    /// console, tells an operator what happened.</summary>
+    [Fact]
+    public async Task TC_FDF_014_A_Unreachable_source_fails_fast_with_a_reason()
+    {
+        await ResetAsync();
+        // Port 1 on loopback refuses instantly — deterministic, no network, no upstream.
+        await using var provider = BuildIngestion(new Dictionary<string, string?>
+        {
+            ["Ingestion:Funds:BaseUrl"] = "http://127.0.0.1:1",
+        });
+
+        var clock = new System.Diagnostics.Stopwatch();
+        clock.Start();
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            using var scope = provider.Provider.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>()
+                .RunAsync("fund-nav", new IngestionRequest(T));
+        });
+        clock.Stop();
+
+        // The observed signature: an instant failure (a transport refusal, never a timeout)...
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"the failure must be fast, took {clock.Elapsed}");
+
+        await using var db = _postgres.CreateContext();
+        var run = Assert.Single(await db.IngestRuns.Where(row => row.JobCode == "fund-nav").ToListAsync());
+        Assert.Equal(IngestResult.Failed, run.Status);
+
+        // ...with zero symbols resolved (the stats shape the dev ledger showed)...
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Empty(stats.RootElement.GetProperty("symbols").EnumerateArray());
+        Assert.Equal(0, stats.RootElement.GetProperty("written").GetInt32());
+
+        // ...and, since this ticket, a REASON: the code class plus the upstream named.
+        Assert.False(
+            string.IsNullOrWhiteSpace(run.Error),
+            "a failed run must never carry an empty reason (FR-MDF-009)");
+        Assert.StartsWith("SOURCE_FETCH_FAILED", run.Error);
+        Assert.Contains("127.0.0.1:1", run.Error);
+    }
+
+    /// <summary>TC-FDF-014 (b) — a non-success universe response (HTTP 500, the source-down
+    /// class the fund lane's existing failure test uses) records its reason, including the
+    /// upstream status.</summary>
+    [Fact]
+    public async Task TC_FDF_014_B_Source_down_records_the_reason()
+    {
+        await ResetAsync();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(UniverseRoute, "{}", statusCode: 500);
+        await using var provider = BuildIngestion();
+
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            using var scope = provider.Provider.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>()
+                .RunAsync("fund-nav", new IngestionRequest(T));
+        });
+
+        await using var db = _postgres.CreateContext();
+        var run = await db.IngestRuns.SingleAsync(row => row.JobCode == "fund-nav");
+        Assert.Equal(IngestResult.Failed, run.Status);
+        Assert.StartsWith("SOURCE_FETCH_FAILED", run.Error);
+        Assert.Contains("HTTP 500", run.Error);
+        Assert.Contains(UniverseRoute, run.Error);
+    }
+
+    /// <summary>TC-FDF-014 (c) — the ROOT CAUSE of the 2026-10-18 dev-stack failures: no
+    /// <c>Ingestion:Funds</c> configuration exists anywhere, so the fund client falls back to
+    /// the placeholder <c>http://localhost</c>. An unconfigured source must say exactly that —
+    /// naming the config key — instead of dying as an anonymous connection refusal, and it must
+    /// not pretend to call anything.</summary>
+    [Fact]
+    public async Task TC_FDF_014_C_Unconfigured_source_names_the_config_key()
+    {
+        await ResetAsync();
+        _wireMock.Server.ResetMappings();
+        StubUniverse(Universe("TEF0001"));
+        var fetchesBefore = _wireMock.RequestsFor(UniverseRoute);
+        await using var provider = BuildIngestion(new Dictionary<string, string?>
+        {
+            // The shipped state: no funds base address at all (removes the harness default).
+            ["Ingestion:Funds:BaseUrl"] = null,
+        });
+
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            using var scope = provider.Provider.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>()
+                .RunAsync("fund-nav", new IngestionRequest(T));
+        });
+
+        await using var db = _postgres.CreateContext();
+        var run = await db.IngestRuns.SingleAsync(row => row.JobCode == "fund-nav");
+        Assert.Equal(IngestResult.Failed, run.Status);
+        Assert.StartsWith("SOURCE_NOT_CONFIGURED", run.Error);
+        Assert.Contains("Ingestion:Funds:BaseUrl", run.Error);
+
+        // Nothing was fetched: an unconfigured source never reaches the wire.
+        Assert.Equal(fetchesBefore, _wireMock.RequestsFor(UniverseRoute));
+    }
+
+    /// <summary>TC-FDF-014 (d) — the job-reported failure paths carry their reason too: an
+    /// unparseable universe payload (quarantined) and a payload without provenance both end
+    /// <c>failed</c> with a named code.</summary>
+    [Fact]
+    public async Task TC_FDF_014_D_Job_reported_failures_carry_their_reason()
+    {
+        await ResetAsync();
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(UniverseRoute, "this is not json");
+        await using (var provider = BuildIngestion())
+        {
+            var result = await RunAsync(provider, "fund-nav");
+            Assert.Equal(IngestResult.Failed, result.Status);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var run = await db.IngestRuns.SingleAsync(row => row.JobCode == "fund-nav");
+            Assert.StartsWith("UNPARSEABLE_PAYLOAD", run.Error);
+            Assert.Single(await db.QuarantinedFacts.Where(row => row.ReasonCode == "UNPARSEABLE_PAYLOAD").ToListAsync());
+        }
+
+        // A payload whose blocks carry provenance but the envelope does not (FR-MDF-008).
+        _wireMock.Server.ResetMappings();
+        _wireMock.StubJson(UniverseRoute, "{\"funds\":[]}");
+        await using (var provider = BuildIngestion())
+        {
+            var result = await RunAsync(provider, "fund-nav");
+            Assert.Equal(IngestResult.Failed, result.Status);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var run = await db.IngestRuns
+                .Where(row => row.JobCode == "fund-nav")
+                .OrderByDescending(row => row.Id)
+                .FirstAsync();
+            Assert.StartsWith("MISSING_PROVENANCE", run.Error);
+        }
+    }
+
+    /// <summary>TC-FDF-014 (e) — the reason detail is bounded (a runaway upstream message cannot
+    /// bloat the ledger row) and single-line: the code travels first, the detail after it.</summary>
+    [Fact]
+    public async Task TC_FDF_014_E_Reason_detail_is_bounded()
+    {
+        await using var db = _postgres.CreateContext();
+        var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+        var logger = new LoggerConfiguration().MinimumLevel.Warning()
+            .WriteTo.Sink(new InMemorySerilogSink())
+            .CreateLogger();
+        using var loggerFactory = new LoggerFactory().AddSerilog(logger, dispose: false);
+
+        var runner = new IngestionJobRunner(
+            [new ThrowingJob("fund-nav", new SourceFetchException(new string('x', 5000) + "\nline two"))],
+            db,
+            clock,
+            loggerFactory.CreateLogger<IngestionJobRunner>());
+
+        await Assert.ThrowsAnyAsync<Exception>(() => runner.RunAsync("fund-nav", new IngestionRequest(T)));
+
+        var run = await db.IngestRuns
+            .Where(row => row.JobCode == "fund-nav")
+            .OrderByDescending(row => row.Id)
+            .FirstAsync();
+        Assert.StartsWith("SOURCE_FETCH_FAILED", run.Error);
+        Assert.True(run.Error!.Length <= IngestFailureReason.MaxLength + 32, $"unbounded reason ({run.Error.Length} chars)");
+        Assert.DoesNotContain('\n', run.Error);
+        Assert.EndsWith("…", run.Error);
+    }
+
+    /// <summary>TC-FDF-015 — the runner-level stats seam gained the distinct <c>rewritten</c>
+    /// count (the TKT-foundation-042 fold-in): a job that repairs a same-day row reports it as
+    /// <c>rewritten</c> in <c>ingest_runs.stats_json</c> instead of hiding it inside
+    /// <c>written</c>.</summary>
+    [Fact]
+    public async Task TC_FDF_015_Runner_reports_the_distinct_rewritten_count()
+    {
+        await using var db = _postgres.CreateContext();
+        var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+        var logger = new LoggerConfiguration().MinimumLevel.Warning()
+            .WriteTo.Sink(new InMemorySerilogSink())
+            .CreateLogger();
+        using var loggerFactory = new LoggerFactory().AddSerilog(logger, dispose: false);
+
+        var runner = new IngestionJobRunner(
+            [new StaticJob("market-snapshot", new IngestResult("market-snapshot", 0, 2, 0, IngestResult.Succeeded) { Rewritten = 1 })],
+            db,
+            clock,
+            loggerFactory.CreateLogger<IngestionJobRunner>());
+
+        await runner.RunAsync("market-snapshot", new IngestionRequest(T));
+
+        var run = await db.IngestRuns
+            .Where(row => row.JobCode == "market-snapshot")
+            .OrderByDescending(row => row.Id)
+            .FirstAsync();
+        using var stats = JsonDocument.Parse(run.StatsJson!);
+        Assert.Equal(1, stats.RootElement.GetProperty("rewritten").GetInt32());
+        Assert.Equal(0, stats.RootElement.GetProperty("written").GetInt32());
+        Assert.Equal(2, stats.RootElement.GetProperty("unchanged").GetInt32());
+
+        // A succeeded run carries no failure reason.
+        Assert.True(string.IsNullOrEmpty(run.Error));
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
-    private IngestionHost BuildIngestion()
+    private IngestionHost BuildIngestion(IDictionary<string, string?>? overrides = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
         var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
 
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Funds:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Funds:UniversePath"] = UniverseRoute,
+        };
+        foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
+        {
+            settings[key] = value;
+        }
+
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:Default"] = _postgres.ConnectionString,
-                ["Ingestion:Funds:BaseUrl"] = _wireMock.BaseUrl,
-                ["Ingestion:Funds:UniversePath"] = UniverseRoute,
-            })
+            .AddInMemoryCollection(settings)
             .Build();
 
         var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
@@ -402,5 +625,39 @@ public sealed class FundIngestionTests : IClassFixture<PostgresFixture>, IClassF
             _mail.SendAsync(
                 new Degerli.Api.Mail.OutboundMail("builder@degerli.test", alert.Subject, alert.BodyTr, alert.BodyEn),
                 cancellationToken);
+    }
+
+    /// <summary>A job double whose run throws — the runner's failure-reason seam (TC-FDF-014).</summary>
+    private sealed class ThrowingJob : IIngestJob
+    {
+        private readonly Exception _failure;
+
+        public ThrowingJob(string jobCode, Exception failure)
+        {
+            JobCode = jobCode;
+            _failure = failure;
+        }
+
+        public string JobCode { get; }
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromException<IngestResult>(_failure);
+    }
+
+    /// <summary>A job double returning a fixed result — the runner's stats seam (TC-FDF-015).</summary>
+    private sealed class StaticJob : IIngestJob
+    {
+        private readonly IngestResult _result;
+
+        public StaticJob(string jobCode, IngestResult result)
+        {
+            JobCode = jobCode;
+            _result = result;
+        }
+
+        public string JobCode { get; }
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_result);
     }
 }

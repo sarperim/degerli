@@ -124,3 +124,23 @@
 - Traces: FR-FDF-003/004, BR-FDF-004, ASM-002, `02` §3.7 · Level: L2 · Design: recorded-gap check (negative case)
 
 *Change record: v1.0 2026-10-06 — initial FDF test plan, batch mode. Approved at the builder's final review 2026-10-07 — §6 interpretations I-FDF-1..3 upheld.*
+
+---
+## 8. Post-board defect case — TKT-foundation-044 (delivery-planner-applied 2026-10-23; test-planner confirmation pending — the 030/v1.4 precedent)
+
+**Context.** On the dev stack from 2026-10-18, `fund-nav` / `fund-performance` / `fund-holdings` failed on **every** scheduled attempt, instantly (~4–30 ms, a transport refusal rather than a timeout), with `stats_json {"mode":"incremental","symbols":[],"written":0,…}` and an **EMPTY `error` column**. `symbols: []` is structural for the fund lane (fund jobs have no per-symbol loop — they never populate `IngestResult.SymbolStats`), so it was a red herring; the ledger's missing reason was the real diagnosis hole.
+
+**TC-FDF-014 — A failed fund run always carries its reason in the run ledger (FR-MDF-009)**
+- Traces: FR-MDF-009 (the runner "records failed run before propagating" — the record must name the failure), FR-MDF-012, NFR-MDF-001; FR-FDF-001/002 (the fund lane that was undiagnosable) · Level: L2 · Design: EP — failure classes (transport / HTTP error / unconfigured source / unparseable payload / missing provenance) × the two write paths (direct runner, scheduler ladder)
+- Preconditions: the FU §10 TEFAS WireMock double; a migrated PostgreSQL; the same `AddMarketDataIngestion` composition the host uses. No live source is ever called.
+- Steps: (a) point the fund source at an unreachable address (loopback refusal — the dev signature) and run `fund-nav`; (b) serve the universe route HTTP 500 and run `fund-nav`; (c) run the fund lane with **no** `Ingestion:Funds:BaseUrl` at all (the shipped state); (d) serve a non-JSON body, then a payload with no `sourceRef`; (e) drive the scheduled `fund-nav` stream (fake clock) through the full 5/15/60 ladder over the 500 world.
+- Expected: **every** failed `ingest_runs` row carries a non-empty `error` of the shape `"{REASON_CODE}: {bounded detail}"` — `SOURCE_FETCH_FAILED` for (a)/(b) with the unreachable address / `HTTP 500` and the route named, `SOURCE_NOT_CONFIGURED` for (c) naming `Ingestion:Funds:BaseUrl` (and **zero** requests reach the wire), `UNPARSEABLE_PAYLOAD` / `MISSING_PROVENANCE` for (d) with the quarantine unchanged; (e) all four ladder rows carry `SOURCE_FETCH_FAILED…HTTP 500`. The detail is single-lined and bounded (≤300 chars, `…`-truncated) so a runaway upstream message cannot bloat the row; redaction stays with the adapters (each redacts its own credentials before throwing). Red today: `error` is `NULL` on every one of these rows.
+- Dependencies: —
+
+**TC-FDF-015 — The runner stats seam reports same-day repairs distinctly (`rewritten`)**
+- Traces: FR-MDF-010/011 (honest run accounting), the TKT-foundation-042 snapshot-repair lane (fold-in into TKT-foundation-044) · Level: L2 · Design: seam check over the runner's `ingest_runs` write
+- Steps: run a job through `IngestionJobRunner` whose result carries `Rewritten: 1` (the same-day `market-snapshot` repair shape) with `Written: 0`, `Unchanged: 2`.
+- Expected: `stats_json` carries `rewritten: 1` beside the untouched `written: 0` / `unchanged: 2`, and a `succeeded` row carries no `error`. Red today: the seam has no `rewritten` counter, so a repair is only ever visible as `written: 1`.
+- Dependencies: —
+
+*Change record: v1.1 2026-10-23 — §8 defect cases TC-FDF-014/015 added for TKT-foundation-044 (failure-reason honesty on every failed ledger row; the distinct `rewritten` run stat).*

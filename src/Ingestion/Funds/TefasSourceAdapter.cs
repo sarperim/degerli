@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Sources;
 using Microsoft.Extensions.Options;
 
@@ -49,6 +50,19 @@ public sealed class TefasSourceAdapter : ISourceAdapter<TefasUniversePayload>
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
+        // No configured address means nothing was ever wired to call: the fund lane's base
+        // address has no shipped default and the DI fallback is a placeholder, so an
+        // unconfigured run fails in milliseconds with an anonymous connection refusal
+        // (TKT-foundation-044's dev-stack root cause). Refuse it by name instead — the reason
+        // code names the config key an operator has to set, and no request goes on the wire.
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
+        {
+            throw new TefasSourceNotConfiguredException(
+                $"The TEFAS fund source has no base address: '{TefasSourceOptions.SectionName}:BaseUrl' "
+                + "is unset and no verified TEFAS endpoint is wired, so the fund jobs cannot fetch "
+                + $"'{_options.UniversePath}'.");
+        }
+
         var raw = await _client.GetStringAsync(_options.UniversePath, cancellationToken).ConfigureAwait(false);
 
         TefasUniversePayload? payload;
@@ -68,4 +82,18 @@ public sealed class TefasSourceAdapter : ISourceAdapter<TefasUniversePayload>
 
         return new SourcePayload<TefasUniversePayload>(payload.SourceRef, payload, raw);
     }
+}
+
+/// <summary>
+/// The fund source has no configured address (TKT-foundation-044): the run cannot fetch
+/// anything because nothing was ever wired to call. Distinct from a source-down — retrying
+/// cannot help until the configuration names a verified TEFAS endpoint (OQ-FDF-002) — and the
+/// reason code says exactly that in the run ledger.
+/// </summary>
+public sealed class TefasSourceNotConfiguredException : Exception, IReasonCodedFailure
+{
+    public TefasSourceNotConfiguredException(string message) : base(message) { }
+
+    /// <inheritdoc />
+    public string ReasonCode => IngestFailureReason.SourceNotConfigured;
 }
