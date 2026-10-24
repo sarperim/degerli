@@ -181,9 +181,18 @@ HTTPS redirect, HSTS, `nosniff`, `frame-ancestors 'none'`, CSP `default-src 'sel
 
 The coverage matrix carries a **Method** column with values: `unit | integration | component | e2e | script | manual | operational`. Manual/operational entries name the owner (builder) and the trigger (pre-launch / per-release). No requirement is left methodless.
 
+### 9.5 The CI / live / manual boundary — vocabulary and cross-reference
+
+`docs/live-vs-ci.md` states what CI proves, what only a live run on the deployed stack proves, and what neither proves, with the 2026-10-18→24 incidents as worked examples. It is the normative text for the boundary; this section only pins the vocabulary so the two documents cannot drift.
+
+- **`CI`** — decidable by an automated L1–L4 case or a CI script on doubles or the seeded stack. **`live`** — decidable only by a real run against a real source or the deployed stack, recorded verbatim (run ID, status, counts, the source's own bytes). **`manual`** — a named human step with a date and an outcome (§10). **Recorded gap** — a real criterion that was not executed; it carries rationale, date, and owner, and is never a pass.
+- **Rule:** every ticket's acceptance bullets are classified `CI` / `live` / `manual` (or an explicit gap) when the ticket is written; an unclassified criterion is a planning defect, not an implicit CI test. The class is **orthogonal to the Method column** — Method says how a case is verified (§9.4), the class says where the evidence lives and who attests it. Default mapping: `unit|integration|component|e2e|script` → `CI`; `manual` → `manual`; `operational` → `live` when a deployed run produces it, `manual` when a human observes it.
+- **Rule:** a `pending` live criterion does not block merge (CI is the merge gate, §10) but is never reported as satisfied; the acceptance phase reads it as a gap.
+
 ## 10. Item pass/fail criteria (IEEE 829)
 
 - **Per test case:** pass = every specified expected result observed, deterministically, on a clean run; fail = any expected result not observed. Flaky = fail: no retry-masks; a flaky test is a defect in the test or the code, fixed at the source.
+- **Per ticket acceptance:** every acceptance criterion is classified `CI` / `live` / `manual` (§9.5) at authoring time; a green CI run satisfies the `CI` class only and is **not** evidence of a working product, and an unexecuted `live` or `manual` criterion is a recorded gap — never a pass (§9.4, `docs/live-vs-ci.md`).
 - **Per CI run (the definition of done for merged code):** all automated Must- and Should-level test cases for the implemented scope pass; i18n parity and the advice-vocabulary grep pass; Playwright suite within its 5-minute budget.
 - **MoSCoW and gating:** MoSCoW orders implementation; it does not relax tests. Once a Should feature is implemented, its tests gate CI like Must's. A Should feature may be deferred by the builder's explicit decision (recorded on the ticket); it may not be half-shipped.
 - **Golden values:** an intentional formula change requires updating the affected test cases **and** recording the change per §14 (the plan is the contract; the implementation does not redefine expected results silently).
@@ -239,3 +248,4 @@ Approve or adjust. Recommendations above; a bare "approve all" adopts every reco
 
 ---
 *Change record: v1.0 2026-10-06 — initial strategy, submitted at Gate 1.*
+*v1.1 2026-10-24 (TKT-foundation-075) — §9.5 added: the CI / live / manual acceptance-class vocabulary, cross-referencing `docs/live-vs-ci.md`; §10 gains the per-ticket acceptance bullet. No existing method, level, TC, or pass/fail rule is changed; §9.4's Method vocabulary is unchanged.*
