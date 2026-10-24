@@ -127,4 +127,14 @@ public sealed class JobScheduleOptions
 
     /// <summary>Cronos cron expression (six fields, seconds included).</summary>
     public string Cron { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the trading calendar gates this job's occurrences (TKT-foundation-048, planner
+    /// pin 3). <c>false</c> — the default — keeps the pre-048 posture for data published every
+    /// day (the macro and fund streams). The intraday sweep is a market stream, so the shipped
+    /// configuration sets it to <c>true</c>: on a configured holiday the sweep does not run and
+    /// the stream writes one <c>holiday-skip</c> run-ledger row instead of sweeping a closed
+    /// market.
+    /// </summary>
+    public bool TradingDaysOnly { get; set; }
 }

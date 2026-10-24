@@ -7,6 +7,7 @@ using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -41,6 +42,9 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
 
     /// <summary>The preceding completed session — Monday 2026-10-05.</summary>
     private static DateOnly Monday => L2.Anchor.TradingDay(-1);
+
+    /// <summary>The session before that — Friday 2026-10-02 (the holiday world's last session).</summary>
+    private static DateOnly Friday => L2.Anchor.TradingDay(-2);
 
     /// <summary>
     /// The Tuesday clock (21:00 Istanbul — the harness clock's fixed instant, which
@@ -295,8 +299,134 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
     }
 
     // ---------------------------------------------------------------------------------
+    // TC-MDF-087 — holiday-honest display freshness (TKT-foundation-048)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-087 (iv) — <b>the store holds a price dated on a configured holiday.</b> Monday
+    /// 2026-10-05 is configured as a market holiday for this world (the 048 calendar is
+    /// configuration, planner pin 1), yet <c>daily_prices</c> carries rows dated that day — the
+    /// source-artifact shape (a source that answers a non-trading date with the previous close, or
+    /// a backfill that fills calendar days). A non-trading date is <b>not a session</b>
+    /// (<c>weekend ∪ configured holiday</c>, planner pin 2), so it can never be the "newer
+    /// completed session" the served row is measured against: Friday's snapshot is <b>fresh</b> on
+    /// the Tuesday clock.
+    /// <para>
+    /// Red before the fix: the freshness rule took the maximum stored <c>price_date</c> at face
+    /// value, so the holiday-dated row made Friday's row read <c>stale: true</c> — a badge telling
+    /// the user their data is behind when the market simply never traded. The calendar now gates
+    /// the candidate day and the store is re-asked below it, so the answer stays a genuinely
+    /// stored <i>trading</i> day (never a fabricated one).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_stored_row_on_a_configured_holiday_does_not_make_the_served_row_stale()
+    {
+        await ResetAsync();
+        // The served row is Friday's; Monday's stored rows stay (they are dated on the holiday)
+        // and Tuesday's never landed (the chain is gated, planner pin 3).
+        await DeletePricesAfterAsync(Monday);
+        await RunSnapshotAsync(Friday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(TuesdayClock);
+        using var host = WithHoliday(factory, Monday);
+        using var client = CreateClient(host);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-MDF-087 (iv) — the honest holiday world: Monday is a closure, so <b>no</b> prices exist
+    /// for it and Friday is the last completed session. On the Tuesday clock (before that day's
+    /// EOD exists) the overview serves Friday and reads <b>fresh</b> — the user requirement of
+    /// 2026-10-22 ("holidays it should display it too"), pinned so the stored-trading-day rule
+    /// cannot regress into a weekday rule.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_friday_covered_holiday_monday_reads_fresh_on_tuesday()
+    {
+        await ResetAsync();
+        // Monday is a holiday: its rows never landed (the chain is gated, planner pin 3).
+        await DeletePricesAfterAsync(Friday);
+        await RunSnapshotAsync(Tuesday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(TuesdayClock);
+        using var host = WithHoliday(factory, Monday);
+        using var client = CreateClient(host);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-MDF-087 (iv) — the holiday gate must not <b>hide</b> a genuine miss: with the same
+    /// holiday configured and Tuesday's prices stored on top of Friday's snapshot (a missed
+    /// <c>market-snapshot</c> run on a real trading day), the flag is <c>stale: true</c>.
+    /// The calendar only discredits non-trading dates; a stored <i>trading</i> session still
+    /// proves the served row is behind.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_holiday_calendar_does_not_hide_a_missed_trading_session()
+    {
+        await ResetAsync();
+        await RunSnapshotAsync(Friday);
+        // Tuesday's EOD prices land but the snapshot run never follows.
+        await using (var db = _postgres.CreateContext())
+        {
+            await FixtureSeeder.ApplyAsync(db, L2);
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        factory.Clock.SetUtcNow(TuesdayClock);
+        using var host = WithHoliday(factory, Monday);
+        using var client = CreateClient(host);
+
+        using var response = await client.GetAsync("/api/v1/market/overview");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.Equal("available", root.GetProperty("state").GetString());
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.True(root.GetProperty("stale").GetBoolean());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The in-process host with one extra <b>configured holiday</b> (TKT-foundation-048: the
+    /// calendar is configuration, planner pin 1). The override is index 0 of the shipped
+    /// <c>Ingestion:TradingCalendar:Holidays</c> array, so it prepends to the seeded BIST list —
+    /// the world therefore has the real publication dates <i>and</i> this case's holiday, which is
+    /// what an operator-added date looks like. The fake clock instance is the factory's own, so
+    /// the derived host keeps the case's instant.
+    /// </summary>
+    private static WebApplicationFactory<Program> WithHoliday(DegerliAppFactory factory, DateOnly holiday) =>
+        factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ingestion:TradingCalendar:Holidays:0"] = holiday.ToString("yyyy-MM-dd"),
+            })));
 
     /// <summary>
     /// Inserts the sweep rows a mid-session world would carry (the sweep itself is pinned by
