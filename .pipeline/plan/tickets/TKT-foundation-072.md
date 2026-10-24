@@ -18,7 +18,24 @@ scope:
 
 # TKT-foundation-072: Units branding — display-side unit semantics (server unit codes are not display prose)
 
-- Status: in-review
+- Status: done — **merged 2026-10-24** as PR **#137** (squash, `dev@f40ff1d`), final head `ba25b0b`.
+  Review loop ran **2 rounds**: `.pipeline/plan/reviews/TKT-foundation-072-round-{1,2}.md`. Round 1 returned
+  MERGEABLE but with an open breach of the ticket's own pinned rule, so a fix round was commissioned
+  rather than merging past it. Delivered: `src/Web/src/lib/units.ts` (unit-code → i18n map, unknown ⇒
+  "Birim belirtilmemiş" / "Unit not specified", never the raw code), applied across `MacroStrip`,
+  `ScreenerScreen`, `screener/criteria`, `savedScreens/criteria`, `StockSections`; TR+EN catalogues in
+  parity (673/673).
+  **DR-3/SEC-1 was a genuine rule breach, not a nit:** `UNIT_LABEL_KEYS[unit]` walked the prototype
+  chain, so a unit code of `constructor`/`__proto__` printed `function Object() { [native code] }`
+  instead of the honest label — red test evidence verbatim, now guarded with `Object.hasOwn`.
+  **DR-4 routed to 065 and verified against the live store** (see the CRITICAL refinement section on
+  TKT-foundation-065): this PR relabelled `lines.sharesOutstanding` (statement `SHARES_OUT`, **0 rows
+  in the store**, always a dash) as paid-in capital — which is **not** what D4 was about, and is a
+  claim-in-waiting if a decoder ever emits `SHARES_OUT`. Harmless today because the field is honestly
+  empty; the real D4 field (`shareCount.sharesOutstanding`, **556 populated rows** of `currentCapital`
+  money) is still unrelabelled and is 065's outstanding contract work.
+  UX wording (`units.percentYoY`, `units.usdPerOunce`, `units.tryPerGram`, `units.unknown`, the
+  paid-in-capital label) remains a recorded **ux-designer flow-back** item, as the ticket permits.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 8 unparked).**
 - **Evidence (gathered 2026-10-24):**
