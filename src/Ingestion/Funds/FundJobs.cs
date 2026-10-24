@@ -64,7 +64,14 @@ public abstract class FundJobBase : IIngestJob
         {
             await QuarantineAsync(JobCode, null, exception.RawJson, "UNPARSEABLE_PAYLOAD", cancellationToken)
                 .ConfigureAwait(false);
-            return new IngestResult(JobCode, 0, 0, 1, IngestResult.Failed);
+            return new IngestResult(JobCode, 0, 0, 1, IngestResult.Failed)
+            {
+                // The ledger row carries the reason (FR-MDF-009): a failed run without one is
+                // undiagnosable, and the quarantined payload alone does not say why.
+                FailureReason = IngestFailureReason.Compose(
+                    IngestFailureReason.UnparseablePayload,
+                    exception.InnerException?.Message ?? exception.Message),
+            };
         }
 
         if (string.IsNullOrWhiteSpace(fetched.SourceRef))
@@ -76,7 +83,12 @@ public abstract class FundJobBase : IIngestJob
                 request.Date);
             await QuarantineAsync(JobCode, null, fetched.RawJson, "MISSING_PROVENANCE", cancellationToken)
                 .ConfigureAwait(false);
-            return new IngestResult(JobCode, 0, 0, 1, IngestResult.Failed);
+            return new IngestResult(JobCode, 0, 0, 1, IngestResult.Failed)
+            {
+                FailureReason = IngestFailureReason.Compose(
+                    "MISSING_PROVENANCE",
+                    $"the TEFAS universe payload for {request.Date:yyyy-MM-dd} carried no sourceRef"),
+            };
         }
 
         var recordedAt = Clock.GetUtcNow();
