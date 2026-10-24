@@ -75,8 +75,8 @@ public sealed class DisclosuresSourceOptions
     /// 1092199 → 1142913 (50,040 positions), so one page usually covers the whole window
     /// (≈1–2 list calls of ≤50 rows). Before this window existed the walk started at
     /// <see cref="EarlyDisclosureIndex"/> = <c>0</c>, i.e. ~138,818 positions ≈ 39 pages per
-    /// company ≈ 4 hours at the ≥12 s pace for one XU030 pass (run 208: 10:41:24 → 13:41:24,
-    /// exactly 3h00m, <c>written=0</c>).
+    /// company ≈ 4 hours for one XU030 pass at the observed ~12 s pace (run 208:
+    /// 10:41:24 → 13:41:24, exactly 3h00m, <c>written=0</c>).
     /// </summary>
     public const long DefaultBootstrapLookback = 5_000;
 
@@ -93,9 +93,9 @@ public sealed class DisclosuresSourceOptions
     /// The shipped <b>market</b> bootstrap window, in index positions below the platform head:
     /// <b>1,000</b>. Market-wide rows are <i>dense</i> (live probe 2026-10-24: the page at index
     /// 1230970 carried 48 rows and reached 1231017 — essentially one row per index), so 1,000
-    /// positions ≈ 1,000 rows ≈ 20 pages of 50 ≈ 4 min of list pacing at 12 s/call, and
-    /// immediately covers the newest disclosures (the live criterion's "within ~50 of
-    /// <c>lastDisclosureIndex</c>").
+    /// positions ≈ 1,000 rows ≈ 20 pages of 50 ≈ 200 s of list pacing at the shipped 10 s delay
+    /// (≈4 min at the observed ~12 s), and immediately covers the newest disclosures (the live
+    /// criterion's "within ~50 of <c>lastDisclosureIndex</c>").
     /// </summary>
     public const long DefaultMarketBootstrapLookback = 1_000;
 
@@ -106,32 +106,49 @@ public sealed class DisclosuresSourceOptions
     public long MarketBootstrapLookback { get; set; } = DefaultMarketBootstrapLookback;
 
     /// <summary>
-    /// The shipped per-walk list-page ceiling: <b>24</b>. 24 pages × 12 s = 288 s ≈ 4.8 min of
-    /// list pacing for one pass — inside a step bound with room for the detail fetches — and more
-    /// than the 20 pages a 1,000-position market bootstrap needs, so the first run still reaches
-    /// the head.
+    /// The shipped per-walk list-page ceiling: <b>24</b>. 24 pages × 10 s (the shipped
+    /// <c>Ingestion:Statements:RequestDelayMs</c> the shared pacer binds; the lane's live attempts
+    /// ran at an observed ~12 s) = 240 s = 4 min of list pacing for one walk — and more than the
+    /// 20 pages a 1,000-position market bootstrap needs, so the first run still reaches the head.
     /// </summary>
     public const int DefaultMaxListPages = 24;
 
     /// <summary>
-    /// The per-walk list-page ceiling (TKT-foundation-078). The walk stops at the bound, records
-    /// the truncation, persists the last index it completed and the next run resumes there — so a
-    /// pass is finite by construction even when the archive is larger than the window.
+    /// The <b>per-walk</b> list-page ceiling (TKT-foundation-078). The walk stops at the bound,
+    /// records the truncation, persists the last index it completed and the next run resumes
+    /// there — so a walk is finite even when the archive is larger than the window.
+    /// <para>
+    /// It is not a per-<b>run</b> budget: a <c>Feed = company</c> pass builds one walk per
+    /// constituent, so that pass costs constituents × (pages + details) — nominal ≈ 37.3 min per
+    /// constituent at 10 s, i.e. ≈ 18.7 h over 30 constituents — and is a recorded, resumable
+    /// multi-run backfill, not a single step. The shipped <c>market</c> feed is one walk per run.
+    /// </para>
     /// </summary>
     public int MaxListPages { get; set; } = DefaultMaxListPages;
 
     /// <summary>
-    /// The shipped per-run disclosure-detail ceiling: <b>200</b>. 200 details × 12 s = 40 min of
-    /// pacing — the dominant cost of the lane — so pages (≤ 4.8 min) plus details stay inside a
-    /// step bound; a normal incremental market run spends a handful (the bound-universe rows among
-    /// the newest disclosures). The remainder is resumed by the next run, never skipped.
+    /// The shipped per-walk disclosure-detail ceiling: <b>200</b>. <b>Nominal</b> cost: 200 details
+    /// × 10 s = 2,000 s ≈ 33.3 min, the dominant term of a walk (pages ≤ 4 min; one walk ≈
+    /// 2,240 s ≈ 37.3 min total). This is a bound on <i>work</i>, not wall clock: a detail that
+    /// stalls is bounded per item at 180 s
+    /// (<see cref="KapSourceOptions.DefaultDetailFetchTimeoutMs"/>), so a degraded gateway can
+    /// drive 200 × 180 s = 36,000 s ≈ <b>10 h</b> out of one walk (+ ≤ 12 min of list calls at the
+    /// 30 s client timeout) — more than a 120-min step bound. That class is the scheduler's
+    /// per-step watchdog's to catch (01 §10.9.17, <c>RUN_HUNG</c>), not this count's; the numbers
+    /// are recorded here rather than claimed as a wall-clock bound.
+    /// <para>
+    /// In the shipped <c>market</c> feed the detail term cannot bind: 24 pages × 50 rows at the
+    /// bound-universe share (~30 of 1,037 companies) is ≈ 36 bound rows, so a pass is bounded by
+    /// its pages in practice and spends a handful of details. The remainder is resumed by the
+    /// next run, never skipped.
+    /// </para>
     /// </summary>
     public const int DefaultMaxDetailFetches = 200;
 
     /// <summary>
-    /// The per-run disclosure-detail ceiling (TKT-foundation-078): the number of details one pass
-    /// may fetch (or isolate). A walk that exhausts it stops at the last index it <b>completed</b>
-    /// and records the truncation; nothing is skipped over.
+    /// The <b>per-walk</b> disclosure-detail ceiling (TKT-foundation-078): the number of details
+    /// one walk may fetch (or isolate). A walk that exhausts it stops at the last index it
+    /// <b>completed</b> and records the truncation; nothing is skipped over.
     /// </summary>
     public int MaxDetailFetches { get; set; } = DefaultMaxDetailFetches;
 
@@ -204,9 +221,12 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     internal const string MarketCursorScope = "market";
 
     /// <summary>
-    /// The bootstrap provenance entry of the market feed (see <see cref="IDisclosureBootstrapReporter"/>).
+    /// The bootstrap provenance entry of the market feed (see <see cref="IDisclosureBootstrapReporter"/>):
+    /// the market-wide lane has one name, used both as the cursor row's
+    /// <c>coverage_metadata.scope</c> and as the provenance entry — so the two literals cannot
+    /// drift apart (review DR-8).
     /// </summary>
-    public const string MarketCursorName = "market";
+    public const string MarketCursorName = MarketCursorScope;
 
     private const string InstrumentScope = "instrument";
 
@@ -407,8 +427,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
         var walker = new VykDisclosureWalker(_client, _pacer, _logger, CursorDataType, Redact, DetailFetchTimeout);
         var walk = await walker.WalkMarketAsync<DisclosureFact>(
+                persisted,
                 cursor,
-                cursor,
+                anchor,
                 _options.Path,
                 _options.DetailPath,
                 byCompanyId,
@@ -470,6 +491,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         var disclosures = new List<DisclosureFact>();
         var raw = new StringBuilder();
         var cursors = new List<(string Symbol, string Cursor)>();
+        var clearedCursors = new List<string>();
 
         foreach (var symbol in symbols)
         {
@@ -487,20 +509,31 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
             // The walk's early index is the reset target *and* the start of a first pass. Both are
             // the bounded window whenever one is configured, so no path of this lane can start (or
-            // restart) at the beginning of platform history (TKT-foundation-078).
-            var early = ResolveEarlyIndex(symbol, anchor);
-            if (cursor is null && _options.BootstrapLookback > 0)
+            // restart) at the beginning of platform history (TKT-foundation-078). The anchor is
+            // resolved differently per path: a first pass *needs* it, a persisted cursor does not
+            // (the directory treats `/lastDisclosureIndex` as a secondary read, §10.9.11) — review
+            // DR-3.
+            string early;
+            if (cursor is null)
             {
-                _bootstrapped.Add(symbol);
-                _logger?.LogInformation(
-                    "disclosures: {Symbol} had no persisted cursor; bootstrapping at index {Early} (head {Head} − window {Window}) — a start-of-read decision, not a claim that earlier disclosures do not exist (TKT-foundation-078)",
-                    symbol,
-                    early,
-                    anchor,
-                    _options.BootstrapLookback);
+                early = ResolveBootstrapIndex(symbol, anchor);
+                if (_options.BootstrapLookback > 0)
+                {
+                    _bootstrapped.Add(symbol);
+                    _logger?.LogInformation(
+                        "disclosures: {Symbol} had no persisted cursor; bootstrapping at index {Early} (head {Head} − window {Window}) — a start-of-read decision, not a claim that earlier disclosures do not exist (TKT-foundation-078)",
+                        symbol,
+                        early,
+                        anchor,
+                        _options.BootstrapLookback);
+                }
+            }
+            else
+            {
+                early = ResolveResetIndex(symbol, anchor, cursor);
             }
 
-            var (companyDisclosures, nextCursor, companyRaw, truncated) = await FetchCompanyAsync(
+            var (companyDisclosures, nextCursor, companyRaw, truncated, reset) = await FetchCompanyAsync(
                     symbol,
                     companyId,
                     cursor,
@@ -515,6 +548,14 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             {
                 cursors.Add((symbol, nextCursor));
             }
+            else if (reset is not null)
+            {
+                // The re-walk was itself honest-empty (the gateway answered ER005 at the window
+                // too). Leaving the stale value would repeat the identical two-call reset on every
+                // run — the ticket's "must not trigger an infinite or repeated reset" pin. The
+                // statements lane (063) clears the row; this lane does the same (review DR-5).
+                clearedCursors.Add(symbol);
+            }
         }
 
         foreach (var (symbol, cursor) in cursors)
@@ -522,16 +563,26 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
         }
 
+        foreach (var symbol in clearedCursors)
+        {
+            await ClearCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
+        }
+
         var payload = new DisclosuresPayload(SourceName, disclosures);
         return new SourcePayload<DisclosuresPayload>(SourceName, payload, raw.ToString());
     }
 
     /// <summary>
-    /// The start-of-read (and reset) index of a company walk: the bounded bootstrap window when one
-    /// is configured and the platform head is known, otherwise the configured
+    /// The start-of-read index of a <b>first pass</b> (a company with no persisted cursor): the
+    /// bounded bootstrap window when one is configured, otherwise the configured
     /// <see cref="DisclosuresSourceOptions.EarlyDisclosureIndex"/> (the pre-078 behaviour).
+    /// <para>
+    /// A first pass <b>needs</b> the anchor: the only fallback, index 0, is the walk that never
+    /// finishes, so a missing anchor fails loudly instead of starting at zero. A company that
+    /// already has a cursor never reaches this method (review DR-3).
+    /// </para>
     /// </summary>
-    private string ResolveEarlyIndex(string symbol, long? anchor)
+    private string ResolveBootstrapIndex(string symbol, long? anchor)
     {
         if (_options.BootstrapLookback <= 0)
         {
@@ -540,9 +591,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
         if (anchor is null)
         {
-            // The anchor is a secondary read (01 §10.9.11) and may be unavailable. A company that
-            // already has a cursor does not need it; a first pass does — and the only fallback,
-            // index 0, is the walk that never finishes. Fail loudly rather than start at zero.
+            // The anchor is a secondary read (01 §10.9.11) and may be unavailable. A first pass
+            // cannot be bounded without it — and the only fallback, index 0, is the walk that
+            // never finishes. Fail loudly rather than start at zero.
             _logger?.LogWarning(
                 "disclosures: {Symbol} has no persisted cursor and the lastDisclosureIndex anchor is unavailable; the bootstrap window cannot be computed ({ReasonCode})",
                 symbol,
@@ -555,7 +606,39 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         return BootstrapIndex(anchor.Value, _options.BootstrapLookback).ToString(CultureInfo.InvariantCulture);
     }
 
-    /// <summary>The named reason of an unbootstrappable walk (see <see cref="ResolveEarlyIndex"/>).</summary>
+    /// <summary>
+    /// The <b>reset target</b> of a persisted cursor (the walk's one stale-cursor recovery): the
+    /// bounded window when it can be computed, else the cursor's own index.
+    /// <para>
+    /// A persisted cursor must never depend on the anchor — the directory treats
+    /// <c>/lastDisclosureIndex</c> as a secondary read (01 §10.9.11) and answers <c>null</c> when it
+    /// is unavailable. Without the anchor the reset re-reads the cursor's own index, which is the
+    /// gateway's honest end-of-list; the walk then ends honest-empty and the stale row is cleared,
+    /// so the run neither fails nor repeats the reset (review DR-3/DR-5).
+    /// </para>
+    /// </summary>
+    private string ResolveResetIndex(string symbol, long? anchor, string cursor)
+    {
+        if (_options.BootstrapLookback <= 0)
+        {
+            return _options.EarlyDisclosureIndex;
+        }
+
+        if (anchor is null)
+        {
+            _logger?.LogWarning(
+                "disclosures: {Symbol} has a persisted cursor ({Cursor}) but the lastDisclosureIndex anchor is unavailable; a stale-cursor reset will re-read that index and, if the gateway answers ER005, clear the row — the anchor is a secondary read and never fails the run ({ReasonCode})",
+                symbol,
+                cursor,
+                IngestFailureReasonForBootstrap);
+
+            return cursor;
+        }
+
+        return BootstrapIndex(anchor.Value, _options.BootstrapLookback).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The named reason of an unbootstrappable first pass (see <see cref="ResolveBootstrapIndex"/>).</summary>
     private const string IngestFailureReasonForBootstrap = "BOOTSTRAP_ANCHOR_UNAVAILABLE";
 
     /// <summary>
@@ -572,9 +655,11 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     /// <summary>
     /// One company's walk (cursor <b>inclusive</b>; the shared <see cref="VykDisclosureWalker"/>
     /// owns the ER005 honest-empty, stale-cursor reset, non-list body and strict-cursor semantics —
-    /// 01 v1.5 §10.9.15), bounded by this run's budget (TKT-foundation-078).
+    /// 01 v1.5 §10.9.15), bounded by this walk's budget (TKT-foundation-078). The walk's
+    /// <see cref="VykCompanyWalk{TFact}.Reset"/> rides back out so the caller can clear a stale
+    /// cursor whose re-walk was honest-empty (review DR-5).
     /// </summary>
-    private async Task<(List<DisclosureFact> Disclosures, string? Cursor, string Raw, bool Truncated)> FetchCompanyAsync(
+    private async Task<(List<DisclosureFact> Disclosures, string? Cursor, string Raw, bool Truncated, VykCursorReset? Reset)> FetchCompanyAsync(
         string symbol,
         string companyId,
         string? cursor,
@@ -611,10 +696,15 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 walk.NextCursor ?? "(unchanged)");
         }
 
-        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw, walk.Truncated);
+        return (walk.Facts.ToList(), walk.NextCursor, walk.Raw, walk.Truncated, walk.Reset);
     }
 
-    /// <summary>This run's walk budget (TKT-foundation-078).</summary>
+    /// <summary>
+    /// This walk's budget (TKT-foundation-078) — per <b>walk</b>, not per run: a
+    /// <c>Feed = company</c> pass builds one per constituent, so its cost is
+    /// constituents × (pages + details) and it is a multi-run backfill, not a single step (see the
+    /// option docs, review DR-2).
+    /// </summary>
     private VykWalkBudget WalkBudget => new(_options.MaxListPages, _options.MaxDetailFetches);
 
     /// <summary>
@@ -811,6 +901,44 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Clears a bound symbol's persisted disclosures cursor (TKT-foundation-078 review DR-5): the
+    /// outcome of a stale-cursor reset whose re-walk was itself honest-empty. Removing the row —
+    /// rather than leaving the stale value — makes the next run bootstrap afresh instead of
+    /// repeating the identical ER005 reset, exactly as 063's statements lane does
+    /// (<c>KapDisclosureCursorStore.ClearAsync</c>). An unresolvable symbol, or one with no row,
+    /// is a no-op.
+    /// </summary>
+    private async Task ClearCursorAsync(string symbol, CancellationToken cancellationToken)
+    {
+        var instrumentId = await _db!.Instruments
+            .Where(i => i.Symbol == symbol)
+            .Select(i => (long?)i.Id)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (instrumentId is null)
+        {
+            return;
+        }
+
+        var row = await _db.CoverageMetadata
+            .FirstOrDefaultAsync(
+                c => c.Scope == InstrumentScope && c.InstrumentId == instrumentId && c.DataType == CursorDataType,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (row is null)
+        {
+            return;
+        }
+
+        _db.CoverageMetadata.Remove(row);
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger?.LogWarning(
+            "disclosures: cleared the stale cursor of {Symbol} — its reset re-walk was honest-empty, so the row would otherwise repeat the same ER005 every run (TKT-foundation-078)",
+            symbol);
     }
 
     private string Redact(string? message) => _kapOptions?.Redact(message) ?? message ?? string.Empty;

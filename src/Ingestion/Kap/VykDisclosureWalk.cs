@@ -243,12 +243,21 @@ public sealed record VykCompanyWalk<TFact>(IReadOnlyList<TFact> Facts, string? N
 }
 
 /// <summary>
-/// The bounds of one walk (TKT-foundation-078, 01 §10.9.15): the ceiling on list pages and on
-/// disclosure-detail fetches. Every call is paced at ≥12 s, so an unbounded walk is an unbounded
-/// run — the disclosures lane's run 208 spent 3 hours re-reading ~140,000 index positions per
-/// company and never reached the end of a pass. A budget makes one pass finite by construction:
-/// the walk stops at the bound, persists the last index it <b>completed</b>, records that it was
-/// truncated, and the next run resumes exactly there.
+/// The bounds of <b>one walk</b> (TKT-foundation-078, 01 §10.9.15) — not of a run: the ceiling on
+/// list pages and on disclosure-detail fetches applied to a single company or market walk. Every
+/// call is paced by the shared <see cref="KapRequestPacer"/> (the shipped
+/// <c>Ingestion:Statements:RequestDelayMs</c> is 10 s; the disclosures lane's live attempts ran at
+/// an observed ~12 s), so an unbounded walk is an unbounded run — run 208 spent 3 hours re-reading
+/// ~140,000 index positions per company and never reached the end of a pass. The budget makes one
+/// walk finite: it stops at the bound, persists the last index it <b>completed</b>, records that it
+/// was truncated, and the next run resumes exactly there.
+/// <para>
+/// <b>What the bound is not.</b> It bounds <i>work</i> (pages, details), not wall clock: the worst
+/// case of a walk is <c>pages × request cost + details × max(pace, per-item timeout)</c>, and an
+/// unreachable gateway can drive a detail to its 180 s per-item bound — so a degraded world can
+/// outlive a step bound. That class is the scheduler's per-step watchdog's (01 §10.9.17), not this
+/// count's; the option doc of the disclosures lane records the numbers.
+/// </para>
 /// <para>
 /// A non-positive value disables that bound (<see cref="Unbounded"/>), which is the pre-078
 /// behaviour the dividends/corporate-actions/statements lanes keep.
@@ -630,16 +639,34 @@ public sealed class VykDisclosureWalker
     /// on out-of-bound rows would re-read them every run.
     /// </para>
     /// <para>
+    /// <b>Termination is cursor-based, not row-count-based (TKT-foundation-078 review DR-4).</b>
+    /// The gateway returns short pages while more rows exist at higher indexes (the live company
+    /// probe 2026-10-24: 39 rows with 47 more beyond; market pages run ~39–48 rows), so a page
+    /// shorter than <see cref="PageSize"/> is <b>not</b> an end-of-list signal here, unlike the
+    /// company walk. The market walk ends when the gateway does not advance the cursor past the
+    /// requested index (the loop guard), when the page's highest index has reached
+    /// <paramref name="platformHead"/> (<c>/lastDisclosureIndex</c>), on the honest <c>ER005</c>
+    /// end-of-list, or at the budget — so short pages mid-range are paged past and the newest
+    /// stored index still reaches the platform head. Without the head the walk is still finite: it
+    /// stops on the guard, on ER005, or at the page budget.
+    /// </para>
+    /// <para>
     /// <b>Semantics inherited from the company walk:</b> HTTP 400 <c>ER005</c> is the gateway's
     /// "no disclosure at/after this index" answer — an honest end-of-list, no exception and no
     /// rows (a market cursor is never reset backwards, so it cannot loop); a per-disclosure detail
     /// failure is an isolated skip with the gateway's error verbatim; every other list non-success
-    /// and any malformed body stays a failure. The <paramref name="budget"/> bounds one pass.
+    /// and any malformed body stays a failure. The <paramref name="budget"/> bounds one walk.
+    /// <paramref name="cursor"/> is the <b>persisted</b> market cursor (null on a first pass), and
+    /// its own row — like every page boundary already handled — is skipped, so an incremental run
+    /// fetches no detail it already has (TKT-foundation-078 review DR-7). A first pass starts at
+    /// <paramref name="bootstrapIndex"/> and reads that index, which is a start-of-read position,
+    /// not a row an earlier pass completed.
     /// </para>
     /// </summary>
     public async Task<VykMarketWalk<TFact>> WalkMarketAsync<TFact>(
         long? cursor,
         long bootstrapIndex,
+        long? platformHead,
         string listPath,
         string detailPath,
         IReadOnlyDictionary<string, string> symbolsByCompanyId,
@@ -663,6 +690,12 @@ public sealed class VykDisclosureWalker
         var outOfBound = 0;
         var truncated = false;
         var moved = false;
+
+        // True once the row at `processed` has been handled: the persisted cursor's own row was
+        // completed by an earlier pass, and every page boundary is completed by the page that
+        // emitted it. Until then `processed` is a start-of-read index, not a read row (the
+        // bootstrap index may carry an unread disclosure).
+        var boundaryCompleted = cursor is not null;
 
         while (true)
         {
@@ -718,7 +751,7 @@ public sealed class VykDisclosureWalker
                     continue;
                 }
 
-                if (index < processed || !isFamily(disclosure))
+                if (index < processed || (index == processed && boundaryCompleted) || !isFamily(disclosure))
                 {
                     completed = Math.Max(completed, index);
                     continue;
@@ -773,7 +806,22 @@ public sealed class VykDisclosureWalker
                 moved = true;
             }
 
-            if (listed.Count < PageSize || pageMax < 0 || !advanced)
+            // The page's highest index was handled by this page, so from here on the row at
+            // `processed` is a completed boundary (see `boundaryCompleted`).
+            boundaryCompleted = true;
+
+            // Termination (TKT-foundation-078 review DR-4): row count is not terminal on the
+            // market route — the gateway serves short pages while more rows exist at higher
+            // indexes. A page that does not advance the cursor is the loop guard (a gateway that
+            // ignored the offset must not re-serve the same page forever), and reaching the
+            // platform head means the walk has covered everything new. Without the head the walk
+            // is still finite: it stops on the guard, on ER005, or at the page budget.
+            if (pageMax < 0 || !advanced)
+            {
+                break;
+            }
+
+            if (platformHead is { } head && pageMax >= head)
             {
                 break;
             }

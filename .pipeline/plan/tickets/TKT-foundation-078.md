@@ -67,14 +67,28 @@ Trigger `disclosures` on the merged dev stack: `kap_disclosures` > 0 rows, newes
 
 - **PR:** https://github.com/sarperim/degerli/pull/139 — branch `feature/TKT-foundation-078`.
 - **§13.1:** v1.5.52 (allocated above the landed max v1.5.42 and the reservations v1.5.43–51).
-- **Tests:** TC-MDF-099 (a/b), TC-MDF-100 (a/b), TC-MDF-101 (a/b/c/d) in
+- **Tests:** TC-MDF-099 (a/b), TC-MDF-100 (a–d), TC-MDF-101 (a–e) in
   `tests/Api.IntegrationTests/StatementsAndEventsIngestionTests.cs` — L2 doubles only, no live gateway.
 - **Red→green:** pre-078 from-zero start restored → **3 failed / 5 passed** (`TC_MDF_099_a`
   `Expected: 2, Actual: 0` — the from-zero walk exhausts its 24-page budget inside the dense archive
-  before the recent window; `TC_MDF_099_b` window ignored; `TC_MDF_100_b` reset target `0`);
-  **8/8 green** after. Neighbouring suites **113/113** green, `dotnet build` 0 warnings.
-- **One pass fits a step bound:** 24 list pages × 12 s = 288 s + 200 details × 12 s = 2,400 s ≈
-  **44.8 min**, inside the scheduler's 90-minute `MaxRunDuration` attempt bound (~2× headroom).
+  before the recent window; `TC_MDF_099_b` window ignored; `TC_MDF_100_b` reset target `0`).
+  Review round 1 at the pre-round head `fe890ae` → **7 failed / 4 passed** (the three above, plus
+  the reset-clears-cursor case leaving the stale row, the anchor-down incremental case throwing,
+  the 30-row-then-more short-page case writing 30 of 50 rows, and the market walk's row-count
+  stop). **11/11 green** after; neighbouring suites green; `dotnet build` 0 warnings.
+- **One walk's cost (not a wall-clock bound):** the budget is **per walk** — `MaxListPages = 24`
+  and `MaxDetailFetches = 200`. The pacing actually in force is
+  `Ingestion:Statements:RequestDelayMs` = **10 s** (`Ingestion:Kap` carries no delay), so one
+  `market` walk is nominally 24 × 10 s + 200 × 10 s ≈ **37.3 min**; the shipped `market` feed is
+  one walk per run. The detail cap bounds the *number* of details, not their time: a stall is
+  bounded per item at **180 s** (`Ingestion:Kap:DetailFetchTimeoutMs`), so a degraded gateway can
+  drive 200 × 180 s ≈ **10 h** (+ ≤ 12 min of list calls at the 30 s client timeout) out of one
+  walk — past the **120-min per-step bound** (§10.9.17, v1.5.43; the 90-min whole-attempt bound no
+  longer exists). That class is the scheduler watchdog's (`RUN_HUNG`), not the budget's; this is
+  recorded rather than claimed as a hard bound. In the shipped market feed the detail term cannot
+  even bind (~36 bound rows over 24 × 50 rows), so the pass is bounded by its pages in practice.
+  `Feed = company` builds one walk per constituent: ≈ 37.3 min × 30 ≈ **18.7 h** nominal per pass —
+  a recorded, resumable multi-run backfill, never one chain step.
 - **Live criterion** (orchestrator post-merge) is unchanged and remains open.
 
 ## Dependencies
