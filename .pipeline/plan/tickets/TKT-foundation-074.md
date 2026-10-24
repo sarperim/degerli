@@ -53,7 +53,8 @@ scope:
   missing README pointer, an open ticket missing from the ledger (the set of
   `todo`/`in-review`/`in-progress`/`blocked`/`deferred` tickets must match exactly), a ledger row
   whose class disagrees with its ticket, and a `Last verified` date older than 60 days.
-- **`--self-test`**: builds a valid fixture in `mktemp -d`, then breaks it eleven ways (missing
+- **`--self-test`** (design-time description — the suite has since grown to 18 cases, see Fix
+  round 1): builds a valid fixture in `mktemp -d`, then breaks it eleven ways (missing
   implementation path, absent config key, absent-claimed-present section, undeclared status word,
   missing section, undated ledger row, missing open-ticket row, stale date, ticket/doc class
   mismatch, README without the pointer) and requires a non-zero exit for each — **11/11 pass**;
@@ -89,8 +90,9 @@ Read against the tree at `origin/dev@8f4b5e5` plus the appsettings/ticket text, 
 
 ### Evidence
 
-- `scripts/implementation-status.sh --self-test` → **11/11 cases behaved as required** (exit 0).
-- `scripts/implementation-status.sh` on this tree → **131 checks, 0 failures** (exit 0).
+- *Superseded by the fix-round-1 evidence below* — design-time counts only: `--self-test`
+  **11/11 cases**, checker **131 checks, 0 failures**. The authoritative pair is 18/18 cases and
+  157 checks.
 
 ---
 ## Fix round 1 (fixer, 2026-10-24) — review `.pipeline/plan/reviews/TKT-foundation-074-round-1.md`
@@ -137,3 +139,34 @@ are addressed; no finding was disputed and none required an escalation.
 ### Evidence
 - `scripts/implementation-status.sh --self-test` → **18/18 cases behaved as required** (exit 0).
 - `scripts/implementation-status.sh` on the merged tree → **157 checks, 0 failures** (exit 0).
+
+---
+## Fix round 2 (fixer, 2026-10-24) — review `.pipeline/plan/reviews/TKT-foundation-074-round-2.md`
+
+Six residual accuracy items; all fixed in place, none disputed, none escalated. No test, rule or
+claim was weakened — every change makes the prose say what the checker actually does, or narrows
+a claim to what the run-report supports.
+
+- **DR2-1 (Evidence rule):** the prose said *every* domain row must cite an `LC-nn`; the checker
+  enforces it only for `live`/`live-degraded`. The domain-section note and update rule 6 now say
+  exactly that (`blocked-upstream` rows may cite none), and the script's own comment/message were
+  aligned.
+- **DR2-2 (ledger forms):** the rule now states both accepted forms,
+  `not yet observed` / `never observed` (which is what LC-08 uses and the checker accepts).
+- **DR2-3 (accounts):** the claim is narrowed to registration, reset *delivery* and settings
+  changes; LC-18 records that the 2026-10-23 dev session came from a DB-level reset and that its
+  sign-in only reached the admin trigger (run-report:159, :388) — not an acceptance observation.
+  `ci-only` is kept.
+- **DR2-4 (061):** run 252 is attributed to 078; 061's own live criteria (a Friday EOD **chain**
+  with an honest CA `partial`; the 2026-10-22 admin-triggered **chain** recovery) are stated as
+  still unrun.
+- **DR2-5 (this ticket):** the design-time 11/11 / 131-check pair is marked superseded and the
+  authoritative pair is the 18/18 / 157 record above.
+- **DR2-6 (update rule):** "steps 2–6 are enforced by the script" is replaced with what is
+  mechanical (stale date, open-ticket row/class, evidence & `Checks` resolution, observation-cell
+  parse, `live` + dated `LC-nn`) versus review discipline (same-commit, right-row reflection,
+  verbatim observations, steps 7–8).
+
+### Evidence
+- `scripts/implementation-status.sh --self-test` → **18/18 cases behaved as required** (exit 0).
+- `scripts/implementation-status.sh` → **157 checks passed**, exit 0 (last verified 2026-10-24).

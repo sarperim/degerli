@@ -342,9 +342,10 @@ if [ -z "$DOMAINS" ]; then
   fail "no domain rows between the 'status:domains' markers"
 fi
 
-# Evidence cells must carry a citation, and every citation of an LC-nn row is resolved against the
-# ledger below (section 4). A `live` row additionally needs at least one *dated* LC row, so a
-# domain cannot be promoted to `live` on an unobserved criterion.
+# Every Evidence cell must be non-empty; a `live`/`live-degraded` cell must also carry an LC-nn
+# citation, and every citation of an LC-nn row is resolved against the ledger below (section 4).
+# A `live` row additionally needs at least one *dated* LC row, so a domain cannot be promoted to
+# `live` on an unobserved criterion.
 DOMAIN_LC_REFS=()   # "domain<TAB>LC-nn"
 LIVE_DOMAINS=()     # domains claiming `live`
 
@@ -362,7 +363,7 @@ while IFS= read -r line; do
   if printf '%s' "$domain" | grep -qE '^-+$'; then continue; fi
 
   if [ -z "$(trim "$evidence_cell")" ]; then
-    fail "domain '$domain': empty Evidence cell — every domain claim needs a citation"
+    fail "domain '$domain': empty Evidence cell — every domain claim needs an evidence line"
   else
     ok
   fi

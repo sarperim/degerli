@@ -56,8 +56,9 @@ One line of evidence per domain, naming the code/config it stands on and the tic
 proves the claim. The `Checks` column is executed by `scripts/implementation-status.sh`: `dir:` /
 `file:` must exist, `config:` must be present in `src/Api/appsettings.json`, `config-empty:`
 must be present and empty, `noconfig:` must be absent, `ticket:` must exist. The `Evidence` cell
-must be non-empty and must cite at least one `LC-nn` row of the ledger below; a `live` row must
-cite at least one `LC-nn` row that carries a **dated** observation.
+must be non-empty on every row. A `live` or `live-degraded` row must also cite at least one
+`LC-nn` row of the ledger below; a `live` row must cite one that carries a **dated** observation.
+A row with any other status (e.g. `blocked-upstream`) may cite none.
 
 <!-- status:domains -->
 | Domain | Status | Evidence (one line) | Checks |
@@ -78,7 +79,7 @@ cite at least one `LC-nn` row that carries a **dated** observation.
 | Valuation and DCF | `live-degraded` | DCF compute, scenarios, sensitivity and baseline regeneration landed (TKT-val-002..010) — inputs stay `null` for many names because OCF/CAPEX never decode and share counts are unit-questioned, so `DCF_NOT_COMPUTABLE` is the honest answer per company (LC-08) | dir:src/Api/Valuation;dir:src/Ingestion/Valuation;ticket:TKT-val-010 |
 | Funds | `wired-not-configured` | The three TEFAS jobs are registered and scheduled and their ledger rows now name the reason (`SOURCE_NOT_CONFIGURED`), but `Ingestion:Funds` is configured **nowhere** — no section, no compose/`.env` passthrough — so every fund run fails honestly and instantly (OQ-FDF-002; TKT-foundation-044; LC-10) | dir:src/Ingestion/Funds;noconfig:Ingestion:Funds:BaseUrl;ticket:TKT-foundation-044 |
 | Admin surface | `live` | Coverage, run ledger, triggers, quarantine review, descriptions, hidden metrics and DCF-baseline admin APIs plus the SCR-012 UI (TKT-mdf-010/011/012, res-006/010, scr-005, val-009); observed live 2026-10-24 — `POST /admin/ingest/disclosures/run` started run 252 and its `ingest_runs` row was read back (LC-17) | dir:src/Api/Admin;dir:src/Web/src/screens/admin;ticket:TKT-mdf-012 |
-| Accounts and sessions | `ci-only` | Register, sign-in, password reset and account settings on ASP.NET Identity with CSRF and MailPit-verified reset delivery, proven end to end by CI on the seeded stack (TKT-acc-002..010). **No dated live observation is recorded** — the dev session restored on 2026-10-23 came from a DB-level password reset, not from exercising the flow — so the row is not `live` (LC-18) | dir:src/Api/Identity;config:Auth:NoticeVersions;ticket:TKT-acc-009 |
+| Accounts and sessions | `ci-only` | Register, sign-in, password reset and account settings on ASP.NET Identity with CSRF and MailPit-verified reset delivery, proven end to end by CI on the seeded stack (TKT-acc-002..010). **No dated live observation of registration, reset *delivery* or settings changes is recorded** — the dev session restored on 2026-10-23 came from a DB-level password reset (not from reset delivery), and the sign-in that reached the admin trigger is not an acceptance observation — so the row is not `live` (LC-18) | dir:src/Api/Identity;config:Auth:NoticeVersions;ticket:TKT-acc-009 |
 | Pipeline scheduling and run ledger | `live-degraded` | EOD and morning chains, retry ladder, hung-run watchdog and `ingest_runs` ledger are live (2026-10-23 chain started 17:30:00.123, retry +5 min exactly). The *scope* of the bound was wrong until 064: the 90-minute whole-attempt bound is gone and PR #133 ships a **120-minute per-step bound and a 4-hour chain ceiling** as code defaults, with the operational `MaxRunDuration` override retired. **064's live criterion — a scheduled chain with zero `RUN_HUNG` on those defaults — is still unrun**; the earliest honest slot is Monday 2026-10-26 (Saturday: the morning chain is `TradingDaysOnly`; there is no admin *chain* trigger) (TKT-foundation-062/064; LC-01/LC-05) | file:src/Ingestion/Scheduling/IngestionScheduler.cs;config:Ingestion:Scheduler:Cron;ticket:TKT-foundation-064 |
 | Web surfaces (SCR-001..012) | `live` | The 15-screen SPA is live against the API; CI proves the flows on the seeded stack (E2E 76/76 green on 2026-10-23), and the live overview has been observed serving real data (including the honest nine-symbol counter-example) — the *honesty of the data it shows* belongs to the data rows above (TKT-mov-005..007, res-008..011, int-003; LC-14) | dir:src/Web/src/screens;file:src/Web/src/routes/routeConfig.ts;ticket:TKT-int-003 |
 <!-- /status:domains -->
@@ -93,8 +94,8 @@ attempts, while the fund lane had never been wired at all, and while the site se
 day as "the market". Each row below is a landable claim, split into what a green pipeline can
 prove and what only a real run can prove, with the date of the last real observation.
 
-**Rule:** a row either carries a dated observation or says `not yet observed`. No other value
-is accepted (the checker fails on it).
+**Rule:** a row either carries a dated observation or says `not yet observed` or `never observed`
+— the two forms the checker accepts. No other value is accepted (the checker fails on it).
 
 <!-- status:ledger -->
 | ID | Claim | What CI proves | What only a live run proves | Last live observation |
@@ -116,7 +117,7 @@ is accepted (the checker fails on it).
 | LC-15 | Every KAP-sourced lane reads a current production source, not a frozen test snapshot | nothing about currency — no double can encode whether an external source is today's | that `Ingestion:Kap:BaseUrl` points at production VYK and its head is today's disclosure, so statements/disclosures/dividends/corporate-actions/fundamentals are current | 2026-10-24 — the gateway is KAP's **DEV** host `apigwdev.mkk.com.tr/api/vyk`; head `1231017` is a "Test Bildirimi" dated 31.12.2023; `financial_statements` range 2022-12-31 → 2023-09-30; `apigw.mkk.com.tr`/`apigwprod.mkk.com.tr` do not resolve; **OQ-KAP-PROD outstanding** (run-report 12:20 UTC; TKT-foundation-078) |
 | LC-16 | The disclosures lane completes a bounded pass and a second run is incremental | TC-MDF-099/100/101 on doubles (bootstrap window, market feed, deadline truncation/resume) | that a real pass finishes inside its bound, advances the cursor to the gateway head without re-walking, and that the next run is a single incremental page | 2026-10-24 — run 252 `partial`, written 50, Facts 50 / Pages 21 / Details 50 / OutOfBound 970 / Truncated false, cursor to head 1231017, 864 s (14.4 min), TRALT/TRMET isolated `COMPANY_IDENTITY_UNRESOLVED`; **the second-run incremental half is not yet run** (TKT-foundation-078) |
 | LC-17 | The admin surface drives and reports real ingestion runs | the admin API/UI contracts on doubles (TKT-mdf-010/011/012) | that an operator can trigger a job on the deployed stack and read back the resulting `ingest_runs` row and the review views | 2026-10-24 — `POST /admin/ingest/disclosures/run` started run 252 and its `ingest_runs` row was read back (partial, written 50, 864 s; run-report 12:20 UTC) |
-| LC-18 | Register, sign-in, password reset and account settings work on a deployed stack | the full flow on the seeded stack (TC-ACC-* and the E2E MailPit reset link) | that a real user completes registration, reset delivery through a real mailbox, and settings changes on the deployed product | not yet observed — no dated live record exists; the dev session restored on 2026-10-23 was a DB-level password reset, not an exercised flow (TKT-acc-002..010) |
+| LC-18 | Register, sign-in, password reset and account settings work on a deployed stack | the full flow on the seeded stack (TC-ACC-* and the E2E MailPit reset link) | that a real user completes registration, reset delivery through a real mailbox, and settings changes on the deployed product | not yet observed — no dated live record exists for registration, reset *delivery* or settings changes; the dev session restored on 2026-10-23 came from a DB-level password reset (not reset delivery) and its sign-in was used to reach the admin trigger, not as an acceptance observation (TKT-acc-002..010) |
 | LC-19 | A configured BIST holiday is honoured on the live overview with honest freshness | calendar semantics, holiday freshness and the gated skip row on doubles (TC-MDF-087, TC_MDF_011) | that on the first trading morning after a real holiday the overview reads fresh-not-stale and the holiday-skip ledger row exists | not yet observed — 048 merged 2026-10-24 (PR #140) and no holiday has passed since; the next configured holiday is 2026-10-29. **Market overview only**: the stock page keeps the pre-048 weekday rule and is owed a follow-up |
 <!-- /status:ledger -->
 
@@ -163,7 +164,7 @@ the next landed change.
 | TKT-foundation-045 | `in-review` | PR #131 merged: crash-evidence hooks and the previous-run startup report landed. Still owed: the native-abort dump knobs are an orchestrator action on `compose.*.yml` (outside the ticket scope) and the live criterion — a deliberately-triggered abort leaving recoverable evidence — is unrun. |
 | TKT-foundation-051 | `todo` | Capture-gated: needs a committed paced cash-flow capture set before the ConceptMap can be extended; blocks FCF and therefore most DCFs. Now also gated on the KAP source being current (LC-15, OQ-KAP-PROD). |
 | TKT-foundation-056 | `blocked` | Parked hardening/improvement umbrella — only items 5 (advisory locks), 10 (performance budgets) and 14 (live calendar probe) remain parked. |
-| TKT-foundation-061 | `in-review` | PR #125 merged: family per-disclosure isolation + bounded detail fetch. The disclosures half is now observed live (run 252); the dividend/corporate-action halves and the 2026-10-22 close-recovery re-run are still to be recorded verbatim. |
+| TKT-foundation-061 | `in-review` | PR #125 merged: family per-disclosure isolation + bounded detail fetch. **061's own live criteria are still unrun** — (a) a Friday EOD **chain** completing with an honest CA `partial`, and (b) the 2026-10-22 close recovered by the admin-triggered **chain** re-run. Run 252 was a single `disclosures` job trigger with `COMPANY_IDENTITY_UNRESOLVED` isolations; it belongs to 078 (LC-11/LC-16), not to 061. |
 | TKT-foundation-064 | `in-review` | PR #133 merged 2026-10-24: 120-min per-step bound + 4-h chain ceiling are code defaults and the operational override is retired. Owed: the live criterion (a *scheduled* chain with zero `RUN_HUNG` on those defaults) — earliest honest slot Monday 2026-10-26. |
 | TKT-foundation-065 | `partially` | `partially resolved`: user decision D4-A (relabel as paid-in capital, no `sharesOutstanding` claim) is recorded verbatim on the ticket; the display half landed in TKT-foundation-072 (PR #137). Still owed: the contract/model half — the `03` `shareCount` block, the `02` `share_counts` semantics and the API field — so the API still serves `currentCapital` under the name `sharesOutstanding`. |
 | TKT-foundation-066 | `todo` | CI hardening — secret scan, dependency audit, container scan as required checks (also the follow-up that would wire this file's checker into CI). |
@@ -222,9 +223,15 @@ the next landed change.
 
 ## Update rule
 
-The rule is not aspirational — steps 2–6 are enforced by
-`scripts/implementation-status.sh`, which exits non-zero when a documented claim no longer
-matches the repository. (Step 1 *is* that script; steps 7–8 are review discipline, not checks.)
+The rule is partly mechanical. `scripts/implementation-status.sh` (step 1) exits non-zero when a
+documented claim no longer matches the repository: a stale `Last verified` (step 5), an open
+ticket with no row or with a row whose class disagrees with its ticket file (step 2), an
+`Evidence` cell or `Checks` token that does not parse or resolve (step 3), an observation cell
+that is neither dated nor `not yet observed`/`never observed` (step 4), and a `live` row without
+a dated `LC-nn` (step 6). What the tree alone cannot show is review discipline: that the doc edit
+landed in the **same commit** as the ticket change (step 2), that a code/config change updated the
+right domain row rather than only its `Checks` token (step 3), that an observation is recorded
+**verbatim** (step 4), and steps 7–8.
 Run it before committing any change to this file.
 
 1. **The checker must pass.** `scripts/implementation-status.sh` exits 0 before the change is
@@ -241,15 +248,16 @@ Run it before committing any change to this file.
    claims is absent (Funds, EVDS), the checker fails until the row is corrected; the same
    holds in reverse for `config:` and `noconfig:` claims.
 4. **A new live observation updates its ledger row in the same commit** — with the run number
-   and date, verbatim. If nothing has been observed, the cell says `not yet observed`; a bare
-   dash is a check failure.
+   and date, verbatim. If nothing has been observed, the cell says `not yet observed` (or
+   `never observed`); a bare dash is a check failure.
 5. **Bump `Last verified` on every edit.** The checker fails when it is more than 60 days old
    (`--max-age-days` to change the limit), so an untouched file degrades into a red check rather
    than into folklore.
 6. **Never promote a domain to `live` without a dated live observation** in the ledger, and
    never demote a `live` row to silence a failing check — fix the claim, or fix the code. The
-   checker requires every domain row to cite an existing `LC-nn`; a `live` row must cite one
-   whose last observation is a date, not "not yet observed".
+   checker requires every `live`/`live-degraded` domain row to cite an existing `LC-nn` (and any
+   `LC-nn` a row does cite must exist); a `live` row must cite one whose last observation is a
+   date, not `not yet observed`/`never observed`.
 7. **When this file and the code disagree, the code is right.** Change the row; if the code is
    wrong, that is a ticket, not a footnote.
 8. **Do not edit `.pipeline/plan/board.md`** from here. The board is a regenerable view; the
