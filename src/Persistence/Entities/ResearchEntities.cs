@@ -43,6 +43,14 @@ public class SectorMetricMedian
     /// <summary>P/E loss-maker exclusion disclosure.</summary>
     public int? ExcludedCount { get; set; }
 
+    /// <summary>
+    /// The definition version that produced this median (<c>01</c> §10.9.13;
+    /// <see cref="Degerli.Core.Metrics.CanonicalMetrics.Version"/>), stamped on every insert and
+    /// every repair — the same discipline as <c>derived_metrics.formula_version</c>.
+    /// <c>NULL</c> = the row predates versioning; never guessed, only stamped by a recompute.
+    /// </summary>
+    public int? FormulaVersion { get; set; }
+
     public bool IsAdjusted { get; set; }
     public DateTimeOffset ComputedAt { get; set; }
 }

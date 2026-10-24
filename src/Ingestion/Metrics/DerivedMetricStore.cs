@@ -1,3 +1,4 @@
+using Degerli.Core.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,15 @@ public sealed record DerivedMetricWriteResult(int Written, int Unchanged);
 /// append-only by date and idempotent by <c>(instrument, metric, as_of_date)</c>: a
 /// re-run for the same date updates the existing rows in place (recompute) rather than
 /// inserting duplicates, and never touches another date's rows (NFR-MDF-002).
+/// <para>
+/// <b>Definition-version stamping (<c>01</c> §10.9.13, TKT-foundation-070).</b> Every row this
+/// store writes — a fresh insert and a repair alike — carries
+/// <see cref="CanonicalMetrics.Version"/> in <c>formula_version</c>, so a stored value can
+/// always answer "which definition produced it?" and a formula change is never mistaken for a
+/// fact restatement. The classifier that decides <i>which</i> rows are written
+/// (<see cref="MetricsEngine.PlanWriteAsync"/>) treats a stamp that differs from the current
+/// version as a reason to rewrite; this store states the outcome.
+/// </para>
 /// </summary>
 public sealed class DerivedMetricStore
 {
@@ -56,6 +66,9 @@ public sealed class DerivedMetricStore
                     row.IsAdjusted = metric.IsAdjusted;
                     row.IsRested = metric.IsRested;
                     row.RegimeBreak = metric.RegimeBreak;
+                    // A repair restates the definition too: the row now holds a value this
+                    // version produced (TKT-foundation-070).
+                    row.FormulaVersion = CanonicalMetrics.Version;
                     row.ComputedAt = computedAt;
                     unchanged++;
                     continue;
@@ -71,6 +84,7 @@ public sealed class DerivedMetricStore
                     IsAdjusted = metric.IsAdjusted,
                     IsRested = metric.IsRested,
                     RegimeBreak = metric.RegimeBreak,
+                    FormulaVersion = CanonicalMetrics.Version,
                     ComputedAt = computedAt,
                 });
                 written++;

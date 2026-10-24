@@ -244,6 +244,19 @@ public class DerivedMetric
     /// </summary>
     public bool? RegimeBreak { get; set; }
 
+    /// <summary>
+    /// The definition version that produced this value (<c>01</c> §10.9.13;
+    /// <see cref="Degerli.Core.Metrics.CanonicalMetrics.Version"/>), stamped on every insert and
+    /// every repair. It answers "which formula produced this number?" after the fact, so a
+    /// formula change is distinguishable from a fact restatement.
+    /// <para>
+    /// <c>NULL</c> = the row predates definition versioning and therefore carries no honest
+    /// answer: it is <b>never</b> guessed or back-filled by a migration — only a recompute of
+    /// that day stamps it (and such a row is rewritten even when its value is identical).
+    /// </para>
+    /// </summary>
+    public int? FormulaVersion { get; set; }
+
     public DateTimeOffset ComputedAt { get; set; }
 }
 
