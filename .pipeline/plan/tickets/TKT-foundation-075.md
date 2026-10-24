@@ -6,7 +6,19 @@ scope:
 
 # TKT-foundation-075: Live-vs-CI verification doc — state what CI proves and what only live criteria prove
 
-- Status: in-review
+- Status: done — **merged 2026-10-24** as PR **#135** (squash, `dev@4feb236`), head `11afd06`.
+  Review loop ran **3 rounds** and returned MERGEABLE with no disputes, no upstream defects, no
+  waiver: `.pipeline/plan/reviews/TKT-foundation-075-round-{1,2,3}.md`. Round 1 was
+  **not-mergeable** on three evidence-discipline blockers (`DRI-1`..`DRI-3`) — the doc credited CI
+  with a "secrets scan" and "dependency audit" that `ci.yml` does not run; §1's thesis was false
+  about its own §5.5 example; and four thin-day figures (`21:53`, `₺8.6 B`, `runs 245–248`,
+  `27/72/1 ₺148.8 B`) existed in no artifact. All 11 findings closed by round 3.
+  **Process lesson (recorded at the review-lead's request):** the facet gate returned
+  `presentation_only=true`, which normally means **zero reviewers** — but this doc's subject *is*
+  what CI proves, so prose review was commissioned anyway and was the only thing that caught all
+  three blockers. For docs that assert verification coverage, "no executable logic" is not a
+  low-risk signal. Delivered: `docs/live-vs-ci.md` (new) + `00-test-strategy.md` §9.5.
+  **No live criterion applies** — the deliverable is normative documentation, not runtime behaviour.
 - PR: https://github.com/sarperim/degerli/pull/135
 - Size: S
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 12 unparked).**
