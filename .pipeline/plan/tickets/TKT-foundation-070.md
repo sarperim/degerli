@@ -18,7 +18,7 @@ scope:
 
 # TKT-foundation-070: Metric formula versioning — recompute provenance across formula changes
 
-- Status: in-review
+- Status: in-review — **PR https://github.com/sarperim/degerli/pull/138** (branch `feature/TKT-foundation-070`, head **`6e28ab0`** — the rebased implementation commit, with this rebase/ticket-note commit on top; **rebased onto `origin/dev@f12c1b5`**, TKT-foundation-064 merged)
 - **PR:** https://github.com/sarperim/degerli/pull/138
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 6 unparked).**
@@ -77,7 +77,7 @@ pinned — **no further widening was needed or taken**.
   recorded in `01` §10.9.13.
 - **Docs**: `02` header/§1/§3.1/§8 (v1.4), `01` §10.9.13 (new "Definition versioning" subsection) and
   §13.1 **v1.5.48**, test plan **§17** + coverage matrix (FR-MDF-013/014, NFR-MDF-001) + change record
-  v1.17.
+  v1.18 *(v1.17 after the 2026-10-24 rebase — 064 landed v1.17 first; mine renumbered, both kept)*.
 - **Tests**: TC-MDF-099, 5 cases in `tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs`
   (no test-only hook; the stale-stamp state is a direct `UPDATE`, per the test-design note).
 - **Evidence**: red = 5 failed / 4 passed (`42703 column "formula_version" does not exist` on both
@@ -94,3 +94,26 @@ pinned — **no further widening was needed or taken**.
   row reads `trigger: scheduled|admin` — recorded verbatim, never fabricated.
 - The shared dev DB was **not** migrated from this lane; the migration is exercised by every
   Testcontainers fixture in the suite.
+
+## Rebase record (2026-10-24, rebase only — no redesign, no re-scope, no re-review)
+
+PR #138 went `CONFLICTING` because `dev` advanced from `60a01cf` to **`f12c1b5`** (TKT-foundation-064,
+squash-merged as #133). Rebased `feature/TKT-foundation-070` onto `origin/dev@f12c1b5`.
+
+- **Overlap was exactly the two predicted doc files** — `.pipeline/architecture/01-system-architecture.md`
+  and `.pipeline/testing/market-data-foundation.md`. No source-file conflict, and **no conflict at all in
+  `src/Ingestion/Scheduling/`** (064's per-step bound), which this ticket does not touch.
+- **`01`**: 064 landed §13.1 **v1.5.43** and its §10.9.17 "The bound's scope, corrected" prose; both are
+  **kept** and this ticket's row stays **v1.5.48** (free on the new `dev` — 43 is the landed maximum, so no
+  renumber was required). 070's "Definition versioning" subsection in §10.9.13 (v1.5.48) is intact.
+- **Test plan**: 064 landed TC-MDF-098 (§16) and its change record as **v1.17**; 070's §17 / TC-MDF-099
+  entry carried the same **v1.17** label, so it is **renumbered to v1.18** and kept. Both cases, both
+  sections and both change-record entries are present.
+- **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
+  *"No changes have been made to the model since the last migration"* (**no snapshot drift**), the
+  migration list still ends at `20261024024109_MetricFormulaVersion`, and the freshly-migrated
+  Testcontainers fixture applies it cleanly. 064 added no migration.
+- **Re-verification after the rebase** (`dotnet build Degerli.sln` **0 warnings / 0 errors**):
+  `MetricsRecomputeIdempotencyTests` **9/9**, `SchedulerTests` + `EodStallWatchdogTests` **23/23** —
+  both exactly as before the rebase, so the rebase disturbed nothing.
+
