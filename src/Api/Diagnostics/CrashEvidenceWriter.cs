@@ -22,6 +22,20 @@ namespace Degerli.Api.Diagnostics;
 /// </summary>
 public sealed class CrashEvidenceWriter : ICrashEvidenceSink
 {
+    /// <summary>
+    /// How many numbered names a capture will try before it gives up on landing its artifact.
+    /// Bounded on purpose: a full directory must not turn a crash handler into a retry loop.
+    /// </summary>
+    private const int MaxFileNameAttempts = 100;
+
+    /// <summary>
+    /// Serialises landing inside the process. The two hooks run on different threads (the
+    /// faulting thread for <see cref="AppDomain.UnhandledException"/>, the finalizer thread for
+    /// <see cref="TaskScheduler.UnobservedTaskException"/>), so their captures can overlap; the
+    /// name collision is decided here rather than by a pre-check both captures can pass.
+    /// </summary>
+    private static readonly object LandingGate = new();
+
     private const string TruncationMarker = "… [truncated]";
     private const string CaptureNote =
         "Managed evidence only. A native abort (SIGABRT / exit 134, heap or GC corruption, an external kill) " +
@@ -54,7 +68,7 @@ public sealed class CrashEvidenceWriter : ICrashEvidenceSink
         }
     }
 
-    private string CaptureCore(CrashEvidenceReport report)
+    private string? CaptureCore(CrashEvidenceReport report)
     {
         var capturedAt = _timeProvider.GetUtcNow();
         var tail = CrashEvidenceLogTail.Read(_options, _redactor);
@@ -62,7 +76,7 @@ public sealed class CrashEvidenceWriter : ICrashEvidenceSink
         var directory = Path.GetFullPath(_options.Directory);
         Directory.CreateDirectory(directory);
 
-        var path = Path.Combine(directory, NextFileName(directory, capturedAt, report.Kind));
+        var stem = FileNameStem(capturedAt, report.Kind);
         var buffer = new MemoryStream();
         using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
@@ -95,10 +109,64 @@ public sealed class CrashEvidenceWriter : ICrashEvidenceSink
         }
 
         var bytes = buffer.ToArray();
-        var temporary = path + ".tmp";
-        File.WriteAllBytes(temporary, bytes);
-        File.Move(temporary, path);
-        return path;
+        return Land(directory, stem, bytes);
+    }
+
+    /// <summary>
+    /// Lands the artifact without losing a second fault or leaving debris:
+    /// <list type="bullet">
+    /// <item>each capture writes its <b>own</b> temp file (a unique suffix), so two captures can
+    /// never share — and clobber — one temp path;</item>
+    /// <item>the rename is the arbiter: <see cref="File.Move(string, string)"/> refuses an existing
+    /// destination, and the loser takes the next <c>-N</c> suffix instead of dropping its evidence;</item>
+    /// <item>the attempt count is bounded, and the temp file is deleted on every path, so a failed
+    /// landing leaves nothing behind.</item>
+    /// </list>
+    /// A null return means the artifact could not be landed (a full disk, an exhausted suffix
+    /// space); the caller's never-throw contract is unaffected.
+    /// </summary>
+    private static string? Land(string directory, string stem, byte[] bytes)
+    {
+        var temporary = Path.Combine(directory, $"{stem}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllBytes(temporary, bytes);
+            lock (LandingGate)
+            {
+                for (var suffix = 0; suffix < MaxFileNameAttempts; suffix++)
+                {
+                    var candidate = Path.Combine(directory, suffix == 0 ? $"{stem}.json" : $"{stem}-{suffix}.json");
+                    try
+                    {
+                        File.Move(temporary, candidate);
+                        return candidate;
+                    }
+                    catch (IOException) when (suffix < MaxFileNameAttempts - 1)
+                    {
+                        // A concurrent capture claimed this second's name; try the next suffix.
+                    }
+                }
+
+                return null;
+            }
+        }
+        finally
+        {
+            TryDelete(temporary);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception)
+        {
+            // Best effort: an orphan temp file must never be the reason the process dies
+            // differently than it would have.
+        }
     }
 
     private void WriteProcess(Utf8JsonWriter json)
@@ -147,21 +215,15 @@ public sealed class CrashEvidenceWriter : ICrashEvidenceSink
     }
 
     /// <summary>
-    /// Collision-safe name: two faults inside the same second must both leave an artifact
+    /// The collision-safe name <em>stem</em>: two faults inside the same second share it, and
+    /// <see cref="Land"/> appends the <c>-N</c> suffix that keeps both artifacts
     /// (the second one is what an operator will actually be reading).
     /// </summary>
-    private static string NextFileName(string directory, DateTimeOffset capturedAt, string kind)
+    private static string FileNameStem(DateTimeOffset capturedAt, string kind)
     {
         var stamp = capturedAt.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
         var safeKind = new string(kind.Select(c => char.IsLetterOrDigit(c) || c == '-' ? c : '-').ToArray());
-        var stem = $"crash-{stamp}-{Environment.ProcessId}-{safeKind}";
-        var candidate = $"{stem}.json";
-        for (var suffix = 1; File.Exists(Path.Combine(directory, candidate)); suffix++)
-        {
-            candidate = $"{stem}-{suffix}.json";
-        }
-
-        return candidate;
+        return $"crash-{stamp}-{Environment.ProcessId}-{safeKind}";
     }
 
     private static string AppVersion()

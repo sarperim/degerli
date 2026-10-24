@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Degerli.Api.Diagnostics;
 using Degerli.Api.IntegrationTests.Harness;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Serilog.Core;
 
@@ -144,6 +146,42 @@ public sealed class CrashEvidenceTests
         Assert.False(args.Observed);
     }
 
+    [Fact]
+    public async Task TKT_foundation_045_concurrent_captures_in_the_same_second_all_land_distinct_artifacts()
+    {
+        using var workspace = new CrashEvidenceWorkspace();
+        workspace.WriteLog("degerli-20261020.log", Lines(3));
+        var writer = workspace.Writer(secrets: Array.Empty<string>());
+        const int captures = 8;
+
+        // Both process hooks can fire at once (the faulting thread for AppDomain.UnhandledException,
+        // the finalizer thread for TaskScheduler.UnobservedTaskException), and the fixed clock
+        // forces every capture onto the identical name stem: the collision the naming must survive.
+        var attempts = Enumerable.Range(0, captures)
+            .Select(index => Task.Run(() =>
+                writer.Capture(Report(new InvalidOperationException($"concurrent fault {index}")))))
+            .ToArray();
+        var paths = await Task.WhenAll(attempts);
+
+        Assert.All(paths, path => Assert.NotNull(path));
+        Assert.Equal(captures, paths.Distinct(StringComparer.Ordinal).Count());
+
+        // Every fault left its own artifact — in the same second, under the same pid.
+        var artifacts = workspace.Artifacts();
+        Assert.Equal(captures, artifacts.Count);
+        var messages = artifacts
+            .Select(path => JsonDocument.Parse(File.ReadAllText(path)).RootElement
+                .GetProperty("exception").GetProperty("message").GetString())
+            .OrderBy(message => message, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(
+            Enumerable.Range(0, captures).Select(index => $"concurrent fault {index}").OrderBy(m => m, StringComparer.Ordinal),
+            messages);
+
+        // A failed or overlapping landing must leave no temp debris behind.
+        Assert.Empty(Directory.GetFiles(workspace.EvidenceDirectory, "*.tmp"));
+    }
+
     // ---- bounded + never-throwing ------------------------------------------------------
 
     [Fact]
@@ -243,6 +281,41 @@ public sealed class CrashEvidenceTests
         Assert.Null(hooks.LastArtifactPath);
     }
 
+    // ---- the hooks are actually installed on the process -------------------------------
+
+    [Fact]
+    public void TKT_foundation_045_install_subscribes_the_process_hooks_idempotently_and_dispose_removes_them()
+    {
+        // Every other case calls the record seams directly, so this is the only proof that
+        // Install() really wires the process-level events: deleting the two `+=` lines in
+        // CrashEvidenceHooks.Install fails exactly here.
+        var hooks = new CrashEvidenceHooks(new ThrowingSink());
+        var appDomainHandler = HandlerOf<UnhandledExceptionEventHandler>(hooks, "OnAppDomainUnhandledException");
+        var taskHandler = HandlerOf<EventHandler<UnobservedTaskExceptionEventArgs>>(hooks, "OnTaskSchedulerUnobservedTaskException");
+
+        Assert.False(IsSubscribedToAppDomain(appDomainHandler));
+        Assert.False(IsSubscribedToTaskScheduler(taskHandler));
+
+        hooks.Install();
+        try
+        {
+            Assert.True(IsSubscribedToAppDomain(appDomainHandler));
+            Assert.True(IsSubscribedToTaskScheduler(taskHandler));
+
+            // Idempotent: a second Install must not add a duplicate subscription.
+            hooks.Install();
+            Assert.Single(SubscribersOfAppDomain(appDomainHandler));
+            Assert.Single(SubscribersOfTaskScheduler(taskHandler));
+        }
+        finally
+        {
+            hooks.Dispose();
+        }
+
+        Assert.False(IsSubscribedToAppDomain(appDomainHandler));
+        Assert.False(IsSubscribedToTaskScheduler(taskHandler));
+    }
+
     // ---- redaction ---------------------------------------------------------------------
 
     [Fact]
@@ -256,6 +329,10 @@ public sealed class CrashEvidenceTests
             {
                 "line-0001 GET /disclosures Authorization: Basic " + Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("key:secret")),
                 "line-0002 upstream failed: password=hunter2 api_key=" + secret,
+                // The repository's own Serilog format is CompactJsonFormatter, so a real tail
+                // line is JSON: the closing quote sits between the keyword and the separator.
+                "{\"Password\":\"hunter2\"}",
+                "line-0004 {\"ApiKey\":\"json-api-key-value\",\"status\":\"failed\"}",
             });
         var writer = workspace.Writer(secrets: new[] { secret });
 
@@ -278,6 +355,7 @@ public sealed class CrashEvidenceTests
 
         Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
         Assert.DoesNotContain("hunter2", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("json-api-key-value", text, StringComparison.Ordinal);
         Assert.DoesNotContain("eyJhbGciOiJIUzI1NiJ9", text, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("key:secret")), text, StringComparison.Ordinal);
         Assert.Contains("***", exception.GetProperty("message").GetString()!, StringComparison.Ordinal);
@@ -286,6 +364,11 @@ public sealed class CrashEvidenceTests
         var tail = artifact.RootElement.GetProperty("logs").GetProperty("lines").EnumerateArray()
             .Select(l => l.GetString()!).ToArray();
         Assert.All(tail, line => Assert.Contains("***", line, StringComparison.Ordinal));
+
+        // The JSON-quoted shape is actually masked, not merely skipped: the keyword survives
+        // (the operator still sees which field leaked) and the value is gone.
+        Assert.Contains("{\"Password=***\"}", tail);
+        Assert.Contains(tail, line => line.Contains("ApiKey=***", StringComparison.Ordinal));
     }
 
     // ---- (ii) startup report over a previous run's artifact ---------------------------
@@ -332,17 +415,53 @@ public sealed class CrashEvidenceTests
     {
         using var workspace = new CrashEvidenceWorkspace();
 
+        // The posture reports the real process environment, so the assertion follows whatever
+        // this host actually has instead of assuming the knob is unset (an operator's machine
+        // may set it); the deterministic both-branch coverage is the next case.
+        var knob = Environment.GetEnvironmentVariable(CrashEvidenceStartupReport.RuntimeDumpKnob);
+        var dumpsEnabled = knob is not null
+                           && (knob.Equals("1", StringComparison.Ordinal)
+                               || knob.Equals("true", StringComparison.OrdinalIgnoreCase));
+
         using (var host = workspace.Host())
         {
             _ = host.Services;
 
-            // The managed hooks cannot run for a SIGABRT; with no runtime dump knobs in the
-            // process environment the startup line must say so rather than imply coverage.
+            // The managed hooks cannot run for a SIGABRT; the startup line must state the real
+            // dump posture rather than imply coverage the host does not have.
+            var expected = dumpsEnabled ? "enabled" : "not configured";
             Assert.Contains(
                 host.Events(),
-                message => message.Contains("crash dumps", StringComparison.OrdinalIgnoreCase)
-                           && message.Contains("not configured", StringComparison.OrdinalIgnoreCase));
+                message => message.Contains("native-abort crash dumps", StringComparison.OrdinalIgnoreCase)
+                           && message.Contains(expected, StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    [Fact]
+    public void TKT_foundation_045_dump_posture_covers_both_branches_deterministically()
+    {
+        using var workspace = new CrashEvidenceWorkspace();
+        var logger = new RecordingLogger();
+
+        // The environment lookup is an injected seam, so both branches are pinned without
+        // mutating the process-wide environment the rest of the suite shares.
+        CrashEvidenceStartupReport.Report(workspace.Options(), logger, _ => "1");
+        CrashEvidenceStartupReport.Report(workspace.Options(), logger, _ => "true");
+        CrashEvidenceStartupReport.Report(workspace.Options(), logger, _ => null);
+        CrashEvidenceStartupReport.Report(workspace.Options(), logger, _ => "0");
+
+        Assert.Contains(
+            logger.Messages,
+            message => message.Contains("native-abort crash dumps enabled (DOTNET_DbgEnableMiniDump=1)", StringComparison.Ordinal));
+        Assert.Contains(
+            logger.Messages,
+            message => message.Contains("native-abort crash dumps enabled (DOTNET_DbgEnableMiniDump=true)", StringComparison.Ordinal));
+        Assert.Contains(
+            logger.Messages,
+            message => message.Contains("not configured (DOTNET_DbgEnableMiniDump unset)", StringComparison.Ordinal));
+        Assert.Contains(
+            logger.Messages,
+            message => message.Contains("not configured (DOTNET_DbgEnableMiniDump set to '0')", StringComparison.Ordinal));
     }
 
     // ---- helpers ----------------------------------------------------------------------
@@ -358,6 +477,77 @@ public sealed class CrashEvidenceTests
 
     private static IReadOnlyList<string> Lines(int count)
         => Enumerable.Range(1, count).Select(i => $"line-{i:0000}").ToArray();
+
+    // ---- reflection helpers for the process-level event subscriptions -------------------
+
+    private const BindingFlags EventBackingFieldFlags =
+        BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public;
+
+    /// <summary>
+    /// The delegate <see cref="CrashEvidenceHooks.Install"/> subscribes: a delegate bound to the
+    /// hook's private handler compares equal to the subscribed instance by target + method, so
+    /// other subscribers already on the process event (other test hosts) cannot mask a match.
+    /// </summary>
+    private static TDelegate HandlerOf<TDelegate>(CrashEvidenceHooks hooks, string methodName)
+        where TDelegate : Delegate
+    {
+        var method = typeof(CrashEvidenceHooks).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                     ?? throw new InvalidOperationException($"CrashEvidenceHooks.{methodName} not found");
+        return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), hooks, method);
+    }
+
+    private static IReadOnlyList<Delegate> SubscribersOfAppDomain(UnhandledExceptionEventHandler handler)
+    {
+        // .NET 10 forwards `AppDomain.UnhandledException` to `AppContext.UnhandledException`,
+        // so the backing delegate field lives on AppContext; fall back to AppDomain itself if a
+        // runtime keeps it there.
+        var subscribers = Subscribers(typeof(AppDomain), AppDomain.CurrentDomain, handler);
+        if (subscribers.Count > 0)
+        {
+            return subscribers;
+        }
+
+        var appContext = typeof(AppDomain).Assembly.GetType("System.AppContext")
+                         ?? throw new InvalidOperationException("System.AppContext not found");
+        return Subscribers(appContext, null, handler);
+    }
+
+    private static IReadOnlyList<Delegate> SubscribersOfTaskScheduler(EventHandler<UnobservedTaskExceptionEventArgs> handler)
+        => Subscribers(typeof(TaskScheduler), null, handler);
+
+    private static IReadOnlyList<Delegate> Subscribers(Type hostType, object? instance, Delegate expected)
+        => hostType.GetFields(EventBackingFieldFlags)
+            .Where(field => field.FieldType == expected.GetType())
+            .Select(field => field.GetValue(field.IsStatic ? null : instance) as Delegate)
+            .Where(value => value is not null)
+            .SelectMany(value => value!.GetInvocationList())
+            .Where(subscriber => subscriber.Equals(expected))
+            .ToArray();
+
+    private static bool IsSubscribedToAppDomain(UnhandledExceptionEventHandler handler)
+        => SubscribersOfAppDomain(handler).Count > 0;
+
+    private static bool IsSubscribedToTaskScheduler(EventHandler<UnobservedTaskExceptionEventArgs> handler)
+        => SubscribersOfTaskScheduler(handler).Count > 0;
+
+    /// <summary>Collects rendered log messages for the startup-report assertions.</summary>
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+    }
 
     private sealed class ThrowingSink : ICrashEvidenceSink
     {

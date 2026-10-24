@@ -21,6 +21,16 @@ public static class CrashEvidenceStartupReport
     /// a diagnostics report must not be able to fail a boot.
     /// </summary>
     public static IReadOnlyList<string> Report(CrashEvidenceOptions options, ILogger logger)
+        => Report(options, logger, Environment.GetEnvironmentVariable);
+
+    /// <summary>
+    /// Overload with an injected environment lookup so both dump-posture branches are testable
+    /// deterministically, without mutating the test process's environment.
+    /// </summary>
+    public static IReadOnlyList<string> Report(
+        CrashEvidenceOptions options,
+        ILogger logger,
+        Func<string, string?> readEnvironment)
     {
         try
         {
@@ -48,7 +58,7 @@ public static class CrashEvidenceStartupReport
                 CrashEvidenceSources.AppDomainUnhandledException,
                 CrashEvidenceSources.TaskSchedulerUnobserved,
                 Path.GetFullPath(options.Directory),
-                DumpPosture());
+                DumpPosture(readEnvironment));
 
             return artifacts.Select(artifact => artifact.Path).ToArray();
         }
@@ -99,9 +109,9 @@ public static class CrashEvidenceStartupReport
     /// the runtime from the process environment at start-up, so this line reports what is
     /// actually set rather than implying coverage that is not there.
     /// </summary>
-    private static string DumpPosture()
+    private static string DumpPosture(Func<string, string?> readEnvironment)
     {
-        var value = Environment.GetEnvironmentVariable(RuntimeDumpKnob);
+        var value = readEnvironment(RuntimeDumpKnob);
         var enabled = value is not null
                       && (value.Equals("1", StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase));
 

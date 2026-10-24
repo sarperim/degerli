@@ -52,9 +52,16 @@ public sealed partial class CrashEvidenceRedactor
         return redacted;
     }
 
-    /// <summary><c>password=…</c>, <c>api_key: …</c>, <c>token=…</c> and their siblings.</summary>
+    /// <summary>
+    /// <c>password=…</c>, <c>api_key: …</c>, <c>token=…</c> and their siblings — plus the
+    /// JSON shapes the repository's own log format produces (<c>{"Password":"…"}</c>,
+    /// <c>"apiKey": "…"</c>), where a closing quote sits between the keyword and the
+    /// separator. The optional quote after the keyword and after the separator is what makes
+    /// the pattern bite on a <c>CompactJsonFormatter</c> line; the value class still stops at
+    /// whitespace, a quote, a shell separator or the JSON punctuation that ends the value.
+    /// </summary>
     [GeneratedRegex(
-        @"\b(password|passwd|pwd|secret|api[_-]?key|apisecret|access[_-]?token|refresh[_-]?token|token)\b\s*[=:]\s*[^\s;&""',]+",
+        @"\b(password|passwd|pwd|secret|api[_-]?key|apisecret|access[_-]?token|refresh[_-]?token|token)\b[""']?\s*[=:]\s*[""']?[^\s;&""',]+",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CredentialAssignmentPattern();
 
