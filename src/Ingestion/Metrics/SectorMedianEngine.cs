@@ -20,14 +20,25 @@ public sealed record SectorMedianResult(
 /// reports. Identical medians are never rewritten and are counted in
 /// <see cref="Unchanged"/>; a median whose upstream <c>derived_metrics</c> inputs changed is
 /// repaired in place and counted in <see cref="Rewritten"/>.
+/// <para>
+/// A stored median is also <see cref="Rewritten"/> when its definition stamp is not the current
+/// one, even though its values are identical (<see cref="FormulaVersionRewritten"/>,
+/// TKT-foundation-070).
+/// </para>
 /// </summary>
 /// <param name="ToWrite">The computed medians to upsert (new rows + input-changed rows).</param>
 /// <param name="Unchanged">The recomputed medians already identical to their stored row.</param>
 /// <param name="Rewritten">The rows repaired in place because their inputs changed.</param>
+/// <param name="FormulaVersionRewritten">
+/// The subset of <paramref name="Rewritten"/> whose stored values were <b>identical</b> and
+/// only their definition version differed (<see cref="CanonicalMetrics.Version"/>,
+/// TKT-foundation-070) — reported apart from a fact repair so the two are never confused.
+/// </param>
 public sealed record SectorMedianWritePlan(
     IReadOnlyList<SectorMedianResult> ToWrite,
     int Unchanged,
-    int Rewritten);
+    int Rewritten,
+    int FormulaVersionRewritten = 0);
 
 /// <summary>
 /// C3b sector-median computation for the vs.-sector strip (FR-RES-007/SD-002, `02` §6.3):
@@ -116,6 +127,12 @@ public sealed class SectorMedianEngine
     /// <c>derived_metrics</c> inputs changed is repaired in place and counted as rewritten.
     /// Only the resolved <paramref name="asOfDate"/>'s rows are addressed, so historical days
     /// stay immutable.
+    /// <para>
+    /// <b>Definition-aware since TKT-foundation-070</b> (<c>01</c> §10.9.13): a stored median whose
+    /// <c>formula_version</c> is not <see cref="CanonicalMetrics.Version"/> is rewritten — counted
+    /// in <see cref="SectorMedianWritePlan.FormulaVersionRewritten"/> when its values were
+    /// identical — because a different definition produced it.
+    /// </para>
     /// </summary>
     public async Task<SectorMedianWritePlan> PlanWriteAsync(
         IReadOnlyList<SectorMedianResult> computed,
@@ -133,11 +150,14 @@ public sealed class SectorMedianEngine
         var toWrite = new List<SectorMedianResult>(computed.Count);
         var unchanged = 0;
         var rewritten = 0;
+        var formulaVersionRewritten = 0;
         foreach (var result in computed)
         {
             if (stored.TryGetValue((result.SectorId, result.MetricCode), out var row))
             {
-                if (HasSameValues(row, result))
+                var sameValues = HasSameValues(row, result);
+                var currentVersion = HasCurrentFormulaVersion(row);
+                if (sameValues && currentVersion)
                 {
                     // Identical inputs → identical median: nothing to write, and the run
                     // reports the honest unchanged count instead of a silent vacuum.
@@ -146,12 +166,18 @@ public sealed class SectorMedianEngine
                 }
 
                 rewritten++;
+                if (sameValues)
+                {
+                    // Identical median, moved (or never recorded) definition: a formula-version
+                    // rewrite, counted apart from a fact repair (TKT-foundation-070).
+                    formulaVersionRewritten++;
+                }
             }
 
             toWrite.Add(result);
         }
 
-        return new SectorMedianWritePlan(toWrite, unchanged, rewritten);
+        return new SectorMedianWritePlan(toWrite, unchanged, rewritten, formulaVersionRewritten);
     }
 
     /// <summary>
@@ -169,6 +195,15 @@ public sealed class SectorMedianEngine
 
     /// <summary>The persisted scale of <c>sector_metric_medians.median_value</c> (<c>02</c> §3.4).</summary>
     private const int StoredValueScale = 6;
+
+    /// <summary>
+    /// True when the stored median was produced by the current definition
+    /// (<see cref="CanonicalMetrics.Version"/>, TKT-foundation-070). A differing stamp — including
+    /// the honest <c>NULL</c> of a pre-versioning row — makes the row rewrite-worthy even when its
+    /// value is identical.
+    /// </summary>
+    private static bool HasCurrentFormulaVersion(SectorMetricMedian stored) =>
+        stored.FormulaVersion == CanonicalMetrics.Version;
 
     /// <summary>Projects a computed median onto the column's precision (half away from zero, like the DB).</summary>
     private static decimal? AtStoredScale(decimal? value) =>

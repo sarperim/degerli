@@ -7,13 +7,39 @@ using Microsoft.Extensions.Logging;
 namespace Degerli.Ingestion.Jobs;
 
 /// <summary>
+/// Who asked for a run (TKT-foundation-070) — recorded in the run ledger's
+/// <c>stats_json</c> (<c>trigger</c>) so an operator can tell after the fact whether a
+/// recompute was the scheduler's or a human's. The distinction is provenance only: the
+/// jobs behave identically either way.
+/// <para>
+/// Additive and optional by design: the scheduler passes a
+/// <see cref="IngestionRunContext"/> (which defaults to <see cref="Scheduled"/>), the admin
+/// trigger omits the context entirely (which the runner reads as <see cref="Admin"/>), so
+/// no existing caller, job or test changes behaviour.
+/// </para>
+/// </summary>
+public static class IngestionTrigger
+{
+    /// <summary>A scheduled chain run — the EOD/morning streams and their retry ladder.</summary>
+    public const string Scheduled = "scheduled";
+
+    /// <summary>An operator-initiated run — the admin trigger, or any direct caller.</summary>
+    public const string Admin = "admin";
+}
+
+/// <summary>
 /// What to ingest: the target trading day (UC-MDF-001 step 1). When
 /// <see cref="BackfillFrom"/> is set the job runs in <b>backfill mode</b> (UC-MDF-002,
 /// FR-MDF-010): it asks the adapter for the historical range starting at that date and
 /// records the actual achieved depth. The admin trigger (TKT-mdf-010) carries the same
 /// <c>{backfillFrom}</c> body at the job level.
 /// </summary>
-public sealed record IngestionRequest(DateOnly Date, DateOnly? BackfillFrom = null)
+/// <param name="Trigger">
+/// Optional trigger override (<see cref="IngestionTrigger"/>); <c>null</c> takes the
+/// trigger from the run context, and a request with no context at all is an
+/// operator-initiated (<see cref="IngestionTrigger.Admin"/>) run.
+/// </param>
+public sealed record IngestionRequest(DateOnly Date, DateOnly? BackfillFrom = null, string? Trigger = null)
 {
     /// <summary>True when this run is a historical backfill rather than the incremental EOD ingest.</summary>
     public bool IsBackfill => BackfillFrom is not null;
@@ -82,8 +108,13 @@ public sealed record SymbolRunStat(
 /// Retry-ladder context for a run-ledger row (C3c, NFR-MDF-001): which attempt this is
 /// and how many are allowed. The scheduler supplies it so the ledger records the
 /// attempt count of a recovered run; direct/admin callers omit it.
+/// <para>
+/// <see cref="Trigger"/> defaults to <see cref="IngestionTrigger.Scheduled"/> because the
+/// scheduler is the only constructor of this context (TKT-foundation-070) — a caller that
+/// wants the ledger to read differently says so explicitly.
+/// </para>
 /// </summary>
-public sealed record IngestionRunContext(int Attempt, int MaxAttempts)
+public sealed record IngestionRunContext(int Attempt, int MaxAttempts, string? Trigger = IngestionTrigger.Scheduled)
 {
     /// <summary>Retry ordinal (0 for the first attempt).</summary>
     public int Retries => Attempt - 1;
@@ -314,6 +345,9 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
             // Backfill mode is part of the run's identity (UC-MDF-002, TC-MDF-043).
             mode = request.IsBackfill ? "backfill" : "incremental",
             backfillFrom = request.BackfillFrom?.ToString("yyyy-MM-dd"),
+            // Who asked for the run (TKT-foundation-070): the ledger, not just the log, must let
+            // an operator tell a scheduled recompute from an admin-triggered one afterwards.
+            trigger = ResolveTrigger(request, context),
             attempt = context?.Attempt,
             retries = context?.Retries,
             maxAttempts = context?.MaxAttempts,
@@ -331,6 +365,17 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The run's recorded trigger (<see cref="IngestionTrigger"/>): an explicit request value
+    /// wins, then the run context's, and a request with no context at all is an
+    /// operator-initiated run — the admin trigger calls this runner's bare overload
+    /// (TKT-foundation-070). Purely descriptive: it never changes what a job does.
+    /// </summary>
+    private static string ResolveTrigger(IngestionRequest request, IngestionRunContext? context) =>
+        request.Trigger
+        ?? context?.Trigger
+        ?? (context is null ? IngestionTrigger.Admin : IngestionTrigger.Scheduled);
 
     /// <summary>
     /// The ledger's <c>error</c> value for this row (FR-MDF-009): a thrown failure's classified

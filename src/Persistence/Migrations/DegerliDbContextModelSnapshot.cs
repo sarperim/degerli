@@ -489,6 +489,10 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("computed_at");
 
+                    b.Property<int?>("FormulaVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("formula_version");
+
                     b.Property<bool>("IsAdjusted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_adjusted");
@@ -513,7 +517,10 @@ namespace Degerli.Persistence.Migrations
                     b.HasKey("InstrumentId", "MetricCode", "AsOfDate")
                         .HasName("pk_derived_metrics");
 
-                    b.ToTable("derived_metrics", (string)null);
+                    b.ToTable("derived_metrics", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_derived_metrics_formula_version", "formula_version IS NULL OR formula_version >= 1");
+                        });
                 });
 
             modelBuilder.Entity("Degerli.Persistence.Entities.Dividend", b =>
@@ -1456,6 +1463,10 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("excluded_count");
 
+                    b.Property<int?>("FormulaVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("formula_version");
+
                     b.Property<bool>("IsAdjusted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_adjusted");
@@ -1472,7 +1483,10 @@ namespace Degerli.Persistence.Migrations
                     b.HasKey("SectorId", "MetricCode", "AsOfDate")
                         .HasName("pk_sector_metric_medians");
 
-                    b.ToTable("sector_metric_medians", (string)null);
+                    b.ToTable("sector_metric_medians", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_sector_metric_medians_formula_version", "formula_version IS NULL OR formula_version >= 1");
+                        });
                 });
 
             modelBuilder.Entity("Degerli.Persistence.Entities.ShareCount", b =>
