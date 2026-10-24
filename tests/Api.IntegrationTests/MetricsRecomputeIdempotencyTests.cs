@@ -322,6 +322,232 @@ public sealed class MetricsRecomputeIdempotencyTests : IClassFixture<PostgresFix
     }
 
     // =====================================================================================
+    // TC-MDF-102 — definition versioning: per-row formula provenance (TKT-foundation-070)
+    // =====================================================================================
+
+    /// <summary>
+    /// TC-MDF-102 — <c>metrics-recompute</c>: every row the engine writes carries the current
+    /// definition version (<see cref="CanonicalMetrics.Version"/>) — the single source of truth
+    /// for "which formula produced this number". A fresh day is entirely current, so a
+    /// value-identical re-run stays honestly <c>unchanged</c> (no perpetual pseudo-repair).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_102_metrics_recompute_stamps_the_definition_version_on_every_row()
+    {
+        await ResetAsync();
+
+        var first = await ComputeDerivedMetricsAsync(T);
+        Assert.Equal("succeeded", first.Status);
+        Assert.Equal(MetricRows, first.Written);
+
+        // The stamp is the definition's own constant — not a literal the store invents.
+        var versions = await ReadMetricFormulaVersionsAsync(T);
+        Assert.Equal(MetricRows, versions.Count);
+        Assert.All(versions.Values, version => Assert.Equal(CanonicalMetrics.Version, version));
+
+        // Same inputs + same version = honestly unchanged, and nothing is a version rewrite.
+        var plan = await PlanMetricsAsync(T);
+        Assert.Equal(MetricRows, plan.Unchanged);
+        Assert.Equal(0, plan.Rewritten);
+        Assert.Equal(0, plan.FormulaVersionRewritten);
+    }
+
+    /// <summary>
+    /// TC-MDF-102 — <c>metrics-recompute</c>: rows carrying an <b>older/absent</b> definition
+    /// stamp are rewritten even though their values are identical, the current version is
+    /// stamped, and the rewrite is reported distinctly from a fact repair
+    /// (<see cref="MetricWritePlan.FormulaVersionRewritten"/>). Under the same version a second
+    /// run is <c>unchanged</c>. The historical day keeps its absent stamp — never guessed, never
+    /// silently reinterpreted.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_102_metrics_recompute_rewrites_an_older_definition_and_stamps_the_current_one()
+    {
+        await ResetAsync();
+        await ComputeDerivedMetricsAsync(Prior);
+        var first = await ComputeDerivedMetricsAsync(T);
+        Assert.Equal(MetricRows, first.Written);
+
+        var before = await ReadMetricsAsync(T);
+
+        // Rows produced before versioning existed: the honest pre-migration shape is NULL, and
+        // only a recompute may stamp them.
+        await SetMetricFormulaVersionAsync(T, null);
+        await SetMetricFormulaVersionAsync(Prior, null);
+
+        // The classification is distinct: identical values, stale definition → a formula-version
+        // rewrite, never an `unchanged` row and never a fact repair.
+        var plan = await PlanMetricsAsync(T);
+        Assert.Equal(0, plan.Unchanged);
+        Assert.Equal(MetricRows, plan.Rewritten);
+        Assert.Equal(MetricRows, plan.FormulaVersionRewritten);
+
+        var rewrite = await ComputeDerivedMetricsAsync(T, TimeSpan.FromHours(2));
+        Assert.Equal("succeeded", rewrite.Status);
+        Assert.Equal(MetricRows, rewrite.Written);
+        Assert.Equal(0, rewrite.Unchanged);
+        Assert.Equal(MetricRows, await ReadLatestLedgerStatAsync(MetricsRecomputeJob.Code, "written"));
+
+        var after = await ReadMetricsAsync(T);
+
+        // The values are untouched (no formula changed — only its version stamp) ...
+        Assert.All(after, pair => Assert.Equal(before[pair.Key].Facts(), pair.Value.Facts()));
+
+        // ... every row now carries the current definition, and only the rewritten rows moved
+        // their computed_at (a rewrite is a real write).
+        var versions = await ReadMetricFormulaVersionsAsync(T);
+        Assert.Equal(MetricRows, versions.Count);
+        Assert.All(versions.Values, version => Assert.Equal(CanonicalMetrics.Version, version));
+        Assert.All(after, pair => Assert.Equal(
+            new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddHours(2),
+            pair.Value.ComputedAt));
+
+        // The historical day is not silently reinterpreted: its absent stamp stays absent and
+        // its rows are byte-identical (only an explicit recompute of that day may stamp it).
+        var priorVersions = await ReadMetricFormulaVersionsAsync(Prior);
+        Assert.Equal(MetricRows, priorVersions.Count);
+        Assert.All(priorVersions.Values, version => Assert.Null(version));
+
+        // ... and a second run under the same definition is honestly unchanged again.
+        var settled = await ComputeDerivedMetricsAsync(T, TimeSpan.FromHours(4));
+        Assert.Equal(0, settled.Written);
+        Assert.Equal(MetricRows, settled.Unchanged);
+    }
+
+    /// <summary>
+    /// TC-MDF-102 — <c>metrics-recompute</c>: the same rule for any stamp the current definition
+    /// did not produce (a bumped-then-changed formula version), i.e. the rule is
+    /// "stamp ≠ current version", not "stamp is absent". The rows are rewritten, restamped and
+    /// reported distinctly, and the row set stays one-per-key.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_102_metrics_recompute_rewrites_a_row_stamped_with_another_definition()
+    {
+        await ResetAsync();
+        await ComputeDerivedMetricsAsync(T);
+        var before = await ReadMetricsAsync(T);
+
+        await SetMetricFormulaVersionAsync(T, CanonicalMetrics.Version + 1);
+
+        var plan = await PlanMetricsAsync(T);
+        Assert.Equal(MetricRows, plan.FormulaVersionRewritten);
+        Assert.Equal(0, plan.Rewritten - plan.FormulaVersionRewritten);
+
+        var rewrite = await ComputeDerivedMetricsAsync(T, TimeSpan.FromHours(2));
+        Assert.Equal(MetricRows, rewrite.Written);
+        Assert.Equal(0, rewrite.Unchanged);
+
+        Assert.All(
+            (await ReadMetricFormulaVersionsAsync(T)).Values,
+            version => Assert.Equal(CanonicalMetrics.Version, version));
+        Assert.All((await ReadMetricsAsync(T)), pair => Assert.Equal(before[pair.Key].Facts(), pair.Value.Facts()));
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(MetricRows, await db.DerivedMetrics.CountAsync(m => m.AsOfDate == T));
+    }
+
+    /// <summary>
+    /// TC-MDF-102 — <c>medians</c>: the sector-median lane carries the same discipline — every
+    /// row is stamped with the current definition version, a stale/absent stamp is rewritten
+    /// identically-valued and reported distinctly, and the settled re-run is <c>unchanged</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_102_medians_carry_the_same_definition_version_discipline()
+    {
+        await ResetAsync();
+        await ComputeDerivedMetricsAsync(T);
+
+        var first = await RunMediansAsync(T);
+        Assert.Equal(MedianRows, first.Written);
+        Assert.All(
+            (await ReadMedianFormulaVersionsAsync(T)).Values,
+            version => Assert.Equal(CanonicalMetrics.Version, version));
+
+        var before = await ReadMediansAsync(T);
+        var settledPlan = await PlanMediansAsync(T);
+        Assert.Equal(MedianRows, settledPlan.Unchanged);
+        Assert.Equal(0, settledPlan.FormulaVersionRewritten);
+
+        // The honest pre-migration shape, then the distinct classification.
+        await SetMedianFormulaVersionAsync(T, null);
+
+        var plan = await PlanMediansAsync(T);
+        Assert.Equal(0, plan.Unchanged);
+        Assert.Equal(MedianRows, plan.Rewritten);
+        Assert.Equal(MedianRows, plan.FormulaVersionRewritten);
+
+        var rewrite = await RunMediansAsync(T, TimeSpan.FromHours(2));
+        Assert.Equal(MedianRows, rewrite.Written);
+        Assert.Equal(0, rewrite.Unchanged);
+        Assert.Equal(MedianRows, await ReadLatestLedgerStatAsync(SectorMediansJob.Code, "written"));
+
+        Assert.All(
+            (await ReadMedianFormulaVersionsAsync(T)).Values,
+            version => Assert.Equal(CanonicalMetrics.Version, version));
+        Assert.All(
+            (await ReadMediansAsync(T)),
+            pair => Assert.Equal(before[pair.Key] with { ComputedAt = default }, pair.Value with { ComputedAt = default }));
+
+        var settled = await RunMediansAsync(T, TimeSpan.FromHours(4));
+        Assert.Equal(0, settled.Written);
+        Assert.Equal(MedianRows, settled.Unchanged);
+    }
+
+    /// <summary>
+    /// TC-MDF-102 — the run ledger records <b>who</b> asked for a run, after the fact: a run
+    /// carrying the scheduler's retry context reads <c>scheduled</c>, a run through the bare
+    /// overload the admin trigger uses reads <c>admin</c>, and an explicit request-level trigger
+    /// wins over the context's default. Purely additive provenance: the counts and status of the
+    /// run are untouched by it.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_102_run_ledger_records_the_trigger_that_asked_for_the_run()
+    {
+        await ResetAsync();
+
+        // The scheduler path: it always supplies the retry-ladder context.
+        await using (var host = BuildHost())
+        {
+            using var scope = host.CreateScope();
+            var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+            await runner.RunAsync(MetricsRecomputeJob.Code, new IngestionRequest(T), new IngestionRunContext(1, 3));
+        }
+
+        Assert.Equal(
+            IngestionTrigger.Scheduled,
+            await ReadLatestLedgerStringStatAsync(MetricsRecomputeJob.Code, "trigger"));
+        Assert.Equal(MetricRows, await ReadLatestLedgerStatAsync(MetricsRecomputeJob.Code, "written"));
+
+        // The admin path: the operator trigger omits the context entirely.
+        await using (var host = BuildHost(TimeSpan.FromHours(2)))
+        {
+            using var scope = host.CreateScope();
+            var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+            await runner.RunAsync(MetricsRecomputeJob.Code, new IngestionRequest(T));
+        }
+
+        Assert.Equal(
+            IngestionTrigger.Admin,
+            await ReadLatestLedgerStringStatAsync(MetricsRecomputeJob.Code, "trigger"));
+        Assert.Equal(MetricRows, await ReadLatestLedgerStatAsync(MetricsRecomputeJob.Code, "unchanged"));
+
+        // An explicit trigger on the request wins over the context's default.
+        await using (var host = BuildHost(TimeSpan.FromHours(3)))
+        {
+            using var scope = host.CreateScope();
+            var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+            await runner.RunAsync(
+                MetricsRecomputeJob.Code,
+                new IngestionRequest(T, Trigger: IngestionTrigger.Admin),
+                new IngestionRunContext(1, 3));
+        }
+
+        Assert.Equal(
+            IngestionTrigger.Admin,
+            await ReadLatestLedgerStringStatAsync(MetricsRecomputeJob.Code, "trigger"));
+    }
+
+    // =====================================================================================
     // Harness
     // =====================================================================================
 
@@ -484,6 +710,133 @@ public sealed class MetricsRecomputeIdempotencyTests : IClassFixture<PostgresFix
         return document.RootElement.TryGetProperty(name, out var value)
             ? value.GetInt32()
             : 0;
+    }
+
+    /// <summary>
+    /// Reads one string stat off the latest run-ledger row for <paramref name="jobCode"/>
+    /// (e.g. <c>trigger</c>, TKT-foundation-070); an absent stat reads <c>null</c>.
+    /// </summary>
+    private async Task<string?> ReadLatestLedgerStringStatAsync(string jobCode, string name)
+    {
+        await using var db = _postgres.CreateContext();
+        var statsJson = await db.IngestRuns
+            .Where(r => r.JobCode == jobCode)
+            .OrderByDescending(r => r.Id)
+            .Select(r => r.StatsJson)
+            .FirstAsync();
+
+        using var document = JsonDocument.Parse(statsJson!);
+        return document.RootElement.TryGetProperty(name, out var value)
+            ? value.GetString()
+            : null;
+    }
+
+    /// <summary>The engine's classification of the recompute for <paramref name="date"/> (write plan).</summary>
+    private async Task<MetricWritePlan> PlanMetricsAsync(DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var engine = new MetricsEngine(db);
+        var computed = await engine.ComputeAsync(date);
+        return await engine.PlanWriteAsync(computed, date);
+    }
+
+    /// <summary>The median engine's classification of the recompute for <paramref name="date"/>.</summary>
+    private async Task<SectorMedianWritePlan> PlanMediansAsync(DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var engine = new SectorMedianEngine(db);
+        var computed = await engine.ComputeAsync(date);
+        return await engine.PlanWriteAsync(computed, date);
+    }
+
+    /// <summary>
+    /// Every stored metric row's <c>formula_version</c> at <paramref name="date"/>, keyed
+    /// <c>SYMBOL|CODE</c> (<c>null</c> = produced before the definition was versioned).
+    /// </summary>
+    private Task<Dictionary<string, int?>> ReadMetricFormulaVersionsAsync(DateOnly date) =>
+        ReadFormulaVersionsAsync(
+            """
+            SELECT i.symbol || '|' || m.metric_code, m.formula_version
+            FROM derived_metrics m
+            JOIN instruments i ON i.id = m.instrument_id
+            WHERE m.as_of_date = @as_of_date
+            """,
+            date);
+
+    /// <summary>Every stored median row's <c>formula_version</c> at <paramref name="date"/>, keyed <c>SECTOR|CODE</c>.</summary>
+    private Task<Dictionary<string, int?>> ReadMedianFormulaVersionsAsync(DateOnly date) =>
+        ReadFormulaVersionsAsync(
+            """
+            SELECT s.code || '|' || m.metric_code, m.formula_version
+            FROM sector_metric_medians m
+            JOIN sectors s ON s.id = m.sector_id
+            WHERE m.as_of_date = @as_of_date
+            """,
+            date);
+
+    private async Task<Dictionary<string, int?>> ReadFormulaVersionsAsync(string sql, DateOnly date)
+    {
+        await using var db = _postgres.CreateContext();
+        var connection = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "as_of_date";
+            parameter.Value = date;
+            command.Parameters.Add(parameter);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            var versions = new Dictionary<string, int?>(StringComparer.Ordinal);
+            while (await reader.ReadAsync())
+            {
+                versions[reader.GetString(0)] = reader.IsDBNull(1) ? null : reader.GetInt32(1);
+            }
+
+            return versions;
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    /// <summary>
+    /// Sets every stored metric row's <c>formula_version</c> at <paramref name="date"/> — the
+    /// DB-level exercise of "rows produced by a different definition", which no production path
+    /// can produce on demand (the definition version is a compile-time constant).
+    /// </summary>
+    private async Task SetMetricFormulaVersionAsync(DateOnly date, int? version)
+    {
+        await using var db = _postgres.CreateContext();
+        if (version is int stamped)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE derived_metrics SET formula_version = {0} WHERE as_of_date = {1}", stamped, date);
+        }
+        else
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE derived_metrics SET formula_version = NULL WHERE as_of_date = {0}", date);
+        }
+    }
+
+    /// <summary>Sets every stored median row's <c>formula_version</c> at <paramref name="date"/>.</summary>
+    private async Task SetMedianFormulaVersionAsync(DateOnly date, int? version)
+    {
+        await using var db = _postgres.CreateContext();
+        if (version is int stamped)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE sector_metric_medians SET formula_version = {0} WHERE as_of_date = {1}", stamped, date);
+        }
+        else
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE sector_metric_medians SET formula_version = NULL WHERE as_of_date = {0}", date);
+        }
     }
 
     private sealed record MetricMarker(

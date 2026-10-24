@@ -85,6 +85,24 @@ public static class CanonicalMetrics
     public const string IndustrialProfile = "industrial";
 
     /// <summary>
+    /// The definition version of the canonical metric set — the single source of truth for
+    /// "which formula produced this number" (<c>01</c> §10.9.13, TKT-foundation-070;
+    /// BR-MDF-009). Every row this definition produces is stamped with it
+    /// (<c>derived_metrics.formula_version</c> / <c>sector_metric_medians.formula_version</c>),
+    /// so a stored value can answer the provenance question after the fact.
+    /// <para>
+    /// <b>Bump it in the same change as any formula, input-assembly or not-meaningful-rule
+    /// change in this file</b> (or in the engines that assemble its inputs). A bump makes the
+    /// next recompute rewrite every row of the target day even when the values are identical,
+    /// because the stored rows were produced by a different definition — that rewrite is the
+    /// honest provenance update, not a repair of a changed fact. A stamp that is absent
+    /// (<c>NULL</c> — rows written before versioning existed) is treated the same way: the
+    /// next recompute of that day stamps it. No stamp is ever guessed or back-filled.
+    /// </para>
+    /// </summary>
+    public const int Version = 1;
+
+    /// <summary>
     /// The accounting profiles whose industrial metric concepts are not meaningful
     /// (<c>02</c> §6.2, v1.3): banks and insurers report under BDDK/insurance rules with
     /// no <c>REV</c>/<c>COGS</c>/<c>EBITDA</c>/<c>FCF</c>/<c>CUR_ASSETS</c> semantics, so a

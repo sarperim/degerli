@@ -246,7 +246,11 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
 
         builder.Entity<DerivedMetric>(b =>
         {
-            b.ToTable("derived_metrics");
+            // Definition-version provenance (01 §10.9.13, TKT-foundation-070): a row with a
+            // stamp is one a known definition produced; NULL is "predates versioning".
+            b.ToTable("derived_metrics", t => t.HasCheckConstraint(
+                "ck_derived_metrics_formula_version",
+                "formula_version IS NULL OR formula_version >= 1"));
             b.HasKey(x => new { x.InstrumentId, x.MetricCode, x.AsOfDate });
             b.Property(x => x.MetricCode).IsRequired();
             b.Property(x => x.Value).HasPrecision(18, 6);
@@ -368,7 +372,10 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
 
         builder.Entity<SectorMetricMedian>(b =>
         {
-            b.ToTable("sector_metric_medians");
+            // Definition-version provenance (01 §10.9.13, TKT-foundation-070).
+            b.ToTable("sector_metric_medians", t => t.HasCheckConstraint(
+                "ck_sector_metric_medians_formula_version",
+                "formula_version IS NULL OR formula_version >= 1"));
             b.HasKey(x => new { x.SectorId, x.MetricCode, x.AsOfDate });
             b.Property(x => x.MetricCode).IsRequired();
             b.Property(x => x.MedianValue).HasPrecision(18, 6);
