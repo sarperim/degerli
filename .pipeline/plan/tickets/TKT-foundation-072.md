@@ -50,8 +50,8 @@ scope:
 
 - **PR:** https://github.com/sarperim/degerli/pull/137 (link filled at open).
 - **Delivered:** single unit-code → localized label map in `src/Web/src/lib/units.ts`, applied at every raw-unit render.
-  - `UNIT_LABEL_KEYS` covers the served vocabulary (`%`, `% YoY`, `x`, `TRY`, `USD/oz`, `TRY/g` — `DegerliSeed.MacroSeriesSql` + `DegerliSeed.ScreenerMetricSql`).
-  - `unitLabel` / `unitSuffix` / `isPercentUnit` / `isRatioUnit` are the only way a component resolves a served `unit`.
+  - `UNIT_LABEL_KEYS` covers the seeded macro/screener vocabulary (`%`, `% YoY`, `x`, `TRY`, `USD/oz`) plus `TRY/g`, which appears only in the MSW test fixtures.
+  - `unitLabel` / `unitSuffix` / `isPercentUnit` are the only way a component resolves a served `unit`.
   - Surfaces: `MacroStrip.tsx` (per-series unit), `screener/ScreenerScreen.tsx` (metric select + criterion row + result values), `screener/criteria.ts` (`formatMetricValue` now takes `t`), `savedScreens/criteria.ts` (semantic branch uses `isPercentUnit`), `stock-page/StockSections.tsx` (paid-in-capital line).
 - **Unknown-code decision (pinned):** an unrecognized or empty unit code renders the explicit label **"Birim belirtilmemiş" / "Unit not specified"** (`units.unknown`). The raw code is never shown and no unit is guessed — a label is a claim about the data (FR-RES-017). Covered by TR and EN tests in `MacroStrip.test.tsx`.
 - **Paid-in capital (065 / USER DECISION D4, Option A):** the balance-sheet line served as `sharesOutstanding` is labelled **"Ödenmiş sermaye" / "Paid-in capital"** and carries the localized **TRY** unit (`PAID_IN_CAPITAL_UNIT_CODE`; the value is money — 64/556 rows carry sub-unit precision). The old "Ödenmiş pay sayısı" / "Shares outstanding" copy is removed from both catalogs; the row is never rendered as a share count. `lines.sharesDiluted` keeps its statement meaning and label. The served field name is unchanged (display-only ticket; the API rename belongs to the 065 implementation slice).

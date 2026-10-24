@@ -23,8 +23,9 @@ import type { TFunction } from 'i18next'
  */
 
 /**
- * Served unit code → i18n key. Complete for the vocabulary the services ship
- * (`DegerliSeed.MacroSeriesSql`, `DegerliSeed.ScreenerMetricSql`).
+ * Served unit code → i18n key. Covers the seeded macro/screener vocabulary
+ * (`%`, `% YoY`, `x`, `TRY`, `USD/oz`) plus `TRY/g`, which appears only in the
+ * MSW test fixtures.
  *
  * The literals live here so the i18n parity gate (`scripts/i18n-parity.mjs`) sees
  * every key referenced in source.
@@ -57,15 +58,14 @@ export function isPercentUnit(unit: string | null | undefined): boolean {
   return unit === '%'
 }
 
-/** True for the `x` unit (valuation multiples). */
-export function isRatioUnit(unit: string | null | undefined): boolean {
-  return unit === 'x'
-}
-
 /** Resolve a served unit code to its i18n key; unknown/empty → the honest fallback. */
 export function unitLabelKey(unit: string | null | undefined): string {
   if (!unit) return UNKNOWN_UNIT_LABEL_KEY
-  return UNIT_LABEL_KEYS[unit] ?? UNKNOWN_UNIT_LABEL_KEY
+  // The served code is an open, server-supplied string: resolve only own entries,
+  // never inherited members (`constructor`, `toString`, `__proto__`, …).
+  return Object.hasOwn(UNIT_LABEL_KEYS, unit)
+    ? UNIT_LABEL_KEYS[unit]
+    : UNKNOWN_UNIT_LABEL_KEY
 }
 
 /** Localized display label for a served unit code. */

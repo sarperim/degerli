@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 
 import { catalogValue } from '@/test/i18n'
+import { renderWithProviders } from '@/test/render'
+import { ScreenerScreen } from '@/screens/screener/ScreenerScreen'
 import {
   METRIC_CATALOG_FIXTURE,
   SCREENER_RUN_FIXTURE,
@@ -335,5 +338,109 @@ describe('TKT-foundation-072 (i) — screener units are localized labels, not se
     const cell = await screen.findByTestId('result-value-ALFA-market_cap')
     expect(cell).toHaveTextContent(TR('units.currencyTry'))
     expect(cell).not.toHaveTextContent('TRY')
+  })
+
+  /** A one-metric catalog so a test can pin an arbitrary served unit code. */
+  function catalogWithPeUnit(unit: string): MetricCatalogResponse {
+    return {
+      families: [
+        {
+          family: 'valuation',
+          metrics: [
+            {
+              metricCode: 'pe',
+              unit,
+              labelTr: 'F/K',
+              labelEn: 'P/E',
+              isCagr: false,
+              sortOrder: 1,
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  const RUN_WITH_PE: ScreenerRunResponse = {
+    asOf: '2026-10-06',
+    stale: false,
+    matchCount: 1,
+    excludedCount: 0,
+    droppedCriteria: [],
+    rows: [
+      {
+        symbol: 'ALFA',
+        name: 'Alfa Teknoloji A.Ş.',
+        sector: 'A',
+        values: { pe: 12.5 },
+      },
+    ],
+  }
+
+  /** Render the screener under a given language (the shared harness is TR-only). */
+  function renderScreenerIn(language: 'tr' | 'en') {
+    return renderWithProviders(
+      <MemoryRouter initialEntries={['/screener']}>
+        <ScreenerScreen />
+      </MemoryRouter>,
+      { language },
+    )
+  }
+
+  /** Run the `pe` metric with `unit` served, and return its result cell. */
+  async function runPeWithUnit(
+    user: ReturnType<typeof userEvent.setup>,
+    unit: string,
+    language: 'tr' | 'en' = 'tr',
+  ): Promise<HTMLElement> {
+    server.use(
+      screenerMetricsHandler(catalogWithPeUnit(unit)),
+      screenerRunHandler(RUN_WITH_PE),
+    )
+    if (language === 'tr') renderScreener()
+    else renderScreenerIn(language)
+    await screen.findByTestId('metric-select')
+    await addMetric(user, 'pe')
+    await user.type(within(lastRow()).getByTestId('criterion-min'), '1')
+    await user.click(screen.getByTestId('run-button'))
+    return screen.findByTestId('result-value-ALFA-pe')
+  }
+
+  it('treats a prototype-chain code such as "constructor" as an unknown unit, not a map hit', async () => {
+    const user = userEvent.setup()
+    const cell = await runPeWithUnit(user, 'constructor')
+
+    // `UNIT_LABEL_KEYS[unit]` must not resolve inherited members
+    // (`constructor`/`toString`/`valueOf`/`__proto__`) — only own entries are units.
+    expect(cell).toHaveTextContent(TR('units.unknown'))
+    expect(cell.textContent).not.toContain('function')
+    expect(cell.textContent).not.toContain('[object Object]')
+    expect(cell.textContent).not.toContain('constructor')
+  })
+
+  it.each([
+    ['an unrecognized code', 'XAU/ons_v2'],
+    ['an empty code', ''],
+  ])(
+    'renders the honest fallback, with its leading space, for %s',
+    async (_label, unit) => {
+      const user = userEvent.setup()
+      const cell = await runPeWithUnit(user, unit)
+
+      // `unitSuffix` separates the value from the fallback with one space.
+      expect(cell.textContent).toContain(` ${TR('units.unknown')}`)
+      if (unit) expect(cell.textContent).not.toContain(unit)
+    },
+  )
+
+  it('renders the English honest fallback for an unrecognized code', async () => {
+    // The pinned honesty rule: "Unit not specified" in EN (never the raw code).
+    expect(catalogValue('en', 'units.unknown')).toBe('Unit not specified')
+
+    const user = userEvent.setup()
+    const cell = await runPeWithUnit(user, 'XAU/ons_v2', 'en')
+
+    expect(cell.textContent).toContain(` ${catalogValue('en', 'units.unknown')}`)
+    expect(cell.textContent).not.toContain('XAU/ons_v2')
   })
 })
