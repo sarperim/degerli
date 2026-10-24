@@ -6,8 +6,10 @@ import { catalogValue } from '@/test/i18n'
 import {
   METRIC_CATALOG_FIXTURE,
   SCREENER_RUN_FIXTURE,
+  screenerMetricsHandler,
   screenerRunHandler,
 } from '@/test/msw/handlers'
+import type { MetricCatalogResponse, ScreenerRunResponse } from '@/lib/api/contracts'
 import { server } from '@/test/msw/server'
 import { fill, renderScreener, resetScreenerTest } from '@/screens/screener/testSupport'
 
@@ -243,5 +245,95 @@ describe('TC-SCR-027 — zero matches', () => {
     expect(zero).toHaveTextContent(TR('screener.zeroBody'))
     expect(screen.queryByTestId('run-error')).not.toBeInTheDocument()
     await waitFor(() => expect(screen.queryByTestId('results')).not.toBeInTheDocument())
+  })
+})
+
+/**
+ * TKT-foundation-072 (i) — display-side unit semantics for the screener.
+ *
+ * `03` §1 principle 1: the served `unit` is a code, not display prose. The criteria
+ * editor, the metric select and the results table render the localized label from the
+ * single unit map (`src/lib/units.ts`) — a prose code such as `TRY` never reaches the
+ * screen. The catalog is server-driven and its `unit` is an open string (`03` §4), so
+ * an unseen code must still degrade honestly rather than leak.
+ */
+describe('TKT-foundation-072 (i) — screener units are localized labels, not server codes', () => {
+  const CATALOG_WITH_PROSE_UNIT: MetricCatalogResponse = {
+    families: [
+      {
+        family: 'valuation',
+        metrics: [
+          { metricCode: 'pe', unit: 'x', labelTr: 'F/K', labelEn: 'P/E', isCagr: false, sortOrder: 1 },
+          {
+            metricCode: 'market_cap',
+            unit: 'TRY',
+            labelTr: 'Piyasa değeri',
+            labelEn: 'Market cap',
+            isCagr: false,
+            sortOrder: 2,
+          },
+        ],
+      },
+    ],
+  }
+
+  const RUN_WITH_CAPITALISATION: ScreenerRunResponse = {
+    asOf: '2026-10-06',
+    stale: false,
+    matchCount: 1,
+    excludedCount: 0,
+    droppedCriteria: [],
+    rows: [
+      {
+        symbol: 'ALFA',
+        name: 'Alfa Teknoloji A.Ş.',
+        sector: 'A',
+        values: { market_cap: 174_500_000 },
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    server.use(
+      screenerMetricsHandler(CATALOG_WITH_PROSE_UNIT),
+      screenerRunHandler(RUN_WITH_CAPITALISATION),
+    )
+  })
+
+  it('renders the localized unit label in the metric select, not the raw code', async () => {
+    renderScreener()
+    await screen.findByTestId('metric-select')
+
+    const option = within(screen.getByTestId('metric-select')).getByRole('option', {
+      name: /Piyasa değeri/,
+    })
+    expect(option).toHaveTextContent(`(${TR('units.currencyTry')})`)
+    expect(option).not.toHaveTextContent('TRY')
+  })
+
+  it('renders the localized unit label in the criterion row, not the raw code', async () => {
+    const user = userEvent.setup()
+    renderScreener()
+    await screen.findByTestId('metric-select')
+
+    await addMetric(user, 'market_cap')
+
+    const label = within(lastRow()).getByTestId('criterion-label')
+    expect(label).toHaveTextContent(TR('units.currencyTry'))
+    expect(label).not.toHaveTextContent('TRY')
+  })
+
+  it('renders the localized unit label on result values, not the raw code', async () => {
+    const user = userEvent.setup()
+    renderScreener()
+    await screen.findByTestId('metric-select')
+
+    await addMetric(user, 'market_cap')
+    await user.type(within(lastRow()).getByTestId('criterion-min'), '1000')
+    await user.click(screen.getByTestId('run-button'))
+
+    const cell = await screen.findByTestId('result-value-ALFA-market_cap')
+    expect(cell).toHaveTextContent(TR('units.currencyTry'))
+    expect(cell).not.toHaveTextContent('TRY')
   })
 })

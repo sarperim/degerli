@@ -230,3 +230,51 @@ describe('TC-RES-027 — active-section preservation', () => {
     ).toHaveAttribute('aria-current', 'true')
   })
 })
+
+/**
+ * TKT-foundation-072 (iii) — the balance-sheet capital figure is paid-in capital in
+ * TRY, never a share count.
+ *
+ * TKT-foundation-065 / USER DECISION D4 (Option A): the served `shareCount` value is
+ * the sum of `/memberSecurities` `currentCapital` — money (64/556 rows carry sub-unit
+ * precision), not a proven count of shares. The display side therefore carries the
+ * paid-in-capital label and the TRY unit; a bare number that reads as a share count
+ * would be a false claim about the data (FR-RES-017).
+ */
+describe('TKT-foundation-072 (iii) — balance-sheet paid-in capital carries its TRY unit', () => {
+  it('labels the served figure as paid-in capital with a TRY unit, never as a share count', async () => {
+    renderStockPage()
+
+    const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
+    await within(balanceSheet).findByText(TR('stockPage.balanceSheet.bookValue'))
+
+    const row = balanceSheet.querySelector('[data-line="sharesOutstanding"]')
+    expect(row).not.toBeNull()
+    expect(row as HTMLElement).toHaveTextContent(
+      TR('stockPage.balanceSheet.lines.paidInCapital'),
+    )
+    expect(row as HTMLElement).toHaveTextContent(TR('units.currencyTry'))
+
+    // The old count reading must be gone from this row.
+    expect(row as HTMLElement).not.toHaveTextContent(/pay sayısı/i)
+    expect(row as HTMLElement).not.toHaveTextContent(/adet/i)
+    expect(row as HTMLElement).not.toHaveTextContent(/shares/i)
+  })
+
+  it('carries the English paid-in-capital label and TRY unit too', async () => {
+    const EN = (key: string) => catalogValue('en', key)
+    renderStockPage(['/stocks/ALFA'], { language: 'en' })
+
+    const balanceSheet = screen.getByRole('region', {
+      name: EN('stockPage.sections.balanceSheet'),
+    })
+    await within(balanceSheet).findByText(EN('stockPage.balanceSheet.bookValue'))
+
+    const row = balanceSheet.querySelector(
+      '[data-line="sharesOutstanding"]',
+    ) as HTMLElement
+    expect(row).toHaveTextContent(EN('stockPage.balanceSheet.lines.paidInCapital'))
+    expect(row).toHaveTextContent(EN('units.currencyTry'))
+    expect(row).not.toHaveTextContent(/shares/i)
+  })
+})

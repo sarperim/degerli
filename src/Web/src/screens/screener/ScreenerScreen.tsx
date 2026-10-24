@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { isApiErrorCode } from '@/lib/api/client'
+import { unitLabel } from '@/lib/units'
 import type {
   CatalogMetric,
   CriterionBound,
@@ -258,7 +259,7 @@ export function ScreenerScreen() {
                     >
                       {group.metrics.map((metric) => (
                         <option key={metric.metricCode} value={metric.metricCode}>
-                          {`${metricLabel(metric, language)} (${metric.unit})`}
+                          {`${metricLabel(metric, language)} (${unitLabel(metric.unit, t)})`}
                         </option>
                       ))}
                     </optgroup>
@@ -311,9 +312,11 @@ export function ScreenerScreen() {
                         className="min-w-40 flex-1 text-sm font-medium text-foreground"
                       >
                         {label}{' '}
-                        <span className="text-xs font-normal text-muted-foreground">
-                          ({metric?.unit})
-                        </span>
+                        {metric ? (
+                          <span className="text-xs font-normal text-muted-foreground">
+                            ({unitLabel(metric.unit, t)})
+                          </span>
+                        ) : null}
                       </span>
 
                       <div className="flex flex-col gap-1">
@@ -714,6 +717,7 @@ function ResultsSection({
                       row.values[draft.metricCode],
                       metricsByCode.get(draft.metricCode),
                       language,
+                      t,
                     )}
                   </TableCell>
                 ))}
