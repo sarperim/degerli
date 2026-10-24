@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-064: Scheduler watchdog — bound each chain step, keep a whole-chain ceiling
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P2 — correctness of the watchdog (USER GRANT 2026-10-23 afternoon).** The current bound is per **attempt**, not per **step**, so a healthy chain can never finish.
 - **Verified evidence (dev stack, 2026-10-23):**

@@ -40,12 +40,18 @@ namespace Degerli.Ingestion.Scheduling;
 /// a fully covered day is never re-fetched.
 /// </para>
 /// <para>
-/// <b>No attempt is unbounded</b> (01 v1.5 §10.9.17, TKT-foundation-041). A tick runs a stream's
-/// chain sequentially, so one step whose await never completes used to starve every stream
-/// silently — the live 2026-10-19/20 signature. Each attempt now races
-/// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> on the injected clock; on expiry the
-/// attempt is cancelled, an honest <c>RUN_HUNG</c> run-ledger row and alert name the step, and
-/// the ordinary retry ladder resumes. Every step logs its start and its outcome, and a
+/// <b>No attempt is unbounded, and no single step is judged by the whole chain's budget</b>
+/// (01 v1.5 §10.9.17, TKT-foundation-041; scope corrected by TKT-foundation-064). A tick runs a
+/// stream's chain sequentially, so one step whose await never completes used to starve every
+/// stream silently — the live 2026-10-19/20 signature. Each attempt races a
+/// <b>whole-chain ceiling</b> (<see cref="IngestionSchedulerOptions.MaxRunDuration"/>) and each
+/// individual step races its own <b>per-step bound</b>
+/// (<see cref="IngestionSchedulerOptions.MaxStepDuration"/>) on the injected clock. The per-step
+/// bound is the load-bearing one — a healthy paced chain legitimately needs ~100–120 minutes, so
+/// a whole-attempt bound alone declares healthy nights hung — and it names the step that held the
+/// attempt in exactly one <c>RUN_HUNG</c> run-ledger row and alert, carrying
+/// <c>bound: "step" | "chain"</c> so the two bounds are distinguishable from the ledger alone.
+/// The ordinary retry ladder then resumes. Every step logs its start and its outcome, and a
 /// cancellation that is not the host's stopping token is a failed attempt, never an escape from
 /// the loop.
 /// </para>
@@ -72,6 +78,21 @@ public sealed class IngestionScheduler
     /// <see cref="IngestionSchedulerOptions.MaxRunDuration"/> and was cancelled.
     /// </summary>
     public const string RunHungReasonCode = "RUN_HUNG";
+
+    /// <summary>
+    /// The two watchdog bounds (01 v1.5.43 §10.9.17, TKT-foundation-064). Exactly one of them
+    /// fires for one hung attempt, and the value is recorded in the <c>RUN_HUNG</c> ledger row's
+    /// <c>stats_json.bound</c> and named in the alert text, so an operator can tell a genuinely
+    /// stuck <b>step</b> from a <b>chain</b> whose individually-healthy steps overran the ceiling.
+    /// </summary>
+    private static class ChainBoundNames
+    {
+        /// <summary>A single chain step exceeded its own <c>MaxStepDuration</c>.</summary>
+        public const string Step = "step";
+
+        /// <summary>The attempt as a whole exceeded the <c>MaxRunDuration</c> ceiling.</summary>
+        public const string Chain = "chain";
+    }
 
     /// <summary>
     /// How far the morning stream's run date back-walks to find a trading day. Generous enough
@@ -119,7 +140,7 @@ public sealed class IngestionScheduler
         // The one line an operator greps to answer "is the 08:30 safety net on?": the
         // configured cron streams, the time zone, and — explicitly — an absent morning
         // stream, which is otherwise indistinguishable from a healthy scheduler (DR-02).
-        // The watchdog bound rides along: "the chain can stall invisibly" is exactly the
+        // The watchdog bounds ride along: "the chain can stall invisibly" is exactly the
         // question an operator asks while standing in front of a silent ledger (§10.9.17).
         _logger.LogInformation(
             "Ingestion scheduler streams: EOD cron '{EodCron}'; morning cron '{MorningCron}' ({MorningState}); time zone {TimeZone}; {PerJobStreams} per-job schedule(s); hung-run watchdog {Watchdog}.",
@@ -130,8 +151,8 @@ public sealed class IngestionScheduler
                 : "enabled",
             _options.TimeZone,
             _options.JobSchedules.Count,
-            _options.MaxRunDuration > TimeSpan.Zero
-                ? $"bounded at {_options.MaxRunDuration} per attempt (RUN_HUNG)"
+            _options.MaxStepDuration > TimeSpan.Zero || _options.MaxRunDuration > TimeSpan.Zero
+                ? $"bounded at {_options.MaxStepDuration} per step and {_options.MaxRunDuration} per chain attempt (RUN_HUNG)"
                 : "DISABLED — a hung step can hold every stream silently");
     }
 
@@ -510,16 +531,21 @@ public sealed class IngestionScheduler
 
         var step = new ChainStepProgress();
 
+        // The bound that fires hands its finding to the attempt-level watchdog (01 v1.5.43
+        // §10.9.17, TKT-foundation-064): the per-step bound is enforced inside the chain, the
+        // whole-chain ceiling out here, and both end in the same single report.
+        var boundSignal = new TaskCompletionSource<ChainBoundExpiry>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         IReadOnlyList<string> jobCodes = [];
         Exception? failure = null;
         var hung = false;
 
         // The attempt's owned resources are created inside the failure-classifying try (DR-1,
         // TKT-foundation-059) and disposed in its finally. Anything that throws before the
-        // attempt's first await — most realistically a mis-typed `MaxRunDuration` beyond
-        // Task.Delay's accepted range — used to escape RunAttemptAsync with `Attempts` already
-        // bumped and `NextAttemptAt` still in the past, so the hosted loop refired the attempt
-        // immediately and forever. A prologue failure is now a failed attempt on the ladder.
+        // attempt's first await — most realistically a mis-typed `MaxRunDuration`/`MaxStepDuration`
+        // beyond Task.Delay's accepted range — used to escape RunAttemptAsync with `Attempts`
+        // already bumped and `NextAttemptAt` still in the past, so the hosted loop refired the
+        // attempt immediately and forever. A prologue failure is now a failed attempt on the ladder.
         IServiceScope? ownedScope = null;
         CancellationTokenSource? ownedAttemptCts = null;
         CancellationTokenSource? ownedDeadlineCts = null;
@@ -530,9 +556,9 @@ public sealed class IngestionScheduler
             var attemptCts = ownedAttemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var deadlineCts = ownedDeadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            // The hung-run watchdog (01 v1.5 §10.9.17): the attempt races a deadline on the
-            // injected clock, so the bound is deterministic under a fake clock exactly like every
-            // other scheduling decision here. A step that never completes can no longer hold the
+            // The hung-run watchdog's whole-chain ceiling (01 v1.5 §10.9.17): the attempt races a
+            // deadline on the injected clock, so the bound is deterministic under a fake clock
+            // exactly like every other scheduling decision here. A chain can no longer hold the
             // loop — and with it every other stream — in silence.
             var deadline = _options.MaxRunDuration > TimeSpan.Zero
                 ? Task.Delay(_options.MaxRunDuration, _clock, deadlineCts.Token)
@@ -544,83 +570,97 @@ public sealed class IngestionScheduler
             // Such a step is still *legible* — its "Chain step … starting" line was already
             // written — so a synchronous freeze is never silent, even though only the awaits are
             // bounded here.
-            var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, attemptCts.Token);
+            var work = ExecuteChainAsync(stream, run, scope.ServiceProvider, attempt, step, boundSignal, attemptCts.Token);
 
-            if (deadline is null)
+            // Whichever comes first — the chain finishing, the whole-chain ceiling, or a single
+            // step's own bound — decides this attempt. With both bounds disabled there is nothing
+            // to race but the chain itself (the documented unbounded opt-out).
+            var waiters = new List<Task>(3) { work, boundSignal.Task };
+            if (deadline is not null)
+            {
+                waiters.Add(deadline);
+            }
+
+            var winner = await Task.WhenAny(waiters).ConfigureAwait(false);
+
+            // Which bound, if any, fired. This is read from the bounds' own completion rather than
+            // from whichever task `WhenAny` happened to return: a step that answers the bound's
+            // cancellation can complete the chain in the same window, and `WhenAny` may then hand
+            // back the chain task — the attempt is still a hung one, never an ordinary failure.
+            ChainBoundExpiry? boundExpiry;
+            if (deadline is not null && ReferenceEquals(winner, deadline))
+            {
+                boundExpiry = new ChainBoundExpiry(ChainBoundNames.Chain, step.Snapshot());
+            }
+            else if (boundSignal.Task.IsCompleted)
+            {
+                boundExpiry = boundSignal.Task.Result;
+            }
+            else
+            {
+                boundExpiry = null;
+            }
+
+            if (boundExpiry is null)
             {
                 var outcome = await work.ConfigureAwait(false);
                 jobCodes = outcome.JobCodes;
                 failure = outcome.Failure;
+                await deadlineCts.CancelAsync().ConfigureAwait(false);
             }
             else
             {
-                var winner = await Task.WhenAny(work, deadline).ConfigureAwait(false);
+                // The step bound's snapshot is already the pre-cancel one (DR-3,
+                // TKT-foundation-059); the chain ceiling's was taken above, before anything is
+                // cancelled. Either way the record names the state the run was in when the bound
+                // expired — never the next step an abandoned chain may have advanced to.
+                var expiry = boundExpiry.Value;
 
-                // A finished attempt is never "hung", even when the deadline fired in the same
-                // instant: without this re-check a chain that completed at the bound could be
-                // recorded twice (its own succeeded rows plus a failed RUN_HUNG row) and retried
-                // on a technicality.
-                if (ReferenceEquals(winner, work) || work.IsCompleted)
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    var outcome = await work.ConfigureAwait(false);
-                    jobCodes = outcome.JobCodes;
-                    failure = outcome.Failure;
-                    await deadlineCts.CancelAsync().ConfigureAwait(false);
-                }
-                else
-                {
-                    // Snapshot the progress *before* anything is cancelled (DR-3,
-                    // TKT-foundation-059): a step that swallows the cancellation and returns
-                    // lets the abandoned chain advance — and `Begin` the next step — so a
-                    // snapshot taken after the cancel can name the *next* step in both the
-                    // ledger row and the RUN_HUNG alert. The watchdog caught this state; this
-                    // is what the row must name (R6).
-                    var hungStep = step.Snapshot();
-
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        // The host is stopping and the deadline only lost the race to it: this is
-                        // a shutdown, not a hung run — no RUN_HUNG row and no alert on the way out.
-                        // The attempt's task is still running, so its scope/CTS pair is abandoned
-                        // (never disposed under it) and the stop is rethrown to the loop.
-                        hung = true;
-                        attemptCts.Cancel();
-                        await deadlineCts.CancelAsync().ConfigureAwait(false);
-                        DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
-
-                        throw new OperationCanceledException(cancellationToken);
-                    }
-
+                    // The host is stopping and the bound only lost the race to it: this is
+                    // a shutdown, not a hung run — no RUN_HUNG row and no alert on the way out.
+                    // The attempt's task is still running, so its scope/CTS pair is abandoned
+                    // (never disposed under it) and the stop is rethrown to the loop.
                     hung = true;
                     attemptCts.Cancel();
                     await deadlineCts.CancelAsync().ConfigureAwait(false);
+                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
 
-                    // DR-2 (TKT-foundation-059): the cancel window is not instantaneous — a step
-                    // that swallows the cancellation can still finish successfully between the
-                    // re-check above and this point. Prefer the terminal truth: an attempt that
-                    // completed successfully is recorded by its own row and is never also
-                    // declared RUN_HUNG (one attempt, one row, one retry decision).
-                    if (work.IsCompletedSuccessfully)
-                    {
-                        hung = false;
-                        var outcome = await work.ConfigureAwait(false);
-                        jobCodes = outcome.JobCodes;
-                        failure = outcome.Failure;
-                    }
-                    else
-                    {
-                        // The step cannot be killed (a hung await is not interruptible); the scope
-                        // is handed to the abandoned task so it is disposed only when that task
-                        // ends, and its terminal exception is observed rather than left
-                        // unobserved.
-                        DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+                    throw new OperationCanceledException(cancellationToken);
+                }
 
-                        // The chain's own codes are not known on this path, so the hung step is
-                        // what the exhausted alert names (R6).
-                        jobCodes = [hungStep.JobCode];
-                        failure = await HandleHungAttemptAsync(run, attempt, hungStep, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
+                hung = true;
+                attemptCts.Cancel();
+                await deadlineCts.CancelAsync().ConfigureAwait(false);
+
+                // DR-2 (TKT-foundation-059): the cancel window is not instantaneous — a step
+                // that swallows the cancellation can still finish successfully between the
+                // re-check above and this point. Prefer the terminal truth: an attempt that
+                // genuinely completed (no failure) is recorded by its own row and is never also
+                // declared RUN_HUNG (one attempt, one row, one retry decision). A chain that
+                // merely *ended* on our own cancellation is not a success: it is the hung
+                // attempt this report is about.
+                if (work.IsCompletedSuccessfully && work.Result.Failure is null)
+                {
+                    hung = false;
+                    var outcome = await work.ConfigureAwait(false);
+                    jobCodes = outcome.JobCodes;
+                    failure = outcome.Failure;
+                }
+                else
+                {
+                    // The step cannot be killed (a hung await is not interruptible); the scope
+                    // is handed to the abandoned task so it is disposed only when that task
+                    // ends, and its terminal exception is observed rather than left
+                    // unobserved.
+                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+
+                    // The chain's own codes are not known on this path, so the hung step is
+                    // what the exhausted alert names (R6).
+                    jobCodes = [expiry.Step.JobCode];
+                    failure = await HandleHungAttemptAsync(run, attempt, expiry, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
         }
@@ -707,6 +747,7 @@ public sealed class IngestionScheduler
         IServiceProvider provider,
         int attempt,
         ChainStepProgress step,
+        TaskCompletionSource<ChainBoundExpiry> boundSignal,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<string> jobCodes = [];
@@ -748,7 +789,12 @@ public sealed class IngestionScheduler
                     continue;
                 }
 
-                var result = await runner.RunAsync(jobCode, request, context, cancellationToken).ConfigureAwait(false);
+                var result = await RunStepUnderBoundAsync(
+                        token => runner.RunAsync(jobCode, request, context, token),
+                        step,
+                        boundSignal,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 _logger.LogInformation(
                     "Chain step {Step}/{Total} '{JobCode}' finished for {Date} with {Status} (written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, skipped {Skipped}).",
@@ -791,34 +837,114 @@ public sealed class IngestionScheduler
     }
 
     /// <summary>
-    /// The watchdog's terminal report (01 v1.5 §10.9.17): an honest run-ledger row naming the
-    /// step that held the attempt, the attempt's bound, and a <c>RUN_HUNG</c> alert. Returns the
-    /// failure the attempt reports, so the ordinary retry ladder takes over from here.
+    /// Awaits one chain step under the watchdog's <b>per-step bound</b> (01 v1.5.43 §10.9.17,
+    /// TKT-foundation-064). The bound is the longest a single <c>RunAsync(jobCode, …)</c> may
+    /// take on its own — independent of how long the chain before it legitimately consumed — so a
+    /// slow-but-healthy step (the live 58–74 minute corporate-actions walk) is never declared
+    /// hung. When the bound expires, the step's progress is snapshotted <b>before</b> any
+    /// cancellation (DR-3, TKT-foundation-059) and handed to the attempt-level watchdog, which
+    /// owns the cancellation, the single <c>RUN_HUNG</c> row and the alert; this method then lets
+    /// the attempt's cancellation surface. A step that ignores cancellation never returns and the
+    /// attempt is abandoned exactly as the whole-chain bound's path already did.
+    /// <para>
+    /// The per-step bound composes with the ceiling: whichever expires first fires, and the
+    /// report says which (<c>bound: "step" | "chain"</c>).
+    /// </para>
+    /// </summary>
+    private async Task<IngestResult> RunStepUnderBoundAsync(
+        Func<CancellationToken, Task<IngestResult>> stepCall,
+        ChainStepProgress step,
+        TaskCompletionSource<ChainBoundExpiry> boundSignal,
+        CancellationToken cancellationToken)
+    {
+        if (_options.MaxStepDuration <= TimeSpan.Zero)
+        {
+            return await stepCall(cancellationToken).ConfigureAwait(false);
+        }
+
+        using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // The bound is armed as a clock-driven timer over *this step only*: on expiry it records
+        // the step's progress (before any cancellation, DR-3/TKT-foundation-059) and hands the
+        // finding to the attempt-level watchdog, which owns the cancellation of the attempt, the
+        // single RUN_HUNG ledger row and the alert. Cancelling the attempt's own token propagates
+        // into this step through the linked source, so the ordinary cancellation path keeps its
+        // exact synchronous shape (a step that finishes inside the cancel window still finishes).
+        using var stepDeadline = _clock.CreateTimer(
+            _ =>
+            {
+                // A stopping host — or an attempt another bound already declared hung — is not a
+                // per-step expiry.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                boundSignal.TrySetResult(new ChainBoundExpiry(ChainBoundNames.Step, step.Snapshot()));
+
+                try
+                {
+                    stepCts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The step finished (and its bound's timers were disposed) as this callback
+                    // was already running: the step's own outcome is the truth either way.
+                }
+            },
+            state: null,
+            dueTime: _options.MaxStepDuration,
+            period: Timeout.InfiniteTimeSpan);
+
+        return await stepCall(stepCts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The watchdog's terminal report (01 v1.5.43 §10.9.17): an honest run-ledger row naming the
+    /// step that held the attempt, <b>which bound fired</b> (per-step vs whole-chain ceiling), and
+    /// a <c>RUN_HUNG</c> alert saying the same. Returns the failure the attempt reports, so the
+    /// ordinary retry ladder takes over from here.
     /// </summary>
     private async Task<Exception> HandleHungAttemptAsync(
         ActiveRun run,
         int attempt,
-        ChainStepSnapshot step,
+        ChainBoundExpiry expiry,
         CancellationToken cancellationToken)
     {
+        var step = expiry.Step;
         var hungJob = step.JobCode;
+        var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
 
         _logger.LogError(
-            "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} bound and was cancelled ({ReasonCode}); the retry ladder takes over.",
+            "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} and was cancelled ({ReasonCode}, bound={BoundKind}); the retry ladder takes over.",
             run.TradingDate,
             attempt,
             step.Index,
             step.Total,
             hungJob,
-            _options.MaxRunDuration,
-            RunHungReasonCode);
+            bound,
+            RunHungReasonCode,
+            expiry.Bound);
 
-        await RecordHungRunAsync(run, attempt, step, cancellationToken).ConfigureAwait(false);
-        await RaiseHungAsync(run, attempt, step, cancellationToken).ConfigureAwait(false);
+        await RecordHungRunAsync(run, attempt, expiry, cancellationToken).ConfigureAwait(false);
+        await RaiseHungAsync(run, attempt, expiry, cancellationToken).ConfigureAwait(false);
 
         return new TimeoutException(
-            $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {_options.MaxRunDuration} bound in chain step '{hungJob}' ({RunHungReasonCode}).");
+            $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in chain step '{hungJob}' ({RunHungReasonCode}, bound={expiry.Bound}).");
     }
+
+    /// <summary>
+    /// The operator-facing name of a bound, shared by the log line, the ledger row's error text
+    /// and the alert: <c>per-step bound 01:00:00</c> or <c>whole-chain ceiling 04:00:00</c>. The
+    /// wording is what makes the two classes distinguishable in a grep.
+    /// </summary>
+    private static string DescribeBound(string bound, TimeSpan maxStepDuration, TimeSpan maxRunDuration) =>
+        bound == ChainBoundNames.Step
+            ? $"per-step bound {maxStepDuration}"
+            : $"whole-chain ceiling {maxRunDuration}";
+
+    /// <summary>Seconds of a configured bound, floored at zero (a disabled bound records 0).</summary>
+    private static int BoundSeconds(TimeSpan bound) => (int)Math.Max(0, bound.TotalSeconds);
 
     /// <summary>
     /// Hands an abandoned attempt's DI scope and cancellation sources to a continuation on the
@@ -854,10 +980,12 @@ public sealed class IngestionScheduler
     private async Task RecordHungRunAsync(
         ActiveRun run,
         int attempt,
-        ChainStepSnapshot step,
+        ChainBoundExpiry expiry,
         CancellationToken cancellationToken)
     {
+        var step = expiry.Step;
         var hungJob = step.JobCode;
+        var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -869,7 +997,7 @@ public sealed class IngestionScheduler
                 StartedAt = run.AttemptStartedAt,
                 FinishedAt = _clock.GetUtcNow(),
                 Status = IngestResult.Failed,
-                Error = $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {_options.MaxRunDuration} bound.",
+                Error = $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {bound}.",
                 StatsJson = JsonSerializer.Serialize(new
                 {
                     written = 0,
@@ -885,7 +1013,11 @@ public sealed class IngestionScheduler
                     attempt,
                     retries = attempt - 1,
                     maxAttempts = _options.MaxAttempts,
-                    maxRunDurationSeconds = (int)_options.MaxRunDuration.TotalSeconds,
+                    // Which bound fired (TKT-foundation-064) and both configured bounds,
+                    // additively — a RUN_HUNG row is self-explanatory to an operator.
+                    bound = expiry.Bound,
+                    maxStepDurationSeconds = BoundSeconds(_options.MaxStepDuration),
+                    maxRunDurationSeconds = BoundSeconds(_options.MaxRunDuration),
                 }, StatsJsonOptions),
             });
 
@@ -907,19 +1039,21 @@ public sealed class IngestionScheduler
     private Task RaiseHungAsync(
         ActiveRun run,
         int attempt,
-        ChainStepSnapshot step,
+        ChainBoundExpiry expiry,
         CancellationToken cancellationToken)
     {
+        var step = expiry.Step;
         var hungJob = step.JobCode;
-        var subject = $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded {_options.MaxRunDuration} for {run.TradingDate:yyyy-MM-dd}";
+        var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
+        var subject = $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded the {bound} for {run.TradingDate:yyyy-MM-dd}";
 
         return _alerter.RaiseAsync(
             new IngestionAlert(
                 JobCode: hungJob,
                 ReasonCode: RunHungReasonCode,
                 Subject: subject,
-                BodyTr: $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {_options.MaxRunDuration} boyunca ilerlemedi ve durduruldu ({attempt}. deneme); son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi.",
-                BodyEn: $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} made no progress in step {step.Index}/{step.Total} ('{hungJob}') for {_options.MaxRunDuration} and was cancelled (attempt {attempt}); last-known-good data continues to be served and the retry ladder has taken over.",
+                BodyTr: $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {bound} sınırını aştı ve durduruldu ({attempt}. deneme); son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi.",
+                BodyEn: $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in step {step.Index}/{step.Total} ('{hungJob}') and was cancelled (attempt {attempt}); last-known-good data continues to be served and the retry ladder has taken over.",
                 SourceRef: null),
             cancellationToken);
     }
@@ -1170,4 +1304,13 @@ public sealed class IngestionScheduler
     /// <summary>The chain step the watchdog caught, captured before any await (see
     /// <see cref="ChainStepProgress.Snapshot"/>).</summary>
     private readonly record struct ChainStepSnapshot(string JobCode, int Index, int Total);
+
+    /// <summary>
+    /// Which of the two watchdog bounds fired, and the step that was in flight when it did
+    /// (01 v1.5.43 §10.9.17, TKT-foundation-064). <see cref="Bound"/> is
+    /// <c>"step"</c> or <c>"chain"</c>; the attempt-level watchdog turns it into exactly one
+    /// <c>RUN_HUNG</c> row and alert, so an operator can tell the two classes apart from the
+    /// ledger alone.
+    /// </summary>
+    private readonly record struct ChainBoundExpiry(string Bound, ChainStepSnapshot Step);
 }

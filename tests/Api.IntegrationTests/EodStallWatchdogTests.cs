@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Serilog;
 
@@ -44,6 +45,12 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
     /// <summary>The route the prices adapter reads (the one real job the chain still runs).</summary>
     private const string PricesPath = "/prices/eod";
+
+    /// <summary>The healthy step preceding the slow/hung one (TC-MDF-098).</summary>
+    private const string PreludeStepCode = "prelude-step";
+
+    /// <summary>The slow-but-healthy step (TC-MDF-098(a)/(c)).</summary>
+    private const string SlowStepCode = "slow-step";
 
     /// <summary>A liveness bound for "the tick never returns" — real time, not the fake clock.</summary>
     private static readonly TimeSpan LivenessBound = TimeSpan.FromSeconds(30);
@@ -269,6 +276,278 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-064 — the watchdog's two bounds: per-step (120 min shipped) and the
+    // whole-chain ceiling (4 h shipped). Doubles only, fake clock, no real delays.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-098 (constant case) — the shipped defaults are the design: a chain step is
+    /// bounded at <b>120 minutes</b> on its own and the attempt as a whole at <b>4 hours</b>
+    /// (01 v1.5.43 §10.9.17). Both are configuration-overridable independently; the per-step
+    /// key binds through the same options section the scheduler already reads.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_098_Shipped_bounds_are_a_120_minute_step_and_a_4_hour_chain()
+    {
+        var shipped = new IngestionSchedulerOptions();
+        Assert.Equal(TimeSpan.FromMinutes(120), shipped.MaxStepDuration);
+        Assert.Equal(TimeSpan.FromHours(4), shipped.MaxRunDuration);
+
+        // The per-step bound is configuration, not a hard-coded literal: the options section
+        // binds it the same way MaxRunDuration binds.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ingestion:Scheduler:MaxStepDuration"] = "00:05:00",
+                ["Ingestion:Scheduler:MaxRunDuration"] = "00:20:00",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.Configure<IngestionSchedulerOptions>(
+            configuration.GetSection(IngestionSchedulerOptions.SectionName));
+        var bound = services.BuildServiceProvider()
+            .GetRequiredService<IOptions<IngestionSchedulerOptions>>()
+            .Value;
+
+        Assert.Equal(TimeSpan.FromMinutes(5), bound.MaxStepDuration);
+        Assert.Equal(TimeSpan.FromMinutes(20), bound.MaxRunDuration);
+
+        // An unconfigured bound keeps its code default (the shipped-config posture: the API's
+        // appsettings.json carries neither key).
+        var unconfigured = new ServiceCollection()
+            .Configure<IngestionSchedulerOptions>(
+                new ConfigurationBuilder().Build().GetSection(IngestionSchedulerOptions.SectionName))
+            .BuildServiceProvider()
+            .GetRequiredService<IOptions<IngestionSchedulerOptions>>()
+            .Value;
+        Assert.Equal(TimeSpan.FromMinutes(120), unconfigured.MaxStepDuration);
+        Assert.Equal(TimeSpan.FromHours(4), unconfigured.MaxRunDuration);
+    }
+
+    /// <summary>
+    /// TC-MDF-098(a) — <b>a slow but healthy chain is not hung</b>. A chain whose first step
+    /// consumes 40 minutes and whose current step consumes 60 minutes (~100 minutes total —
+    /// the measured shape of a healthy paced dev-stack chain) completes under the shipped
+    /// bounds, with one succeeded ledger row per step and <b>zero</b> <c>RUN_HUNG</c>.
+    /// <para>
+    /// Red before this ticket: the bound is the <b>whole attempt</b> at 90 minutes, so it
+    /// expires inside the healthy 60-minute step and a perfectly healthy chain can never
+    /// complete.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Slow_but_healthy_chain_completes_under_the_shipped_bounds()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var prelude = new PacedStep(PreludeStepCode, clock, TimeSpan.FromMinutes(40));
+        var slow = new PacedStep(SlowStepCode, clock, TimeSpan.FromMinutes(60));
+
+        // No bound overrides: the shipped defaults (120 min step / 4 h chain) are what a
+        // host that configures nothing runs.
+        await using var host = BuildChainHost(clock, [prelude, slow]);
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await prelude.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:30 → 21:10: the first step's 40 minutes.
+        clock.Advance(TimeSpan.FromMinutes(40));
+        await slow.Entered.Task.WaitAsync(LivenessBound);
+
+        // 21:10 → 22:10: the slow step's 60 minutes, still short of its own 120-minute bound.
+        clock.Advance(TimeSpan.FromMinutes(60));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        Assert.DoesNotContain(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.DoesNotContain(runs, run => run.Status == IngestResult.Failed);
+        Assert.Empty(host.Mail.Sent);
+
+        var preludeRow = Assert.Single(runs, run => run.JobCode == PreludeStepCode);
+        Assert.Equal(IngestResult.Succeeded, preludeRow.Status);
+        Assert.Equal(Trt(2026, 10, 5, 20, 30), preludeRow.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 21, 10), preludeRow.FinishedAt!.Value);
+
+        var slowRow = Assert.Single(runs, run => run.JobCode == SlowStepCode);
+        Assert.Equal(IngestResult.Succeeded, slowRow.Status);
+        Assert.Equal(Trt(2026, 10, 5, 21, 10), slowRow.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 22, 10), slowRow.FinishedAt!.Value);
+
+        // The step's own duration is asserted against the step bound: 60 minutes of healthy
+        // pacing, comfortably inside the shipped 120-minute per-step bound (and the healthy
+        // chain's ~100 minutes, which the old 90-minute whole-attempt bound could not fit).
+        var slowDuration = slowRow.FinishedAt.Value - slowRow.StartedAt.Value;
+        Assert.Equal(TimeSpan.FromMinutes(60), slowDuration);
+        Assert.True(
+            slowDuration < new IngestionSchedulerOptions().MaxStepDuration,
+            $"a healthy {slowDuration} step must sit inside the {new IngestionSchedulerOptions().MaxStepDuration} step bound");
+
+        // Exactly the chain's two steps: no retry, no duplicate row.
+        Assert.Equal(2, runs.Count);
+    }
+
+    /// <summary>
+    /// TC-MDF-098(b) — <b>a hung step is cancelled and named with the bound that caught it</b>.
+    /// A doubled step that never completes is bounded at its own <b>step</b> bound (10 minutes
+    /// here, the chain ceiling left at the shipped 4 hours): exactly one <c>RUN_HUNG</c> row
+    /// names that step with <c>bound: "step"</c> and <c>maxStepDurationSeconds</c>, one alert
+    /// names it, the retry ladder starts from the instant the attempt ended, and the next
+    /// attempt's healthy step lands <c>succeeded</c> with no second <c>RUN_HUNG</c>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Hung_step_is_cancelled_and_named_with_the_step_bound()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var prelude = new InstantStep(PreludeStepCode);
+        var stall = new StallStep(StallMode.HangOnFirstAttempt);
+        await using var host = BuildChainHost(
+            clock,
+            [prelude, stall],
+            maxStepDuration: "00:10:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — the hung step's own 10-minute bound expires (the 4-hour chain ceiling is not
+        // what caught it).
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Equal(IngestResult.Failed, hung.Status);
+        Assert.Equal(StallStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+        Assert.Equal(2, Stat(hung, "stepCount"));
+
+        // The ledger alone tells an operator which bound fired — step, not chain — and
+        // records both configured bounds additively.
+        Assert.Equal("step", StatString(hung, "bound"));
+        Assert.Equal(600, Stat(hung, "maxStepDurationSeconds"));
+        Assert.Equal((int)TimeSpan.FromHours(4).TotalSeconds, Stat(hung, "maxRunDurationSeconds"));
+        Assert.Equal(1, Stat(hung, "attempt"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 30), hung.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(StallStep.Code, alert.Subject);
+        Assert.Contains("per-step", alert.Subject);
+
+        // The retry is measured from the attempt's end (20:40 + 5 min = 20:45): one minute
+        // earlier the stream must still be waiting.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 44));
+        Assert.DoesNotContain(
+            await LedgerAsync(),
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+
+        // The next attempt's now-healthy step completes, and the event produced exactly one
+        // RUN_HUNG row in total.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        var recovered = await LedgerAsync();
+        var recoveredStep = Assert.Single(
+            recovered,
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+        Assert.Equal(2, Stat(recoveredStep, "attempt"));
+        Assert.Equal(1, Stat(recoveredStep, "retries"));
+        Assert.Equal(1, recovered.Count(run => ReasonCode(run) == "RUN_HUNG"));
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+    }
+
+    /// <summary>
+    /// TC-MDF-098(c) — <b>the whole-chain ceiling still bites</b>, and is distinguishable from
+    /// the step bound. Individually-healthy steps whose total exceeds a small configured
+    /// <c>MaxRunDuration</c> produce exactly one <c>RUN_HUNG</c> naming the in-flight step
+    /// with <c>bound: "chain"</c> and <c>maxRunDurationSeconds</c> recorded — no step is hung,
+    /// the ceiling is what fired.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Chain_ceiling_still_bites_and_names_the_chain_bound()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var quick = new InstantStep(PreludeStepCode);
+        // Healthy and well inside its own step bound; only the chain ceiling can catch it.
+        var slow = new PacedStep(SlowStepCode, clock, TimeSpan.FromMinutes(15));
+        await using var host = BuildChainHost(
+            clock,
+            [quick, slow],
+            maxRunDuration: "00:10:00",
+            maxStepDuration: "02:00:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await slow.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — the chain ceiling expires mid-step; the step's own bound (2 h) does not.
+        clock.Advance(TimeSpan.FromMinutes(11));
+        await AwaitTickAsync(tick);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(SlowStepCode, hung.JobCode);
+        Assert.Equal(IngestResult.Failed, hung.Status);
+        Assert.Equal(SlowStepCode, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+
+        // Distinguishable from (b) from the ledger alone.
+        Assert.Equal("chain", StatString(hung, "bound"));
+        Assert.Equal(600, Stat(hung, "maxRunDurationSeconds"));
+        Assert.Equal((int)TimeSpan.FromHours(2).TotalSeconds, Stat(hung, "maxStepDurationSeconds"));
+
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(SlowStepCode, alert.Subject);
+        Assert.Contains("whole-chain", alert.Subject);
+
+        // The healthy first step's own row is untouched; the ceiling added exactly the one
+        // RUN_HUNG row, never a second.
+        Assert.Single(runs, run => run.JobCode == PreludeStepCode && run.Status == IngestResult.Succeeded);
+        Assert.Equal(1, runs.Count(run => ReasonCode(run) == "RUN_HUNG"));
+    }
+
+    /// <summary>
+    /// TC-MDF-098 (supporting) — a <b>mis-typed per-step bound</b> (60 days, beyond the timer's
+    /// ~49.7-day range) is an ordinary failed attempt on the 5/15/60 ladder — the 059 DR-1 path —
+    /// never an escape that leaves the attempt overdue and refires it in a hot loop, and never a
+    /// <c>RUN_HUNG</c> row.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_098_Mistyped_step_bound_is_an_ordinary_failed_attempt_never_a_hot_refire()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        await using var host = BuildChainHost(
+            clock,
+            [new InstantStep(PreludeStepCode)],
+            maxStepDuration: "60.00:00:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 21, 55));
+
+        // One attempt per rung of the ladder (20:30, 20:35, 20:50, 21:50), then the exhausted
+        // alert — bounded accounting, not a loop.
+        Assert.Equal(4, host.Logs.Events.Count(logEvent => logEvent.RenderMessage().Contains("failed on attempt")));
+        var exhausted = Assert.Single(host.Mail.Sent);
+        Assert.Contains("failed after 4 attempts", exhausted.Subject);
+        Assert.Empty(await LedgerAsync());
+
+        // Exhausted, not overdue: sweeping the rest of the day adds no attempt.
+        clock.SetUtcNow(Trt(2026, 10, 5, 23, 59));
+        Assert.Equal(4, host.Logs.Events.Count(logEvent => logEvent.RenderMessage().Contains("failed on attempt")));
+        Assert.Empty(await LedgerAsync());
+    }
+
+    // ---------------------------------------------------------------------------------
     // Doubles
     // ---------------------------------------------------------------------------------
 
@@ -339,6 +618,49 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         }
     }
 
+    /// <summary>
+    /// A healthy chain step that consumes a <b>fake-clock</b> duration — the healthy-paced but
+    /// slow chain of TC-MDF-098(a)/(c). No real delay: it completes when the test advances the
+    /// clock, exactly as the production pacer's own delay would.
+    /// </summary>
+    private sealed class PacedStep : IIngestJob
+    {
+        private readonly FakeTimeProvider _clock;
+        private readonly TimeSpan _duration;
+
+        public PacedStep(string code, FakeTimeProvider clock, TimeSpan duration)
+        {
+            JobCode = code;
+            _clock = clock;
+            _duration = duration;
+        }
+
+        public string JobCode { get; }
+
+        /// <summary>Completes when the doubled step has begun its paced wait.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            // Registered before the signal so the test's clock advance always finds the timer.
+            var paced = Task.Delay(_duration, _clock, cancellationToken);
+            Entered.TrySetResult();
+            await paced;
+            return new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded);
+        }
+    }
+
+    /// <summary>An instantaneous healthy chain step (no pacing, no source call).</summary>
+    private sealed class InstantStep : IIngestJob
+    {
+        public InstantStep(string code) => JobCode = code;
+
+        public string JobCode { get; }
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded));
+    }
+
     /// <summary>A healthy per-job stream target: proof that the loop keeps waking.</summary>
     private sealed class ProbeStep : IIngestJob
     {
@@ -379,6 +701,76 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         }
 
         clock.SetUtcNow(target.ToUniversalTime());
+    }
+
+    /// <summary>A fake clock anchored at the harness's fixed instant (no real delays).</summary>
+    private static FakeTimeProvider NewClock() =>
+        new(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+
+    /// <summary>Completes the tick within the liveness bound, never hanging the suite.</summary>
+    private static async Task AwaitTickAsync(Task tick)
+    {
+        var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
+        Assert.Same(tick, finished);
+        await tick;
+    }
+
+    /// <summary>
+    /// The TC-MDF-098 harness (01 v1.5.43 §10.9.17): the same real scheduler engine and fake
+    /// clock, with a chain composed entirely of doubles and the <b>production</b> job runner,
+    /// so each step's own ledger row carries its real duration. A null bound leaves the shipped
+    /// code default in effect — which is what the slow-but-healthy case needs.
+    /// </summary>
+    private IngestionSchedulerHost BuildChainHost(
+        FakeTimeProvider clock,
+        IReadOnlyList<IIngestJob> chain,
+        string? maxRunDuration = null,
+        string? maxStepDuration = null)
+    {
+        var mail = new RecordingMailDispatcher();
+        var logs = new InMemorySerilogSink();
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Prices:Path"] = PricesPath,
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
+            ["Ingestion:Scheduler:Cron"] = "0 30 20 * * *",
+            ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
+        };
+        for (var index = 0; index < chain.Count; index++)
+        {
+            settings[$"Ingestion:Scheduler:JobCodes:{index}"] = chain[index].JobCode;
+        }
+
+        if (maxRunDuration is not null)
+        {
+            settings["Ingestion:Scheduler:MaxRunDuration"] = maxRunDuration;
+        }
+
+        if (maxStepDuration is not null)
+        {
+            settings["Ingestion:Scheduler:MaxStepDuration"] = maxStepDuration;
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Sink(logs).CreateLogger();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IIngestionAlerter>(new HarnessMailAlerter(mail));
+        services.AddMarketDataIngestion(configuration);
+        foreach (var job in chain)
+        {
+            services.AddSingleton<IIngestJob>(job);
+        }
+
+        var provider = services.BuildServiceProvider();
+        var scheduler = provider.GetRequiredService<IngestionScheduler>();
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail, logs);
     }
 
     private IngestionSchedulerHost BuildScheduler(StallStep stall, ProbeStep probe, string maxRunDuration)
