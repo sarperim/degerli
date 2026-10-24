@@ -20,7 +20,7 @@ scope:
 
 # TKT-foundation-068: Source-contract probes — live shape-drift detection against the committed doubles
 
-- Status: todo
+- Status: blocked
 - Size: M
 - **2026-10-24 — implementation BLOCKED on scope, now unblocked.** The coder completed the whole
   harness, 8 contracts, 20 tests and the runbook on `feature/TKT-foundation-068` (commit `087c97c`,
@@ -55,3 +55,64 @@ scope:
 - UX refs: none.
 - Dependencies: none.
 - Parallel group: **P-1** (scopes disjoint from 074/075/076; no shared files).
+
+---
+
+## Implementation record (2026-10-24) — BLOCKED on one out-of-scope line
+
+**Delivered on branch `feature/TKT-foundation-068` (no PR opened — see the blocker).**
+
+- `tools/source-probes/Degerli.SourceProbes/` — the probe harness (BCL-only, no new dependencies):
+  flat shape extraction (`JsonShapeExtractor`), the drift comparer (`ShapeComparer`, seven finding
+  kinds incl. `element-shape-missing` and `status-changed`), the three-outcome probe result
+  (`ProbeOutcomeKind.Clean|Drift|Unreachable`), the report model, `Redactor`, `ProbePolicy`
+  (pacing floors + chain quiet windows + explicit live opt-in), the 8-source registry, the live
+  executor (one bounded, no-retry request) and the CLI (`list`/`show`/`check`/`shape`/`probe`).
+- `tools/source-probes/contracts/*.json` — 8 checked-in expected-shape contracts, **derived from
+  the committed doubles** via the harness's own `shape` command (provenance, catalog entry and
+  `derivedAt` recorded per file; no body values are retained).
+- `tests/Core.UnitTests/SourceContractProbeTests.cs` — 20 doubles-only cases mapping to the
+  acceptance criteria (i) shape-equal clean / missing / extra / type / nested-array / nullability /
+  empty-collection / status-400, (ii) not wired into CI, (iii) unreachable-never-clean + redaction +
+  value-free report, (iv) coverage set + pacing + runbook presence.
+- `docs/source-contract-probes.md` — runbook: coverage set, drift meaning per finding kind, run
+  modes, politeness, report location, drift→ticket flow, the two incidents as worked examples, the
+  explicit "report-only, never gating" rule.
+
+### The blocker (scope defect)
+
+`scope:` grants `tools/source-probes/`, the test file and the doc — **but not the test project's
+own project file**. A C# file at `tests/Core.UnitTests/SourceContractProbeTests.cs` can only
+compile against the harness through a project reference; no `Directory.Build.props/targets` hook
+exists inside the granted scope (the repo's own precedent — the shared fixture module — is a
+referenced project). Without it the test file fails to compile (CS0234 ×4+), so the branch is
+deliberately not PR'd. The exact one-line widening needed:
+
+```xml
+<!-- tests/Core.UnitTests/Degerli.Core.UnitTests.csproj, after the src/Core reference -->
+<ProjectReference Include="../../tools/source-probes/Degerli.SourceProbes/Degerli.SourceProbes.csproj" />
+```
+
+No `Degerli.sln` edit is required: solution restore/build traverse project references, so CI's
+`dotnet restore/build Degerli.sln` picks the harness up transitively (verified locally).
+
+### Evidence (with that one line applied locally, then reverted)
+
+- green: `SourceContractProbeTests` 20/20 passed; full `Core.UnitTests` 74/74 passed.
+- red (mutation, honest label): with the drift comparison stubbed to return no findings → **8
+  failed / 12 passed**; with the unreachable mapping removed → **2 failed / 18 passed**. The tests
+  bind to the behaviour, they do not pass vacuously.
+- offline CLI smoke: `check --source kap-disclosures --body <double>` → clean; a mutated copy →
+  `missing-key $[].companyId`, `type-changed $[].disclosureIndex`, `extra-key $[].newField`;
+  the İş empty-`value` body → one `element-shape-missing $.value[]`.
+- no live source was contacted; no report was written inside the repository (the tool refuses).
+
+### Acceptance status
+
+(i) met by the tests + CLI smoke · (ii) met (`AC68ii_ProbeHarness_IsNotWiredIntoCi` scans every
+workflow/compose/CI-Dockerfile) · (iii) met (redaction + value-free report assertions) · (iv) met
+by `docs/source-contract-probes.md` · (v) no architecture amendment required (§10.9 posture
+unchanged; nothing appended to §13.1).
+
+**Do not merge this branch until the ProjectReference above is granted**: `dotnet build Degerli.sln`
+is red without it.

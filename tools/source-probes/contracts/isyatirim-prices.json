@@ -1,0 +1,205 @@
+{
+  "source": "isyatirim-prices",
+  "endpoint": "https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/Data.aspx/HisseTekil?hisse={symbol}&startdate={date}&enddate={date}",
+  "double": {
+    "catalogEntry": "isyatirim-prices-ASELS",
+    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "provenance": "captured",
+    "note": "bounded live capture, ASELS 2026-10-06..2026-10-08 (01 \u00a710.9.1 / \u00a710.9.7)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.errorCode",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$.errorDescription",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$.ok",
+      "kinds": "boolean",
+      "nullable": false
+    },
+    {
+      "path": "$.transactionId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.value[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DD_DEGER",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DD_DOVIZ_KODU",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DD_DT_KODU",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DD_TARIH",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DOLAR_BAZLI_AOF",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DOLAR_BAZLI_FIYAT",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DOLAR_BAZLI_MAX",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DOLAR_BAZLI_MIN",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].DOLAR_HACIM",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].ENDEKS_BAZLI_FIYAT",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].END_DEGER",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].END_ENDEKS_KODU",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].END_SEANS",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].END_TARIH",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HAO_PD",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HAO_PD_USD",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_AOF",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_HACIM",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_HS_KODU",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_KAPANIS",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_MAX",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_MIN",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HGDG_TARIH",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HG_AOF",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HG_HACIM",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HG_KAPANIS",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HG_MAX",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].HG_MIN",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].PD",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].PD_USD",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.value[].SERMAYE",
+      "kinds": "number",
+      "nullable": false
+    }
+  ]
+}
