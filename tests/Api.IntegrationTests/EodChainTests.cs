@@ -195,6 +195,77 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
     }
 
     // ---------------------------------------------------------------------------------
+    // TKT-foundation-048 — the holiday gate (planner pin 3: never a silent no-run)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-087 (iii) — <b>a configured holiday gates the EOD chain, and the gate is never
+    /// silent.</b> Monday 2026-10-05 — the harness's ordinary run day — is configured as a market
+    /// holiday, so the 20:30 occurrence falls on a non-trading date (<c>weekend ∪ configured
+    /// holiday</c>, planner pin 2). The chain therefore runs <b>no</b> job: zero source requests,
+    /// no job row, no alert, and above all no <c>RUN_HUNG</c> — a holiday skip is intent, not a
+    /// hang, so it must not trip 064's watchdog or leave a step timer armed.
+    /// <para>
+    /// What it does leave is <b>one short run-ledger row</b> naming the skip
+    /// (<c>holiday-skip</c>) and dating it (the holiday it skipped, the stream it gated), so
+    /// 041's watchdog and an operator see a decision where the pre-048 engine had silence
+    /// (planner pin 3).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_087_configured_holiday_skips_the_eod_chain_with_one_named_dated_row()
+    {
+        await ResetAsync();
+
+        // The run day's prices are part of the fixture world; clear them so "nothing was
+        // written" is a real assertion about this chain, not about the seed.
+        await using (var reset = _postgres.CreateContext())
+        {
+            await reset.Database.ExecuteSqlRawAsync(
+                "DELETE FROM daily_prices WHERE price_date = {0}",
+                RunDay);
+        }
+
+        StubChainSources();
+        var requestsBefore = _wireMock.Server.LogEntries.Count;
+
+        await using var host = BuildScheduler(holiday: RunDay.ToString("yyyy-MM-dd"));
+        var clock = host.Clock;
+
+        // The same instant as TC-MDF-010: this is the trigger the holiday suppresses.
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 30));
+
+        // Exactly one row — the skip itself. No chain job ran and no RUN_HUNG was declared.
+        var runs = await LedgerAsync();
+        var skip = Assert.Single(runs);
+        Assert.Equal(IngestionScheduler.HolidaySkipJobCode, skip.JobCode);
+        Assert.Equal(IngestResult.Succeeded, skip.Status);
+        Assert.Null(skip.Error);
+        Assert.Equal(Trt(2026, 10, 5, 20, 30), skip.StartedAt!.Value);
+        Assert.Equal(skip.StartedAt, skip.FinishedAt);
+
+        using var stats = JsonDocument.Parse(skip.StatsJson!);
+        var root = stats.RootElement;
+        Assert.Equal("trading-calendar", root.GetProperty("gate").GetString());
+        Assert.Equal("skipped", root.GetProperty("gateOutcome").GetString());
+        Assert.Equal(RunDay.ToString("yyyy-MM-dd"), root.GetProperty("holiday").GetString());
+        Assert.Equal("eod-chain", root.GetProperty("stream").GetString());
+
+        // Nothing was fetched: the gate is before the first source call.
+        Assert.Equal(requestsBefore, _wireMock.Server.LogEntries.Count);
+
+        // Nothing was produced for the day.
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.DailyPrices.CountAsync(p => p.PriceDate == RunDay));
+        Assert.False(await db.MarketSnapshots.AnyAsync(s => s.SnapshotDate == RunDay));
+        Assert.False(await db.DerivedMetrics.AnyAsync(m => m.AsOfDate == RunDay));
+
+        // A skip is not a failure: no alert leaves the platform.
+        Assert.Empty(host.Mail.Sent);
+    }
+
+    // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
 
@@ -236,10 +307,10 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         clock.SetUtcNow(target.ToUniversalTime());
     }
 
-    private IngestionSchedulerHost BuildScheduler(string indexLevelsPath = IndexLevelsPath)
-        => BuildSchedulerCore(indexLevelsPath);
+    private IngestionSchedulerHost BuildScheduler(string indexLevelsPath = IndexLevelsPath, string? holiday = null)
+        => BuildSchedulerCore(indexLevelsPath, holiday);
 
-    private IngestionSchedulerHost BuildSchedulerCore(string indexLevelsPath)
+    private IngestionSchedulerHost BuildSchedulerCore(string indexLevelsPath, string? holiday = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -275,7 +346,15 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
         };
 
+        // The 048 calendar is configuration (planner pin 1): a case can configure a holiday to
+        // put the stream's own occurrence on a non-trading day.
+        if (holiday is not null)
+        {
+            settings["Ingestion:TradingCalendar:Holidays:0"] = holiday;
+        }
+
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
         var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
 
         var services = new ServiceCollection();
@@ -286,7 +365,7 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetRequiredService<IngestionScheduler>();
-        return new IngestionSchedulerHost(provider, clock, scheduler);
+        return new IngestionSchedulerHost(provider, clock, scheduler, mail);
     }
 
     private async Task ResetAsync()
@@ -313,11 +392,16 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
 
     private sealed class IngestionSchedulerHost : IAsyncDisposable
     {
-        public IngestionSchedulerHost(ServiceProvider provider, FakeTimeProvider clock, IngestionScheduler scheduler)
+        public IngestionSchedulerHost(
+            ServiceProvider provider,
+            FakeTimeProvider clock,
+            IngestionScheduler scheduler,
+            RecordingMailDispatcher mail)
         {
             Provider = provider;
             Clock = clock;
             Scheduler = scheduler;
+            Mail = mail;
         }
 
         public ServiceProvider Provider { get; }
@@ -325,6 +409,9 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
         public FakeTimeProvider Clock { get; }
 
         public IngestionScheduler Scheduler { get; }
+
+        /// <summary>Everything the run raised through the alert seam (a skip raises nothing).</summary>
+        public RecordingMailDispatcher Mail { get; }
 
         public ValueTask DisposeAsync() => Provider.DisposeAsync();
     }

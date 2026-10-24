@@ -55,8 +55,11 @@ public sealed class IngestionSchedulerOptions
     /// Independent per-job triggers for jobs that run on their own cadence rather than on
     /// the shared EOD cron — the macro jobs (03 §9): <c>macro-daily</c> by 09:00 each day,
     /// <c>macro-cpi</c> within 24h of each release. Each entry fires only its own job code
-    /// and is not gated by the trading calendar (macro data is published every day). Empty
-    /// by default, so the EOD behaviour is unchanged for a host that configures nothing.
+    /// and is gated by the trading calendar only when its own
+    /// <see cref="JobScheduleOptions.TradingDaysOnly"/> opts in (macro data is published
+    /// every day, so those entries stay ungated; a market stream, such as the intraday
+    /// sweep, sets it). Empty by default, so the EOD behaviour is unchanged for a host that
+    /// configures nothing.
     /// </summary>
     public IList<JobScheduleOptions> JobSchedules { get; set; } = new List<JobScheduleOptions>();
 
@@ -127,4 +130,14 @@ public sealed class JobScheduleOptions
 
     /// <summary>Cronos cron expression (six fields, seconds included).</summary>
     public string Cron { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the trading calendar gates this job's occurrences (TKT-foundation-048, planner
+    /// pin 3). <c>false</c> — the default — keeps the pre-048 posture for data published every
+    /// day (the macro and fund streams). The intraday sweep is a market stream, so the shipped
+    /// configuration sets it to <c>true</c>: on a configured holiday the sweep does not run and
+    /// the stream writes one <c>holiday-skip</c> run-ledger row instead of sweeping a closed
+    /// market.
+    /// </summary>
+    public bool TradingDaysOnly { get; set; }
 }
