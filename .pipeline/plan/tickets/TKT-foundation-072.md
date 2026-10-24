@@ -1,0 +1,47 @@
+---
+scope:
+  - src/Web/src/lib/units.ts
+  - src/Web/src/lib/format.ts
+  - src/Web/src/lib/api/contracts.ts
+  - src/Web/src/routes/MacroStrip.tsx
+  - src/Web/src/screens/screener/criteria.ts
+  - src/Web/src/screens/screener/ScreenerScreen.tsx
+  - src/Web/src/screens/savedScreens/criteria.ts
+  - src/Web/src/screens/stock-page/StockSections.tsx
+  - src/Web/src/screens/stock-page/StockPage.test.tsx
+  - src/Web/src/routes/MacroStrip.test.tsx
+  - src/Web/src/screens/screener/ScreenerBuilder.test.tsx
+  - src/Web/src/i18n/catalogs/tr.json
+  - src/Web/src/i18n/catalogs/en.json
+  - .pipeline/architecture/03-api-design.md
+---
+
+# TKT-foundation-072: Units branding — display-side unit semantics (server unit codes are not display prose)
+
+- Status: todo
+- Size: M
+- **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 8 unparked).**
+- **Evidence (gathered 2026-10-24):**
+  - Raw server unit codes are rendered as display text today:
+    - `MacroStrip.tsx:117` — `{series.unit}` verbatim.
+    - `ScreenerScreen.tsx:261` — `` `${metricLabel(metric, language)} (${metric.unit})` ``; `:315` — `({metric?.unit})`.
+    - `screens/screener/criteria.ts:143-144` — appends `${formatted} ${metric.unit}` (with an `x` special case); `screens/savedScreens/criteria.ts:19` branches on `unit === '%'`.
+  - `03` §1 principle 1 is explicit: "**Codes and numbers from the server; words from the client.**" A raw unit code is a server code presented as a word.
+  - The correct precedent already exists: the DCF screen maps params to `unitKey` and translates it (`screens/dcf/params.ts:47-96`, `DcfCalculatorScreen.tsx:307` → `dcf.unit.currency|percent|years|shares`). This ticket generalizes that pattern.
+  - **The 065 decision gives the concrete case:** under Option A the served `shareCount` figure is **paid-in capital in TRY**, relabeled from a share count. The display side must therefore show a TRY unit and a paid-in-capital label — never a bare number that reads as a share count. (065 remains the decision record; this ticket consumes its outcome.)
+- **Pinned approach:**
+  - One `unit`-label map (server code → i18n key) in `src/lib/units.ts`, used by every surface that renders a unit.
+  - Apply to: macro strip per-series units, screener result values / criteria editor / saved screens, the stock-page balance-sheet `shareCount` block (paid-in capital once 065 lands), and any other raw `.unit` render.
+  - **Unknown codes** degrade honestly: a documented fallback (the raw code, or an explicit "unit not specified" label) — decide and pin it, never guess a label.
+  - Copy lives in `tr.json`/`en.json`; no layout/styling change. UX wording is a ux-designer flow-back item, recorded, not a blocker.
+- **Acceptance (explicit criteria):**
+  - **(i)** No surface renders a raw server unit code in TR or EN (a grep-level proof plus a test per surface).
+  - **(ii)** Every unit code in the contract has a TR and an EN label; an unknown code degrades honestly and is covered by a test.
+  - **(iii)** The paid-in-capital/TRY label matches 065's recorded direction (Option A), and the field is not rendered as a share count.
+  - **(iv)** i18n parity, `tsc --noEmit`, ESLint green; Web unit tests pass.
+  - **(v)** If the unit-code vocabulary is pinned in `03` §2/§4, append a §13.1 row (**soft reservation v1.5.50**); otherwise record that no architecture change was needed.
+- Traces to: FR-MOV-004/NFR-MOV-004 (plain-language labels), FR-RES-017 (a label is a claim about the data), `03` §1/§2.
+- Architecture refs: `03-api-design.md` §1 (codes vs words), §2/§4 (units), `01` §10.6 (i18n discipline), §13.1 (only if the vocabulary is pinned there).
+- UX refs: SCR-001 (macro strip), SCR-002 (screener results), SCR-005 (balance sheet / share-count block); UXR-MOV-008/009 (macro markers), UXR-SCR-0xx (screener result units), UXR-RES-0xx (balance-sheet labels) — the ux-designer confirms the exact entries during flow-back.
+- Dependencies: **TKT-foundation-065** (its recorded decision defines the paid-in-capital label and the TRY unit; the rest of the unit map is independent and may be built first).
+- Parallel group: none (shares the i18n catalogs with 073).
