@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-064: Scheduler watchdog — bound each chain step, keep a whole-chain ceiling
 
-- Status: in-review — **PR https://github.com/sarperim/degerli/pull/133** (branch `feature/TKT-foundation-064`, rebased onto `origin/dev@817de1b`). Doc slice landed: `01` §10.9.17 "The bound's scope, corrected" + §13.1 **v1.5.43**; test plan §16 TC-MDF-098 implemented + v1.17 record.
+- Status: in-review — **PR https://github.com/sarperim/degerli/pull/133** (branch `feature/TKT-foundation-064`, head **`ec8951e`**, rebased onto **`origin/dev@60a01cf`**). Doc slice landed: `01` §10.9.17 "The bound's scope, corrected" + §13.1 **v1.5.43**; test plan §16 TC-MDF-098 implemented + v1.17 record.
 - Size: M
 - **Priority: P2 — correctness of the watchdog (USER GRANT 2026-10-23 afternoon).** The current bound is per **attempt**, not per **step**, so a healthy chain can never finish.
 - **Verified evidence (dev stack, 2026-10-23):**
@@ -71,5 +71,21 @@ Red run: **4 failed / 0 passed** (`dotnet test --filter FullyQualifiedName~TC_MD
 
 **Flagged items.**
 1. **One harness-only delta, no assertion weakened:** `SchedulerTests.TC_MDF_081(b)` now also sets `Ingestion:Scheduler:MaxStepDuration = 12:00:00` alongside its existing 12 h `MaxRunDuration`. The test's premise is "the retry attempt is still in flight at 05:30Z"; with the new per-step bound that attempt would (correctly) be declared hung at 22:35. This is the same premise-preserving adjustment the test already made for the attempt bound — no expected value, assertion, or TC id changed.
-2. **Scope:** no file touched outside this ticket's `scope:` list. Doc edits rebased onto `origin/dev@817de1b`; no conflict with 063/065.
+2. **Scope:** no file touched outside this ticket's `scope:` list. Doc edits rebased onto `origin/dev@817de1b`, then again onto `origin/dev@60a01cf` (see the rebase record below); no conflict with 063/065.
 3. **Live criterion (orchestrator post-merge, not fabricated here):** with `Ingestion__Scheduler__MaxRunDuration=04:00:00` removed from `/tmp/opencode/dev-overrides.yml`, a scheduled EOD chain completes end-to-end with **no `RUN_HUNG`** and per-step durations recorded; the shipped 120 min / 4 h defaults are confirmed in effect; the observed per-step durations are to be recorded verbatim below when measured.
+
+## Rebase record (2026-10-24, coder lane — PR #133)
+
+**Why.** Review closed reviewer-clean; the PR was held by two mechanical gates only: G4 (no CI run had ever been created for head `fb7cc88`, a stale-head artefact — no run, not a red run) and G5 (PR `CONFLICTING` after `dev` moved `a490394` → `60a01cf`, 045/PR #131 merging mid-review).
+
+**What.** Rebased `feature/TKT-foundation-064` onto `origin/dev@60a01cf`; old head `fb7cc88` → **new head `ec8951e`**, force-pushed (`--force-with-lease`). Exactly one conflict, in `.pipeline/architecture/01-system-architecture.md` §13.1 — the anticipated "doc edits serialize by last-lander rebase" case. `dev` had added the **v1.5.25** (044) and **v1.5.26** (045) rows at the table's append point; resolved by **keeping both landed rows and our v1.5.43 row**, appended below them in the table's existing append order.
+
+**Renumbering: none — v1.5.43 kept.** The landed maximum after the merge is **v1.5.42** (TKT-foundation-063), which is below 064's reserved v1.5.43; the reservation is still the next free number, so no row was renumbered and no landed row was dropped.
+
+**Local verification after the rebase (worktree `/tmp/opencode/worktrees/TKT-foundation-064`).**
+- `dotnet build Degerli.sln` → **0 warnings / 0 errors**.
+- `SchedulerTests` + `EodStallWatchdogTests` → **23/23 passed**, including the load-bearing **TC_MDF_098_Slow_but_healthy_chain_completes_under_the_shipped_bounds** (the ~200-minute two-step healthy chain: 40 min + 60 min under the shipped 120 min step / 4 h chain defaults) alongside the step-bound, chain-ceiling, per-step-arming, responsive-step, zero-bound and mis-typed-bound cases, and the 059/062 boundary tests (TC-MDF-079, TC-MDF-081b) — no assertion changed by the rebase.
+- `EodChainTests`, `MorningChainTests`, `EodStaleServingTests`, `FundSchedulingCoverageTests`, `MacroIngestionTests`, `BackfillAndCoverageTests` → **32/32 passed**.
+
+**CI for the new head (G4).** Run exists for `ec8951e`: **https://github.com/sarperim/degerli/actions/runs/40057126324** (workflow "CI", jobs `Backend (restore · build · test)` and `Web (lint · typecheck · test · i18n · build)`), confirmed via runs-by-SHA and check-runs for the head commit — not inferred from the push. PR #133 now reports `mergeable: MERGEABLE` (G5 closed).
+
