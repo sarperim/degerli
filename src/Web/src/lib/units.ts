@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
  * Display-side unit semantics (TKT-foundation-072; `03` §1 principle 1).
  *
  * **Codes and numbers from the server; words from the client.** A served `unit`
- * (`%`, `% YoY`, `x`, `TRY`, `USD/oz`, `TRY/g` — the seeded `macro_series` and
+ * (`%`, `% YoY`, `x`, `TRY`, `USD/oz` — the seeded `macro_series` and
  * `screener_metrics` vocabulary) is a **code**, not display prose: rendering it
  * verbatim shows a server identifier to the user and hides the translation
  * (NFR-MOV-004, FR-MOV-009). Every surface that renders a unit resolves it through
@@ -17,7 +17,7 @@ import type { TFunction } from 'i18next'
  * the raw code or guessing a unit: a unit label is a claim about the data
  * (FR-RES-017), and a guess would be a false one.
  *
- * **Fixed-point units and money.** `%` and `x` are language-neutral symbols — their
+ * **Symbols and worded units.** `%` and `x` are language-neutral symbols — their
  * display form is the glyph itself. Everything with words around it (`% YoY`,
  * `USD/oz`, `TRY/g`, `TRY`) is localized per catalog.
  */
