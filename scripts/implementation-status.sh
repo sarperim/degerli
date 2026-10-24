@@ -56,8 +56,9 @@ while [ $# -gt 0 ]; do
 done
 
 # ---------------------------------------------------------------------------
-# self-test: build a tiny valid fixture, then break it nine ways and require
-# the checker to fail every time. No network, no repo state, fixed clock.
+# self-test: build a tiny valid fixture, then break it eighteen ways and
+# require the checker to fail every time (and to say why). No network, no repo
+# state, fixed clock.
 # ---------------------------------------------------------------------------
 write_valid_base() { # $1 = target dir, $2 = last-verified date
   local d="$1" verified="$2"
@@ -82,6 +83,7 @@ Last verified: $verified
 |------|---------|
 | \`live\` | serving real data, observed live |
 | \`live-degraded\` | serving, with an observed live defect |
+| \`ci-only\` | proven only on doubles/seeded stacks |
 | \`wired-not-configured\` | code exists, configuration absent |
 | \`scaffolded\` | structure only |
 | \`blocked-upstream\` | blocked on an external source |
@@ -91,7 +93,7 @@ Last verified: $verified
 <!-- status:domains -->
 | Domain | Status | Evidence | Checks |
 |--------|--------|----------|--------|
-| Prices | \`live\` | demo | dir:src/Ingestion/Prices;config:Ingestion:Prices:UniverseIndex;ticket:TKT-demo-001 |
+| Prices | \`live\` | demo (LC-01) | dir:src/Ingestion/Prices;config:Ingestion:Prices:UniverseIndex;ticket:TKT-demo-001 |
 | Funds | \`wired-not-configured\` | demo | dir:src/Ingestion/Prices;noconfig:Ingestion:Funds:BaseUrl |
 <!-- /status:domains -->
 
@@ -123,64 +125,97 @@ self_test() {
   base="$tmp/base"
   write_valid_base "$base" "2026-10-24"
 
-  run_case() { # $1 = label, $2 = expected exit (0|1)
-    local label="$1" expected="$2" code
-    "$SELF" --root "$CASE" --today 2026-10-24 >"$tmp/out.txt" 2>&1
+  run_case() { # $1 = label, $2 = expected exit (0|1|2), $3 = expected output regex, $4 = --today
+    local label="$1" expected="$2" pattern="${3:-}" today="${4:-2026-10-24}" code
+    "$SELF" --root "$CASE" --today "$today" >"$tmp/out.txt" 2>&1
     code=$?
     n=$((n + 1))
-    if [ "$expected" = "0" ] && [ "$code" -eq 0 ]; then
-      printf 'PASS  %s\n' "$label"
-    elif [ "$expected" = "1" ] && [ "$code" -eq 1 ]; then
-      printf 'PASS  %s\n' "$label"
-    else
+    if [ "$code" -ne "$expected" ]; then
       printf 'FAIL  %s (expected exit %s, got %s)\n' "$label" "$expected" "$code"
       sed 's/^/      /' "$tmp/out.txt" | head -10
       failures=$((failures + 1))
+    elif [ -n "$pattern" ] && ! grep -qE -- "$pattern" "$tmp/out.txt"; then
+      printf 'FAIL  %s (exit %s as expected, but no output matched /%s/)\n' "$label" "$code" "$pattern"
+      sed 's/^/      /' "$tmp/out.txt" | head -10
+      failures=$((failures + 1))
+    else
+      printf 'PASS  %s\n' "$label"
     fi
   }
 
-  CASE="$base"; run_case "valid fixture passes" 0
+  CASE="$base"; run_case "valid fixture passes" 0 'OK — '
 
   CASE="$tmp/missing-path"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's|dir:src/Ingestion/Prices;config|dir:src/Ingestion/Absent;config|'
-  run_case "a live domain whose implementation path is gone fails" 1
+  run_case "a live domain whose implementation path is gone fails" 1 "directory 'src/Ingestion/Absent' does not exist"
 
   CASE="$tmp/absent-config"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's|config:Ingestion:Prices:UniverseIndex|config:Ingestion:Prices:NoSuchKey|'
-  run_case "a claimed config key that is absent fails" 1
+  run_case "a claimed config key that is absent fails" 1 "claimed config 'Ingestion:Prices:NoSuchKey' is absent"
+
+  CASE="$tmp/empty-config"; cp -a "$base" "$CASE"
+  python3 - "$CASE/src/Api/appsettings.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+doc = json.load(open(path, encoding="utf-8"))
+doc["Ingestion"]["Prices"]["UniverseIndex"] = ""
+json.dump(doc, open(path, "w", encoding="utf-8"))
+PY
+  run_case "a config key that is present but empty is not reported as absent" 1 "is present but empty"
 
   CASE="$tmp/present-but-claimed-absent"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's|noconfig:Ingestion:Funds:BaseUrl|noconfig:Ingestion:Prices:UniverseIndex|'
-  run_case "a section claimed absent that is present fails" 1
+  run_case "a section claimed absent that is present fails" 1 "is absent, but it is configured"
 
   CASE="$tmp/vocabulary"; cp -a "$base" "$CASE"
-  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| Prices | `live` | demo |/| Prices | `basically-fine` | demo |/'
-  run_case "an undeclared status word fails" 1
+  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| Prices | `live` | demo (LC-01) |/| Prices | `basically-fine` | demo (LC-01) |/'
+  run_case "an undeclared status word fails" 1 "not in the fixed vocabulary"
 
   CASE="$tmp/no-section"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's|^## Update rule$|## Something else|'
-  run_case "a missing required section fails" 1
+  run_case "a missing required section fails" 1 "required section missing: '## Update rule'"
 
   CASE="$tmp/undated-claim"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| 2026-10-24 (run 1) |/| - |/'
-  run_case "a ledger row without a live-observation date fails" 1
+  run_case "a ledger row without a live-observation date fails" 1 "last-observation cell must start with"
 
   CASE="$tmp/missing-ticket-row"; cp -a "$base" "$CASE"
-  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/^| TKT-demo-001 | `todo` | demo |$/| TKT-other-001 | `todo` | demo |/'
-  printf -- '- Status: todo\n' > "$CASE/.pipeline/plan/tickets/TKT-other-001.md"
-  run_case "an open ticket missing from the ledger fails" 1
+  printf -- '- Status: todo\n' > "$CASE/.pipeline/plan/tickets/TKT-demo-002.md"
+  run_case "a newly sliced open ticket with no ledger row fails" 1 "open ticket TKT-demo-002 \('todo'\) is missing from the open-ticket ledger"
+
+  CASE="$tmp/multiword-status"; cp -a "$base" "$CASE"
+  printf -- '- Status: partially resolved\n' > "$CASE/.pipeline/plan/tickets/TKT-demo-003.md"
+  run_case "an unknown/multi-word status is open, not terminal, and needs a row" 1 "open ticket TKT-demo-003 \('partially'\) is missing"
 
   CASE="$tmp/stale-date"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/^Last verified: 2026-10-24$/Last verified: 2020-01-01/'
-  run_case "a stale last-verified date fails" 1
+  run_case "a stale last-verified date fails" 1 "days old \(limit 60\)"
 
   CASE="$tmp/status-mismatch"; cp -a "$base" "$CASE"
   printf -- '- Status: done\n' > "$CASE/.pipeline/plan/tickets/TKT-demo-001.md"
-  run_case "a ledger row whose class disagrees with the ticket fails" 1
+  run_case "a ledger row whose class disagrees with the ticket fails" 1 "ledger row TKT-demo-001 says 'todo' but the ticket is 'done'"
 
   CASE="$tmp/no-readme-link"; cp -a "$base" "$CASE"
   printf '# Demo\n\nNo link here.\n' > "$CASE/README.md"
-  run_case "a README without the pointer fails" 1
+  run_case "a README without the pointer fails" 1 "does not link to IMPLEMENTATION_STATUS.md"
+
+  CASE="$tmp/blank-evidence"; cp -a "$base" "$CASE"
+  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| Prices | `live` | demo (LC-01) |/| Prices | `live` |  |/'
+  run_case "a domain row with an empty Evidence cell fails" 1 "empty Evidence cell"
+
+  CASE="$tmp/live-without-lc"; cp -a "$base" "$CASE"
+  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| Prices | `live` | demo (LC-01) |/| Prices | `live` | demo |/'
+  run_case "a live domain that cites no LC id fails" 1 "requires at least one LC-nn reference"
+
+  CASE="$tmp/unknown-lc"; cp -a "$base" "$CASE"
+  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's|demo (LC-01)|demo (LC-09)|'
+  run_case "a domain citing a ledger row that does not exist fails" 1 "LC-09.*not in the live-criteria ledger"
+
+  CASE="$tmp/live-without-dated-lc"; cp -a "$base" "$CASE"
+  mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/| 2026-10-24 (run 1) |/| not yet observed |/'
+  run_case "a live domain whose only LC row has no dated observation fails" 1 "record the observation or change the status"
+
+  CASE="$base"; run_case "an impossible --today is a usage error, not a cascade of failures" 2 "real calendar date" "2026-13-01"
 
   rm -rf "$tmp"
   echo
@@ -221,7 +256,11 @@ fi
 command -v python3 >/dev/null 2>&1 || die "python3 is required (JSON lookup in $APPSETTINGS)"
 case "$MAX_AGE_DAYS" in ''|*[!0-9]*) die "--max-age-days must be a non-negative integer" ;; esac
 if [ -z "$TODAY" ]; then TODAY="$(date +%Y-%m-%d)"; fi
-[[ "$TODAY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--today must be YYYY-MM-DD"
+[[ "$TODAY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--today must be YYYY-MM-DD, got '$TODAY'"
+python3 - "$TODAY" >/dev/null 2>&1 <<'PY' || die "--today must be a real calendar date (YYYY-MM-DD), got '$TODAY'"
+import sys, datetime
+datetime.date.fromisoformat(sys.argv[1])
+PY
 
 FAILURES=0
 CHECKS=0
@@ -267,9 +306,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. vocabulary — the five fixed terms must be declared, and only they may be used
+# 2. vocabulary — the six fixed terms must be declared, and only they may be used
 # ---------------------------------------------------------------------------
-VOCAB_TERMS=(live live-degraded wired-not-configured scaffolded blocked-upstream)
+VOCAB_TERMS=(live live-degraded ci-only wired-not-configured scaffolded blocked-upstream)
 for term in "${VOCAB_TERMS[@]}"; do
   if grep -qE "^\| \`$term\` \|" "$STATUS_FILE"; then ok; else fail "status vocabulary does not declare \`$term\`"; fi
 done
@@ -303,6 +342,12 @@ if [ -z "$DOMAINS" ]; then
   fail "no domain rows between the 'status:domains' markers"
 fi
 
+# Evidence cells must carry a citation, and every citation of an LC-nn row is resolved against the
+# ledger below (section 4). A `live` row additionally needs at least one *dated* LC row, so a
+# domain cannot be promoted to `live` on an unobserved criterion.
+DOMAIN_LC_REFS=()   # "domain<TAB>LC-nn"
+LIVE_DOMAINS=()     # domains claiming `live`
+
 # Collect config/noconfig lookups and resolve them in one python3 pass.
 CONFIG_QUERIES=()
 while IFS= read -r line; do
@@ -310,10 +355,27 @@ while IFS= read -r line; do
   cells="$(printf '%s' "$line" | awk -F'|' '{ for (i = 2; i < NF; i++) { gsub(/^ +| +$/, "", $i); printf "%s\x1f", $i } }')"
   domain="$(printf '%s' "$cells" | cut -d$'\x1f' -f1)"
   status_cell="$(printf '%s' "$cells" | cut -d$'\x1f' -f2 | tr -d '`')"
+  evidence_cell="$(printf '%s' "$cells" | cut -d$'\x1f' -f3)"
   checks_cell="$(printf '%s' "$cells" | cut -d$'\x1f' -f4)"
   [ -n "$domain" ] || continue
   [ "$domain" = "Domain" ] && continue
   if printf '%s' "$domain" | grep -qE '^-+$'; then continue; fi
+
+  if [ -z "$(trim "$evidence_cell")" ]; then
+    fail "domain '$domain': empty Evidence cell — every domain claim needs a citation"
+  else
+    ok
+  fi
+  lc_refs="$(printf '%s' "$evidence_cell" | grep -oE 'LC-[0-9]{2,}' | sort -u || true)"
+  if [ -n "$lc_refs" ]; then
+    while IFS= read -r lc; do
+      [ -n "$lc" ] || continue
+      DOMAIN_LC_REFS+=("$domain"$'\t'"$lc")
+    done <<< "$lc_refs"
+  elif [ "$status_cell" = "live" ] || [ "$status_cell" = "live-degraded" ]; then
+    fail "domain '$domain': status '$status_cell' requires at least one LC-nn reference in its Evidence cell"
+  fi
+  [ "$status_cell" = "live" ] && LIVE_DOMAINS+=("$domain")
 
   if [ -z "$status_cell" ]; then
     fail "domain '$domain' has no status"
@@ -387,7 +449,13 @@ for raw in sys.stdin:
     fi
     case "$token" in
       config:*)
-        if [ "$verdict" = "present" ]; then ok; else fail "domain '$domain': claimed config '${token#config:}' is absent from appsettings.json"; fi
+        if [ "$verdict" = "present" ]; then
+          ok
+        elif [ "$verdict" = "empty" ]; then
+          fail "domain '$domain': claimed config '${token#config:}' is present but empty in appsettings.json — the row does not hold"
+        else
+          fail "domain '$domain': claimed config '${token#config:}' is absent from appsettings.json"
+        fi
         ;;
       config-empty:*)
         if [ "$verdict" = "empty" ]; then ok; else fail "domain '$domain': claims '${token#config-empty:}' is present but empty, and it is not (verdict: $verdict) — the row is stale"; fi
@@ -411,6 +479,7 @@ LEDGER="$(awk '
 if [ -z "$LEDGER" ]; then fail "no rows between the 'status:ledger' markers"; fi
 
 declare -A SEEN_IDS=()
+declare -A DATED_IDS=()
 LEDGER_ROWS=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
@@ -445,6 +514,7 @@ while IFS= read -r line; do
     elif [ "$age" -lt 0 ]; then
       fail "ledger $id: last observation $date_part is in the future (today $TODAY)"
     else
+      DATED_IDS[$id]=1
       ok
     fi
   elif printf '%s' "$observed_trim" | grep -qiE '(not yet observed|never observed)'; then
@@ -456,6 +526,27 @@ done <<< "$LEDGER"
 
 if [ "$LEDGER_ROWS" -eq 0 ]; then fail "the live-criteria ledger has no claim rows"; fi
 
+# Resolve every LC-nn a domain row cites against the ledger just parsed.
+declare -A LIVE_DOMAIN_LCS=()   # domain -> space-separated LC ids that carry a date
+for ref in "${DOMAIN_LC_REFS[@]:-}"; do
+  [ -n "${ref:-}" ] || continue
+  ref_domain="${ref%%$'\t'*}"
+  ref_id="${ref#*$'\t'}"
+  if [ -z "${SEEN_IDS[$ref_id]:-}" ]; then
+    fail "domain '$ref_domain' cites $ref_id, which is not in the live-criteria ledger"
+  elif [ -n "${DATED_IDS[$ref_id]:-}" ]; then
+    LIVE_DOMAIN_LCS[$ref_domain]="${LIVE_DOMAIN_LCS[$ref_domain]:-} $ref_id"
+  fi
+done
+for live_domain in "${LIVE_DOMAINS[@]:-}"; do
+  [ -n "${live_domain:-}" ] || continue
+  if [ -z "${LIVE_DOMAIN_LCS[$live_domain]:-}" ]; then
+    fail "domain '$live_domain' is 'live' but no LC-nn it cites has a dated live observation — record the observation or change the status"
+    continue
+  fi
+  ok
+done
+
 # ---------------------------------------------------------------------------
 # 5. open-ticket ledger — the set of non-terminal tickets must match exactly
 # ---------------------------------------------------------------------------
@@ -466,8 +557,8 @@ ticket_class() { # $1 = ticket file -> terminal class word
   printf '%s' "$class"
 }
 
-is_open_class() {
-  case "$1" in todo|in-review|in-progress|blocked|deferred) return 0 ;; *) return 1 ;; esac
+is_terminal_class() { # only an explicit terminal word closes a ticket; everything else is open
+  case "$1" in done|superseded|cancelled) return 0 ;; *) return 1 ;; esac
 }
 
 declare -A DOC_TICKETS=()   # id -> row class
@@ -514,7 +605,7 @@ while IFS= read -r ticket_file; do
   [ -n "$ticket_file" ] || continue
   id="$(basename "$ticket_file" .md)"
   actual="$(ticket_class "$ticket_file")"
-  if is_open_class "$actual"; then
+  if ! is_terminal_class "$actual"; then
     if [ -z "${DOC_TICKETS[$id]:-}" ]; then
       fail "open ticket $id ('$actual') is missing from the open-ticket ledger"
     fi

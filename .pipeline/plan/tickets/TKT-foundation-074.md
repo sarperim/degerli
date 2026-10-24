@@ -72,7 +72,7 @@ Read against the tree at `origin/dev@8f4b5e5` plus the appsettings/ticket text, 
 | Prices | `Ingestion:Prices:UniverseIndex = XU100`; the 2026-10-23 9/100 thin day and the chore-#130 re-sweep to 100/100; 043 superseded, not done | `live-degraded` |
 | Intraday | `Ingestion:Intraday:BaseUrl` present; appsettings `Path` is now the `ChartData/IntradayDelay` chart endpoint (chore #129) while the only live sweep (run 218) predates the repoint | `live-degraded`, ledger LC-06 `not yet observed` |
 | Shares | Shares lane reads the **Kap** section (no own config section) and is **not** in `EodIngestChain.JobCodes` (universe-sync, prices, statements, dividends, corporate-actions, disclosures, metrics-recompute, market-snapshot, medians) — so run 219 was operator-triggered | `live-degraded`, unit claim unresolved (065 blocked) |
-| Pipeline | `IngestionSchedulerOptions.MaxRunDuration` default is still `90 min` (064 todo), the 4 h override is operational | `live-degraded`; LC-05 records the workaround explicitly instead of calling the watchdog solved |
+| Pipeline | `IngestionSchedulerOptions` ships the 120-min per-step / 4-h chain defaults since 064 merged (PR #133); the old 90-min whole-attempt bound and the 4 h env override are both gone (fix round 1) | `live-degraded`; LC-05 records that 064's live criterion is **unrun**, so the watchdog is not called solved |
 | Macro | `Ingestion:Macro:EvdsApiKey` exists but is empty; TKT-foundation-019 recorded "constructed, capture pending" | `live-degraded` with `config-empty:` — the manual-entry path, not an EVDS pull, is what was observed 2026-10-20 |
 
 ### Honesty notes (deliberately not flattered)
@@ -91,3 +91,49 @@ Read against the tree at `origin/dev@8f4b5e5` plus the appsettings/ticket text, 
 
 - `scripts/implementation-status.sh --self-test` → **11/11 cases behaved as required** (exit 0).
 - `scripts/implementation-status.sh` on this tree → **131 checks, 0 failures** (exit 0).
+
+---
+## Fix round 1 (fixer, 2026-10-24) — review `.pipeline/plan/reviews/TKT-foundation-074-round-1.md`
+
+The branch was **merged forward onto `origin/dev@aa2d0b8`** (048 and 078 merged, 064/065/072/075
+flipped), then the document and the checker were corrected. All five blockers and all five majors
+are addressed; no finding was disputed and none required an escalation.
+
+- **DR-2 (staleness):** the merge is part of the fix. `bash scripts/implementation-status.sh` on
+  the merged tree exits **0** — 157 checks, 0 failures. The open-ticket ledger now carries 078 and
+  drops the three tickets that left the open set (048/072/075); 045/064 flip to `in-review`, 065 to
+  `partially`.
+- **DR-1 (KAP currency):** a callout above the stamp and the five KAP-sourced rows now state that
+  `Ingestion:Kap:BaseUrl` is KAP's **DEV** gateway, head `1231017` = "Test Bildirimi" dated
+  31.12.2023, `financial_statements` 2022-12-31 → 2023-09-30, production hosts not resolving,
+  **OQ-KAP-PROD** outstanding. New ledger row **LC-15** records the probe with its date, and it is
+  cited by statements, disclosures, dividends, corporate actions, fundamentals serving and share
+  counts.
+- **DR-3 (064):** the 90-minute/4 h-override claim is gone. The pipeline row and LC-05 state the
+  shipped 120-min per-step / 4-h chain defaults (`DefaultMaxStepDuration`/`DefaultMaxRunDuration`,
+  PR #133) and that **the live criterion is unrun**, with today's calendar facts (Saturday,
+  `TradingDaysOnly` morning chain, no admin *chain* trigger) and the earliest honest slot
+  **Monday 2026-10-26**. Worked example 3 is now explicitly historical.
+- **DR-4 (disclosures/LC-11):** run 252 is recorded verbatim (partial, 50 written, 50/21/50/970,
+  truncated false, cursor to head, 864 s, TRALT/TRMET `COMPANY_IDENTITY_UNRESOLVED`) on the
+  disclosures row, LC-11 and the new **LC-16**, together with the still-unrun second-run
+  incremental half and LC-15's currency truth.
+- **DR-5 (checker false negative):** terminal detection inverted to an explicit allowlist
+  (`done`/`superseded`/`cancelled`); every other status word — including `partially resolved` — is
+  open and must have a row. Self-test case added for a multi-word/unknown status.
+- **DR-6..DR-10:** `docs/live-vs-ci.md` marked committed/`done`; 065/072 attribution corrected
+  (D4-A recorded on the ticket, display half in #137); 048 recorded as `done` with its live
+  criterion unrun and **market overview only** (+ new LC-19, stock-page follow-up named); `live`
+  rows now rest on dated LC observations (new LC-17 for admin; accounts demoted to the new
+  `ci-only` term after no dated observation could be found — LC-18 says `not yet observed`); the
+  Evidence cell is now parsed (non-empty, every cited LC must exist, `live` needs a dated one) and
+  the update-rule line names the steps the script actually enforces.
+- **DR-11..DR-15:** six runs described as four named ER005 runs plus two earlier zero-write
+  attempts; statements coverage corrected to **25** instruments; the 075 citation dropped from the
+  pipeline row; self-test header/count/message assertions and the missing-ticket case fixed;
+  `config:` distinguishes present-but-empty from absent; `--today` validates as a real calendar
+  date (usage error, exit 2).
+
+### Evidence
+- `scripts/implementation-status.sh --self-test` → **18/18 cases behaved as required** (exit 0).
+- `scripts/implementation-status.sh` on the merged tree → **157 checks, 0 failures** (exit 0).

@@ -6,6 +6,15 @@
 > **machine-checked** by [`scripts/implementation-status.sh`](scripts/implementation-status.sh)
 > so it cannot quietly rot.
 
+> **⚠ The KAP source is not current.** Every KAP-sourced lane (statements, disclosures, dividends,
+> corporate actions, fundamentals, share counts) reads `Ingestion:Kap:BaseUrl` =
+> `https://apigwdev.mkk.com.tr/api/vyk` — KAP's **DEV** gateway. Its head index `1231017` is a
+> "Test Bildirimi" dated **31.12.2023**, and `financial_statements` covers only
+> **2022-12-31 → 2023-09-30** (251 rows, 25 instruments). The production hosts
+> `apigw.mkk.com.tr` / `apigwprod.mkk.com.tr` do not resolve from here. Those lanes are
+> structurally healthy and **serving 2023 data**; production VYK access is outstanding
+> (**OQ-KAP-PROD**, LC-15). Nothing in this file should be read as current fundamentals.
+
 Last verified: 2026-10-24
 
 **Not to be confused with:**
@@ -15,7 +24,7 @@ Last verified: 2026-10-24
 | `.pipeline/plan/tickets/TKT-*.md` | committed | the source of record for every ticket |
 | `.pipeline/plan/run-report.md`, `.pipeline/plan/board.md`, `.pipeline/plan/reviews/` | **gitignored** | running transcript, ordering view, review artifacts |
 | **this file** | committed | the standing summary + live-criteria ledger |
-| `docs/live-vs-ci.md` | committed (TKT-foundation-075, todo) | the boundary rule in the general case |
+| `docs/live-vs-ci.md` | committed (TKT-foundation-075, `done` — PR #135) | the boundary rule in the general case |
 
 Nothing here is a redesign or a contract: this is a delivery/honesty artifact
 (TKT-foundation-074; no architecture or requirement changes).
@@ -24,18 +33,19 @@ Nothing here is a redesign or a contract: this is a delivery/honesty artifact
 
 ## Status vocabulary
 
-Every domain row uses exactly one of these five words. They are deliberately not a scale of
+Every domain row uses exactly one of these six words. They are deliberately not a scale of
 "progress" — they answer *can a user/operator rely on this today?*
 
 | Term | Meaning |
 | --- | --- |
 | `live` | Implemented, configured, and **observed working against the real source** at least once — the observation is dated in the live-criteria ledger. |
 | `live-degraded` | Serving real data, but a live-observed defect or gap means the output is bounded, thin, or unreliable in a way recorded in the ledger. Do not read it as "done". |
+| `ci-only` | Implemented and configured, but the only evidence is CI on doubles/a seeded stack: **no dated live observation exists**, so nobody has seen it work against the real thing. |
 | `wired-not-configured` | The code exists (adapters, jobs, tests) but a required configuration/source is absent or unverified, so it cannot succeed until someone wires it. |
 | `scaffolded` | Structure only — no working ingest or serving path behind it. |
 | `blocked-upstream` | Stopped on something outside this repository: an unreachable or unverified external source, or an unresolved user decision. |
 
-The five terms exist even where a term is currently unused: `scaffolded` has no row today
+The six terms exist even where a term is currently unused: `scaffolded` has no row today
 (there is no half-built domain in the tree), and using it for a *wired* lane would flatter it.
 
 ---
@@ -45,30 +55,32 @@ The five terms exist even where a term is currently unused: `scaffolded` has no 
 One line of evidence per domain, naming the code/config it stands on and the ticket or run that
 proves the claim. The `Checks` column is executed by `scripts/implementation-status.sh`: `dir:` /
 `file:` must exist, `config:` must be present in `src/Api/appsettings.json`, `config-empty:`
-must be present and empty, `noconfig:` must be absent, `ticket:` must exist.
+must be present and empty, `noconfig:` must be absent, `ticket:` must exist. The `Evidence` cell
+must be non-empty and must cite at least one `LC-nn` row of the ledger below; a `live` row must
+cite at least one `LC-nn` row that carries a **dated** observation.
 
 <!-- status:domains -->
 | Domain | Status | Evidence (one line) | Checks |
 | --- | --- | --- | --- |
-| Universe and instruments | `live` | `universe-sync` is the EOD chain's first step and lands the real XU100 membership plus XU100/XU030 index levels — live 2026-10-23 17:30 UTC, 21 s step (`EodIngestChain.cs`, TKT-foundation-041/mdf-022) | dir:src/Ingestion/Universe;config:Ingestion:Universe:BaseUrl;ticket:TKT-mdf-022 |
-| Daily prices (EOD) | `live-degraded` | İş Yatırım daily bars over the XU100 bound; 2026-10-23 published progressively (9/100 → 64/100) and only reached 100/100 after the coverage re-sweep that chore #130 added — the lane still cannot assert a complete day on its own beyond that sweep (TKT-foundation-043 superseded by #130) | dir:src/Ingestion/Prices;config:Ingestion:Prices:UniverseIndex;ticket:TKT-foundation-043 |
-| Intraday quotes | `live-degraded` | Four two-hour session sweeps are wired, repointed on 2026-10-23 to İş `ChartData/IntradayDelay` after the EOD-shaped endpoint answered an empty session; the last live sweep (run 218, 2026-10-23, all-skipped) predates the repoint, so the repointed lane has **no** live observation yet (chore #129, TKT-foundation-047) | dir:src/Ingestion/Intraday;config:Ingestion:Intraday:BaseUrl;ticket:TKT-foundation-047 |
-| Financial statements | `live-degraded` | KAP VYK FR lane over the XU030 bound; live run 249 (2026-10-23) ended `partial` (0 written / 60 unchanged / 25 quarantined) instead of fail-stopping the chain — real rows exist for the covered 30, thin coverage elsewhere (TKT-foundation-017/032/063) | dir:src/Ingestion/Statements;config:Ingestion:Statements:Path;ticket:TKT-foundation-063 |
-| KAP disclosures | `live-degraded` | Family lane on the shared `VykDisclosureWalker` with per-disclosure isolation and a bounded detail fetch (PR #125); its own end-to-end live criterion is **not yet recorded** (TKT-foundation-061 in review) | dir:src/Ingestion/Disclosures;config:Ingestion:Disclosures:Path;ticket:TKT-foundation-061 |
-| Dividends | `live-degraded` | Same walker, `CA`/`KP` events only; the ungated per-detail fetch that fail-stopped the chain was isolated in PR #125, and the live family criterion is still open (TKT-foundation-061, cursor window owed by TKT-foundation-069) | dir:src/Ingestion/Dividends;config:Ingestion:Dividends:DisclosureType;ticket:TKT-foundation-069 |
-| Corporate actions | `live-degraded` | Same walker; Thursday's 58–74 min walk and the HTTP-500 detail are now isolated skips rather than a failed run (PR #125 TKT-foundation-061), and the 2026-10-22 close-recovery re-run is **not yet recorded** | dir:src/Ingestion/CorporateActions;config:Ingestion:CorporateActions:Path;ticket:TKT-foundation-061 |
-| Share counts | `live-degraded` | VYK `/memberSecurities` lane, 556 rows written live on 2026-10-23 (run 219) and volunteer-number matches on five majors — but the served field is `currentCapital`, so 64/556 sub-unit rows make the "share count" claim unresolved (TKT-foundation-058, TKT-foundation-065 blocked) | dir:src/Ingestion/Shares;config:Ingestion:Kap:BaseUrl;ticket:TKT-foundation-058 |
-| Macro — official series | `live-degraded` | EVDS adapter plus the manual admin-entry path; the served TÜFE/CBRT values (fresh as of the 2026-10-20 check, TKT-foundation-038) come from manual entry because the EVDS API key is empty and the EVDS programmatic capture never landed (TKT-foundation-019 gap) | dir:src/Ingestion/Macro;config:Ingestion:Macro:BaseUrl;config-empty:Ingestion:Macro:EvdsApiKey;ticket:TKT-mov-002 |
+| Universe and instruments | `live` | `universe-sync` is the EOD chain's first step and lands the real XU100 membership plus XU100/XU030 index levels — live 2026-10-23 17:30 UTC, 21 s step (`EodIngestChain.cs`, TKT-foundation-041/mdf-022; LC-13) | dir:src/Ingestion/Universe;config:Ingestion:Universe:BaseUrl;ticket:TKT-mdf-022 |
+| Daily prices (EOD) | `live-degraded` | İş Yatırım daily bars over the XU100 bound; 2026-10-23 published progressively (9/100 → 64/100) and only reached 100/100 after the coverage re-sweep that chore #130 added — the lane still cannot assert a complete day on its own beyond that sweep (TKT-foundation-043 superseded by #130; LC-04) | dir:src/Ingestion/Prices;config:Ingestion:Prices:UniverseIndex;ticket:TKT-foundation-043 |
+| Intraday quotes | `live-degraded` | Four two-hour session sweeps are wired, repointed on 2026-10-23 to İş `ChartData/IntradayDelay` after the EOD-shaped endpoint answered an empty session; the last live sweep (run 218, 2026-10-23, all-skipped) predates the repoint, so the repointed lane has **no** live observation yet (chore #129, TKT-foundation-047; LC-06) | dir:src/Ingestion/Intraday;config:Ingestion:Intraday:BaseUrl;ticket:TKT-foundation-047 |
+| Financial statements | `live-degraded` | KAP VYK FR lane over the XU030 bound; live run 249 (2026-10-23) ended `partial` (0 written / 60 unchanged / 25 quarantined) instead of fail-stopping the chain. **The source is KAP's DEV gateway**: `financial_statements` spans 2022-12-31 → 2023-09-30 only — 251 rows over **25** of the 30 bound instruments, five with none. Structurally healthy, **serving 2023 data**; production access outstanding (OQ-KAP-PROD). No current fundamentals are implied (TKT-foundation-017/032/063, TKT-foundation-078; LC-02/LC-03/LC-15) | dir:src/Ingestion/Statements;config:Ingestion:Statements:Path;ticket:TKT-foundation-063 |
+| KAP disclosures | `live-degraded` | Family lane on the shared `VykDisclosureWalker` with per-disclosure isolation and a bounded detail fetch; live run 252 (2026-10-24) completed `partial` in 864 s — written 50, Facts 50 / Pages 21 / Details 50 / OutOfBound 970 / Truncated false, cursor advanced to the gateway head 1231017 — but what it downloaded is **2023 data** because that head is a test notification (LC-15), and the incremental second run is still unrun (TKT-foundation-061/078; LC-11/LC-16) | dir:src/Ingestion/Disclosures;config:Ingestion:Disclosures:Path;ticket:TKT-foundation-061 |
+| Dividends | `live-degraded` | Same walker, `CA`/`KP` events only; the ungated per-detail fetch that fail-stopped the chain was isolated in PR #125, and the family's own live criterion is still open (TKT-foundation-061, cursor window owed by TKT-foundation-069; LC-11). It reads the same DEV gateway, so nothing newer than 2023-12-31 exists to detect (LC-15) | dir:src/Ingestion/Dividends;config:Ingestion:Dividends:DisclosureType;ticket:TKT-foundation-069 |
+| Corporate actions | `live-degraded` | Same walker; Thursday's 58–74 min walk and the HTTP-500 detail are now isolated skips rather than a failed run (PR #125, TKT-foundation-061), and the 2026-10-22 close-recovery re-run is **not yet recorded** (LC-11). Same DEV gateway as the rest of KAP (LC-15) | dir:src/Ingestion/CorporateActions;config:Ingestion:CorporateActions:Path;ticket:TKT-foundation-061 |
+| Share counts | `live-degraded` | VYK `/memberSecurities` lane, 556 rows written live on 2026-10-23 (run 219) and volunteer-number matches on five majors — but the served field is `currentCapital`, so 64/556 sub-unit rows make the "share count" claim unresolved. TKT-foundation-065 is `partially resolved`: D4-A (relabel as paid-in capital) is recorded and the display half landed in #137, the contract half is owed. Same DEV gateway (TKT-foundation-058; LC-09/LC-15) | dir:src/Ingestion/Shares;config:Ingestion:Kap:BaseUrl;ticket:TKT-foundation-058 |
+| Macro — official series | `live-degraded` | EVDS adapter plus the manual admin-entry path; the served TÜFE/CBRT values (fresh as of the 2026-10-20 check, TKT-foundation-038) come from manual entry because the EVDS API key is empty and the EVDS programmatic capture never landed (TKT-foundation-019 gap; LC-12) | dir:src/Ingestion/Macro;config:Ingestion:Macro:BaseUrl;config-empty:Ingestion:Macro:EvdsApiKey;ticket:TKT-mov-002 |
 | Macro — independent inflation measure | `blocked-upstream` | No source at all: the ENAG-class page is unreachable and the entry lane is parked by the user (TKT-mov-009, USER DECISION D2); the dashboard serves official CPI only | file:src/Ingestion/Macro/MacroModels.cs;ticket:TKT-mov-009 |
-| Metrics and market snapshot | `live-degraded` | Input-aware recompute, snapshot and sector medians landed and repaired 2026-10-23 in place (runs 229–231) — but the same day's snapshot published `breadth 0/9` from a nine-symbol sliver, and the coverage guard the user asked for (D7) has no ticket yet (TKT-foundation-042/050) | dir:src/Ingestion/Metrics;config:Ingestion:MarketSnapshot:VolumeEligibilityThreshold;ticket:TKT-foundation-050 |
-| Fundamentals serving | `live-degraded` | `financials`, `profitability`, `growth`, `balance-sheet` and `dividends` are served from the canonical metric core (TKT-res-007/008/009, 052) — the FCF column is structurally empty because no cash-flow line item decodes (TKT-foundation-051 todo) | file:src/Api/Stocks/StockFundamentalsEndpoints.cs;dir:src/Core/Metrics;config:Ingestion:MarketSnapshot:VolumeEligibilityThreshold;ticket:TKT-foundation-051 |
-| Screener | `live-degraded` | Criteria builder, results and saved screens are live across all five families (TKT-scr-002..007); result quality is bounded by statement/metric coverage above, not by the screener itself | dir:src/Api/Screener;dir:src/Web/src/screens/screener;ticket:TKT-scr-005 |
-| Valuation and DCF | `live-degraded` | DCF compute, scenarios, sensitivity and baseline regeneration landed (TKT-val-002..010) — inputs stay `null` for many names because OCF/CAPEX never decode and share counts are unit-questioned, so `DCF_NOT_COMPUTABLE` is the honest answer per company | dir:src/Api/Valuation;dir:src/Ingestion/Valuation;ticket:TKT-val-010 |
-| Funds | `wired-not-configured` | The three TEFAS jobs are registered and scheduled and their ledger rows now name the reason (`SOURCE_NOT_CONFIGURED`), but `Ingestion:Funds` is configured **nowhere** — no section, no compose/`.env` passthrough — so every fund run fails honestly and instantly (OQ-FDF-002; TKT-foundation-044) | dir:src/Ingestion/Funds;noconfig:Ingestion:Funds:BaseUrl;ticket:TKT-foundation-044 |
-| Admin surface | `live` | Coverage, run ledger, triggers, quarantine review, descriptions, hidden metrics and DCF-baseline admin APIs plus the SCR-012 UI (TKT-mdf-010/011/012, res-006/010, scr-005, val-009); driven live throughout this week's repair runs | dir:src/Api/Admin;dir:src/Web/src/screens/admin;ticket:TKT-mdf-012 |
-| Accounts and sessions | `live` | Register, sign-in, password reset and account settings on ASP.NET Identity with CSRF and MailPit-verified reset delivery (TKT-acc-002..010); E2E covers the reset link end to end | dir:src/Api/Identity;config:Auth:NoticeVersions;ticket:TKT-acc-009 |
-| Pipeline scheduling and run ledger | `live-degraded` | EOD and morning chains, retry ladder, hung-run watchdog and `ingest_runs` ledger are live (2026-10-23 chain started 17:30:00.123, retry +5 min exactly) — but the shipped 90-minute attempt bound still cannot fit a healthy 100–120-minute chain, so a 4 h `MaxRunDuration` environment override is in operational use (TKT-foundation-062/064, TKT-foundation-075) | file:src/Ingestion/Scheduling/IngestionScheduler.cs;config:Ingestion:Scheduler:Cron;ticket:TKT-foundation-064 |
-| Web surfaces (SCR-001..012) | `live` | The 15-screen SPA is live against the API; CI proves the flows on the seeded stack (E2E 76/76 green on 2026-10-23), while the *honesty of the data it shows* belongs to the data rows above (TKT-mov-005..007, res-008..011, int-003) | dir:src/Web/src/screens;file:src/Web/src/routes/routeConfig.ts;ticket:TKT-int-003 |
+| Metrics and market snapshot | `live-degraded` | Input-aware recompute, snapshot and sector medians landed and repaired 2026-10-23 in place (runs 229–231) — but the same day's snapshot published `breadth 0/9` from a nine-symbol sliver, and the coverage guard the user asked for (D7) has no ticket yet (TKT-foundation-042/050; LC-07/LC-19) | dir:src/Ingestion/Metrics;config:Ingestion:MarketSnapshot:VolumeEligibilityThreshold;ticket:TKT-foundation-050 |
+| Fundamentals serving | `live-degraded` | `financials`, `profitability`, `growth`, `balance-sheet` and `dividends` are served from the canonical metric core (TKT-res-007/008/009, 052) — but every statement-derived input is 2023-vintage from the DEV gateway (LC-15), and the FCF column is structurally empty because no cash-flow line item decodes (TKT-foundation-051 todo; LC-08) | file:src/Api/Stocks/StockFundamentalsEndpoints.cs;dir:src/Core/Metrics;config:Ingestion:MarketSnapshot:VolumeEligibilityThreshold;ticket:TKT-foundation-051 |
+| Screener | `live-degraded` | Criteria builder, results and saved screens are live across all five families (TKT-scr-002..007); result quality is bounded by statement/metric coverage above, not by the screener itself (LC-08) | dir:src/Api/Screener;dir:src/Web/src/screens/screener;ticket:TKT-scr-005 |
+| Valuation and DCF | `live-degraded` | DCF compute, scenarios, sensitivity and baseline regeneration landed (TKT-val-002..010) — inputs stay `null` for many names because OCF/CAPEX never decode and share counts are unit-questioned, so `DCF_NOT_COMPUTABLE` is the honest answer per company (LC-08) | dir:src/Api/Valuation;dir:src/Ingestion/Valuation;ticket:TKT-val-010 |
+| Funds | `wired-not-configured` | The three TEFAS jobs are registered and scheduled and their ledger rows now name the reason (`SOURCE_NOT_CONFIGURED`), but `Ingestion:Funds` is configured **nowhere** — no section, no compose/`.env` passthrough — so every fund run fails honestly and instantly (OQ-FDF-002; TKT-foundation-044; LC-10) | dir:src/Ingestion/Funds;noconfig:Ingestion:Funds:BaseUrl;ticket:TKT-foundation-044 |
+| Admin surface | `live` | Coverage, run ledger, triggers, quarantine review, descriptions, hidden metrics and DCF-baseline admin APIs plus the SCR-012 UI (TKT-mdf-010/011/012, res-006/010, scr-005, val-009); observed live 2026-10-24 — `POST /admin/ingest/disclosures/run` started run 252 and its `ingest_runs` row was read back (LC-17) | dir:src/Api/Admin;dir:src/Web/src/screens/admin;ticket:TKT-mdf-012 |
+| Accounts and sessions | `ci-only` | Register, sign-in, password reset and account settings on ASP.NET Identity with CSRF and MailPit-verified reset delivery, proven end to end by CI on the seeded stack (TKT-acc-002..010). **No dated live observation is recorded** — the dev session restored on 2026-10-23 came from a DB-level password reset, not from exercising the flow — so the row is not `live` (LC-18) | dir:src/Api/Identity;config:Auth:NoticeVersions;ticket:TKT-acc-009 |
+| Pipeline scheduling and run ledger | `live-degraded` | EOD and morning chains, retry ladder, hung-run watchdog and `ingest_runs` ledger are live (2026-10-23 chain started 17:30:00.123, retry +5 min exactly). The *scope* of the bound was wrong until 064: the 90-minute whole-attempt bound is gone and PR #133 ships a **120-minute per-step bound and a 4-hour chain ceiling** as code defaults, with the operational `MaxRunDuration` override retired. **064's live criterion — a scheduled chain with zero `RUN_HUNG` on those defaults — is still unrun**; the earliest honest slot is Monday 2026-10-26 (Saturday: the morning chain is `TradingDaysOnly`; there is no admin *chain* trigger) (TKT-foundation-062/064; LC-01/LC-05) | file:src/Ingestion/Scheduling/IngestionScheduler.cs;config:Ingestion:Scheduler:Cron;ticket:TKT-foundation-064 |
+| Web surfaces (SCR-001..012) | `live` | The 15-screen SPA is live against the API; CI proves the flows on the seeded stack (E2E 76/76 green on 2026-10-23), and the live overview has been observed serving real data (including the honest nine-symbol counter-example) — the *honesty of the data it shows* belongs to the data rows above (TKT-mov-005..007, res-008..011, int-003; LC-14) | dir:src/Web/src/screens;file:src/Web/src/routes/routeConfig.ts;ticket:TKT-int-003 |
 <!-- /status:domains -->
 
 ---
@@ -76,8 +88,8 @@ must be present and empty, `noconfig:` must be absent, `ticket:` must exist.
 ## Live-criteria ledger
 
 CI is green on doubles, fixtures and a seeded stack. That is not the same as a working
-ingestion lane: this week CI was green while the live chain fail-stopped at `statements` six
-times, while the fund lane had never been wired at all, and while the site served a nine-symbol
+ingestion lane: this week CI was green while the live chain fail-stopped at `statements` on six
+attempts, while the fund lane had never been wired at all, and while the site served a nine-symbol
 day as "the market". Each row below is a landable claim, split into what a green pipeline can
 prove and what only a real run can prove, with the date of the last real observation.
 
@@ -88,75 +100,82 @@ is accepted (the checker fails on it).
 | ID | Claim | What CI proves | What only a live run proves | Last live observation |
 | --- | --- | --- | --- | --- |
 | LC-01 | The EOD chain starts on cron and retries on the ladder | the fake-clock schedule and retry arithmetic (TC-MDF-079..081) | that the process is awake, the cron fires in Europe/Istanbul, and a retry is scheduled from a real failure | 2026-10-23 — chain started 17:30:00.123, retry fired 17:52:37 (+5 min) exactly (TKT-foundation-062) |
-| LC-02 | A statements run over the ER005 world ends `partial`, never fail-stops the chain | the ER005 isolation and honest-partial tests on doubles (TC-MDF-096/097) | that the real gateway's 400 `ER005` is classified as end-of-list for the real stored cursors | 2026-10-23 — run 249 `partial`, 0 written / 60 unchanged / 25 quarantined; previous six runs (227/233/236/244) had failed (TKT-foundation-063) |
+| LC-02 | A statements run over the ER005 world ends `partial`, never fail-stops the chain | the ER005 isolation and honest-partial tests on doubles (TC-MDF-096/097) | that the real gateway's 400 `ER005` is classified as end-of-list for the real stored cursors | 2026-10-23 — run 249 `partial`, 0 written / 60 unchanged / 25 quarantined; the four named ER005 runs (227/233/236/244) plus two earlier zero-write attempts had failed (TKT-foundation-063) |
 | LC-03 | The stuck disclosure cursor is reset exactly once per symbol | the one-reset rule on a doubled 400 response | that a real persisted cursor is really rejected by the gateway and that the reset is not repeated | 2026-10-23 — run 249, two reset events, one per symbol (TTKOM, TOASO), no repeat (TKT-foundation-063) |
 | LC-04 | A day's price coverage is complete before the run reports success | per-symbol `NO_ROW_FOR_DATE` accounting and the bounded re-sweep on doubles | that the source's progressive publication is waited out and that the covered universe really reaches 100/100 | 2026-10-23 — 9/100 at 17:36 UTC, 64/100 at 20:09, and the re-run wrote exactly the missing symbols to reach 100/100 (chore #130, TKT-foundation-043) |
-| LC-05 | The watchdog reports a hung step honestly under the shipped bounds | fake-clock step/chain expiry cases (TC-MDF-098, todo) | that a healthy 100–120-minute chain completes without a false `RUN_HUNG`, with the 4 h override removed | 2026-10-23 — `RUN_HUNG` rows 203/208 named corporate-actions and disclosures; the 4 h `MaxRunDuration` override is still in place, so the shipped bound is **not** yet proven (TKT-foundation-064 todo) |
+| LC-05 | The watchdog reports a hung step honestly under the shipped bounds | the shipped 120-min step / 4-h chain defaults and the step-vs-chain attribution cases (TC_MDF_098_* in `EodStallWatchdogTests`) | that a **scheduled** chain completes with zero `RUN_HUNG` under those defaults, with the operational 4 h override removed | not yet observed — 064 merged 2026-10-24 (PR #133) and the `MaxRunDuration` override was retired, but no scheduled chain has run on the shipped defaults since: today is Saturday, the morning chain is `TradingDaysOnly`, and there is no admin *chain* trigger (only per-job `POST /admin/ingest/{job}/run`). Baseline: `RUN_HUNG` rows 203/208 (2026-10-22, pre-064) named the in-flight step of a 90-min whole-attempt expiry. Earliest honest slot: Monday 2026-10-26 (TKT-foundation-064) |
 | LC-06 | An intraday sweep stores a current-session quote | envelope parsing and session-date honesty on committed doubles | that the chosen endpoint serves the current session during trading hours | not yet observed — post-repoint (chore #129) the lane has had no sweep; the pre-repoint sweep run 218 was all-skipped (TKT-foundation-047) |
 | LC-07 | The market overview never publishes a whole-market aggregate from a sliver | snapshot arithmetic and nullable index levels (031/042) | that a thin publication day is refused rather than rendered as `breadth 0/9` | not yet observed — the coverage guard does not exist yet (USER DECISION D7 asks for it, no ticket sliced); the 2026-10-23 row is the live counter-example |
 | LC-08 | FCF and the DCF inputs compute from real statements | the FCF formula and null-if-missing goldens (TC-MDF-060 class) | that the KAP cash-flow concept spellings actually decode into `OCF`/`CAPEX` rows | never observed — `OCF` and `CAPEX` have zero rows in `fin_line_items` (read-only DB check 2026-10-22, TKT-foundation-051 todo) |
 | LC-09 | The served share count is a share count | the store and serving contract on doubles (TC-MDF-092/093) | that `currentCapital` divided by a per-instrument nominal gives the real count for all 556 instruments | 2026-10-23 — run 219 wrote 556 rows and five majors matched known counts, but 64/556 rows carry sub-unit precision, so the claim is **not** established (TKT-foundation-058/065) |
 | LC-10 | A failed fund run carries its reason | the reason vocabulary and the non-empty `error` assertion on every failed path (TC-FDF-014/015) | that the scheduled fund window writes those reasons instead of empty rows | not yet observed — the last fund window before the fix (2026-10-23 runs 220–224) wrote instant failures with an empty `error`; the fix merged after it (TKT-foundation-044) |
-| LC-11 | The dividend, corporate-action and disclosure families complete with honest skips | per-disclosure isolation, fault envelope, transport and timeout cases (TC-MDF-094/095) | that the real gateway's per-item 500s, `fault` envelopes and stalls are quarantined while the walk finishes | not yet observed — merged in PR #125 after the 2026-10-23 chain never reached step 5; the 2026-10-22 close-recovery re-run is still owed (TKT-foundation-061) |
+| LC-11 | The dividend, corporate-action and disclosure families complete with honest skips | per-disclosure isolation, fault envelope, transport and timeout cases (TC-MDF-094/095) | that the real gateway's per-item 500s, `fault` envelopes and stalls are quarantined while the walk finishes | 2026-10-24 — the **disclosures half** is observed: run 252 completed `partial` in 864 s, 50 written, TRALT/TRMET isolated as `COMPANY_IDENTITY_UNRESOLVED` (TKT-foundation-078). The dividend and corporate-action halves are still unrun — the 2026-10-22 close-recovery re-run is owed (TKT-foundation-061) |
 | LC-12 | The macro strip is fresh from a real publication | freshness rules per series and publication-aware monthly windows (TKT-foundation-038) | that TÜİK/CBRT publications are ingested from the source rather than entered by hand | 2026-10-20 — TÜFE and CBRT_REPO served `stale: false` on their latest published values, from manual entry; the EVDS pull itself is unproven (TKT-foundation-019/038) |
 | LC-13 | The covered universe and index levels are the real BIST ones | the committed XU030/XU100 seed and the universe-sync contract | that the membership and levels match what the exchange published that day | 2026-10-23 — `universe-sync` completed in 21 s inside the EOD chain and landed the day's index levels |
 | LC-14 | The browser surfaces tell the truth about the data they show | E2E flows on the seeded fixture stack (76/76 on 2026-10-23) | that real, partial and stale data render as such — the 2026-10-23 nine-symbol market page is only visible live | 2026-10-23 — CI green 76/76 while the live overview showed a nine-symbol day (the counter-example LC-07 exists for) |
+| LC-15 | Every KAP-sourced lane reads a current production source, not a frozen test snapshot | nothing about currency — no double can encode whether an external source is today's | that `Ingestion:Kap:BaseUrl` points at production VYK and its head is today's disclosure, so statements/disclosures/dividends/corporate-actions/fundamentals are current | 2026-10-24 — the gateway is KAP's **DEV** host `apigwdev.mkk.com.tr/api/vyk`; head `1231017` is a "Test Bildirimi" dated 31.12.2023; `financial_statements` range 2022-12-31 → 2023-09-30; `apigw.mkk.com.tr`/`apigwprod.mkk.com.tr` do not resolve; **OQ-KAP-PROD outstanding** (run-report 12:20 UTC; TKT-foundation-078) |
+| LC-16 | The disclosures lane completes a bounded pass and a second run is incremental | TC-MDF-099/100/101 on doubles (bootstrap window, market feed, deadline truncation/resume) | that a real pass finishes inside its bound, advances the cursor to the gateway head without re-walking, and that the next run is a single incremental page | 2026-10-24 — run 252 `partial`, written 50, Facts 50 / Pages 21 / Details 50 / OutOfBound 970 / Truncated false, cursor to head 1231017, 864 s (14.4 min), TRALT/TRMET isolated `COMPANY_IDENTITY_UNRESOLVED`; **the second-run incremental half is not yet run** (TKT-foundation-078) |
+| LC-17 | The admin surface drives and reports real ingestion runs | the admin API/UI contracts on doubles (TKT-mdf-010/011/012) | that an operator can trigger a job on the deployed stack and read back the resulting `ingest_runs` row and the review views | 2026-10-24 — `POST /admin/ingest/disclosures/run` started run 252 and its `ingest_runs` row was read back (partial, written 50, 864 s; run-report 12:20 UTC) |
+| LC-18 | Register, sign-in, password reset and account settings work on a deployed stack | the full flow on the seeded stack (TC-ACC-* and the E2E MailPit reset link) | that a real user completes registration, reset delivery through a real mailbox, and settings changes on the deployed product | not yet observed — no dated live record exists; the dev session restored on 2026-10-23 was a DB-level password reset, not an exercised flow (TKT-acc-002..010) |
+| LC-19 | A configured BIST holiday is honoured on the live overview with honest freshness | calendar semantics, holiday freshness and the gated skip row on doubles (TC-MDF-087, TC_MDF_011) | that on the first trading morning after a real holiday the overview reads fresh-not-stale and the holiday-skip ledger row exists | not yet observed — 048 merged 2026-10-24 (PR #140) and no holiday has passed since; the next configured holiday is 2026-10-29. **Market overview only**: the stock page keeps the pre-048 weekday rule and is owed a follow-up |
 <!-- /status:ledger -->
 
 ### This week's worked examples
 
 Three cases from 2026-10-19..24 that show why this ledger exists:
 
-1. **Statements looked implemented and failed instantly for days.** Six consecutive EOD runs
-   (227/233/236/244…) reported `failed` on an `ER005` world the doubles never reproduced, and
-   each fail-stop took `metrics-recompute`, `market-snapshot` and `medians` with it. The lane
-   only became honestly `partial` on run 249 **after** TKT-foundation-063 pinned the class
-   (LC-02/LC-03). "CI green" had been true the whole time.
+1. **Statements looked implemented and failed instantly for days.** Four named ER005 runs
+   (227/233/236/244) plus two earlier zero-write attempts reported `failed` on an `ER005` world
+   the doubles never reproduced, and each fail-stop took `metrics-recompute`, `market-snapshot`
+   and `medians` with it. The lane only became honestly `partial` on run 249 **after**
+   TKT-foundation-063 pinned the class (LC-02/LC-03). "CI green" had been true the whole time.
 2. **Prices looked done and served a nine-symbol day.** The EOD feed publishes progressively, so
    run 243 recorded eleven constituents as written-0/unchanged-0/quarantined-0/failed-false —
    nothing at all — and the snapshot then published `breadth 0/9` as the market. The repair
    (bounded re-sweep + named `NO_ROW_FOR_DATE`, chore #130) took the day to 100/100 (LC-04), but
    the aggregate-level guard (LC-07) is still missing.
-3. **The `RUN_HUNG` 4 h bound is a workaround, not a design.** `MaxRunDuration` bounds the whole
-   attempt at 90 minutes, so a healthy 100–120-minute chain can never finish; operations raised
-   it to 4 h by environment variable. No fake-clock test could see that, because the test clock
-   said exactly what the code said (LC-05). TKT-foundation-064 (todo) replaces it with a
-   per-step bound and a 4 h ceiling, and its live criterion is the removal of the override.
+3. **The `RUN_HUNG` 4 h bound *was* a workaround, not a design.** Under the pre-064 code
+   `MaxRunDuration` bounded the whole attempt at 90 minutes, so a healthy 100–120-minute chain
+   could never finish; operations raised it to 4 h by environment variable. No fake-clock test
+   could see that, because the test clock said exactly what the code said (LC-05).
+   TKT-foundation-064 (PR #133, merged 2026-10-24) replaced it with the shipped **120-minute
+   per-step bound and 4-hour chain ceiling**, and the override was retired. **The live half is
+   still owed**: no scheduled chain has yet run on the shipped defaults — the earliest honest slot
+   is Monday 2026-10-26.
 
 ---
 
 ## Open tickets
 
 The source of record is always the ticket file; this table is the one-screen view of every
-ticket that is not terminal (it always lists only `todo` / `in-review` / `in-progress` /
-`blocked` / `deferred` tickets, never `done` or `superseded` ones). The checker requires that
-set to match these rows exactly, so a landed or newly sliced ticket cannot silently disappear
-from view. A row may stay `in-review` for a ticket that has merged (that class flips to `done`
-without a same-commit doc edit) and must be refreshed on the next landed change.
+ticket that is **not terminal**. Terminal means exactly `done`, `superseded` or `cancelled`; every
+other status word — including `partially resolved`, `blocked-upstream` or a typo — is **open** and
+requires a row. The checker requires that set to match these rows exactly, so a landed or newly
+sliced ticket cannot silently disappear from view. A row may stay `in-review` for a ticket that
+has merged (that class flips to `done` without a same-commit doc edit) and must be refreshed on
+the next landed change.
 
 <!-- status:tickets -->
 | Ticket | Ticket status | Blocker / next step |
 | --- | --- | --- |
 | TKT-foundation-035 | `todo` | Prices `CONFLICTING_VALUE` re-fetch drift backlog; user decided D5-A (keep-first + bulk-resolve tool with audit trail), ticket not yet re-dispatched. |
 | TKT-foundation-044 | `in-review` | PR #132 merged: failed fund rows now carry a reason and an unconfigured source refuses by name; ticket flip to `done` pending. Funds stay out of V0 until OQ-FDF-002 is resolved. |
-| TKT-foundation-045 | `todo` | Crash-evidence capture for the SIGABRT exit 134; dispatch-ready, no dependency. |
-| TKT-foundation-048 | `todo` | BIST holiday calendar over the empty `TradingCalendar.Holidays` seam; serialized behind 064 (same scheduler files). |
-| TKT-foundation-051 | `todo` | Capture-gated: needs a committed paced cash-flow capture set before the ConceptMap can be extended; blocks FCF and therefore most DCFs. |
+| TKT-foundation-045 | `in-review` | PR #131 merged: crash-evidence hooks and the previous-run startup report landed. Still owed: the native-abort dump knobs are an orchestrator action on `compose.*.yml` (outside the ticket scope) and the live criterion — a deliberately-triggered abort leaving recoverable evidence — is unrun. |
+| TKT-foundation-051 | `todo` | Capture-gated: needs a committed paced cash-flow capture set before the ConceptMap can be extended; blocks FCF and therefore most DCFs. Now also gated on the KAP source being current (LC-15, OQ-KAP-PROD). |
 | TKT-foundation-056 | `blocked` | Parked hardening/improvement umbrella — only items 5 (advisory locks), 10 (performance budgets) and 14 (live calendar probe) remain parked. |
-| TKT-foundation-061 | `in-review` | PR #125 merged: family per-disclosure isolation + bounded detail fetch; live criteria (CA `partial` on a real chain, 2026-10-22 close recovery) still to be recorded verbatim. |
-| TKT-foundation-064 | `todo` | Per-step watchdog bound + 4 h chain ceiling; removes the operational `MaxRunDuration` override (the live criterion in LC-05). |
-| TKT-foundation-065 | `blocked` | Share-count unit needs a direction; a note in the gitignored run report records user decision D4-A (relabel as paid-in capital) but the ticket itself is not amended, so the code still serves `sharesOutstanding`. |
+| TKT-foundation-061 | `in-review` | PR #125 merged: family per-disclosure isolation + bounded detail fetch. The disclosures half is now observed live (run 252); the dividend/corporate-action halves and the 2026-10-22 close-recovery re-run are still to be recorded verbatim. |
+| TKT-foundation-064 | `in-review` | PR #133 merged 2026-10-24: 120-min per-step bound + 4-h chain ceiling are code defaults and the operational override is retired. Owed: the live criterion (a *scheduled* chain with zero `RUN_HUNG` on those defaults) — earliest honest slot Monday 2026-10-26. |
+| TKT-foundation-065 | `partially` | `partially resolved`: user decision D4-A (relabel as paid-in capital, no `sharesOutstanding` claim) is recorded verbatim on the ticket; the display half landed in TKT-foundation-072 (PR #137). Still owed: the contract/model half — the `03` `shareCount` block, the `02` `share_counts` semantics and the API field — so the API still serves `currentCapital` under the name `sharesOutstanding`. |
 | TKT-foundation-066 | `todo` | CI hardening — secret scan, dependency audit, container scan as required checks (also the follow-up that would wire this file's checker into CI). |
 | TKT-foundation-067 | `todo` | Deploy migration safety — readiness gate and a defined rollback posture. |
 | TKT-foundation-068 | `todo` | Source-contract probes — live shape-drift detection against the committed doubles. |
 | TKT-foundation-069 | `todo` | VYK cursor/fact transaction window — a store failure must not advance the cursor past unwritten facts. |
 | TKT-foundation-070 | `todo` | Metric formula versioning — recompute provenance across formula changes. |
 | TKT-foundation-071 | `todo` | OpenAPI contract codegen — contract drift eliminated at build time. |
-| TKT-foundation-072 | `todo` | Units branding — display-side unit semantics; depends on the 065 direction. |
 | TKT-foundation-073 | `todo` | Stale-"why" explanatory copy on every surface, not just SCR-001. |
-| TKT-foundation-074 | `in-review` | This file and its checker; PR open against `dev`. |
-| TKT-foundation-075 | `todo` | `docs/live-vs-ci.md` — the general CI/live/manual classification rule (this file's ledger is the current instance of it). |
+| TKT-foundation-074 | `in-review` | This file and its checker; PR #136 open against `dev`. |
 | TKT-foundation-076 | `todo` | Restore drill — exercise the backup restore for real (P3/LOW by user instruction). |
+| TKT-foundation-078 | `in-review` | PR #139 merged: the disclosures walk is bounded and finishes (run 252, 864 s, 50 written, cursor to head). Owed: the second-run incremental half of the live criterion — and the downloaded rows are **2023 data** because the gateway is KAP's DEV head (LC-15, OQ-KAP-PROD). |
 | TKT-mov-009 | `blocked` | Independent (ENAG-class) inflation source is unreachable; user decision D2-A keeps it parked, re-probe once before release. |
 | TKT-acc-001 | `blocked` | Visual design record for SCR-007..010 kept as the spec set for a future vision-capable design pass (D1-B); not dispatchable today. |
 | TKT-mdf-001 | `blocked` | Visual design record for SCR-012 kept for the same design pass (D1-B). |
@@ -171,17 +190,28 @@ without a same-commit doc edit) and must be refreshed on the next landed change.
 
 ## Known gaps and parked items
 
+- **KAP is a frozen DEV mirror and that is the biggest data gap.** `Ingestion:Kap:BaseUrl` is
+  `apigwdev.mkk.com.tr/api/vyk`; its head index is a test notification dated 2023-12-31 and
+  `financial_statements` stops at 2023-09-30. No code change fixes this — it needs production
+  VYK access (**OQ-KAP-PROD**, outstanding with the user). Until then every KAP-sourced lane is
+  labelled `live-degraded` and every KAP-derived surface is 2023 data (LC-15); 051, multiples,
+  sector medians and most DCFs stay gated on this, not on the chain.
 - **Funds are not wired and that is not a defect to hide.** OQ-FDF-002 (TEFAS programmatic
   access) is unverified. Until a real endpoint is verified and `Ingestion:Funds:BaseUrl` is
   configured, the correct behaviour is the one that ships: an instant, reason-carrying failure
   (`SOURCE_NOT_CONFIGURED`). A follow-up ticket for the OQ-FDF-002 discovery + wiring is owed.
 - **Share counts are paid-in capital.** `currentCapital` is a monetary figure; the API field is
-  still named `sharesOutstanding`. That is a contract lie of the mild kind, blocked on the
-  TKT-foundation-065 direction (a decision recorded only in the gitignored run report so far).
+  still named `sharesOutstanding`. TKT-foundation-065 records user decision D4-A verbatim
+  (relabel as paid-in capital) and is `partially resolved`: the display half landed in
+  TKT-foundation-072 (PR #137), the contract/model half is still owed.
 - **FCF/DCF inputs.** No cash-flow line items decode, so FCF, SNA and most DCFs are honestly
   not computable. Gated on the paced cash-flow capture set (TKT-foundation-051).
 - **Snapshot coverage guard.** The user asked for it (D7) after the nine-symbol day; no ticket
   has been sliced for it. Recorded here so it is not lost between planning waves (LC-07).
+- **Stock-page holiday freshness.** 048 closed the holiday rule for the **market overview only**;
+  `StockOverviewAndValuationEndpoints.FreshnessAsync` keeps the pre-048 weekday rule, so a stock
+  page still reads `stale` on the first trading morning after a holiday. Owed a follow-up ticket
+  (LC-19).
 - **CI does not run this checker.** Wiring it into required CI belongs to TKT-foundation-066
   (`ci.yml` is not in this ticket's scope); until then the rule below is enforced locally and
   in review.
@@ -192,9 +222,10 @@ without a same-commit doc edit) and must be refreshed on the next landed change.
 
 ## Update rule
 
-The rule is not aspirational — steps 1 and 3-6 are executed by
+The rule is not aspirational — steps 2–6 are enforced by
 `scripts/implementation-status.sh`, which exits non-zero when a documented claim no longer
-matches the repository. Run it before committing any change to this file.
+matches the repository. (Step 1 *is* that script; steps 7–8 are review discipline, not checks.)
+Run it before committing any change to this file.
 
 1. **The checker must pass.** `scripts/implementation-status.sh` exits 0 before the change is
    committed. It is read-only, needs no network and no database, and pins its clock with
@@ -203,7 +234,8 @@ matches the repository. Run it before committing any change to this file.
    add a row; ticket lands → flip the row; ticket leaves the open set → delete the row. The
    checker compares the row's class with the ticket file and fails on disagreement, with one
    documented tolerance: an `in-review` row may flip to `done`/`superseded` on merge without a
-   same-commit edit.
+   same-commit edit. Only `done`, `superseded` and `cancelled` are terminal; everything else must
+   have a row.
 3. **A ticket that changes what the code or configuration can do updates the affected domain
    row** — status, evidence, and the `Checks` column. If you wire a config section that a row
    claims is absent (Funds, EVDS), the checker fails until the row is corrected; the same
@@ -215,7 +247,9 @@ matches the repository. Run it before committing any change to this file.
    (`--max-age-days` to change the limit), so an untouched file degrades into a red check rather
    than into folklore.
 6. **Never promote a domain to `live` without a dated live observation** in the ledger, and
-   never demote a `live` row to silence a failing check — fix the claim, or fix the code.
+   never demote a `live` row to silence a failing check — fix the claim, or fix the code. The
+   checker requires every domain row to cite an existing `LC-nn`; a `live` row must cite one
+   whose last observation is a date, not "not yet observed".
 7. **When this file and the code disagree, the code is right.** Change the row; if the code is
    wrong, that is a ticket, not a footnote.
 8. **Do not edit `.pipeline/plan/board.md`** from here. The board is a regenerable view; the
