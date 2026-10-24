@@ -1,0 +1,125 @@
+{
+  "source": "tefas-funds",
+  "endpoint": "",
+  "double": {
+    "catalogEntry": "tefas-tef0001",
+    "file": "fixtures/Degerli.Fixtures/CannedSourceCatalog.cs",
+    "provenance": "constructed",
+    "note": "FU-synthetic TEFAS fund double; no real endpoint is pinned in the repository yet"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.fund",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.fund.code",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.fund.name",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.fund.type",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.holdings",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.holdings[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.holdings[].lineNo",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.holdings[].nameRaw",
+      "kinds": "null,string",
+      "nullable": true
+    },
+    {
+      "path": "$.holdings[].symbol",
+      "kinds": "null,string",
+      "nullable": true
+    },
+    {
+      "path": "$.holdings[].units",
+      "kinds": "null,number",
+      "nullable": true
+    },
+    {
+      "path": "$.holdings[].weight",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.navs",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.navs[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.navs[].date",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.navs[].value",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.performance",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.performance[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.performance[].asOfDate",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.performance[].period",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.performance[].returnValue",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.sourceRef",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}

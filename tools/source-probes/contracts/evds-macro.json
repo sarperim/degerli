@@ -1,0 +1,145 @@
+{
+  "source": "evds-macro",
+  "endpoint": "https://evds3.tcmb.gov.tr/igmevdsms-dis/fe?series={series}&startDate={startDate}&endDate={endDate}&type=json&key={apiKey}",
+  "double": {
+    "catalogEntry": "evds-v3-capture",
+    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "provenance": "captured",
+    "note": "bounded verbatim EVDS 3.0 /fe capture (2026-10-18), 01 \u00a710.9.6"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [
+    "$.items[]",
+    "$.seriesNames",
+    "$.frequencyConversion",
+    "$.transposedItems[]"
+  ],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.frequencyConversion",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.frequencyConversion.TP.DK.EUR.S.YTL",
+      "kinds": "boolean",
+      "nullable": false
+    },
+    {
+      "path": "$.frequencyConversion.TP.DK.USD.S.YTL",
+      "kinds": "boolean",
+      "nullable": false
+    },
+    {
+      "path": "$.items",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.items[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.items[].TP_DK_EUR_S_YTL",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.items[].TP_DK_USD_S_YTL",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.items[].Tarih",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.items[].UNIXTIME",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.items[].UNIXTIME.$numberLong",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.seriesNames",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.seriesNames.TP_DK_EUR_S_YTL",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.seriesNames.TP_DK_USD_S_YTL",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.totalCount",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedColumns",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedColumns[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedColumns[].key",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedColumns[].title",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems[].15-10-2026",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems[].16-10-2026",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems[].serieCode",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.transposedItems[].serieName",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}

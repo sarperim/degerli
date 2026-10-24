@@ -1,0 +1,50 @@
+{
+  "source": "kap-members",
+  "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/members",
+  "double": {
+    "catalogEntry": "kap-vyk-members",
+    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "provenance": "constructed",
+    "note": "hand-constructed shape-faithful member list (shape live-verified 2026-10-18)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$[].id",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].kfifUrl",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$[].memberType",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].stockCode",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].title",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}

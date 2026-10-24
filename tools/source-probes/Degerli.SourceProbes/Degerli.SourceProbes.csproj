@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Source-contract probe harness (TKT-foundation-068; 01 §10.9 envelope contracts,
+       §6.1 why live probes are not CI checks).
+
+       A REPORT-ONLY operator tool: it compares the *structural shape* of a real source
+       response against the shape of the committed double for that source and writes a
+       drift report. It is never a required CI check, it never edits a double, and it
+       never runs against a live source unless the operator explicitly asks for it.
+
+       Deliberately dependency-free (BCL only). The fixture project is NOT referenced:
+       the expected shapes are checked-in, reviewable contract files derived from the
+       committed doubles (see `contracts/` and docs/source-contract-probes.md), which
+       keeps this assembly linkable from the L1 unit-test project without dragging the
+       EF-backed fixture module into L1. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Degerli.SourceProbes</AssemblyName>
+    <RootNamespace>Degerli.SourceProbes</RootNamespace>
+  </PropertyGroup>
+
+</Project>

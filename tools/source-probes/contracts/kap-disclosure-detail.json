@@ -1,0 +1,310 @@
+{
+  "source": "kap-disclosure-detail",
+  "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/disclosureDetail/{disclosureIndex}",
+  "double": {
+    "catalogEntry": "kap-vyk-disclosure-detail",
+    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "provenance": "captured",
+    "note": "bounded live capture, disclosure 1226255 (2026-10-18), presentation trees trimmed (01 \u00a710.9.11)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.attachmentUrls",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.behalfSenderId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.consolidation",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.disclosureClass",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.disclosureIndex",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.disclosureReason",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.disclosureType",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.link",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.period",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.period.en",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.period.tr",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].Period",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].Period.endDate",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].Period.instant",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].Period.startDate",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].id",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ContextList.Context[].key",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value[].contextId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value[].currency",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value[].rounding",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].Values.Value[].value",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].langs",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].langs.lang",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].langs.lang[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].langs.lang[].code",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].langs.lang[].value",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].name",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.ReportItem[].preferredLabel",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.abstract",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.ReportItem.name",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.id",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].content.isMultiDimensional",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.presentation[].id",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.relatedStocks",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.senderExchCodes",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.senderExchCodes[]",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.senderId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.senderTitle",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.subject",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.subject.en",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.subject.tr",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.summary",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.summary.en",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$.summary.tr",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$.time",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.year",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}

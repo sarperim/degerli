@@ -1,0 +1,130 @@
+{
+  "source": "yahoo-chart",
+  "endpoint": "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.IS?range=5d&interval=1d",
+  "double": {
+    "catalogEntry": "prices-yahoo-contingency",
+    "file": "fixtures/Degerli.Fixtures/CannedSourceCatalog.cs",
+    "provenance": "constructed",
+    "note": "hand-constructed Yahoo chart double from the FU universe (the documented .IS contingency, 03 \u00a71.2)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.error",
+      "kinds": "null",
+      "nullable": true
+    },
+    {
+      "path": "$.chart.result",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].close",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].close[]",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].high",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].high[]",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].low",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].low[]",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].open",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].open[]",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].volume",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].indicators.quote[].volume[]",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].meta",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].meta.currency",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].meta.symbol",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].timestamp",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$.chart.result[].timestamp[]",
+      "kinds": "number",
+      "nullable": false
+    }
+  ]
+}
