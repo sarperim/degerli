@@ -8,9 +8,19 @@ scope:
   - tests/Api.IntegrationTests/TradingCalendarTests.cs
   - tests/Api.IntegrationTests/MarketOverviewFreshnessTests.cs
   - tests/Api.IntegrationTests/EodChainTests.cs
+  - src/Ingestion/Scheduling/IngestionScheduler.cs
+  - src/Ingestion/Scheduling/IngestionSchedulerOptions.cs
+  - tests/Api.IntegrationTests/SchedulerTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
 ---
+
+> **SCOPE AMENDED — USER DECISION 2026-10-24 (Option A).** The holiday-gate half of acceptance (iii) (the
+> named holiday-skip run-ledger row + the intraday holiday gate) lives in `IngestionScheduler.cs` /
+> `IngestionSchedulerOptions.cs`, which the original scope omitted — the coder correctly stopped and
+> blocked rather than widening. Both files (plus `SchedulerTests.cs`) are now in scope so 048 finishes as
+> one coherent ticket. **Serialization:** 064 (PR #133) owns those files while in review; 048's remaining
+> work rebases onto `dev` only after 064 merges. No other widening is sanctioned.=
 
 # TKT-foundation-048: BIST holiday calendar — populate the existing `TradingCalendar.Holidays` seam, extend freshness honesty to holidays, and gate holiday runs (user's auto-update requirement, part 2)
 
