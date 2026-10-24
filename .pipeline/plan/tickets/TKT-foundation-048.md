@@ -24,7 +24,8 @@ scope:
 
 # TKT-foundation-048: BIST holiday calendar — populate the existing `TradingCalendar.Holidays` seam, extend freshness honesty to holidays, and gate holiday runs (user's auto-update requirement, part 2)
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/140
 - Size: S
 - **Priority: P2.** The user's requirement (2026-10-22): "at weekends it should display it too and also holidays it should display it too" — weekends already read fresh via 037's stored-trading-day rule; **the missing piece is the BIST holiday calendar** so a holiday Monday doesn't render `stale: true` on Tuesday morning.
 - Source-verified starting point: the seam **already exists and is empty** — `src/Ingestion/Scheduling/TradingCalendar.cs` + `"TradingCalendar": { "Holidays": [] }` in `appsettings.json`, consumed today by `MarketSnapshotStore` (and wired via `IngestionServiceCollectionExtensions`). This ticket populates and extends it; it does not create a new abstraction.
