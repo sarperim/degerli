@@ -415,11 +415,12 @@ public sealed class MarketOverviewFreshnessTests : IClassFixture<PostgresFixture
 
     /// <summary>
     /// The in-process host with one extra <b>configured holiday</b> (TKT-foundation-048: the
-    /// calendar is configuration, planner pin 1). The override is index 0 of the shipped
-    /// <c>Ingestion:TradingCalendar:Holidays</c> array, so it prepends to the seeded BIST list —
-    /// the world therefore has the real publication dates <i>and</i> this case's holiday, which is
-    /// what an operator-added date looks like. The fake clock instance is the factory's own, so
-    /// the derived host keeps the case's instant.
+    /// calendar is configuration, planner pin 1). The override targets index 0 of the shipped
+    /// <c>Ingestion:TradingCalendar:Holidays</c> array, so it <i>replaces</i> the seeded
+    /// 2025-01-01 New Year closure rather than adding to it — the world holds the real
+    /// publication dates except 2025-01-01, plus this case's holiday, which is what an
+    /// operator-edited list looks like. No case here depends on 2025-01-01. The fake clock
+    /// instance is the factory's own, so the derived host keeps the case's instant.
     /// </summary>
     private static WebApplicationFactory<Program> WithHoliday(DegerliAppFactory factory, DateOnly holiday) =>
         factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>

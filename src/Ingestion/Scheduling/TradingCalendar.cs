@@ -25,6 +25,12 @@ public interface IIngestionCalendar
     /// holiday</b>, walked back, never a weekday assumption (TKT-foundation-048 planner pin 2).
     /// A trading day resolves to itself; a holiday Monday resolves to the preceding trading day
     /// (Friday), and a closure plateau is walked past entirely rather than half-entered.
+    /// <para>
+    /// This is the <b>pinned-semantics reference</b> for the rule, not the production run-date
+    /// path: <c>IngestionScheduler.ResolveRunDate</c> keeps its own inline back-walk (with its
+    /// 14-day fallback) and the serve side re-asks the store in <c>MarketEndpoints</c>. Tests pin
+    /// the semantics here.
+    /// </para>
     /// </summary>
     DateOnly LatestTradingDayOnOrBefore(DateOnly date);
 }
@@ -89,6 +95,8 @@ public sealed class ConfiguredTradingCalendar : IIngestionCalendar
     {
         // Bounded by a full year: a calendar with no trading day at all is a configuration
         // error, and failing loudly beats an unbounded walk (or a silently invented date).
+        // The walk tests `date` itself plus MaxHolidayPlateauDays days back, i.e. 367 dates —
+        // the throw message states that count so the wording and the loop agree.
         var candidate = date;
         for (var back = 0; back <= MaxHolidayPlateauDays; back++)
         {
@@ -101,7 +109,7 @@ public sealed class ConfiguredTradingCalendar : IIngestionCalendar
         }
 
         throw new InvalidOperationException(
-            $"No trading day found within {MaxHolidayPlateauDays} days at or before {date:yyyy-MM-dd}; " +
+            $"No trading day found within {MaxHolidayPlateauDays + 1} days at or before {date:yyyy-MM-dd}; " +
             "check Ingestion:TradingCalendar:Holidays.");
     }
 }

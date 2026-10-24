@@ -366,8 +366,10 @@ public sealed class IngestionScheduler
     /// <b>A holiday skip is never silent</b> (TKT-foundation-048, planner pin 3). A gated
     /// occurrence that falls on a <i>configured holiday</i> runs no job but writes one short
     /// run-ledger row (<see cref="HolidaySkipJobCode"/>) naming the stream and dating the
-    /// holiday — once per stream per holiday, not per occurrence, so a four-pass cadence does
-    /// not flood the ledger. A <i>weekend</i> occurrence stays silent: it needs no explanation
+    /// holiday — once per stream per holiday <i>per process lifetime</i>, not per occurrence, so a
+    /// four-pass cadence does not flood the ledger; the dedupe marker is in memory, so a restart
+    /// mid-holiday may re-record the same holiday (one extra row, never a silent gap). A
+    /// <i>weekend</i> occurrence stays silent: it needs no explanation
     /// and the pre-048 ledger contract for weekends is unchanged. The skip is not an attempt:
     /// no step timer is armed, no <c>RUN_HUNG</c> can be declared, and the retry ladder is not
     /// involved — it completes immediately.
@@ -512,10 +514,10 @@ public sealed class IngestionScheduler
     /// The day a run targets (01 v1.5 §10.9.16). The EOD stream runs for its occurrence date;
     /// the morning stream runs for the <b>previous trading day</b> — BIST prices are EOD, so an
     /// 08:30 pass has no session of its own to ingest and must never imply newer market prices.
-    /// The back-walk uses the configured calendar (the same weekday/ holiday posture every
-    /// stream has: the holiday list is configuration and ships empty, so the back-walk is
-    /// weekday-based in production today; a job's own stored-facts resolution self-heals, the
-    /// §10.9.13 doctrine).
+    /// The back-walk uses the configured calendar (the same weekday/holiday posture every
+    /// stream has: the shipped configuration carries the BIST closures, so the walk skips both
+    /// weekends and those configured holidays; a job's own stored-facts resolution still
+    /// self-heals, the §10.9.13 doctrine).
     /// </summary>
     private DateOnly ResolveRunDate(ScheduleStream stream, DateOnly occurrenceDate)
     {
@@ -1232,7 +1234,8 @@ public sealed class IngestionScheduler
 
     /// <summary>
     /// The durable record of a <b>holiday skip</b> (TKT-foundation-048, planner pin 3): one short
-    /// run-ledger row per gated stream per configured holiday, in the same shape as the prices
+    /// run-ledger row per gated stream per configured holiday (per process lifetime: the marker is
+    /// in memory, so a restart mid-holiday may write the row again), in the same shape as the prices
     /// gate's skip row (<c>gate</c>/<c>gateOutcome</c>) plus the stream name and the holiday date.
     /// <para>
     /// The job code is <see cref="HolidaySkipJobCode"/>, deliberately not a registered job: a
@@ -1285,6 +1288,17 @@ public sealed class IngestionScheduler
         }
         catch (Exception exception)
         {
+            // The row did not land: forget the dedupe marker so the next occurrence of this
+            // holiday retries the write instead of leaving the holiday unexplained forever
+            // (TKT-foundation-048: never a silent no-run, even under a transient store failure).
+            lock (_gate)
+            {
+                if (stream.HolidaySkipRecordedFor == holiday)
+                {
+                    stream.HolidaySkipRecordedFor = null;
+                }
+            }
+
             _logger.LogError(
                 exception,
                 "Could not write the {ReasonCode} run-ledger row for stream {Stream} on {Date}.",
@@ -1378,7 +1392,8 @@ public sealed class IngestionScheduler
         /// The holiday date this stream has already explained in the run ledger
         /// (TKT-foundation-048): a gated stream writes <b>one</b> holiday-skip row per holiday,
         /// however many occurrences its cron has inside that day, and starts explaining again
-        /// on the next holiday.
+        /// on the next holiday. The marker lives in memory only — a restart mid-holiday
+        /// re-seeds from the next occurrence and may write the same holiday's row again.
         /// </summary>
         public DateOnly? HolidaySkipRecordedFor { get; set; }
 

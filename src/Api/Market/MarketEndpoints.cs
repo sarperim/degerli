@@ -209,6 +209,12 @@ public static class MarketEndpoints
     /// genuinely stored session, never a fabricated one, and a genuinely newer <i>trading</i>
     /// session still proves the served row is behind.
     /// </para>
+    /// <para>
+    /// When the re-ask walks off the end of the store (every stored date at or before
+    /// <paramref name="onOrBefore"/> is non-trading), there is no session left to prove the row
+    /// fresh, so the discredited stored maximum is returned — the conservative answer, never a
+    /// silent flip to fresh.
+    /// </para>
     /// </summary>
     private static async Task<DateOnly?> ResolveLatestStoredTradingDayAsync(
         MarketSnapshotStore store,
@@ -216,7 +222,8 @@ public static class MarketEndpoints
         DateOnly onOrBefore,
         CancellationToken cancellationToken)
     {
-        var latest = await store.ResolveLatestStoredTradingDayAsync(onOrBefore, cancellationToken);
+        var stored = await store.ResolveLatestStoredTradingDayAsync(onOrBefore, cancellationToken);
+        var latest = stored;
         while (latest is { } candidate && !calendar.IsTradingDay(candidate))
         {
             latest = await store.ResolveLatestStoredTradingDayAsync(
@@ -224,7 +231,12 @@ public static class MarketEndpoints
                 cancellationToken);
         }
 
-        return latest;
+        // A walk that ends empty discredited every stored date at or before `onOrBefore` — the
+        // store holds no genuinely stored session to compare against, so "fresh" is unprovable.
+        // Fall back to the discredited stored maximum (the pre-048 answer) to keep `stale: true`
+        // rather than flipping the flag in the unsafe direction. Only a non-trading store reaches
+        // this; a trading-day maximum returns unchanged from the loop above.
+        return latest ?? stored;
     }
 
     /// <summary>

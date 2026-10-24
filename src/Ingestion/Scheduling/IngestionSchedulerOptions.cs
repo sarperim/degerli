@@ -55,8 +55,11 @@ public sealed class IngestionSchedulerOptions
     /// Independent per-job triggers for jobs that run on their own cadence rather than on
     /// the shared EOD cron — the macro jobs (03 §9): <c>macro-daily</c> by 09:00 each day,
     /// <c>macro-cpi</c> within 24h of each release. Each entry fires only its own job code
-    /// and is not gated by the trading calendar (macro data is published every day). Empty
-    /// by default, so the EOD behaviour is unchanged for a host that configures nothing.
+    /// and is gated by the trading calendar only when its own
+    /// <see cref="JobScheduleOptions.TradingDaysOnly"/> opts in (macro data is published
+    /// every day, so those entries stay ungated; a market stream, such as the intraday
+    /// sweep, sets it). Empty by default, so the EOD behaviour is unchanged for a host that
+    /// configures nothing.
     /// </summary>
     public IList<JobScheduleOptions> JobSchedules { get; set; } = new List<JobScheduleOptions>();
 

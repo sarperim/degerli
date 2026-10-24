@@ -156,10 +156,10 @@ public sealed class TradingCalendarTests
     }
 
     /// <summary>
-    /// TC-MDF-087 (ii) — a <b>single</b> holiday adjacent to a weekend: Sunday 2025-06-08 (Ramazan
-    /// Bayramı weekend) and Monday 2025-06-09 (Kurban Bayramı — a configured closure) both resolve
-    /// to Friday 2025-06-06, which is itself a closure in that year's table: resolution walks past
-    /// every configured non-trading date, not just the first weekend it meets.
+    /// TC-MDF-087 (ii) — a <b>single</b> holiday adjacent to a weekend: Sunday 2025-06-08 (the
+    /// Kurban Bayramı weekend) and Monday 2025-06-09 (Kurban Bayramı — a configured closure) both
+    /// resolve to Friday 2025-06-06, which is itself a closure in that year's table: resolution
+    /// walks past every configured non-trading date, not just the first weekend it meets.
     /// </summary>
     [Fact]
     public void TC_MDF_087_last_trading_day_walks_past_consecutive_closures()
