@@ -18,7 +18,8 @@ scope:
 
 # TKT-foundation-070: Metric formula versioning — recompute provenance across formula changes
 
-- Status: todo
+- Status: in-review — **PR https://github.com/sarperim/degerli/pull/138** (branch `feature/TKT-foundation-070`, head **`0ca7009`** — the rebased implementation commit, with this rebase/ticket-note commit on top; **rebased onto `origin/dev@aa2d0b8`**, TKT-foundation-064, 078 and 048 merged)
+- **PR:** https://github.com/sarperim/degerli/pull/138
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 6 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -48,3 +49,107 @@ scope:
   3. Chosen approach is **A + B1** (2 store files + `Jobs.cs`), *not* B2's four-file DI trigger service — it reuses the mechanism the runner already owns. No other widening is sanctioned.
   4. Test design (for whoever implements): no test-only hook is needed — set stored rows' `formula_version` to an older value directly in the DB (as `MetricsRecomputeIdempotencyTests` already does for facts), then assert the recompute rewrites, stamps the current version, and reports the distinct count; the migration/backfill case is the same DB-level exercise. `CanonicalMetrics.Version` can stay a plain `const`.
 - Parallel group: none (touches `01`/`02`).
+
+## Implementation record (070 lane, 2026-10-24)
+
+Implemented on `feature/TKT-foundation-070` (PR #138) against the amended scope (A + B1), exactly as
+pinned — **no further widening was needed or taken**.
+
+- **Version**: `CanonicalMetrics.Version` (`const int` = 1, `/src/Core`) — the single source of truth;
+  bumped in the same change as any formula / input-assembly / not-meaningful-rule edit.
+- **Stamp**: `formula_version` (`int NULL`, CHECK `IS NULL OR >= 1`) on `derived_metrics` and
+  `sector_metric_medians`, written by `DerivedMetricStore.UpsertAsync` and
+  `SectorMedianStore.UpsertAsync` on the **insert and repair** paths (the only two `new DerivedMetric` /
+  `new SectorMetricMedian` sites — the engines classify, they never insert).
+- **Classification**: `MetricsEngine.PlanWriteAsync` / `SectorMedianEngine.PlanWriteAsync` treat
+  `formula_version != CanonicalMetrics.Version` as rewrite-worthy even with identical values and count
+  it as `FormulaVersionRewritten` (a subset of `Rewritten`); same values **and** same version stay
+  `unchanged` (050's idempotency untouched).
+- **Migration**: `20261024024109_MetricFormulaVersion` — additive, nullable, forward-only, **no data
+  write** (an honest empty backfill: existing rows were produced by the then-current definition, but no
+  per-row record of it exists, so a stamp would be invented; `NULL` = "produced before versioning
+  existed"). The next recompute of a day stamps it; historical days keep `NULL` until recomputed.
+- **Trigger**: `IngestionTrigger` + optional `IngestionRequest.Trigger` / `IngestionRunContext.Trigger`;
+  the runner records `stats_json.trigger` (`scheduled` for the scheduler's context, `admin` for the bare
+  admin-trigger overload, an explicit request value wins). Additive and optional — no job, test or 044
+  reason-code behaviour changes (neighbour suites re-run green).
+- **Exposure (vi)**: DB-only; no API/audit surface serves the version, `03` payloads unchanged —
+  recorded in `01` §10.9.13.
+- **Docs**: `02` header/§1/§3.1/§8 (v1.4), `01` §10.9.13 (new "Definition versioning" subsection) and
+  §13.1 **v1.5.48**, test plan **§19** + coverage matrix (FR-MDF-013/014, NFR-MDF-001) + change record
+  v1.22 *(renumbered twice by the 2026-10-24 rebases — see rebase records 1 and 2)*.
+- **Tests**: TC-MDF-102, 5 cases in `tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs`
+  (no test-only hook; the stale-stamp state is a direct `UPDATE`, per the test-design note).
+- **Evidence**: red = 5 failed / 4 passed (`42703 column "formula_version" does not exist` on both
+  tables; ledger `trigger` absent); green = lane 9/9, backend integration 528/528, core unit 54/54,
+  content pipeline 2/2, `dotnet build` 0 warnings.
+- **Flagged**: (1) the distinct `FormulaVersionRewritten` count is plan-level, not a `stats_json` key —
+  the two metric **job** classes were outside the amended scope, so the ledger's `written` carries the
+  total repairs as 044 established (recorded in `01` §10.9.13 as a follow-up); the demanded *trigger*
+  distinction **is** in the ledger. (2) The ticket pointed this case at test plan "§14", which is the
+  §14 share-count section (TKT-foundation-058); the case is authored as a new §19 instead — recorded in
+  the plan's change record, test-planner confirmation pending. (3) The migration applies no backfill, by
+  design (above). (4) Live criterion for the orchestrator post-merge: after deploy the first
+  `metrics-recompute` stamps that day's rows, a second same-day run reports `unchanged`, and the ledger
+  row reads `trigger: scheduled|admin` — recorded verbatim, never fabricated.
+- The shared dev DB was **not** migrated from this lane; the migration is exercised by every
+  Testcontainers fixture in the suite.
+
+## Rebase record (2026-10-24, rebase only — no redesign, no re-scope, no re-review)
+
+PR #138 went `CONFLICTING` because `dev` advanced from `60a01cf` to **`f12c1b5`** (TKT-foundation-064,
+squash-merged as #133). Rebased `feature/TKT-foundation-070` onto `origin/dev@f12c1b5`.
+
+- **Overlap was exactly the two predicted doc files** — `.pipeline/architecture/01-system-architecture.md`
+  and `.pipeline/testing/market-data-foundation.md`. No source-file conflict, and **no conflict at all in
+  `src/Ingestion/Scheduling/`** (064's per-step bound), which this ticket does not touch.
+- **`01`**: 064 landed §13.1 **v1.5.43** and its §10.9.17 "The bound's scope, corrected" prose; both are
+  **kept** and this ticket's row stays **v1.5.48** (free on the new `dev` — 43 is the landed maximum, so no
+  renumber was required). 070's "Definition versioning" subsection in §10.9.13 (v1.5.48) is intact.
+- **Test plan**: 064 landed its per-step-bound watchdog case (§16) and its change record as **v1.17**;
+  070's §17 case entry carried the same **v1.17** label, so it is **renumbered to v1.18** and kept. Both
+  cases, both sections and both change-record entries are present.
+- **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
+  *"No changes have been made to the model since the last migration"* (**no snapshot drift**), the
+  migration list still ends at `20261024024109_MetricFormulaVersion`, and the freshly-migrated
+  Testcontainers fixture applies it cleanly. 064 added no migration.
+- **Re-verification after the rebase** (`dotnet build Degerli.sln` **0 warnings / 0 errors**):
+  `MetricsRecomputeIdempotencyTests` **9/9**, `SchedulerTests` + `EodStallWatchdogTests` **23/23** —
+  both exactly as before the rebase, so the rebase disturbed nothing.
+
+## Rebase record 2 (2026-10-24, rebase only — no redesign, no re-scope, no re-review)
+
+PR #138 went `CONFLICTING` a second time because `dev` advanced from `f12c1b5` to **`aa2d0b8`**:
+**#139 / TKT-foundation-078** (disclosures, which took `01` **v1.5.52** and test-plan **§17 / v1.18–v1.20**)
+and **#140 / TKT-foundation-048** (holiday calendar, which took `01` **v1.5.44** and test-plan **§18 / v1.21**).
+Rebased `feature/TKT-foundation-070` onto `origin/dev@aa2d0b8`; the rebased implementation commit is
+**`0ca7009`** and this note commit sits on top.
+
+- **Overlap was again exactly the two predicted doc files**, and again **no conflict at all in
+  `src/Ingestion/Scheduling/`** (064's per-step bound, then 048's holiday gate) — this ticket does not touch it.
+- **`01`**: 070's §13.1 row stays **v1.5.48**. `aa2d0b8` carries 43 (064), 44 (048) and 52 (078); **48 is
+  still free**, so no renumber was required. 048's `v1.5.44` and 078's `v1.5.52` rows are kept verbatim,
+  and 070's "Definition versioning" subsection in §10.9.13 is intact.
+- **Test plan**: 078 claimed §17 **and** its three cases there **and** v1.18–v1.20; 048 then claimed §18 and
+  v1.21. The earlier rebase's "§17 / v1.18" placement recorded above is therefore **superseded**: 070's
+  block moves to **§19** and its change record to **v1.22** (the next free section and version),
+  leaving **every** 078 and 048 section, case and change-record entry untouched.
+- **Case-ID collision resolved (new finding, not in the original brief):** 078 landed its §17
+  bootstrap-window case (`StatementsAndEventsIngestionTests.cs`) while this ticket's case carried the
+  identical ID — a duplicate TC ID in both the test plan and the test source, which would have made TC
+  coverage attribution ambiguous. 078 merged first, so it keeps the ID; 070's case is renumbered to
+  **TC-MDF-102** (the next free ID) in §19, in its change record, in the §5 coverage-matrix rows
+  (`FR-MDF-013`, `FR-MDF-014`, `NFR-MDF-001`), and in
+  `MetricsRecomputeIdempotencyTests.cs` (six occurrences: method names and doc comments **only** —
+  reversing the rename reproduces the file byte-for-byte, so no assertion was added, removed, skipped or
+  weakened).
+- **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
+  *"No changes have been made to the model since the last migration"* (**no snapshot drift**); the
+  migration list still ends at `20261024024109_MetricFormulaVersion`; the freshly-migrated Testcontainers
+  fixture applies it cleanly. Neither 078 nor 048 added a migration.
+- **Re-verification after the rebase** (`dotnet build Degerli.sln` **0 warnings / 0 errors**):
+  `MetricsRecomputeIdempotencyTests` **9/9**; `SchedulerTests` **11/11** + `EodStallWatchdogTests`
+  **13/13** = **24/24** — one higher than the pre-rebase 23/23, which is exactly 048's new per-job
+  holiday-gate case landing in `SchedulerTests` (whose amended `TC_MDF_011_Holiday_calendar_is_config`,
+  green, now asserts the `holiday-skip` ledger row and "no job ran"). Nothing was dropped or weakened.
+

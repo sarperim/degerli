@@ -1,3 +1,4 @@
+using Degerli.Core.Metrics;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,11 @@ public sealed record SectorMedianWriteResult(int Written, int Unchanged);
 /// <see cref="DerivedMetricStore"/> the write is idempotent by its composite key
 /// <c>(sector, metric, as_of_date)</c>: a re-run for the same date updates the existing rows
 /// in place rather than inserting duplicates, and never touches another date's rows.
+/// <para>
+/// Every row written — insert or repair — also carries the producing definition's
+/// <c>formula_version</c> (<see cref="CanonicalMetrics.Version"/>, TKT-foundation-070), the
+/// same provenance discipline as <see cref="DerivedMetricStore"/>.
+/// </para>
 /// </summary>
 public sealed class SectorMedianStore
 {
@@ -44,6 +50,8 @@ public sealed class SectorMedianStore
                 row.PeerCount = result.PeerCount;
                 row.ExcludedCount = result.ExcludedCount;
                 row.IsAdjusted = false;
+                // A repair restates the definition too (TKT-foundation-070).
+                row.FormulaVersion = CanonicalMetrics.Version;
                 row.ComputedAt = computedAt;
                 unchanged++;
                 continue;
@@ -58,6 +66,7 @@ public sealed class SectorMedianStore
                 PeerCount = result.PeerCount,
                 ExcludedCount = result.ExcludedCount,
                 IsAdjusted = false,
+                FormulaVersion = CanonicalMetrics.Version,
                 ComputedAt = computedAt,
             });
             written++;

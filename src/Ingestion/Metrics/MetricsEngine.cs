@@ -28,14 +28,26 @@ public sealed record InstrumentMetricResult(
 /// in <see cref="ToWrite"/> (the store overwrites it in place, one row per key) and is counted
 /// in <see cref="Rewritten"/>. Rows with no stored row are in <see cref="ToWrite"/> and are
 /// the store's <c>Written</c> count.
+/// <para>
+/// A stored row is also <see cref="Rewritten"/> — not <see cref="Unchanged"/> — when its
+/// definition stamp is not the current one, even though its values are identical
+/// (<see cref="FormulaVersionRewritten"/>, <c>01</c> §10.9.13 / TKT-foundation-070).
+/// </para>
 /// </summary>
 /// <param name="ToWrite">The computed rows to upsert (new rows + input-changed rows).</param>
 /// <param name="Unchanged">The recomputed rows already identical to their stored row.</param>
 /// <param name="Rewritten">The rows repaired in place because their inputs changed.</param>
+/// <param name="FormulaVersionRewritten">
+/// The subset of <paramref name="Rewritten"/> whose stored values were <b>identical</b> and
+/// only their definition version differed (<see cref="CanonicalMetrics.Version"/>,
+/// TKT-foundation-070) — the "a formula changed, the numbers did not" rewrite, reported apart
+/// from a fact repair so the two are never confused.
+/// </param>
 public sealed record MetricWritePlan(
     IReadOnlyList<InstrumentMetricResult> ToWrite,
     int Unchanged,
-    int Rewritten);
+    int Rewritten,
+    int FormulaVersionRewritten = 0);
 
 /// <summary>
 /// C3b Metrics Engine (FR-MDF-013/014, UC-MDF-005; AD-06): reads the canonical fact
@@ -189,6 +201,13 @@ public sealed class MetricsEngine
     /// stay immutable (FR-MDF-015/NFR-MDF-002); a stored row for a metric this run no longer
     /// computes is not a repair target and is left alone.
     /// </para>
+    /// <para>
+    /// <b>Definition-aware since TKT-foundation-070</b> (<c>01</c> §10.9.13): a stored row whose
+    /// <c>formula_version</c> is not <see cref="CanonicalMetrics.Version"/> is rewritten — and
+    /// counted in <see cref="MetricWritePlan.FormulaVersionRewritten"/> when its values were
+    /// identical — because the row was produced by a different definition and its stamp is
+    /// untrue. That is the one non-value reason a recompute writes.
+    /// </para>
     /// </summary>
     public async Task<MetricWritePlan> PlanWriteAsync(
         IReadOnlyList<InstrumentMetricResult> computed,
@@ -210,6 +229,7 @@ public sealed class MetricsEngine
         var toWrite = new List<InstrumentMetricResult>(computed.Count);
         var unchanged = 0;
         var rewritten = 0;
+        var formulaVersionRewritten = 0;
         foreach (var result in computed)
         {
             if (!instrumentIds.TryGetValue(result.Symbol, out var instrumentId))
@@ -222,7 +242,9 @@ public sealed class MetricsEngine
             {
                 if (stored.TryGetValue((instrumentId, metric.Code), out var row))
                 {
-                    if (HasSameValues(row, metric))
+                    var sameValues = HasSameValues(row, metric);
+                    var currentVersion = HasCurrentFormulaVersion(row);
+                    if (sameValues && currentVersion)
                     {
                         // Identical inputs → identical outputs: nothing to write, and the run
                         // reports the honest unchanged count instead of a silent vacuum.
@@ -231,6 +253,14 @@ public sealed class MetricsEngine
                     }
 
                     rewritten++;
+                    if (sameValues)
+                    {
+                        // The values are identical and only the definition moved (or was never
+                        // recorded): a formula-version rewrite, counted apart from a fact repair
+                        // so "a formula changed" and "a fact changed" are never conflated
+                        // (01 §10.9.13, TKT-foundation-070).
+                        formulaVersionRewritten++;
+                    }
                 }
 
                 pending.Add(metric);
@@ -242,7 +272,7 @@ public sealed class MetricsEngine
             }
         }
 
-        return new MetricWritePlan(toWrite, unchanged, rewritten);
+        return new MetricWritePlan(toWrite, unchanged, rewritten, formulaVersionRewritten);
     }
 
     /// <summary>
@@ -261,6 +291,16 @@ public sealed class MetricsEngine
 
     /// <summary>The persisted scale of <c>derived_metrics.value</c> (<c>02</c> §3.1).</summary>
     private const int StoredValueScale = 6;
+
+    /// <summary>
+    /// True when the stored row was produced by the current definition
+    /// (<see cref="CanonicalMetrics.Version"/>, <c>01</c> §10.9.13 / TKT-foundation-070). A stamp
+    /// that differs — including the honest <c>NULL</c> of a row written before versioning
+    /// existed — means the row cannot claim to be the current formula's output, so the recompute
+    /// rewrites it (and the store stamps the current version).
+    /// </summary>
+    private static bool HasCurrentFormulaVersion(DerivedMetric stored) =>
+        stored.FormulaVersion == CanonicalMetrics.Version;
 
     /// <summary>Projects a computed value onto the column's precision (half away from zero, like the DB).</summary>
     private static decimal? AtStoredScale(decimal? value) =>
