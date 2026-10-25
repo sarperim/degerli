@@ -636,6 +636,14 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     /// and the clock is not touched before that line, so the instant the watchdog recorded as the
     /// attempt's end is still the bound's instant, exactly as before this ticket.
     /// </para>
+    /// <para>
+    /// <b>TC-MDF-081 is a kept-green non-regression</b> (acceptance iv). Both of its cases in this
+    /// file — <c>TC_MDF_081_Retry_fires_at_its_scheduled_instant_while_another_stream_holds_the_tick</c>
+    /// and <c>TC_MDF_081_Morning_chain_fires_on_schedule_while_a_retry_attempt_holds_the_tick</c> —
+    /// run unchanged in this same suite. Neither ends in the hung path, so neither takes this
+    /// overload — and this harness only moves the fake clock <i>after</i> the attempt's end has
+    /// been recorded, so the instants TC-MDF-081 pins stay exact.
+    /// </para>
     /// </summary>
     private static async Task AwaitTickAsync(Task tick, IngestionSchedulerHost host, TimeSpan settleWindow)
     {
