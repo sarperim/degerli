@@ -1,4 +1,4 @@
-# Data Model — v1.3
+# Data Model — v1.4
 
 **Project:** Değerli (working name) — BIST Value Investing Platform
 **Prepared by:** architect · **Date:** 2026-10-06 · **Status:** approved — v1.1 added `quarantined_facts`; v1.2 (2026-10-07) applied the builder final-review mirror patches: DCF `debt`-parameter clarification (F-VAL-1), rights-issue adjustment factor (Q3), window-suffixed CAGR codes + volume correction (Q5); **v1.3 (2026-10-15) applies the builder's post-board correctness feedback** (12 verified issues across schema, formulas, sector accounting, data sources, test fidelity): statement `version` sequence, statement unit-scale/currency normalization, corporate-action-adjusted per-share CAGRs, `OCF`-based FCF, TMS 29 regime-break flag, `accounting_profile` + financial-sector metric posture, sector-aware DCF; **v1.4 (2026-10-24) adds definition-version provenance** — `formula_version` on `derived_metrics` and `sector_metric_medians` (§3.1, §8; `01` §10.9.13, TKT-foundation-070), additive and nullable, with an honest empty backfill. Change records in `01-system-architecture.md` §13.1.

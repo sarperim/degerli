@@ -76,9 +76,9 @@ pinned — **no further widening was needed or taken**.
 - **Exposure (vi)**: DB-only; no API/audit surface serves the version, `03` payloads unchanged —
   recorded in `01` §10.9.13.
 - **Docs**: `02` header/§1/§3.1/§8 (v1.4), `01` §10.9.13 (new "Definition versioning" subsection) and
-  §13.1 **v1.5.48**, test plan **§17** + coverage matrix (FR-MDF-013/014, NFR-MDF-001) + change record
-  v1.18 *(v1.17 after the 2026-10-24 rebase — 064 landed v1.17 first; mine renumbered, both kept)*.
-- **Tests**: TC-MDF-099, 5 cases in `tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs`
+  §13.1 **v1.5.48**, test plan **§19** + coverage matrix (FR-MDF-013/014, NFR-MDF-001) + change record
+  v1.22 *(renumbered twice by the 2026-10-24 rebases — see rebase records 1 and 2)*.
+- **Tests**: TC-MDF-102, 5 cases in `tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs`
   (no test-only hook; the stale-stamp state is a direct `UPDATE`, per the test-design note).
 - **Evidence**: red = 5 failed / 4 passed (`42703 column "formula_version" does not exist` on both
   tables; ledger `trigger` absent); green = lane 9/9, backend integration 528/528, core unit 54/54,

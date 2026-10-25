@@ -374,6 +374,7 @@ public sealed class MetricsRecomputeIdempotencyTests : IClassFixture<PostgresFix
         // only a recompute may stamp them.
         await SetMetricFormulaVersionAsync(T, null);
         await SetMetricFormulaVersionAsync(Prior, null);
+        var priorBefore = await ReadMetricsAsync(Prior);
 
         // The classification is distinct: identical values, stale definition → a formula-version
         // rewrite, never an `unchanged` row and never a fact repair.
@@ -407,6 +408,9 @@ public sealed class MetricsRecomputeIdempotencyTests : IClassFixture<PostgresFix
         var priorVersions = await ReadMetricFormulaVersionsAsync(Prior);
         Assert.Equal(MetricRows, priorVersions.Count);
         Assert.All(priorVersions.Values, version => Assert.Null(version));
+
+        // ... and the historical day's rows are byte-identical (values *and* computed_at).
+        Assert.Equal(priorBefore, await ReadMetricsAsync(Prior));
 
         // ... and a second run under the same definition is honestly unchanged again.
         var settled = await ComputeDerivedMetricsAsync(T, TimeSpan.FromHours(4));
