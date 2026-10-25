@@ -26,6 +26,9 @@ public static class KapPublicReasonCodes
     /// <summary>The recorded access posture forbids automated reads — the client refuses.</summary>
     public const string AutomatedAccessForbidden = "AUTOMATED_ACCESS_FORBIDDEN";
 
+    /// <summary>No access posture has been recorded (the code default) — the client refuses.</summary>
+    public const string AccessPostureNotVerified = "ACCESS_POSTURE_NOT_VERIFIED";
+
     /// <summary>A walk stopped at its page ceiling (bounded pass; resumes from the last completed unit).</summary>
     public const string PageCap = "WALK_PAGE_CAP";
 

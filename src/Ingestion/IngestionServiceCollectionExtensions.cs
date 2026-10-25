@@ -141,7 +141,7 @@ public static class IngestionServiceCollectionExtensions
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
             return new HttpClient
             {
-                BaseAddress = KapUri.WithDirectorySeparator(new Uri(baseUrl, UriKind.Absolute)),
+                BaseAddress = KapPublicUri.WithDirectorySeparator(new Uri(baseUrl, UriKind.Absolute)),
                 // Every request carries its own bound (the per-item detail timeout is the
                 // shorter one): a stalled body can never outlive the bound its request set.
                 Timeout = Timeout.InfiniteTimeSpan,

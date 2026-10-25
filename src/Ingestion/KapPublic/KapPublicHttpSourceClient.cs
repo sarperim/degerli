@@ -5,18 +5,23 @@ using Microsoft.Extensions.Options;
 namespace Degerli.Ingestion.KapPublic;
 
 /// <summary>
-/// The recorded access posture forbids automated reads (01 v1.5.53 §10.9.19, the OQ-2 gate):
-/// the client throws this <b>before</b> issuing any request, so the gate is checkable
-/// behaviour rather than a note someone may ignore. It is deliberately <b>not</b> a
-/// <see cref="SourceFetchException"/>: this is a legal/configuration stop, never a source
+/// The recorded access posture does not permit automated reads (01 v1.5.53 §10.9.19, the
+/// OQ-2 gate): the client throws this <b>before</b> issuing any request, so the gate is
+/// checkable behaviour rather than a note someone may ignore. It is deliberately <b>not</b>
+/// a <see cref="SourceFetchException"/>: this is a legal/configuration stop, never a source
 /// failure to be retried or counted as a down source.
 /// </summary>
 public sealed class KapPublicAccessRefusedException : Exception
 {
-    public KapPublicAccessRefusedException(string message) : base(message) { }
+    public KapPublicAccessRefusedException(
+        string message,
+        string reasonCode = KapPublicReasonCodes.AutomatedAccessForbidden) : base(message)
+    {
+        ReasonCode = reasonCode;
+    }
 
     /// <summary>The named reason code recorded with the refusal.</summary>
-    public string ReasonCode => KapPublicReasonCodes.AutomatedAccessForbidden;
+    public string ReasonCode { get; }
 }
 
 /// <summary>
@@ -63,7 +68,9 @@ public interface IKapPublicSourceClient
 /// classify it — and adds the three properties this source needs beyond that client:
 /// <list type="bullet">
 /// <item><b>POST</b> with a JSON body (the byCriteria list and the identity search are
-/// POST-only: a <c>GET</c> answers <c>405</c>, live-verified 2026-10-25);</item>
+/// POST-only: a <c>GET</c> answers <c>405</c> — probe record in
+/// <c>.pipeline/plan/run-report.md</c>, ~07:00 UTC 2026-10-25: <c>GET</c> → 405, <c>POST</c>
+/// with a body → 200 <c>[]</c>);</item>
 /// <item>the <b>User-Agent</b> on every request (the public site expects a browser-shaped
 /// client, and the lane identifies itself honestly);</item>
 /// <item><b>strict single-flight</b>: one gate is held across the whole request/read, so no
@@ -99,11 +106,11 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
         _clock = clock;
 
         // The base is the site root; the request paths are root-relative routes on it. The
-        // same directory-separator + trimmed-path join the VYK client uses keeps a configured
-        // path prefix (a reverse proxy in front of a replayed capture) intact.
+        // lane-local join keeps a configured path prefix (a reverse proxy in front of a
+        // replayed capture) intact without borrowing a VYK type.
         if (_http.BaseAddress is not null)
         {
-            _http.BaseAddress = Kap.KapUri.WithDirectorySeparator(_http.BaseAddress);
+            _http.BaseAddress = KapPublicUri.WithDirectorySeparator(_http.BaseAddress);
         }
     }
 
@@ -127,17 +134,26 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
 
     /// <summary>
     /// The refusal gate (TC-MDF-104 (iii)): called before <b>every</b> request, and before the
-    /// flight gate is taken, so a forbidden posture issues nothing at all.
+    /// flight gate is taken, so a non-permitting posture issues nothing at all. Two postures
+    /// refuse, each with its own reason: <see cref="KapPublicAccessPosture.Forbidden"/>
+    /// (<c>AUTOMATED_ACCESS_FORBIDDEN</c>) and the code-default
+    /// <see cref="KapPublicAccessPosture.NotVerified"/> (<c>ACCESS_POSTURE_NOT_VERIFIED</c>) —
+    /// a posture nobody chose is not a permission.
     /// </summary>
     private void EnsureAccessPermitted()
     {
-        if (!_options.AllowsAutomatedAccess)
+        if (_options.AutomatedAccess == KapPublicAccessPosture.Allowed)
         {
-            throw new KapPublicAccessRefusedException(
-                $"The recorded access posture for '{_http.BaseAddress}' is '{_options.AutomatedAccess}': " +
-                $"{KapPublicReasonCodes.AutomatedAccessForbidden} — no automated request is issued " +
-                "(01 v1.5.53 §10.9.19).");
+            return;
         }
+
+        var reasonCode = _options.AutomatedAccess == KapPublicAccessPosture.Forbidden
+            ? KapPublicReasonCodes.AutomatedAccessForbidden
+            : KapPublicReasonCodes.AccessPostureNotVerified;
+        throw new KapPublicAccessRefusedException(
+            $"The recorded access posture for '{_http.BaseAddress}' is '{_options.AutomatedAccess}': " +
+            $"{reasonCode} — no automated request is issued (01 v1.5.53 §10.9.19).",
+            reasonCode);
     }
 
     private async Task<string> SendAsync(
@@ -158,7 +174,7 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
             // Pace first, then start the per-item timeout: pacing is politeness, not latency.
             await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
 
-            using var request = new HttpRequestMessage(method, Kap.KapUri.ToRelativePath(path));
+            using var request = new HttpRequestMessage(method, KapPublicUri.ToRelativePath(path));
             if (jsonBody is not null)
             {
                 request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");

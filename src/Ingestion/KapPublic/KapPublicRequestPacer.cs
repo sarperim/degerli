@@ -47,9 +47,6 @@ public sealed class KapPublicRequestPacer
     /// <summary>The configured inter-request delay in milliseconds (0 disables the wait).</summary>
     public int DelayMs => _options.RequestDelayMs;
 
-    /// <summary>How many requests have been paced so far (one per issued request).</summary>
-    public int PacedRequests { get; private set; }
-
     /// <summary>
     /// Waits until at least <see cref="DelayMs"/> has elapsed since the previous paced
     /// request, then stamps the request's start (the instant the caller then issues it).
@@ -70,7 +67,6 @@ public sealed class KapPublicRequestPacer
             }
 
             _lastCall = _clock.GetUtcNow();
-            PacedRequests++;
         }
         finally
         {

@@ -117,9 +117,10 @@ public sealed class KapPublicSourceReader
         if (!LooksLikeHtmlTableDocument(body))
         {
             return KapPublicFetchResult<KapPublicReportBody>.Quarantined(
-                body,
-                "the body is not an HTML table document (the export route's shape) — " +
-                "classification is by shape, never by the declared content type");
+                Excerpt(body)!,
+                QuarantineDetail(body.Length,
+                    "the body is not an HTML table document (the export route's shape) — " +
+                    "classification is by shape, never by the declared content type"));
         }
 
         return KapPublicFetchResult<KapPublicReportBody>.Ok(
@@ -139,8 +140,8 @@ public sealed class KapPublicSourceReader
         if (string.IsNullOrWhiteSpace(body))
         {
             return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.Quarantined(
-                body,
-                "the body is empty — not the byCriteria disclosure array");
+                Excerpt(body)!,
+                QuarantineDetail(body.Length, "the body is empty — not the byCriteria disclosure array"));
         }
 
         List<KapPublicDisclosureRow>? rows;
@@ -151,15 +152,16 @@ public sealed class KapPublicSourceReader
         catch (JsonException exception)
         {
             return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.Quarantined(
-                body,
-                $"the body is not the byCriteria disclosure array: {exception.Message}");
+                Excerpt(body)!,
+                QuarantineDetail(body.Length,
+                    $"the body is not the byCriteria disclosure array: {exception.Message}"));
         }
 
         if (rows is null)
         {
             return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.Quarantined(
-                body,
-                "the byCriteria body deserialized to null");
+                Excerpt(body)!,
+                QuarantineDetail(body.Length, "the byCriteria body deserialized to null"));
         }
 
         if (rows.Count == 0)
@@ -174,9 +176,10 @@ public sealed class KapPublicSourceReader
         if (malformed.Count > 0)
         {
             return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.Quarantined(
-                body,
-                $"{malformed.Count} of {rows.Count} rows lack the byCriteria members the lane depends on " +
-                "(disclosureIndex, publishDate, disclosureClass)");
+                Excerpt(body)!,
+                QuarantineDetail(body.Length,
+                    $"{malformed.Count} of {rows.Count} rows lack the byCriteria members the lane depends on " +
+                    "(disclosureIndex, publishDate, disclosureClass)"));
         }
 
         return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.Ok(rows, body);
@@ -191,7 +194,11 @@ public sealed class KapPublicSourceReader
         && body.Contains("<table", StringComparison.OrdinalIgnoreCase)
         && body.Contains("<html", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Bounds a body excerpt carried on a quarantine/failure record.</summary>
+    /// <summary>
+    /// Bounds a body excerpt carried on a quarantine/failure record. The excerpt is what a
+    /// quarantine stores (never the whole body — a 200 body can be ~1.8 MB), and
+    /// <see cref="QuarantineDetail"/> records the original length so the truncation is visible.
+    /// </summary>
     private static string? Excerpt(string? body)
     {
         if (body is null)
@@ -201,4 +208,11 @@ public sealed class KapPublicSourceReader
 
         return body.Length <= MaxExcerptChars ? body : body[..MaxExcerptChars];
     }
+
+    /// <summary>
+    /// Appends the original body length (and the excerpt cap) to a quarantine detail, so a
+    /// truncated record says so instead of looking like the whole answer.
+    /// </summary>
+    private static string QuarantineDetail(int originalLength, string detail) =>
+        $"{detail} (raw body {originalLength} chars; excerpt cap {MaxExcerptChars})";
 }

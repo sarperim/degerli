@@ -395,28 +395,39 @@ public static class RealSourceCatalog
     // carrying an honest bot token. No credential exists in any body (the endpoints are
     // anonymous — verified), so nothing is redacted.
     private const string KapPublicRobotsLabel =
-        "Captured verbatim from https://www.kap.org.tr/robots.txt on 2026-10-25 (two paced " +
-        "probes, identical shape, different reference numbers): the host answers that path " +
-        "with its HTML access-error page and HTTP 666 — no robots.txt directive is served " +
-        "there, so the answer is recorded as-is rather than summarised.";
+        "Captured verbatim from https://www.kap.org.tr/robots.txt on 2026-10-25 (a paced " +
+        "GET): the www host answers that path with its HTML access-error page and HTTP 666 — " +
+        "no robots.txt directive is served there, so the answer is recorded as-is rather than " +
+        "summarised. (The separate apex-host probe answered HTTP 307 → /en/robots.txt → HTTP " +
+        "404; both probe responses are recorded in 01 §10.9.19.)";
 
     private const string KapPublicByCriteriaLabel =
-        "Captured live from POST /tr/api/disclosure/members/byCriteria on 2026-10-25 " +
-        "(ASELSAN, disclosureClass=FR, fromDate 2026-01-01, toDate 2026-10-25, " +
-        "mkkMemberOidList=[4028e4a1413b7ef401413bc2251e0047]): the complete 10-row answer, " +
-        "verbatim — it carries the three 'Finansal Rapor' filings 1643141 (2026 6 Aylık, " +
-        "04.08.2026 18:39:41), 1598316 (2026 3 Aylık) and 1561039 (2025 Yıllık) plus their " +
-        "responsibility-statement / activity-report / sustainability companions. Every value " +
-        "real, nothing trimmed.";
+        "Captured live from POST /tr/api/disclosure/members/byCriteria on 2026-10-25 with the " +
+        "complete request {\"fromDate\": \"2026-01-01\", \"toDate\": \"2026-10-25\", " +
+        "\"disclosureClass\": \"FR\", \"subjectList\": [], " +
+        "\"mkkMemberOidList\": [\"4028e4a1413b7ef401413bc2251e0047\"], " +
+        "\"inactiveMkkMemberOidList\": [], \"bdkMemberOidList\": [], \"fromSrc\": false, " +
+        "\"disclosureIndexList\": []}: the complete 10-row answer, verbatim — it carries the three " +
+        "'Finansal Rapor' filings 1643141 (2026 6 Aylık, 04.08.2026 18:39:41), 1598316 (2026 3 " +
+        "Aylık) and 1561039 (2025 Yıllık) plus their seven companion rows (1643142, 1643140, " +
+        "1598321, 1598319, 1561040, 1561038, 1668298). The investigation's 3-row ASELS result " +
+        "was the subjectList=[\"Finansal Rapor\"] view; with subjectList empty the same company " +
+        "window answers these 10 rows. Every value real, nothing trimmed.";
 
     private const string KapPublicMarketProbeLabel =
         "OQ-1 probe, captured live from POST /tr/api/disclosure/members/byCriteria on " +
-        "2026-10-25 with an EMPTY mkkMemberOidList (the market-wide shape) and an empty " +
-        "disclosureClass, fromDate 2026-10-24, toDate 2026-10-25: HTTP 200 with 12 rows — " +
-        "market-wide byCriteria WORKS (class mix DKB 4 / FR 3 / ODA 3 / DG 2; newest " +
-        "disclosureIndex 1687047 at 24.10.2026 17:08:16). The sample includes the production " +
-        "test entity 'KAP TEST A.Ş.' (stockCodes KTEST): the lane never special-cases it " +
-        "silently — any exclusion is a named, recorded rule. Verbatim (the complete answer).";
+        "2026-10-25 (~03:xx UTC; a later probe than the investigation's 02:0x UTC one) with " +
+        "the complete request {\"fromDate\": \"2026-10-24\", \"toDate\": \"2026-10-25\", " +
+        "\"disclosureClass\": \"\", \"subjectList\": [], \"mkkMemberOidList\": [], " +
+        "\"inactiveMkkMemberOidList\": [], \"bdkMemberOidList\": [], \"fromSrc\": false, " +
+        "\"disclosureIndexList\": []}: HTTP 200 with 12 rows " +
+        "— market-wide byCriteria WORKS (class mix DKB 4 / FR 3 / ODA 3 / DG 2; newest " +
+        "disclosureIndex 1687047 at 24.10.2026 17:08:16, stockCode RODRG). The investigation's " +
+        "02:0x UTC probe printed newest 1687040 (24.10.2026 09:57) and stockCode KT — both are " +
+        "honest probes on different runs and are not reconciled into one canonical index. The " +
+        "sample includes the production test entity 'KAP TEST A.Ş.' (stockCodes KTEST): the " +
+        "lane never special-cases it silently — any exclusion is a named, recorded rule. " +
+        "Verbatim (the complete answer).";
 
     private const string KapPublicReportLabel =
         "Captured live from GET /tr/api/notification/export/excel/1643141 on 2026-10-25 " +
@@ -425,11 +436,15 @@ public static class RealSourceCatalog
         "metadata block (Gönderim Tarihi / Bildirim Tipi / Yıl / Periyot / Sunum Para Birimi " +
         "'1.000 TL' / Finansal Tablo Niteliği / Cari + Önceki Dönem period ends) is kept " +
         "verbatim; all four statement tables keep their headings and column-context headers; " +
-        "the balance-sheet / income-statement / equity tables are trimmed to a contiguous " +
-        "prefix of their real rows (26/298, 21/154 and 11/74 outer rows); the cash-flow table " +
-        "('Nakit Akış Tablosu (Dolaylı Yöntem)') is kept COMPLETE. Every retained value is real " +
-        "— nothing is synthesised — and this is NOT a byte-verbatim capture of the whole " +
-        "document.";
+        "the balance-sheet / income-statement / equity blocks are trimmed to a contiguous " +
+        "prefix of their real rows, counted as outer <tr> rows including header/rowspan rows: " +
+        "26 of 298 (2 header + 24 data rows), 21 of 154 (2 header + 19 data rows) and 11 of 74 " +
+        "for the equity block — where those 11 are 9 header/rowspan/title rows plus only 2 data " +
+        "rows ('Dönem Başı Bakiyeler', 'Muhasebe Politikalarındaki Değişiklikler'), so the " +
+        "equity block is a header-preserving stub rather than an 11-row data prefix; the " +
+        "cash-flow table ('Nakit Akış Tablosu (Dolaylı Yöntem)') is kept COMPLETE. Every " +
+        "retained value is real — nothing is synthesised — and this is NOT a byte-verbatim " +
+        "capture of the whole document.";
 
     private const string KapPublicIdentityLabel =
         "Captured live from POST /tr/api/search/combined with body {\"keyword\":\"ASELS\"} on " +

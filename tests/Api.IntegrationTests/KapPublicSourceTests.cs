@@ -111,9 +111,19 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
             $"MaxWalkDuration ({shipped.MaxWalkDuration}) must be < MaxStepDuration " +
             $"({IngestionSchedulerOptions.DefaultMaxStepDuration}).");
 
-        // (i-d) the recorded access posture (the OQ-2 gate) is a shipped value, not a comment.
+        // (i-d) the recorded access posture (the OQ-2 gate) is an explicit shipped value, not a
+        // comment — and it is *configured*, not inherited from the code default.
+        var shippedPosture = Enum.Parse<KapPublicAccessPosture>(
+            kapPublic.GetProperty("AutomatedAccess").GetString()!, ignoreCase: true);
+        Assert.Equal(KapPublicAccessPosture.Allowed, shippedPosture);
         Assert.Equal(KapPublicAccessPosture.Allowed, shipped.AutomatedAccess);
         Assert.True(shipped.AllowsAutomatedAccess);
+
+        // A posture nobody chose is not a permission: the code default is NotVerified and it
+        // does *not* allow reads, so the shipped Allowed above can only come from config.
+        var unconfigured = new KapPublicSourceOptions();
+        Assert.Equal(KapPublicAccessPosture.NotVerified, unconfigured.AutomatedAccess);
+        Assert.False(unconfigured.AllowsAutomatedAccess);
 
         // (i-e) the two source selectors are pre-wired inertly: both ship the incumbent VYK
         // source, so selecting the public site stays an explicit, recorded config flip
@@ -146,6 +156,9 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
                 ["ConnectionStrings:Default"] = "Host=localhost;Database=composition-only",
                 ["Ingestion:KapPublic:BaseUrl"] = _wireMock.BaseUrl,
                 ["Ingestion:KapPublic:RequestDelayMs"] = "0",
+                // The posture is configured, never inherited: the harness selects the shipped
+                // value explicitly (the code default, NotVerified, refuses every request).
+                ["Ingestion:KapPublic:AutomatedAccess"] = "Allowed",
             })
             .Build();
 
@@ -204,6 +217,75 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         Assert.Equal(TimeSpan.FromSeconds(3), waits[0]);
         Assert.Equal(TimeSpan.FromSeconds(2), waits[1]);
         Assert.Equal(3, handler.Requests.Count);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (ii) — the reader's own list→detail pair is what §20 (ii) names: a
+    /// <c>ReadDisclosureListAsync</c> followed by a <c>ReadReportAsync</c> on a fake clock
+    /// records exactly one wait, the full configured 3 s; at <c>delayMs: 0</c> the same pair
+    /// records <b>no</b> wait at all (the unpaced half is asserted, not assumed).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_b2_reader_level_list_then_detail_is_paced_and_a_zero_bound_waits_none()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay recorder = (delay, _) =>
+        {
+            waits.Add(delay);
+            return Task.CompletedTask;
+        };
+
+        var listBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria).Body;
+        var reportBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body;
+        var handler = new RecordingHandler(request =>
+            request.RequestUri!.AbsolutePath == ByCriteriaPath
+                ? JsonResponse(listBody)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+                });
+
+        var pacedOptions = OptionsOf(o => o.RequestDelayMs = 3000);
+        var paced = new KapPublicSourceReader(
+            new KapPublicHttpSourceClient(
+                BuildHttp(handler), pacedOptions, new KapPublicRequestPacer(pacedOptions, clock, recorder), clock),
+            pacedOptions);
+
+        var list = await paced.ReadDisclosureListAsync(AselsFrQuery());
+        var report = await paced.ReadReportAsync(1643141);
+
+        Assert.True(list.IsOk, $"expected the list read to succeed ({list.ReasonCode})");
+        Assert.True(report.IsOk, $"expected the report read to succeed ({report.ReasonCode})");
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromSeconds(3), waits[0]);
+
+        // The "0 bound produces none" half is real: no wait is requested at all.
+        var unpacedWaits = new List<TimeSpan>();
+        KapPublicDelay unpacedRecorder = (delay, _) =>
+        {
+            unpacedWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var unpacedHandler = new RecordingHandler(request =>
+            request.RequestUri!.AbsolutePath == ByCriteriaPath
+                ? JsonResponse(listBody)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+                });
+        var unpacedOptions = OptionsOf(o => o.RequestDelayMs = 0);
+        var unpaced = new KapPublicSourceReader(
+            new KapPublicHttpSourceClient(
+                BuildHttp(unpacedHandler), unpacedOptions,
+                new KapPublicRequestPacer(unpacedOptions, clock, unpacedRecorder), clock),
+            unpacedOptions);
+
+        Assert.True((await unpaced.ReadDisclosureListAsync(AselsFrQuery())).IsOk);
+        Assert.True((await unpaced.ReadReportAsync(1643141)).IsOk);
+        Assert.Equal(2, unpacedHandler.Requests.Count);
+        Assert.Empty(unpacedWaits);
     }
 
     /// <summary>
@@ -423,6 +505,81 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         Assert.True(KapPublicSourceReader.ClassifyDisclosureList(
             """[{"disclosureIndex":0,"publishDate":null,"disclosureClass":null}]""").IsQuarantined);
         Assert.True(KapPublicSourceReader.ClassifyDisclosureList("   ").IsQuarantined);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — the lane's own observed non-success status, exercised end to end:
+    /// the report route answers the captured <b>HTTP 666</b> access-error page, and the reader
+    /// classifies it as a <b>source failure</b> — never a fabricated payload or a parsed
+    /// status. The verbatim (bounded) error excerpt rides on <c>RawBody</c>, so the failure is
+    /// diagnosable without trusting the status code alone.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_f2_a_666_access_error_is_a_source_down_with_the_verbatim_excerpt()
+    {
+        ResetDoubles();
+        var errorPage = RealSourceCatalog.Get(RealSourceCatalog.KapPublicRobots).Body;
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ReportPath).UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(666)
+                .WithHeader("Content-Type", "text/html")
+                .WithBody(errorPage));
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadReportAsync(1643141);
+
+        Assert.True(result.IsSourceDown);
+        Assert.Equal(KapPublicReasonCodes.SourceFetchFailed, result.ReasonCode);
+        Assert.Null(result.Payload);
+        Assert.False(result.IsQuarantined);
+        Assert.Contains("666", result.Detail ?? string.Empty, StringComparison.Ordinal);
+        // The captured body is smaller than the excerpt cap, so it is carried verbatim.
+        Assert.Equal(errorPage, result.RawBody);
+        Assert.Contains("Yasadiginiz bu erisim problemini", result.RawBody ?? string.Empty, StringComparison.Ordinal);
+        Assert.True(result.RawBody!.Length <= KapPublicSourceReader.MaxExcerptChars);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — the excerpt bound is applied to <b>quarantine</b> bodies too, not just
+    /// to failure records: a realistic ~1.8 MB 200 body that fails the shape check is
+    /// quarantined as a bounded excerpt (<c>MaxExcerptChars</c>) and its detail records the
+    /// original length, so the truncation is visible.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_g2_a_large_quarantine_body_is_bounded_and_its_original_length_recorded()
+    {
+        ResetDoubles();
+        var oversized = "<html><body><p>" + new string('x', KapPublicSourceReader.MaxExcerptChars * 2) + "</p></body></html>";
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ReportPath).UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/vnd.ms-excel")
+                .WithBody(oversized));
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadReportAsync(1643141);
+
+        Assert.True(result.IsQuarantined);
+        Assert.Equal(KapPublicReasonCodes.UnparseablePayload, result.ReasonCode);
+        Assert.Null(result.Payload);
+        Assert.NotNull(result.RawBody);
+        Assert.Equal(KapPublicSourceReader.MaxExcerptChars, result.RawBody!.Length);
+        Assert.Equal(oversized[..KapPublicSourceReader.MaxExcerptChars], result.RawBody);
+        Assert.Contains($"{oversized.Length} chars", result.Detail ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains(
+            $"{KapPublicSourceReader.MaxExcerptChars}",
+            result.Detail ?? string.Empty,
+            StringComparison.Ordinal);
+
+        // The static list classifier applies the same bound.
+        var classified = KapPublicSourceReader.ClassifyDisclosureList(oversized);
+        Assert.True(classified.IsQuarantined);
+        Assert.Equal(KapPublicSourceReader.MaxExcerptChars, classified.RawBody!.Length);
+        Assert.Contains($"{oversized.Length} chars", classified.Detail ?? string.Empty, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -677,9 +834,9 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         var forbiddenOptions = OptionsOf(o => o.AutomatedAccess = KapPublicAccessPosture.Forbidden);
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
 
-        // The client is built against the public-site double, so a leaked request would be
-        // recorded — none is.
-        var http = new HttpClient { BaseAddress = new Uri(_wireMock.BaseUrl), Timeout = Timeout.InfiniteTimeSpan };
+        // The client is built against the public-site double <b>through the recording handler</b>,
+        // so a leaked request would be recorded — none is.
+        var http = BuildHttp(handler);
         var pacer = new KapPublicRequestPacer(forbiddenOptions, clock);
         var client = new KapPublicHttpSourceClient(http, forbiddenOptions, pacer, clock);
         var reader = new KapPublicSourceReader(client, forbiddenOptions);
@@ -696,6 +853,40 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         // And the recording handler never saw the refused request either.
         Assert.Empty(handler.Requests);
         Assert.False(forbiddenOptions.Value.AllowsAutomatedAccess);
+    }
+
+    /// <summary>
+    /// TC-MDF-104 (c) — the code default is <b>not</b> a permission: an options object nobody
+    /// configured is <see cref="KapPublicAccessPosture.NotVerified"/>, and the client refuses
+    /// with the distinct reason <c>ACCESS_POSTURE_NOT_VERIFIED</c> (kept apart from
+    /// <c>AUTOMATED_ACCESS_FORBIDDEN</c>) before it takes the flight gate or paces.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_104_c2_an_unconfigured_posture_refuses_as_not_verified()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
+        var handler = new RecordingHandler(_ => JsonResponse("[]"));
+        var options = Microsoft.Extensions.Options.Options.Create(new KapPublicSourceOptions
+        {
+            BaseUrl = _wireMock.BaseUrl,
+            RequestDelayMs = 0,
+        });
+
+        Assert.Equal(KapPublicAccessPosture.NotVerified, options.Value.AutomatedAccess);
+        Assert.False(options.Value.AllowsAutomatedAccess);
+        Assert.NotEqual(
+            KapPublicReasonCodes.AutomatedAccessForbidden,
+            KapPublicReasonCodes.AccessPostureNotVerified);
+
+        var client = new KapPublicHttpSourceClient(
+            BuildHttp(handler), options, new KapPublicRequestPacer(options, clock), clock);
+        var reader = new KapPublicSourceReader(client, options);
+
+        var exception = await Assert.ThrowsAsync<KapPublicAccessRefusedException>(
+            () => reader.ReadDisclosureListAsync(AselsFrQuery()));
+        Assert.Equal(KapPublicReasonCodes.AccessPostureNotVerified, exception.ReasonCode);
+        await Assert.ThrowsAsync<KapPublicAccessRefusedException>(() => reader.ReadReportAsync(1643141));
+        Assert.Empty(handler.Requests);
     }
 
     // =================================================================================
@@ -719,6 +910,9 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         {
             BaseUrl = "http://localhost",
             RequestDelayMs = 0,
+            // L2 harness config: the tests that are not about the posture select the shipped
+            // value explicitly. The default (NotVerified) is exercised by its own case.
+            AutomatedAccess = KapPublicAccessPosture.Allowed,
         };
         configure?.Invoke(options);
         return options;
@@ -747,6 +941,15 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         http.Timeout = Timeout.InfiniteTimeSpan;
         var pacer = new KapPublicRequestPacer(options, clock, delay);
         return new KapPublicHttpSourceClient(http, options, pacer, clock);
+    }
+
+    /// <summary>An <see cref="HttpClient"/> over a recording handler, addressed at the WireMock double.</summary>
+    private HttpClient BuildHttp(HttpMessageHandler handler)
+    {
+        var http = new HttpClient(handler);
+        http.BaseAddress = new Uri(_wireMock.BaseUrl);
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        return http;
     }
 
     private static HttpResponseMessage JsonResponse(string body) => new(HttpStatusCode.OK)

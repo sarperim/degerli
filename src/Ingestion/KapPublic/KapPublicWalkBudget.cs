@@ -38,9 +38,6 @@ public sealed class KapPublicWalkBudget
         _deadline = maxWalkDuration > TimeSpan.Zero ? clock.GetUtcNow() + maxWalkDuration : null;
     }
 
-    /// <summary>A budget with every bound disabled (the pre-budget behaviour).</summary>
-    public static KapPublicWalkBudget Unbounded(TimeProvider clock) => new(0, 0, TimeSpan.Zero, clock);
-
     /// <summary>The page ceiling (≤ 0 = unlimited).</summary>
     public int MaxPages { get; }
 

@@ -5,24 +5,33 @@ namespace Degerli.Ingestion.KapPublic;
 /// <summary>
 /// The recorded <b>access posture</b> of the KAP public site for automated reads
 /// (01 v1.5.53 §10.9.19, TKT-foundation-079; the investigation's OQ-2). It is the
-/// <b>operator's recorded judgement</b> over the captured evidence, not a guess: the
-/// evidence (the verbatim <c>robots.txt</c> probe and the paths probed for a terms
+/// <b>operator's recorded decision</b> over the captured evidence, not a guess: the
+/// evidence (both <c>robots.txt</c> probe responses and the paths probed for a terms
 /// document) lives in <c>RealSourceCatalog</c> under the <c>kap-public-*</c> names and in
 /// §10.9.19.
 /// <para>
-/// This is a <b>checkable refusal</b>, never prose: when the posture is
-/// <see cref="Forbidden"/> the client refuses to issue a single request —
-/// <see cref="KapPublicAccessRefusedException"/> — so a forbidden reading cannot be
-/// silently ignored by a walk (TC-MDF-104 (iii)).
+/// This is a <b>checkable refusal</b>, never prose: the client refuses to issue a single
+/// request unless the posture is <see cref="Allowed"/> — <see cref="KapPublicAccessRefusedException"/> —
+/// so a posture cannot be silently ignored by a walk (TC-MDF-104 (iii)).
 /// </para>
 /// </summary>
 public enum KapPublicAccessPosture
 {
-    /// <summary>No prohibition is recorded; reads proceed under the politeness constraints.</summary>
-    Allowed = 0,
+    /// <summary>
+    /// No posture has been recorded (the code default). The client refuses to issue requests
+    /// with <c>ACCESS_POSTURE_NOT_VERIFIED</c> — a posture nobody chose is not a permission.
+    /// </summary>
+    NotVerified = 0,
+
+    /// <summary>
+    /// The operator's recorded decision permits automated reads under the politeness
+    /// contract. The shipped configuration chooses this <b>explicitly</b>; it is never
+    /// inherited from the code default.
+    /// </summary>
+    Allowed = 1,
 
     /// <summary>A prohibition is recorded; the client refuses to issue requests.</summary>
-    Forbidden = 1,
+    Forbidden = 2,
 }
 
 /// <summary>
@@ -33,8 +42,8 @@ public enum KapPublicAccessPosture
 /// shipped posture is one paced request at a time, never parallel, with a realistic
 /// User-Agent, bounded work and a wall-clock deadline. It is a <b>separate source</b> from
 /// the VYK gateway (§10.9.11): its own base address, its own client, its own pacing, its
-/// own options. Nothing here is shared with <c>Ingestion:Kap</c>, and the VYK adapter is
-/// untouched by it.
+/// own options. Nothing here is shared with <c>Ingestion:Kap</c> — even the URI-join
+/// helpers are lane-local (<c>KapPublicUri</c>) — and the VYK adapter is untouched by it.
 /// </para>
 /// <para>
 /// The lane's evidence class is <see cref="SourceName"/> = <c>kap-public</c> — never
@@ -69,9 +78,11 @@ public sealed class KapPublicSourceOptions
 
     /// <summary>
     /// The shipped inter-request delay: <b>3,000 ms</b>. This is a public website: every
-    /// request the lane makes waits at least this long after the previous one, and the lane
-    /// is strictly single-flight (the client holds one flight gate, so no two requests are
-    /// ever in flight together). A value ≤ 0 disables the wait — an L2 harness binding.
+    /// request the lane makes starts at least this long after the previous request started
+    /// (start-to-start, on the injected clock — a slow response does not let the next start
+    /// come any sooner), and the lane is strictly single-flight (the client holds one flight
+    /// gate, so no two requests are ever in flight together). A value ≤ 0 disables the wait —
+    /// an L2 harness binding.
     /// </summary>
     public const int DefaultRequestDelayMs = 3_000;
 
@@ -192,13 +203,17 @@ public sealed class KapPublicSourceOptions
     public TimeSpan MaxWalkDuration { get; set; } = DefaultMaxWalkDuration;
 
     /// <summary>
-    /// The recorded access posture of the public site (the OQ-2 gate). <see cref="KapPublicAccessPosture.Forbidden"/>
-    /// makes the client refuse to issue requests — the gate is behaviour, not prose.
+    /// The recorded access posture of the public site (the OQ-2 gate). The <b>code default is
+    /// <see cref="KapPublicAccessPosture.NotVerified"/></b> — a posture nobody chose is not a
+    /// permission — and the client refuses to issue requests unless the posture is
+    /// <see cref="KapPublicAccessPosture.Allowed"/>; the shipped <c>appsettings.json</c> selects
+    /// <c>Allowed</c> <b>explicitly</b> (the user-ratified 2026-10-25 decision). The gate is
+    /// behaviour, not prose.
     /// </summary>
-    public KapPublicAccessPosture AutomatedAccess { get; set; } = KapPublicAccessPosture.Allowed;
+    public KapPublicAccessPosture AutomatedAccess { get; set; } = KapPublicAccessPosture.NotVerified;
 
-    /// <summary>True when the recorded posture permits automated reads.</summary>
-    public bool AllowsAutomatedAccess => AutomatedAccess != KapPublicAccessPosture.Forbidden;
+    /// <summary>True only when the recorded posture permits automated reads (<c>Allowed</c>).</summary>
+    public bool AllowsAutomatedAccess => AutomatedAccess == KapPublicAccessPosture.Allowed;
 
     /// <summary>The configured per-item detail timeout as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan DetailFetchTimeout =>
@@ -217,8 +232,4 @@ public sealed class KapPublicSourceOptions
             "{disclosureIndex}",
             disclosureIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
             StringComparison.Ordinal);
-
-    /// <summary>The company page route for one ticker.</summary>
-    public string CompanyPageRoute(string ticker) =>
-        CompanyPagePath.Replace("{ticker}", ticker, StringComparison.Ordinal);
 }
