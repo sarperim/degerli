@@ -156,8 +156,23 @@ public sealed class KapPublicIdentityReader
                         $"a category block is a JSON {category.ValueKind}, not an object");
                 }
 
-                if (!category.TryGetProperty("category", out var name)
-                    || !string.Equals(name.GetString(), CompanyCategory, StringComparison.Ordinal))
+                if (!category.TryGetProperty("category", out var name))
+                {
+                    continue;
+                }
+
+                // A category name is a JSON string in the served shape. A number/object/array name
+                // is not the identity shape at all (GetString() would throw for it), so the whole
+                // body is quarantined with its excerpt — the same honest treatment as any other
+                // non-identity body, never a silent "no hits" and never an escaping exception.
+                if (name.ValueKind != JsonValueKind.String)
+                {
+                    return KapPublicFetchResult<KapPublicCompanyHitList>.Quarantined(
+                        Excerpt(body)!,
+                        $"a category block's 'category' is a JSON {name.ValueKind}, not the identity-search category name");
+                }
+
+                if (!string.Equals(name.GetString(), CompanyCategory, StringComparison.Ordinal))
                 {
                     continue;
                 }

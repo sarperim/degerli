@@ -54,7 +54,14 @@ public sealed class KapPublicCompanyMapStore
             return new KapPublicCompanyMapSync(0, 0, 0);
         }
 
-        var instrumentIds = mappings.Select(mapping => mapping.InstrumentId).Distinct().ToList();
+        // One write per instrument: the store's document is one row per instrument, so a caller
+        // that lists the same instrument twice must not produce two Adds (which would fail on the
+        // PK instead of counting the mapping once). First-wins — the same rule the query-side
+        // Distinct() already applies to the keys: the first entry for an instrument is the mapping
+        // this pass records, and a later entry for the same key is not a second fact.
+        var deDuplicated = mappings.DistinctBy(mapping => mapping.InstrumentId).ToList();
+
+        var instrumentIds = deDuplicated.Select(mapping => mapping.InstrumentId).ToList();
         var existing = await _db.KapPublicCompanyMaps
             .Where(row => instrumentIds.Contains(row.InstrumentId))
             .ToDictionaryAsync(row => row.InstrumentId, cancellationToken)
@@ -65,7 +72,7 @@ public sealed class KapPublicCompanyMapStore
         var updated = 0;
         var unchanged = 0;
 
-        foreach (var mapping in mappings)
+        foreach (var mapping in deDuplicated)
         {
             if (!existing.TryGetValue(mapping.InstrumentId, out var row))
             {

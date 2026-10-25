@@ -5,6 +5,7 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.KapPublic;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -174,8 +175,10 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
         var unresolved = Assert.Single(result.Unresolved);
         Assert.Equal("ALFA", unresolved.Symbol);
         Assert.Equal(KapPublicReasonCodes.CompanyIdentityUnresolved, unresolved.ReasonCode);
-        // The 044 vocabulary word is the same one the VYK identity doctrine records.
+        // The 044 vocabulary word is the same one the VYK identity doctrine records — all three
+        // definitions (directory, statements lane, this source) are one spelling, not three.
         Assert.Equal(VykCompanyDirectory.CompanyIdentityUnresolved, KapPublicReasonCodes.CompanyIdentityUnresolved);
+        Assert.Equal(StatementsJob.CompanyIdentityUnresolved, KapPublicReasonCodes.CompanyIdentityUnresolved);
 
         // Named in the log, counted in the result, and absent from the store (honest absence).
         Assert.Contains(
@@ -191,7 +194,11 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
             Assert.NotEqual(alfaId, row.InstrumentId);
         }
 
-        // The unmapped symbol was never fetched: only identity searches ran — no disclosure list at all.
+        // The unmapped symbol was never fetched: the pass issued exactly the two identity searches
+        // and no disclosure-list request at all. ("Zero byCriteria requests" alone is structural —
+        // this seam has no byCriteria step, so it could not fail — so the observable form of "never
+        // fetched" is the positive count: both bound symbols were searched once, nothing else.)
+        Assert.Equal(2, _wireMock.RequestsFor(IdentityPath));
         Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
 
         // An ambiguous answer is neither a match nor a guess: two distinct oids for one symbol.
@@ -353,6 +360,48 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
         }
     }
 
+    /// <summary>
+    /// TC-MDF-105 (i)/(iv) — the store is the shared seam 082/084 call directly, so a caller that
+    /// lists the same instrument twice in one sync must still write <b>one row</b>: no PK violation,
+    /// no duplicate, and the first entry for the instrument is the one recorded (the same first-wins
+    /// rule the query-side de-dupe applies) — a later entry for the same key is not a second fact.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_105_a2_a_duplicated_store_input_writes_one_row_per_instrument()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        var instrumentId = (await BindingsAsync("ASELS"))[0].InstrumentId;
+
+        var first = new KapPublicCompanyMapping(
+            instrumentId,
+            PublicCompanyOid.Parse(AselsPublicOid),
+            new IdentityEvidence("kap-public:" + IdentityPath + " keyword=ASELS", T));
+        // The same instrument under a different oid: it must neither add a row nor displace the
+        // first entry, and it must never reach SaveChanges as a second Add for the same key.
+        var second = first with
+        {
+            PublicOid = PublicCompanyOid.Parse("4028e4a1413b7ef401413bc2251e0099"),
+        };
+
+        await using var provider = BuildIngestion();
+        using var scope = provider.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<KapPublicCompanyMapStore>();
+
+        var sync = await store.SyncAsync([first, second, first]);
+
+        Assert.Equal(1, sync.Inserted);
+        Assert.Equal(0, sync.Updated);
+        Assert.Equal(0, sync.Unchanged);
+        Assert.Equal(1, sync.Total);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(instrumentId, row.InstrumentId);
+        Assert.Equal(AselsPublicOid, row.KapPublicOid);
+        Assert.Equal(T, row.KapPublicOidAsOf);
+    }
+
     // =================================================================================
     // (v) an identity-source failure degrades honestly
     // =================================================================================
@@ -410,6 +459,51 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
         {
             Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
         }
+    }
+
+    /// <summary>
+    /// TC-MDF-105 (v) — a <b>syntactically valid</b> body whose category name is not a string (a
+    /// JSON number or object) is not the identity shape: it is quarantined with its verbatim
+    /// excerpt and ends the pass as <b>source-down</b> under <c>UNPARSEABLE_PAYLOAD</c> — the same
+    /// honest treatment as any other non-identity body. Never an escaping exception, never a
+    /// silent "no hits", never a fabricated mapping.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_105_e2_a_non_string_category_name_is_quarantined_not_thrown()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        var bindings = await BindingsAsync("ASELS");
+
+        string[] notTheIdentityShape =
+        [
+            """[{"category":1,"results":[]}]""",
+            """[{"category":{"x":1},"results":[]}]""",
+        ];
+
+        foreach (var body in notTheIdentityShape)
+        {
+            // The reader's own contract: the quarantine carries the body verbatim as its excerpt.
+            var classified = KapPublicIdentityReader.ClassifyCompanyHits(body);
+            Assert.True(classified.IsQuarantined, body);
+            Assert.Equal(KapPublicReasonCodes.UnparseablePayload, classified.ReasonCode);
+            Assert.Equal(body, classified.RawBody);
+
+            ResetDoubles();
+            StubIdentity(body);
+            await using var provider = BuildIngestion();
+
+            var result = await ResolveAsync(provider, bindings);
+
+            Assert.True(result.IsSourceDown, body);
+            Assert.Equal(KapPublicReasonCodes.UnparseablePayload, result.ReasonCode);
+            Assert.Contains("ASELS", result.Detail!, StringComparison.Ordinal);
+            Assert.Equal(0, result.Resolved);
+            Assert.Equal(0, result.Inserted);
+        }
+
+        await using var db = _postgres.CreateContext();
+        Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
     }
 
     // =================================================================================
