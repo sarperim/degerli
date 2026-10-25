@@ -1,0 +1,65 @@
+{
+  "source": "kap-disclosures",
+  "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/disclosures?disclosureIndex={disclosureIndex}&companyId={companyId}",
+  "double": {
+    "catalogEntry": "kap-vyk-disclosures",
+    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "provenance": "constructed",
+    "note": "hand-constructed shape-faithful VYK list body (shape live-verified 2026-10-18, 01 \u00a710.9.11)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$[].acceptedDataFileTypes",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[].acceptedDataFileTypes[]",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].companyId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].disclosureClass",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].disclosureIndex",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].disclosureType",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].subReportIds",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[].title",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}

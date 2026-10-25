@@ -1,0 +1,125 @@
+{
+  "source": "kap-member-securities",
+  "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/memberSecurities",
+  "double": {
+    "catalogEntry": "member-securities-ok",
+    "file": "fixtures/Degerli.Fixtures/CannedSourceCatalog.cs",
+    "provenance": "constructed",
+    "note": "shape-faithful /memberSecurities body derived from the live 2026-10-22 dev-gateway capture (01 v1.5.36 \u00a710.9.11)"
+  },
+  "derivedAt": "2026-10-24",
+  "expectedStatus": 200,
+  "allowExtraUnder": [],
+  "paths": [
+    {
+      "path": "$",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$[].member",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.id",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.kayitliSermayeTavani",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.kstSonGecerlilikTarihi",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.memberType",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.mksMbrId",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.sermayeSistemi",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].member.sirketUnvan",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities",
+      "kinds": "array",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[]",
+      "kinds": "object",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].borsaKodu",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].borsadaIslemeAcik",
+      "kinds": "boolean",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].capital",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].currentCapital",
+      "kinds": "number",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].groupCode",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].groupCodeDesc",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].isin",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].isinDesc",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].takasKodu",
+      "kinds": "string",
+      "nullable": false
+    },
+    {
+      "path": "$[].securities[].tertipGroup",
+      "kinds": "string",
+      "nullable": false
+    }
+  ]
+}
