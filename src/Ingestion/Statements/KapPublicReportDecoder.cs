@@ -26,11 +26,12 @@ namespace Degerli.Ingestion.Statements;
 /// <list type="number">
 /// <item><b>The raw integer is an attribute.</b> Every value cell carries the raw integer in
 /// <c>title=""</c> beside the displayed Turkish-formatted text (<c>title="39468926"</c> beside
-/// <c>39.468.926</c>). The attribute is the read path; the displayed text is a cross-check
-/// whose disagreement is a recorded finding, never a silent override. The display grammar is
-/// still understood (through the shared
-/// <see cref="KapXbrlStatementDecoder.ParseTurkishNumber"/>) for that cross-check and for a
-/// cell that carries only text.</item>
+/// <c>39.468.926</c>). The attribute is the <b>only</b> read path; the displayed text is a
+/// cross-check whose disagreement is a recorded finding, never a silent override. The display
+/// grammar is still understood (through the shared
+/// <see cref="KapXbrlStatementDecoder.ParseTurkishNumber"/>) for that cross-check only: a cell
+/// with no raw attribute is a counted <c>VALUE_UNATTRIBUTED</c> drop, never decoded from its
+/// displayed text.</item>
 /// <item><b>Columns are periods by header, never by position.</b> Value cells are marked with
 /// a <c>col-order-class-N</c> CSS class; <c>N</c> minus the table's first value column is the
 /// column's position in the header row (verified on all four captured tables: balance sheet 2
@@ -243,11 +244,15 @@ public static class KapPublicReportDecoder
         var findings = new List<KapPublicFinding>();
         var header = ReadHeader(document, findings);
         var tables = new List<KapPublicTable>();
+        var decodes = new List<TableDecode>();
         var lines = new List<KapPublicLine>();
         var groups = new List<Group>();
         var groupsByKey = new Dictionary<string, Group>(StringComparer.Ordinal);
-        var periodType = StatementPeriodTypeFor(header.Period);
 
+        // Phase 1 — read every table's headings and columns. The whole report is inspected
+        // before any value is decoded so the declared period can be cross-checked against the
+        // durations the columns actually declare (DR-3), and so a contradicted declaration
+        // fails safe to Q for every statement row, balance sheet included.
         foreach (var table in document.QuerySelectorAll(StatementTableSelector))
         {
             var tableClass = TableClassOf(table);
@@ -255,16 +260,60 @@ public static class KapPublicReportDecoder
             var statementType = StatementTypeForHeading(heading);
             var baseOrder = FirstValueColumnOf(table);
             var rows = DirectRows(table);
-            var columns = ReadColumns(table, baseOrder, header.Period);
+            var columns = ReadColumns(table, baseOrder, header.Period, tableClass, heading, statementType, findings);
 
-            tables.Add(new KapPublicTable(heading, statementType, tableClass, columns));
+            tables.Add(new KapPublicTable(heading, statementType, tableClass, columns ?? []));
+            decodes.Add(new TableDecode(tableClass, heading, statementType, rows, columns));
+        }
+
+        var declaredMonths = PeriodMonthsFor(header.Period);
+        var observedMonths = decodes
+            .Where(decode => decode.Columns is not null)
+            .SelectMany(decode => decode.Columns!)
+            .Where(column => column.DurationMonths is not null)
+            .Select(column => column.DurationMonths!.Value)
+            .Distinct()
+            .OrderBy(months => months)
+            .ToList();
+
+        // The report's self-declared Periyot must agree with the durations its own column
+        // headers declare. A 6-month report mis-declaring Periyot:4 would otherwise type its
+        // instant (balance-sheet) columns as FY and write half-year balance sheets into the
+        // DCF baseline's FY filter — silently. Disagreement is counted and fails safe to Q.
+        var durationMismatch = declaredMonths is not null
+            && observedMonths.Count > 0
+            && !observedMonths.Contains(declaredMonths.Value);
+        if (durationMismatch)
+        {
+            findings.Add(Finding(
+                KapPublicReportReasons.PeriodDurationMismatch,
+                1,
+                $"Periyot '{header.Period?.ToString(CultureInfo.InvariantCulture) ?? "absent"}' declares "
+                + $"{declaredMonths} month(s), but the column headers declare "
+                + $"{string.Join(", ", observedMonths)} month range(s) — the statement period type fails safe to Q "
+                + "(never FY on a contradicted declaration)."));
+        }
+
+        var periodType = durationMismatch ? "Q" : StatementPeriodTypeFor(header.Period);
+
+        // Phase 2 — decode the value cells of every table whose heading and columns resolved.
+        foreach (var decode in decodes)
+        {
+            var (tableClass, heading, statementType, rows, columns) = decode;
 
             if (statementType is null)
             {
-                findings.Add(new KapPublicFinding(
+                findings.Add(Finding(
                     KapPublicReportReasons.UnknownTableHeading,
                     CountValuedCells(rows),
                     $"{tableClass}: heading '{heading}' selects no statement type — the table was skipped whole."));
+                continue;
+            }
+
+            // A header/column pairing that is not contiguous and count-equal was already
+            // counted COLUMN_HEADER_MISMATCH: never pair a shifted column, skip the table whole.
+            if (columns is null)
+            {
                 continue;
             }
 
@@ -272,7 +321,7 @@ public static class KapPublicReportDecoder
             {
                 // No column headers means no period can be attributed to any value: every
                 // valued cell is an honest-null drop, never defaulted to a period.
-                findings.Add(new KapPublicFinding(
+                findings.Add(Finding(
                     KapPublicReportReasons.NoColumnHeaders,
                     CountValuedCells(rows),
                     $"{tableClass} '{heading}': no column headers — {CountValuedCells(rows)} valued cell(s) "
@@ -284,6 +333,8 @@ public static class KapPublicReportDecoder
             var section = DefaultSection(statementType);
             var skipped = new Dictionary<int, int>();
             var rowOrder = -1;
+            var statementLineCount = 0;
+            var canonicalLineCount = 0;
 
             foreach (var row in rows)
             {
@@ -313,7 +364,7 @@ public static class KapPublicReportDecoder
                     {
                         if (IsValued(cell))
                         {
-                            findings.Add(new KapPublicFinding(
+                            findings.Add(Finding(
                                 KapPublicReportReasons.ColumnUnattributed,
                                 1,
                                 $"{tableClass} '{heading}' row '{label}': value cell column class "
@@ -336,11 +387,11 @@ public static class KapPublicReportDecoder
                         continue;
                     }
 
-                    if (string.IsNullOrWhiteSpace(label) || column.PeriodEnd is null)
+                    if (string.IsNullOrWhiteSpace(label))
                     {
                         if (IsValued(cell))
                         {
-                            findings.Add(new KapPublicFinding(
+                            findings.Add(Finding(
                                 KapPublicReportReasons.LabelUnattributed,
                                 1,
                                 $"{tableClass} '{heading}' column '{column.Verbatim}': a valued cell carries no "
@@ -351,7 +402,8 @@ public static class KapPublicReportDecoder
                         continue;
                     }
 
-                    var cellValue = ReadCell(cell, tableClass, heading, label, statementType, findings);
+                    var cellValue = ReadCell(
+                        cell, tableClass, heading, column.Verbatim, label, statementType, findings);
                     if (cellValue is null)
                     {
                         continue;
@@ -359,7 +411,9 @@ public static class KapPublicReportDecoder
 
                     var (value, fromAttribute, raw, displayed) = cellValue.Value;
                     var itemCode = MapCode(statementType, section, label);
-                    var periodEnd = column.PeriodEnd.Value;
+                    // Decoded is only true when the column's header resolved a period end; the
+                    // null-forgiving access records that invariant in one place (DR-8).
+                    var periodEnd = column.PeriodEnd!.Value;
                     var key = string.Join(
                         '|',
                         periodType,
@@ -393,19 +447,43 @@ public static class KapPublicReportDecoder
                         column.Verbatim,
                         periodEnd,
                         rowOrder));
+
+                    statementLineCount++;
+                    if (StatementMapper.CanonicalCodes.Contains(itemCode))
+                    {
+                        canonicalLineCount++;
+                    }
                 }
             }
 
             foreach (var (columnIndex, count) in skipped)
             {
                 var column = columns[columnIndex];
-                findings.Add(new KapPublicFinding(
-                    column.SkipReason ?? KapPublicReportReasons.SubPeriodColumn,
-                    count,
-                    $"{tableClass} '{heading}' column '{column.Verbatim}': covers "
-                    + $"{column.DurationMonths?.ToString(CultureInfo.InvariantCulture) ?? "?"} month(s) against the "
-                    + $"report's own {header.PeriodMonths?.ToString(CultureInfo.InvariantCulture) ?? "?"} — {count} "
-                    + "value(s) named and skipped, never merged into the report-period column sharing its end date.",
+
+                // SkipReason is non-null exactly when the column was not decoded (DR-8): an
+                // unreadable period is COLUMN_UNATTRIBUTED, a shorter range is SUB_PERIOD_COLUMN
+                // — and the detail is worded for the reason it actually carries.
+                var reason = column.SkipReason!;
+                var detail = reason == KapPublicReportReasons.ColumnUnattributed
+                    ? $"{tableClass} '{heading}' column '{column.Verbatim}': the header carries no readable "
+                        + $"period — {count} value(s) named and dropped (never defaulted to a period)."
+                    : $"{tableClass} '{heading}' column '{column.Verbatim}': covers "
+                        + $"{column.DurationMonths?.ToString(CultureInfo.InvariantCulture) ?? "?"} month(s) against the "
+                        + $"report's own {header.PeriodMonths?.ToString(CultureInfo.InvariantCulture) ?? "?"} — {count} "
+                        + "value(s) named and skipped, never merged into the report-period column sharing its end date.";
+
+                findings.Add(Finding(reason, count, detail, statementType));
+            }
+
+            // A statement that decoded lines but no canonical one is a label-spelling drift:
+            // every row is an OTHER_* passthrough, so metrics silently see nothing. Name it.
+            if (statementLineCount > 0 && canonicalLineCount == 0)
+            {
+                findings.Add(Finding(
+                    KapPublicReportReasons.NoCanonicalLines,
+                    statementLineCount,
+                    $"{tableClass} '{heading}': none of the {statementLineCount} decoded line(s) mapped to a "
+                    + "canonical code — only OTHER_* passthroughs, so no metric can consume this statement.",
                     statementType));
             }
         }
@@ -467,7 +545,7 @@ public static class KapPublicReportDecoder
         var periodType = PeriodTypeFor(period);
         if (periodType is null)
         {
-            findings.Add(new KapPublicFinding(
+            findings.Add(Finding(
                 KapPublicReportReasons.PeriodTypeUnknown,
                 1,
                 $"Periyot '{periodRaw ?? "absent"}' is outside the evidenced set (1..4) — the period type stays null, "
@@ -552,7 +630,7 @@ public static class KapPublicReportDecoder
     {
         if (string.IsNullOrWhiteSpace(presentationUnit))
         {
-            findings.Add(new KapPublicFinding(
+            findings.Add(Finding(
                 KapPublicReportReasons.PresentationUnitUnrecognised,
                 1,
                 "Sunum Para Birimi is absent — scale and currency stay null (the store refuses rather than guesses)."));
@@ -562,7 +640,7 @@ public static class KapPublicReportDecoder
         var match = PresentationUnitPattern.Match(presentationUnit.Trim());
         if (!match.Success)
         {
-            findings.Add(new KapPublicFinding(
+            findings.Add(Finding(
                 KapPublicReportReasons.PresentationUnitUnrecognised,
                 1,
                 $"Sunum Para Birimi '{presentationUnit}' does not read as '<multiplier> <currency>'."));
@@ -597,7 +675,7 @@ public static class KapPublicReportDecoder
 
         if (scale is null || currency is null)
         {
-            findings.Add(new KapPublicFinding(
+            findings.Add(Finding(
                 KapPublicReportReasons.PresentationUnitUnrecognised,
                 1,
                 $"Sunum Para Birimi '{presentationUnit}' declares an unrecognised scale/currency — both stay null."));
@@ -682,14 +760,54 @@ public static class KapPublicReportDecoder
 
     /// <summary>
     /// Reads the table's column headers into columns, resolving each header's role, dates and
-    /// duration, and deciding which columns the report's own period covers.
+    /// duration, and deciding which columns the report's own period covers. Headers are paired to
+    /// value columns by <b>ordinal position</b>, guarded by a count/contiguity check: a table
+    /// whose <c>col-order-class</c> values are not contiguous from <paramref name="baseOrder"/>
+    /// or whose distinct count differs from its <c>context-header</c> count is never paired at
+    /// all — the mismatch is counted (<c>COLUMN_HEADER_MISMATCH</c>) and <c>null</c> is returned
+    /// so the caller skips the table whole instead of emitting a shifted column.
     /// </summary>
-    private static List<KapPublicColumn> ReadColumns(IElement table, int baseOrder, int? reportPeriod)
+    private static List<KapPublicColumn>? ReadColumns(
+        IElement table,
+        int baseOrder,
+        int? reportPeriod,
+        string tableClass,
+        string heading,
+        string? statementType,
+        List<KapPublicFinding> findings)
     {
         var headers = table.QuerySelectorAll(ContextHeaderSelector);
         if (headers.Length == 0)
         {
             return [];
+        }
+
+        if (statementType is not null)
+        {
+            var observedOrders = table.QuerySelectorAll(ValueCellSelector)
+                .Select(OrderClassOf)
+                .Where(order => order is not null)
+                .Select(order => order!.Value)
+                .Distinct()
+                .OrderBy(order => order)
+                .ToList();
+
+            // Distinct count must equal the header count, and the classes must be exactly the
+            // contiguous run baseOrder..baseOrder+headerCount-1. Anything else means the two
+            // independently ordered lists cannot be trusted to pair one-to-one.
+            if (observedOrders.Count != headers.Length
+                || !observedOrders.SequenceEqual(Enumerable.Range(baseOrder, headers.Length)))
+            {
+                findings.Add(Finding(
+                    KapPublicReportReasons.ColumnHeaderMismatch,
+                    CountValuedCells(DirectRows(table)),
+                    $"{tableClass} '{heading}': {headers.Length} context-header cell(s) but value cells declare "
+                    + $"{observedOrders.Count} distinct col-order-class value(s) "
+                    + $"({string.Join(", ", observedOrders)}) — headers are paired to columns by ordinal position, so "
+                    + "an inconsistent pairing is not trusted: the table was skipped whole (never a shifted column).",
+                    statementType));
+                return null;
+            }
         }
 
         var drafts = headers
@@ -849,16 +967,17 @@ public static class KapPublicReportDecoder
     // ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// Reads one value cell. The raw <c>title</c> attribute is the primary source (the pinned
-    /// de-risking discovery); the displayed text is cross-checked against it, and a
-    /// disagreement is reported while the attribute wins. A cell with no attribute but readable
-    /// text still decodes (flagged <c>FromAttribute = false</c>); a cell that yields no usable
-    /// value is dropped with a counted reason — never zero.
+    /// Reads one value cell. The raw <c>title</c> attribute is the <b>only</b> read path (the
+    /// pinned de-risking discovery); the displayed text is cross-checked against it, and a
+    /// disagreement is reported while the attribute wins. A cell with no raw attribute is a
+    /// counted <c>VALUE_UNATTRIBUTED</c> drop — the display text is never decoded as a
+    /// substitute — and a blank cell is simply not a value. Never zero, never a guess.
     /// </summary>
     private static (decimal Value, bool FromAttribute, string? Raw, string Displayed)? ReadCell(
         IElement cell,
         string tableClass,
         string heading,
+        string column,
         string label,
         string statementType,
         List<KapPublicFinding> findings)
@@ -873,7 +992,7 @@ public static class KapPublicReportDecoder
             var rawText = raw.Trim();
             if (!decimal.TryParse(rawText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
             {
-                findings.Add(new KapPublicFinding(
+                findings.Add(Finding(
                     KapPublicReportReasons.ValueUnattributed,
                     1,
                     $"{tableClass} '{heading}' row '{label}': raw attribute '{rawText}' is not a number — dropped "
@@ -885,11 +1004,11 @@ public static class KapPublicReportDecoder
 
             if (!TryParseDisplayed(displayed, out var shown) || shown != value)
             {
-                findings.Add(new KapPublicFinding(
+                findings.Add(Finding(
                     KapPublicReportReasons.DisplayTextMismatch,
                     1,
                     $"{tableClass} '{heading}' row '{label}': raw attribute '{rawText}' vs displayed text "
-                    + $"'{displayed}' on column '{heading}' — the attribute is the value, the disagreement is recorded.",
+                    + $"'{displayed}' on column '{column}' — the attribute is the value, the disagreement is recorded.",
                     statementType,
                     label));
             }
@@ -902,19 +1021,16 @@ public static class KapPublicReportDecoder
             return null; // a blank cell is not a value — nothing to attribute, nothing dropped
         }
 
-        if (!TryParseDisplayed(displayed, out var parsed))
-        {
-            findings.Add(new KapPublicFinding(
-                KapPublicReportReasons.ValueUnattributed,
-                1,
-                $"{tableClass} '{heading}' row '{label}': displayed text '{displayed}' does not parse as a number "
-                + "and the cell carries no raw attribute — dropped.",
-                statementType,
-                label));
-            return null;
-        }
-
-        return (parsed, false, null, displayed);
+        // Non-blank display text with no raw attribute is not a value source: the pinned
+        // contract reads the attribute and cross-checks the display, never the reverse.
+        findings.Add(Finding(
+            KapPublicReportReasons.ValueUnattributed,
+            1,
+            $"{tableClass} '{heading}' row '{label}' column '{column}': displayed text '{displayed}' is not a "
+            + "value source — the cell carries no raw 'title' attribute, so it is dropped (never read from the displayed text).",
+            statementType,
+            label));
+        return null;
     }
 
     private static bool TryParseDisplayed(string text, out decimal value)
@@ -973,6 +1089,32 @@ public static class KapPublicReportDecoder
     // ---------------------------------------------------------------------------------
     // Small helpers
     // ---------------------------------------------------------------------------------
+
+    /// <summary>The bound on a finding's verbatim excerpt (the 079 / TC-MDF-104 precedent).</summary>
+    private const int MaxExcerptChars = 512;
+
+    /// <summary>One table's phase-1 read, held until the report-wide period cross-check.</summary>
+    private sealed record TableDecode(
+        string TableClass,
+        string Heading,
+        string? StatementType,
+        IReadOnlyList<IElement> Rows,
+        List<KapPublicColumn>? Columns);
+
+    /// <summary>
+    /// Adds one ledger entry. Every finding goes through here so its verbatim excerpt is
+    /// <b>bounded</b> — a pathological cell text cannot grow the ledger without limit.
+    /// </summary>
+    private static KapPublicFinding Finding(
+        string reasonCode,
+        int count,
+        string detail,
+        string? statementType = null,
+        string? label = null) =>
+        new(reasonCode, count, Excerpt(detail), statementType, label);
+
+    private static string Excerpt(string value) =>
+        value.Length <= MaxExcerptChars ? value : string.Concat(value.AsSpan(0, MaxExcerptChars), " …");
 
     /// <summary>The table's <b>direct</b> rows — never the nested title-panel tables' rows.</summary>
     private static IReadOnlyList<IElement> DirectRows(IElement table)
@@ -1121,7 +1263,7 @@ public static class KapPublicReportDecoder
                     _conflicts.Add(itemCode);
                 }
 
-                findings.Add(new KapPublicFinding(
+                findings.Add(Finding(
                     KapPublicReportReasons.DuplicateLabelConflict,
                     1,
                     $"{StatementType} {PeriodEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}: {itemCode} "

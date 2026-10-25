@@ -278,6 +278,71 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.True(attested >= 6, $"only {attested} attested period/ruleType rows in the committed captures");
     }
 
+    /// <summary>
+    /// TC-MDF-106 (v) — an unrecognised presentation unit refuses rather than scales wrongly:
+    /// <c>Sunum Para Birimi</c> <c>1.000 XAU</c> leaves scale and currency null with a counted,
+    /// verbatim finding, and the real store path refuses the payload (<c>Inserted = 0</c>,
+    /// <c>SCHEMA_MISMATCH</c>) instead of guessing a scale.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_106_unrecognised_presentation_unit_is_refused_by_the_store()
+    {
+        var mutated = Mutate(Capture, "1.000 TL", "1.000 XAU");
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        Assert.Null(report.Header.UnitScale);
+        Assert.Null(report.Header.Currency);
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PresentationUnitUnrecognised);
+        Assert.Equal(1, finding.Count);
+        Assert.Contains("1.000 XAU", finding.Detail, StringComparison.Ordinal); // verbatim
+
+        var (store, _) = await StoreAsync();
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 8, 4, 18, 39, 41, TimeSpan.Zero),
+            report.Payload);
+
+        Assert.Equal(0, result.Inserted);
+        Assert.Contains("SCHEMA_MISMATCH", result.RejectedReasonCodes);
+    }
+
+    /// <summary>
+    /// TC-MDF-106 (vi) — headers are paired to value columns by ordinal position, and that
+    /// pairing is guarded: a spurious <c>context-header</c> in the captured cash-flow table
+    /// (three headers against two value-column classes) is a counted
+    /// <c>COLUMN_HEADER_MISMATCH</c> and the table is skipped whole — no shifted column is
+    /// emitted.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_106_header_column_pairing_guard_skips_a_shifted_table()
+    {
+        // Occurrence 1 of this cell is the cash-flow table's (occurrence 0 is the balance
+        // sheet's); the spurious header is inserted before it inside the same header row.
+        const string headerCell = "<td align=\"center\" class=\"context-header\" column-id=\"5\">";
+        var mutated = Mutate(
+            Capture,
+            headerCell,
+            "<td align=\"center\" class=\"context-header\"><div>Fazladan Başlık</div></td>" + headerCell,
+            occurrence: 1);
+
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.ColumnHeaderMismatch);
+        Assert.Equal("CF", finding.StatementType);
+        Assert.Contains("Nakit Akış Tablosu (Dolaylı Yöntem)", finding.Detail, StringComparison.Ordinal);
+
+        // The table is skipped whole: no column paired, no shifted period, no CF statement row.
+        var cashFlow = report.Tables.Single(t => t.StatementType == "CF");
+        Assert.Empty(cashFlow.Columns);
+        Assert.Empty(report.LinesFor("CF", CurrentYearToDate));
+        Assert.DoesNotContain(report.Payload.Statements, s => s.StatementType == "CF");
+    }
+
     // =================================================================================
     // TC-MDF-107 — line-item honesty
     // =================================================================================
@@ -514,6 +579,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal("CF", mismatch.StatementType);
         Assert.Contains("20.382.722", mismatch.Detail, StringComparison.Ordinal); // displayed, verbatim
         Assert.Contains("20382799", mismatch.Detail, StringComparison.Ordinal);    // attribute, verbatim
+        Assert.Contains("Cari Dönem", mismatch.Detail, StringComparison.Ordinal);  // the column, not the table
 
         // The attribute wins — the decoder does not "repair" the value from the display text.
         var line = report.LinesFor("CF", CurrentYearToDate).Single(l => l.ItemCode == "OCF");
@@ -523,7 +589,39 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     }
 
     /// <summary>
-    /// TC-MDF-107 (vii) — every decoded line answers "which table, which label, which column,
+    /// TC-MDF-107 (vii) — a value cell with <b>no</b> raw <c>title</c> attribute is a counted
+    /// honest-null drop: the pinned contract reads the attribute and cross-checks the display
+    /// text, never the reverse. Derived from the capture by stripping the current OCF cell's
+    /// attribute while leaving its displayed text intact.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_107_cell_without_raw_attribute_is_dropped_never_read_from_display()
+    {
+        var stripped = Mutate(Capture, "title=\"20382722\"", string.Empty);
+        var report = KapPublicReportDecoder.Decode(stripped, "ASELS");
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.ValueUnattributed);
+        Assert.Equal(1, finding.Count);
+        Assert.Equal("CF", finding.StatementType);
+        Assert.Equal("Faaliyetlerden Elde Edilen Nakit Akışları", finding.Label);
+        Assert.Contains("Cari Dönem", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("20.382.722", finding.Detail, StringComparison.Ordinal); // displayed, verbatim
+
+        // Absent from the payload for that (statement, period) — never decoded from the display
+        // text and never zero-filled in its place.
+        var currentCashFlow = report.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == CurrentYearToDate);
+        Assert.False(currentCashFlow.Lines.ContainsKey("OCF"));
+        Assert.DoesNotContain(report.LinesFor("CF", CurrentYearToDate), l => l.ItemCode == "OCF");
+        Assert.DoesNotContain(
+            report.LinesFor("CF", CurrentYearToDate),
+            l => l.Label == "Faaliyetlerden Elde Edilen Nakit Akışları");
+    }
+
+    /// <summary>
+    /// TC-MDF-107 (viii) — every decoded line answers "which table, which label, which column,
     /// which cell", and the section is assigned <b>before</b> the label map: the cash-flow
     /// statement's <c>Dönem Karı (Zararı)</c> (a label the income statement also uses) is
     /// attributed to the operating block, and a label repeated across cash-flow blocks keeps
@@ -761,6 +859,83 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             20_382_722m,
             unknown.Payload.Statements.Single(
                 s => s.StatementType == "CF" && s.PeriodEndDate == CurrentYearToDate).Lines["OCF"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-108 (iv) — the declared <c>Periyot</c> is cross-checked against the durations the
+    /// column headers actually declare. A 6-month capture self-declaring <c>Periyot:4</c> is
+    /// counted <c>PERIOD_DURATION_MISMATCH</c> and fails safe to <c>Q</c> for every statement
+    /// row — the instant balance-sheet columns included — so no half-year is written as FY.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_108_declared_period_is_cross_checked_against_column_durations()
+    {
+        var mutated = Mutate(Capture, "   Periyot:2", "   Periyot:4");
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        Assert.Equal("Yıllık", report.Header.PeriodType); // self-declared, surfaced verbatim
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PeriodDurationMismatch);
+        Assert.Equal(1, finding.Count);
+        Assert.Contains("12", finding.Detail, StringComparison.Ordinal); // declared months
+        Assert.Contains("6", finding.Detail, StringComparison.Ordinal);  // observed months
+
+        Assert.DoesNotContain(report.Payload.Statements, s => s.PeriodType == "FY");
+        Assert.All(report.Payload.Statements, s => Assert.Equal("Q", s.PeriodType));
+
+        // The balance sheet still lands — but as a Q half-year, never an FY row.
+        Assert.Contains(
+            report.Payload.Statements,
+            s => s.StatementType == "BS" && s.PeriodEndDate == CurrentBalanceSheet && s.PeriodType == "Q");
+    }
+
+    /// <summary>
+    /// TC-MDF-108 (v) — a statement that decodes lines but maps <b>none</b> to a canonical code
+    /// is named <c>NO_CANONICAL_LINES</c>: rewriting every CF label the map knows leaves 102
+    /// <c>OTHER_*</c> lines and zero canonical ones, so the drift cannot masquerade as a clean
+    /// ledger.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_108_canonical_empty_statement_is_named()
+    {
+        var mutated = Mutate(Capture, "Dönem Karı (Zararı)", "Dönem Sonucu (Yeniden Adlandırıldı)");
+        mutated = Mutate(
+            mutated,
+            "Faaliyetlerden Elde Edilen Nakit Akışları",
+            "Faaliyet Kârı (Yeniden Adlandırıldı)");
+        mutated = Mutate(
+            mutated,
+            "Maddi ve Maddi Olmayan Duran Varlıkların Alımından Kaynaklanan Nakit Çıkışları",
+            "Duran Varlık Alım Çıkışları (Yeniden Adlandırıldı)");
+        mutated = Mutate(
+            mutated,
+            "İşletme Sermayesinde Gerçekleşen Değişimler",
+            "İşletme Sermayesi Değişimi (Yeniden Adlandırıldı)");
+        mutated = Mutate(
+            mutated,
+            "Amortisman ve İtfa Gideri İle İlgili Düzeltmeler",
+            "Amortisman Düzeltmesi (Yeniden Adlandırıldı)");
+        mutated = Mutate(
+            mutated,
+            "DÖNEM SONU NAKİT VE NAKİT BENZERLERİ",
+            "DÖNEM SONU NAKİT (Yeniden Adlandırıldı)");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        var currentCashFlow = report.LinesFor("CF", CurrentYearToDate);
+        Assert.Equal(51, currentCashFlow.Count);
+        Assert.DoesNotContain(
+            currentCashFlow,
+            l => StatementMapper.CanonicalCodes.Contains(l.ItemCode));
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.NoCanonicalLines);
+        Assert.Equal("CF", finding.StatementType);
+        Assert.Equal(102, finding.Count); // both CF columns, zero canonical lines
+        Assert.Contains("Nakit Akış Tablosu (Dolaylı Yöntem)", finding.Detail, StringComparison.Ordinal);
     }
 
     // =================================================================================

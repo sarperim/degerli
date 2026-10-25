@@ -2288,8 +2288,11 @@ onto the same canonical chart-of-accounts codes (`02` §6.1 one-definition doctr
   `N − 4` is the header index (verified on all four captured tables: BS 2 headers/2 value
   columns, IS 4/4, CF 2/2). A header resolves to a period end (the last date it carries), an
   instant-vs-range duration, and its `Cari`/`Önceki` role. Headers are read into
-  `KapPublicColumn` records and matched by that class number, so a re-ordered or widened table
-  cannot silently shift a period.
+  `KapPublicColumn` records and paired to value columns by **ordinal position**, guarded by a
+  header-count/class-contiguity check (`COLUMN_HEADER_MISMATCH`): a table whose
+  `col-order-class` values are not exactly the contiguous run from its first value column, or
+  whose distinct count differs from its `context-header` count, is skipped **whole** rather than
+  paired shifted.
 - **Sub-period columns are named and skipped, never merged.** The captured IS carries four
   headers: two 6-month ranges (this report's own period) and two 3-month Q2 ranges ending on the
   **same dates**. The store's natural key `(periodType, periodEndDate, statementType)` cannot
@@ -2328,8 +2331,12 @@ onto the same canonical chart-of-accounts codes (`02` §6.1 one-definition doctr
   carries a `period` that is **not** a financial period and is not read as an attestation);
   anything else is **null** plus a counted `PERIOD_TYPE_UNKNOWN`. The store's `PeriodType` fails
   safe: only an attested annual period writes `FY`, everything else (interim **and** unknown)
-  writes `Q`, so the DCF baseline's FY filter can never consume a half-year. Nothing is
-  annualized here; the interim's own `periodEndDate`/`fiscalYear` are its own.
+  writes `Q`, so the DCF baseline's FY filter can never consume a half-year. The declared period
+  is also cross-checked against the durations the report's own column headers declare; a
+  disagreement (e.g. a 6-month report self-declaring `Periyot:4`) is counted
+  (`PERIOD_DURATION_MISMATCH`) and fails safe to `Q` for **every** statement row, instant
+  balance-sheet columns included. Nothing is annualized here; the interim's own
+  `periodEndDate`/`fiscalYear` are its own.
 - **Units are the store's vocabulary, not a re-derivation.** `Sunum Para Birimi`
   (`1.000 TL`) → `UnitScale = thousands`, `Currency = TRY`; an unrecognised unit leaves both null
   (counted `PRESENTATION_UNIT_UNRECOGNISED`) so the store refuses the payload rather than scaling
@@ -2348,11 +2355,15 @@ onto the same canonical chart-of-accounts codes (`02` §6.1 one-definition doctr
   column→period alignment (current opening cash `34.251.653` = the BS prior column's cash,
   current closing `39.468.926` = the BS current column's).
 - **Honest ledger, closed reason set.** `NO_COLUMN_HEADERS`, `COLUMN_UNATTRIBUTED`,
-  `VALUE_UNATTRIBUTED`, `LABEL_UNATTRIBUTED`, `DISPLAY_TEXT_MISMATCH`,
+  `COLUMN_HEADER_MISMATCH`, `VALUE_UNATTRIBUTED`, `LABEL_UNATTRIBUTED`, `DISPLAY_TEXT_MISMATCH`,
   `DUPLICATE_LABEL_CONFLICT`, `HEADER_FIELD_MISSING`, `PRESENTATION_UNIT_UNRECOGNISED`,
-  `UNKNOWN_TABLE_HEADING`, `SUB_PERIOD_COLUMN`, `PERIOD_TYPE_UNKNOWN`. Every dropped cell, skipped
-  column and disagreed label is named and counted with a bounded verbatim excerpt; nothing is
-  zero-filled and nothing is silently overwritten.
+  `UNKNOWN_TABLE_HEADING`, `SUB_PERIOD_COLUMN`, `PERIOD_TYPE_UNKNOWN`,
+  `PERIOD_DURATION_MISMATCH`, `NO_CANONICAL_LINES`. Every dropped cell, skipped column and
+  disagreed label is named and counted with a bounded verbatim excerpt (the detail is clipped at
+  `MaxExcerptChars`, the 079/TC-MDF-104 precedent); nothing is zero-filled and nothing is silently
+  overwritten. A statement that decodes lines but maps **none** to a canonical code is counted
+  `NO_CANONICAL_LINES`, so a label-spelling drift surfaces as a named finding instead of a clean
+  ledger with an empty metric.
 - **Recorded gaps (flagged, not papered over).** `fin_line_items` has no label/table provenance
   column, so the "which table, which label, which column, which cell" answer lives on
   `KapPublicReport.Lines` at decode time; persisting it per row is an additive schema change and

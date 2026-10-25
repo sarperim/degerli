@@ -178,8 +178,9 @@ public sealed record KapPublicColumn(
 /// <c>OTHER_{section}_{label}</c> passthrough code.</param>
 /// <param name="Value">The decoded value in the report's presentation unit.</param>
 /// <param name="FromAttribute">True when the value was read from the cell's raw
-/// <c>title=""</c> integer (the pinned primary source); false when only the displayed text
-/// carried it.</param>
+/// <c>title=""</c> integer — the only read path. A cell with no raw attribute is a counted
+/// drop, never decoded from the displayed text, so every decoded line carries <c>true</c>
+/// here; the field is kept so a provenance record still states its source explicitly.</param>
 /// <param name="RawAttribute">The cell's <c>title</c> attribute verbatim (null when absent).</param>
 /// <param name="DisplayedText">The cell's displayed text, verbatim (the cross-check only).</param>
 /// <param name="ColumnHeader">The period column header this value came from, verbatim.</param>
@@ -282,6 +283,12 @@ public static class KapPublicReportReasons
     /// <summary>A value cell's column class pointed outside the header set — dropped.</summary>
     public const string ColumnUnattributed = "COLUMN_UNATTRIBUTED";
 
+    /// <summary>The table's observed <c>col-order-class</c> values are not contiguous from its
+    /// first value column, or their count differs from its <c>context-header</c> count. Headers
+    /// are paired to value columns by ordinal position, so an inconsistent pairing is never
+    /// trusted — the table is skipped whole rather than a shifted column being emitted.</summary>
+    public const string ColumnHeaderMismatch = "COLUMN_HEADER_MISMATCH";
+
     /// <summary>A cell's raw attribute was not a number — dropped, never coerced to zero.</summary>
     public const string ValueUnattributed = "VALUE_UNATTRIBUTED";
 
@@ -317,4 +324,15 @@ public static class KapPublicReportReasons
     /// <summary>The report's <c>Periyot</c> is absent or outside the evidenced set, so the
     /// period type is unknown — surfaced as null rather than guessed.</summary>
     public const string PeriodTypeUnknown = "PERIOD_TYPE_UNKNOWN";
+
+    /// <summary>The report's declared <c>Periyot</c> duration disagrees with the durations its
+    /// own column headers declare (e.g. a 6-month report self-declaring <c>Periyot:4</c>). The
+    /// statement period type then fails safe to <c>Q</c> — an FY row is never emitted on a
+    /// contradicted declaration.</summary>
+    public const string PeriodDurationMismatch = "PERIOD_DURATION_MISMATCH";
+
+    /// <summary>A statement table decoded lines but <b>none</b> mapped to a canonical code —
+    /// only <c>OTHER_*</c> passthroughs. A label-spelling drift must be named, not left as a
+    /// clean ledger with no metric input.</summary>
+    public const string NoCanonicalLines = "NO_CANONICAL_LINES";
 }
