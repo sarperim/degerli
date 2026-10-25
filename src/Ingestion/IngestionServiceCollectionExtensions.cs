@@ -9,6 +9,7 @@ using Degerli.Ingestion.Funds;
 using Degerli.Ingestion.Intraday;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Macro;
 using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
@@ -127,6 +128,32 @@ public static class IngestionServiceCollectionExtensions
 
             return new KapHttpSourceClient(http, secrets);
         });
+
+        // The KAP **public-site** source (01 v1.5.53 §10.9.19, TKT-foundation-079) is a
+        // separate source from the VYK gateway above — its own base address, its own
+        // single-flight client, its own per-run pacer and its own options section. The VYK
+        // wiring is untouched: selecting the public site for a lane is configuration
+        // (TKT-foundation-082/084), never a rewrite, and switching back is configuration too.
+        services.Configure<KapPublicSourceOptions>(configuration.GetSection(KapPublicSourceOptions.SectionName));
+        services.AddKeyedSingleton<HttpClient>(KapPublicSourceOptions.ClientKey, (provider, _) =>
+        {
+            var options = provider.GetRequiredService<IOptions<KapPublicSourceOptions>>().Value;
+            var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
+            return new HttpClient
+            {
+                BaseAddress = KapPublicUri.WithDirectorySeparator(new Uri(baseUrl, UriKind.Absolute)),
+                // Every request carries its own bound (the per-item detail timeout is the
+                // shorter one): a stalled body can never outlive the bound its request set.
+                Timeout = Timeout.InfiniteTimeSpan,
+            };
+        });
+        services.AddScoped<KapPublicRequestPacer>();
+        services.AddScoped<IKapPublicSourceClient>(provider => new KapPublicHttpSourceClient(
+            provider.GetRequiredKeyedService<HttpClient>(KapPublicSourceOptions.ClientKey),
+            provider.GetRequiredService<IOptions<KapPublicSourceOptions>>(),
+            provider.GetRequiredService<KapPublicRequestPacer>(),
+            provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<KapPublicSourceReader>();
 
         services.Configure<StatementsSourceOptions>(configuration.GetSection(StatementsSourceOptions.SectionName));
         services.Configure<DividendsSourceOptions>(configuration.GetSection(DividendsSourceOptions.SectionName));

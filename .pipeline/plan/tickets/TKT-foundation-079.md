@@ -5,14 +5,16 @@ scope:
   - src/Api/appsettings.json
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - tests/Api.IntegrationTests/KapPublicSourceTests.cs
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
 ---
 
 # TKT-foundation-079: KAP public-site source skeleton — the politeness/ToS gate, the HTTP client, the configuration contract and the committed double set (byCriteria list + one FR excel-HTML round-trip, honest statuses)
 
-- Status: todo
+- Status: in-review
 - Size: L
+- PR: https://github.com/sarperim/degerli/pull/141
 - **Priority: P1 — USER-DIRECTED lane (2026-10-25: "i guess we need a kap scraper so lets go on with architect and testbuilder etc so it could work").** First ticket of the public-site source lane; gates TKT-foundation-080..084.
 - **Evidence base (verified live, the factual ground truth):** `.pipeline/plan/kap-public-source-investigation.md` (orchestrator, 2026-10-25). Two endpoints proven current to 2026-10-23 and unauthenticated: `POST https://www.kap.org.tr/tr/api/disclosure/members/byCriteria` (rich disclosure rows) and `GET /tr/api/notification/export/excel/{disclosureIndex}` (full FR report as ~1.8 MB of HTML tables — content-type lies `application/vnd.ms-excel`, body is HTML). Also available: `/tr/api/notification/export/word/{id}`, `/tr/api/BildirimPdf/{id}`, `/tr/api/file/download/{oid}`, `/tr/sirket/{ticker}` + `/tr/api/search/combined` (identity). **The public site's `disclosureIndex` is its own current space (ASELS 2026-06 FR = 1643141; VYK head = 1231017) — never mix the two.**
 - **Pinned contract (non-negotiable, from the standing doctrine + the investigation):**
@@ -30,3 +32,16 @@ scope:
 - UX refs: none (source lane; no UI).
 - Dependencies: none. **Coordination:** `.pipeline/testing/market-data-foundation.md` — §19 belongs to 070's in-flight branch (PR #138, v1.22); this lane's sections start at §20 and rebase-coordinate. `01` §13.1 appends serialize by last-lander rebase (standing convention).
 - Parallel group: none.
+- **Scope amendment (2026-10-25, user-ratified — G-2):** `tests/Api.IntegrationTests/RealSourcePricesTests.cs` added to `scope:` — the fixer's change there was verified correct, necessary and assertion-strengthening, but the original scope was derived from where the logic lives rather than where the effect happens (the real-source catalog contract the new `kap-public-*` entries must satisfy).
+
+## Decision record — 2026-10-25 (user)
+
+**E2 RATIFIED — proceed.** The user chose to **ratify proceeding** on the evidence that **kap.org.tr serves no robots.txt at all**. `01` §10.9.19 / §13.1 **v1.5.53** must record **both** probe responses verbatim instead of claiming "Allowed" (neither "Allowed" nor "refused" is an honest reading of a path that serves no policy):
+
+- `GET https://www.kap.org.tr/robots.txt` → **HTTP 666**, 528 B HTML access-error page (the site's generic error page for that path — not a policy refusal).
+- `GET https://kap.org.tr/robots.txt` → **HTTP 307** → `/en/robots.txt` → **HTTP 404** (Next.js not-found). **No robots.txt is served**; RFC 9309's 404 reading applies (no rules stated), so the lane proceeds under its politeness contract.
+
+Full probe records: `.pipeline/plan/run-report.md`, ~07:00 UTC entry (2026-10-25). Decision date **2026-10-25**, attributed to the user (~07:15 UTC entry, same report).
+
+**Disposition of the rewording:** queued to **fixer dispatch #2** (owned by the review-lead) **with this user-ratified wording**. This commit records the decision only — it does **not** implement the §10.9.19/v1.5.53 rewording, and touches no code, test or double.
+
