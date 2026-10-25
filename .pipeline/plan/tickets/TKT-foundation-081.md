@@ -8,6 +8,12 @@ scope:
   - tests/Api.IntegrationTests/StatementVersioningTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
+  # 2026-10-25 SCOPE AMENDMENT (user-supplied pre-dispatch intelligence, live-verified against
+  # ASELS index 1643141): an HTML parser package (AngleSharp or HtmlAgilityPack — implementer's
+  # choice, stated in the PR) MAY be added. Without it, nested-table label/value extraction is a
+  # fragile hand-written parser (verified: simple regex row matching fails). The package addition
+  # touches the owning .csproj, which the original scope omitted — planning defect, same class as
+  # 079's G-2 (scope derived from where logic lives, not where the effect happens).
 ---
 
 # TKT-foundation-081: Public-site FR report decoder — the excel-HTML tables onto the canonical statement model, **including the cash-flow statement (supersedes TKT-foundation-051)**
@@ -24,3 +30,43 @@ scope:
 - UX refs: none (decoder lane; the SNA column's presentation already exists).
 - Dependencies: TKT-foundation-079 (the committed excel-HTML capture + client/config). 080 is NOT a dependency (the decoder is capture-driven; identity is consumed by the walk in 082).
 - Parallel group: none (shares the two permanent docs with the lane; last-lander rebase).
+
+## Pre-dispatch intelligence (user-supplied AI report, 2026-10-25; live-verified against index 1643141)
+
+**De-risking discovery:** every value cell in the excel-HTML export carries the **raw integer in
+an attribute** (`title="39468926"` beside the displayed `39.468.926`). The decoder reads the
+attribute directly; displayed text is a cross-check only. **Turkish number-format parsing — the
+riskiest part of the original ticket — is removed.** Verified real values (thousand TL): OCF
+`21,061,426`, CAPEX `-17,190,837`, revenue `88,494,252 / 70,956,004 / …`, total assets
+`549,748,035 / 508,228,606`.
+
+**Fixture state:** 079's committed `KapPublicReportHtml` double is a bounded-trim of this exact
+report — 630 of 3,484 value cells, including the OCF and CAPEX labels. Red-green doubles are
+already in the repo.
+
+**Known structural work (the coder will hit these):**
+1. **No HTML parser referenced anywhere in the project** — resolved by the scope amendment above
+   (AngleSharp or HtmlAgilityPack; nested tables defeat regex row matching — verified).
+2. **Column→period mapping must come from column headers, not position** — value columns are
+   marked by CSS class (`col-order-class-4/-5/-6/-7`); income statement has 4 columns (half-year
+   current/prior + quarter current/prior), balance sheet 2.
+3. **Duplicate labels across statements** — `Dönem Karı (Zararı)` appears in both the income
+   statement and the cash-flow statement (0-valued there). Each line must be assigned to its
+   SECTION before label mapping, or the duplicate-label quarantine rule discards legitimate
+   values.
+4. **Cash-flow is cumulative year-to-date** — a half-year report carries 6 months of CF.
+   Quarterly/TTM free cash flow requires subtraction between reports. **Handling pinned by user
+   decision — see the decision record below (do not guess).**
+5. **The export still uses the old GWT CSS classes** (the ones pykap targeted). Served today,
+   but a KAP redesign of this export breaks the decoder — the 068 source-contract drift probes
+   must cover this export (follow-up slice owed; not this ticket's scope).
+
+## User decision — cash-flow basis (2026-10-25, pinned before dispatch)
+
+**Annual FCF + labeled interims.** DCF baselines use the most recent ANNUAL report's full-year
+FCF (e.g. ASELS 2025 Yıllık, index 1561039, filed 24.02.2026). Interim reports populate the
+financials display with honest period labels ("6 months ended 30.06.2026") — never annualized,
+never silently mixed. TTM-by-subtraction is explicitly a future refinement, not this ticket.
+The decoder must therefore surface the **report period type** (Yıllık / 6 Aylık / 3 Aylık) from
+the report metadata so downstream consumers can select annuals and label interims — the row
+shape already carries `year`/`ruleType`/`period` from byCriteria.
