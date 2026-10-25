@@ -5,6 +5,7 @@ scope:
   - src/Api/appsettings.json
   - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
   - tests/Api.IntegrationTests/KapPublicSourceTests.cs
+  - tests/Api.IntegrationTests/RealSourcePricesTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
 ---
@@ -31,3 +32,16 @@ scope:
 - UX refs: none (source lane; no UI).
 - Dependencies: none. **Coordination:** `.pipeline/testing/market-data-foundation.md` — §19 belongs to 070's in-flight branch (PR #138, v1.22); this lane's sections start at §20 and rebase-coordinate. `01` §13.1 appends serialize by last-lander rebase (standing convention).
 - Parallel group: none.
+- **Scope amendment (2026-10-25, user-ratified — G-2):** `tests/Api.IntegrationTests/RealSourcePricesTests.cs` added to `scope:` — the fixer's change there was verified correct, necessary and assertion-strengthening, but the original scope was derived from where the logic lives rather than where the effect happens (the real-source catalog contract the new `kap-public-*` entries must satisfy).
+
+## Decision record — 2026-10-25 (user)
+
+**E2 RATIFIED — proceed.** The user chose to **ratify proceeding** on the evidence that **kap.org.tr serves no robots.txt at all**. `01` §10.9.19 / §13.1 **v1.5.53** must record **both** probe responses verbatim instead of claiming "Allowed" (neither "Allowed" nor "refused" is an honest reading of a path that serves no policy):
+
+- `GET https://www.kap.org.tr/robots.txt` → **HTTP 666**, 528 B HTML access-error page (the site's generic error page for that path — not a policy refusal).
+- `GET https://kap.org.tr/robots.txt` → **HTTP 307** → `/en/robots.txt` → **HTTP 404** (Next.js not-found). **No robots.txt is served**; RFC 9309's 404 reading applies (no rules stated), so the lane proceeds under its politeness contract.
+
+Full probe records: `.pipeline/plan/run-report.md`, ~07:00 UTC entry (2026-10-25). Decision date **2026-10-25**, attributed to the user (~07:15 UTC entry, same report).
+
+**Disposition of the rewording:** queued to **fixer dispatch #2** (owned by the review-lead) **with this user-ratified wording**. This commit records the decision only — it does **not** implement the §10.9.19/v1.5.53 rewording, and touches no code, test or double.
+
