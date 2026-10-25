@@ -72,3 +72,24 @@ never silently mixed. TTM-by-subtraction is explicitly a future refinement, not 
 The decoder must therefore surface the **report period type** (Yıllık / 6 Aylık / 3 Aylık) from
 the report metadata so downstream consumers can select annuals and label interims — the row
 shape already carries `year`/`ruleType`/`period` from byCriteria.
+
+### Decision record — the OCF row (2026-10-26, DR-2; user-authorized round 3)
+
+The 2026-10-25 record above pinned a **value** (`OCF 21,061,426`, the comparative column of the
+before-tax subtotal) but not a **row**; the review escalated the ambiguity and the user chose the
+row. `OCF` maps to the statement's own operating total **`İŞLETME FAALİYETLERİNDEN NAKİT
+AKIŞLARI`** — the figure **after** tax paid and other operating payments — not the before-tax
+subtotal `Faaliyetlerden Elde Edilen Nakit Akışları`.
+
+- Candidate rows in the committed 6-month capture (thousand TL, current / comparative):
+  `İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI` 15.206.440 / 18.013.334; `Faaliyetlerden Elde Edilen
+  Nakit Akışları` 20.382.722 / 21.061.426.
+- Chosen basis consequence: FCF = OCF − |CAPEX| with CAPEX 33.746.150 / 17.190.837 gives interim
+  FCF **−18.539.710** / **822.497** instead of the superseded −13.363.428 / 3.870.589 — roughly a
+  25% difference on the metric this ticket exists to supply in the current column.
+- The before-tax subtotal **remains decoded** as a labelled `OTHER_CF_OPERATING_*` companion (it is
+  not mapped to any canonical code), so the financials display keeps both measures and nothing
+  downstream can mistake one for the other.
+- No annual golden is pinned here: the committed capture is a 6-month interim (`Periyot:2`) with no
+  annual column. The FY basis stays guarded by the declared-vs-observed duration fail-safe and is
+  the post-merge live criterion.

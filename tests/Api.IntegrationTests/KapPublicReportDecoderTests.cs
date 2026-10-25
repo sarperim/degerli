@@ -395,8 +395,13 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         var report = KapPublicReportDecoder.Decode(Capture, "ASELS");
 
-        // Every value came from the raw `title` attribute, and its displayed text agreed.
-        Assert.All(report.Lines, line => Assert.True(line.FromAttribute, line.Label));
+        // Every value came from the raw `title` attribute (a display-derived line would carry
+        // no attribute at all), and that attribute is verbatim present in the capture.
+        Assert.All(report.Lines, line =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(line.RawAttribute), line.Label);
+            Assert.Contains(line.RawAttribute!, Capture, StringComparison.Ordinal);
+        });
         Assert.Equal(0, report.Count(KapPublicReportReasons.DisplayTextMismatch));
         Assert.Equal(0, report.Count(KapPublicReportReasons.ValueUnattributed));
 
@@ -455,6 +460,17 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             "OTHER_CF_SUMMARY_DÖNEM_BAŞI_NAKİT_VE_NAKİT_BENZERLERİ",
             currentCashFlow.Keys);
 
+        // The before-tax operating subtotal is not OCF (DR-2, user decision 2026-10-26) but it
+        // must stay a decoded, labelled line — the passthrough keeps both measures transparent.
+        Assert.Equal(
+            20_382_722m,
+            currentCashFlow["OTHER_CF_OPERATING_Faaliyetlerden_Elde_Edilen_Nakit_Akışları"]);
+        var priorCashFlow = report.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == PriorYearToDate).Lines;
+        Assert.Equal(
+            21_061_426m,
+            priorCashFlow["OTHER_CF_OPERATING_Faaliyetlerden_Elde_Edilen_Nakit_Akışları"]);
+
         // The whole line set is accounted for: no value is silently absent from the result.
         Assert.Equal(116, report.Lines.Count);
         Assert.Equal(4, report.LinesFor("BS", CurrentBalanceSheet).Count);
@@ -491,7 +507,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         // A cell whose raw attribute is unreadable is dropped the same way (never coerced to
         // zero). Derived from the capture: the OCF cell's raw integer is corrupted in place.
-        var corrupted = Mutate(Capture, "title=\"20382722\"", "title=\"n/a\"");
+        var corrupted = Mutate(Capture, "title=\"15206440\"", "title=\"n/a\"");
         var corruptedReport = KapPublicReportDecoder.Decode(corrupted, "ASELS");
         Assert.Equal(1, corruptedReport.Count(KapPublicReportReasons.ValueUnattributed));
         Assert.DoesNotContain(corruptedReport.LinesFor("CF", CurrentYearToDate), l => l.ItemCode == "OCF");
@@ -569,7 +585,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     [Fact]
     public void TC_MDF_107_display_text_mismatch_is_a_finding_not_an_override()
     {
-        var mutated = Mutate(Capture, "title=\"20382722\"", "title=\"20382799\"");
+        var mutated = Mutate(Capture, "title=\"15206440\"", "title=\"15206499\"");
         var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
 
         var mismatch = Assert.Single(
@@ -577,15 +593,15 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             f => f.ReasonCode == KapPublicReportReasons.DisplayTextMismatch);
         Assert.Equal(1, mismatch.Count);
         Assert.Equal("CF", mismatch.StatementType);
-        Assert.Contains("20.382.722", mismatch.Detail, StringComparison.Ordinal); // displayed, verbatim
-        Assert.Contains("20382799", mismatch.Detail, StringComparison.Ordinal);    // attribute, verbatim
+        Assert.Contains("15.206.440", mismatch.Detail, StringComparison.Ordinal); // displayed, verbatim
+        Assert.Contains("15206499", mismatch.Detail, StringComparison.Ordinal);    // attribute, verbatim
         Assert.Contains("Cari Dönem", mismatch.Detail, StringComparison.Ordinal);  // the column, not the table
 
         // The attribute wins — the decoder does not "repair" the value from the display text.
         var line = report.LinesFor("CF", CurrentYearToDate).Single(l => l.ItemCode == "OCF");
-        Assert.Equal(20_382_799m, line.Value);
-        Assert.Equal("20.382.722", line.DisplayedText);
-        Assert.Equal("20382799", line.RawAttribute);
+        Assert.Equal(15_206_499m, line.Value);
+        Assert.Equal("15.206.440", line.DisplayedText);
+        Assert.Equal("15206499", line.RawAttribute);
     }
 
     /// <summary>
@@ -597,7 +613,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     [Fact]
     public void TC_MDF_107_cell_without_raw_attribute_is_dropped_never_read_from_display()
     {
-        var stripped = Mutate(Capture, "title=\"20382722\"", string.Empty);
+        var stripped = Mutate(Capture, "title=\"15206440\"", string.Empty);
         var report = KapPublicReportDecoder.Decode(stripped, "ASELS");
 
         var finding = Assert.Single(
@@ -605,9 +621,9 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             f => f.ReasonCode == KapPublicReportReasons.ValueUnattributed);
         Assert.Equal(1, finding.Count);
         Assert.Equal("CF", finding.StatementType);
-        Assert.Equal("Faaliyetlerden Elde Edilen Nakit Akışları", finding.Label);
+        Assert.Equal("İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI", finding.Label);
         Assert.Contains("Cari Dönem", finding.Detail, StringComparison.Ordinal);
-        Assert.Contains("20.382.722", finding.Detail, StringComparison.Ordinal); // displayed, verbatim
+        Assert.Contains("15.206.440", finding.Detail, StringComparison.Ordinal); // displayed, verbatim
 
         // Absent from the payload for that (statement, period) — never decoded from the display
         // text and never zero-filled in its place.
@@ -617,7 +633,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.DoesNotContain(report.LinesFor("CF", CurrentYearToDate), l => l.ItemCode == "OCF");
         Assert.DoesNotContain(
             report.LinesFor("CF", CurrentYearToDate),
-            l => l.Label == "Faaliyetlerden Elde Edilen Nakit Akışları");
+            l => l.Label == "İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI");
     }
 
     /// <summary>
@@ -733,7 +749,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         // Normalized to single TL by the store's own scale (02 §3.1): the report is in
         // thousands, so the stored value is the captured integer × 1.000.
-        Assert.Equal(20_382_722_000m, currentLines["OCF"]);
+        Assert.Equal(15_206_440_000m, currentLines["OCF"]);
         Assert.Equal(-33_746_150_000m, currentLines["CAPEX"]);
         Assert.Equal(-5_991_513_000m, currentLines["ΔWC"]);
         Assert.Equal(4_338_537_000m, currentLines["DEPR_AMORT"]);
@@ -741,16 +757,16 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         // FCF through the locked formula (CanonicalMetrics FCF v1.3), on the stored units.
         var currentFcf = CanonicalMetrics.FreeCashFlow(currentLines["OCF"], currentLines["CAPEX"]);
-        Assert.Equal(20_382_722_000m - 33_746_150_000m, currentFcf); // −13.363.428 thousand TL
+        Assert.Equal(15_206_440_000m - 33_746_150_000m, currentFcf); // −18.539.710 thousand TL
 
         var priorStatement = cfStatements.Single(s => s.PeriodEndDate == PriorYearToDate);
         var priorLines = await db.FinLineItems
             .Where(l => l.StatementId == priorStatement.Id)
             .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
-        Assert.Equal(21_061_426_000m, priorLines["OCF"]);
+        Assert.Equal(18_013_334_000m, priorLines["OCF"]);
         Assert.Equal(-17_190_837_000m, priorLines["CAPEX"]);
         Assert.Equal(
-            21_061_426_000m - 17_190_837_000m,
+            18_013_334_000m - 17_190_837_000m,
             CanonicalMetrics.FreeCashFlow(priorLines["OCF"], priorLines["CAPEX"]));
 
         // The balance sheet's cash for the same period end agrees with the cash-flow
@@ -856,7 +872,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal(6, unknown.Payload.Statements.Count);
         Assert.All(unknown.Payload.Statements, s => Assert.Equal("Q", s.PeriodType));
         Assert.Equal(
-            20_382_722m,
+            15_206_440m,
             unknown.Payload.Statements.Single(
                 s => s.StatementType == "CF" && s.PeriodEndDate == CurrentYearToDate).Lines["OCF"]);
     }
@@ -903,8 +919,8 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         var mutated = Mutate(Capture, "Dönem Karı (Zararı)", "Dönem Sonucu (Yeniden Adlandırıldı)");
         mutated = Mutate(
             mutated,
-            "Faaliyetlerden Elde Edilen Nakit Akışları",
-            "Faaliyet Kârı (Yeniden Adlandırıldı)");
+            "İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI",
+            "İşletme Faaliyetleri (Yeniden Adlandırıldı)");
         mutated = Mutate(
             mutated,
             "Maddi ve Maddi Olmayan Duran Varlıkların Alımından Kaynaklanan Nakit Çıkışları",
@@ -936,6 +952,58 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal("CF", finding.StatementType);
         Assert.Equal(102, finding.Count); // both CF columns, zero canonical lines
         Assert.Contains("Nakit Akış Tablosu (Dolaylı Yöntem)", finding.Detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TC-MDF-108 (vi) — the FY guard's <b>success</b> direction: when the declared
+    /// <c>Periyot</c> and the observed column durations agree at 12 months, the rows type
+    /// <c>FY</c> with no <c>PERIOD_DURATION_MISMATCH</c>, and the aggregate FY filter (the DCF
+    /// baseline's own <c>PeriodType == "FY"</c> selection) picks the cash-flow row up. Derived
+    /// from the committed half-year capture by aligning its declaration and its year-to-date
+    /// headers to a 12-month span ending 30.06.2026 — never a new committed fixture.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_108_agreed_year_declaration_types_fy_end_to_end()
+    {
+        var annual = Mutate(Capture, "   Periyot:2", "   Periyot:4");
+        // The IS year-to-date pair (columns 0 and 1) and the CF pair become 12-month spans;
+        // the IS 3-month sub-period pair stays as captured (it is skipped either way).
+        annual = Mutate(annual, "01.01.2026 - 30.06.2026", "01.07.2025 - 30.06.2026");
+        annual = Mutate(annual, "01.01.2026 - 30.06.2026", "01.07.2025 - 30.06.2026");
+        annual = Mutate(annual, "01.01.2025 - 30.06.2025", "01.07.2024 - 30.06.2025");
+        annual = Mutate(annual, "01.01.2025 - 30.06.2025", "01.07.2024 - 30.06.2025");
+
+        var report = KapPublicReportDecoder.Decode(annual, "ASELS");
+        Assert.Equal("Yıllık", report.Header.PeriodType); // self-declared, surfaced verbatim
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PeriodDurationMismatch));
+
+        // The CF row is an annual row at the same period end, carrying the section-total OCF.
+        var currentCashFlow = report.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == CurrentYearToDate);
+        Assert.Equal("FY", currentCashFlow.PeriodType);
+        Assert.Equal(15_206_440m, currentCashFlow.Lines["OCF"]);
+
+        // The aggregate FY filter — the selection the DCF baseline and the metrics engines use —
+        // picks the row up end-to-end from the store.
+        var (store, instrumentId) = await StoreAsync();
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 8, 4, 18, 39, 41, TimeSpan.Zero),
+            report.Payload);
+        Assert.Equal(6, result.Inserted);
+
+        await using var db = _postgres.CreateContext();
+        var annualOcf = await (
+                from line in db.FinLineItems
+                join statement in db.FinancialStatements on line.StatementId equals statement.Id
+                where statement.InstrumentId == instrumentId
+                      && statement.StatementType == "CF"
+                      && statement.PeriodType == "FY"
+                      && statement.PeriodEndDate == CurrentYearToDate
+                      && line.ItemCode == "OCF"
+                select line.Value)
+            .SingleAsync();
+        Assert.Equal(15_206_440_000m, annualOcf);
     }
 
     // =================================================================================

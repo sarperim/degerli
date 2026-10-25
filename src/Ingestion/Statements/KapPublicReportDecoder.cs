@@ -105,11 +105,16 @@ public static class KapPublicReportDecoder
     /// spelling is in <see cref="CaptureName"/>, and the entry records that fact — and every
     /// target is a canonical item code from <see cref="StatementMapper.CanonicalCodes"/>.
     /// <para>
-    /// Deliberate non-mappings, each an honest gap rather than a guess: the cash-flow
-    /// <c>İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI</c> section total is <b>not</b> <c>OCF</c>
-    /// (the capture's own <c>Faaliyetlerden Elde Edilen Nakit Akışları</c> line is the
-    /// operating subtotal the lane's OCF means, and mapping both would equate two different
-    /// measures — the section total stays an <c>OTHER_*</c> companion), the
+    /// The cash-flow <c>OCF</c> basis is the statement's own operating total
+    /// <c>İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI</c> — the figure <b>after</b> tax paid and
+    /// other operating payments (user decision 2026-10-26, DR-2; <c>CanonicalMetrics</c>
+    /// documents OCF as "taken as the KAP cash-flow statement reports it"). The before-tax
+    /// subtotal <c>Faaliyetlerden Elde Edilen Nakit Akışları</c> is <b>not</b> mapped: it stays
+    /// a decoded, labelled <c>OTHER_CF_OPERATING_*</c> companion, so the display keeps both
+    /// measures instead of equating them.
+    /// </para>
+    /// <para>
+    /// Other deliberate non-mappings, each an honest gap rather than a guess: the
     /// tangible/intangible acquisition children stay <c>OTHER_*</c> because the combined
     /// <c>Maddi ve Maddi Olmayan …</c> row is <c>CAPEX</c> and mapping the children too would
     /// double-count it, and <b>no share-count line is mapped at all</b> (share counts are
@@ -127,9 +132,11 @@ public static class KapPublicReportDecoder
         new("BS", "Nakit ve Nakit Benzerleri", "CASH", CaptureName),
 
         // ---- Cash-flow statement (the 051 deliverable) -----------------------------
-        // The operating subtotal the lane's OCF means (captured 20.382.722 current /
-        // 21.061.426 comparative, thousand TL).
-        new("CF", "Faaliyetlerden Elde Edilen Nakit Akışları", "OCF", CaptureName),
+        // The statement's own operating total, after tax paid and other operating payments
+        // (captured 15.206.440 current / 18.013.334 comparative, thousand TL; user decision
+        // 2026-10-26 — see the class doc comment above). The before-tax subtotal
+        // `Faaliyetlerden Elde Edilen Nakit Akışları` stays an OTHER_CF_OPERATING_* companion.
+        new("CF", "İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI", "OCF", CaptureName),
         // The combined tangible + intangible acquisition outflow — its two children sum to
         // exactly this line (5.513.477 + 11.677.360 = 17.190.837, comparative column).
         new("CF", "Maddi ve Maddi Olmayan Duran Varlıkların Alımından Kaynaklanan Nakit Çıkışları", "CAPEX", CaptureName),
