@@ -34,7 +34,9 @@ public sealed class SourceContractProbeTests
     private static readonly DateTimeOffset Now = new(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
 
     // Shape-faithful excerpt of the committed İş Yatırım EOD double (isyatirim-prices-ASELS,
-    // 01 §10.9.1): the envelope fields plus a two-field row. Values are fixture values.
+    // 01 §10.9.1): the envelope fields plus a row carrying the six HEAD/price fields the adapter
+    // reads. Representative shape, not the committed body (the double's rows also carry the
+    // index/FX/PD fields); values are fixture values.
     private const string PricesDoubleJson =
         """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"23c0bb08b7f14485b4a7dff0fed2727a","value":[{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"06-10-2026","HGDG_KAPANIS":376.0000,"HGDG_MIN":364.25,"HGDG_MAX":379.0,"HGDG_HACIM":13239396512.000000},{"HGDG_HS_KODU":"ASELS","HGDG_TARIH":"07-10-2026","HGDG_KAPANIS":348.7500,"HGDG_MIN":346.75,"HGDG_MAX":377.25,"HGDG_HACIM":17063642691.000000}]}""";
 
@@ -42,9 +44,10 @@ public sealed class SourceContractProbeTests
     private const string PricesDoubleOtherValuesJson =
         """{"ok":true,"errorCode":null,"errorDescription":null,"transactionId":"0000000000000000000000000000000f","value":[{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"20-10-2026","HGDG_KAPANIS":291.5000,"HGDG_MIN":289.25,"HGDG_MAX":294.0,"HGDG_HACIM":1234.500000},{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"21-10-2026","HGDG_KAPANIS":295.0000,"HGDG_MIN":292.75,"HGDG_MAX":296.25,"HGDG_HACIM":9876.500000}]}""";
 
-    // A list envelope: the KAP VYK disclosure list double's shape (kap-vyk-disclosures).
+    // The KAP VYK disclosure list double's shape (kap-vyk-disclosures) — byte-for-byte the
+    // committed body's shape: `acceptedDataFileTypes:["data"]`, `subReportIds:[]`.
     private const string DisclosuresDoubleJson =
-        """[{"companyId":"1001","disclosureIndex":"1226255","disclosureClass":"FR","disclosureType":"","title":"Finansal Rapor","acceptedDataFileTypes":["pdf"],"subReportIds":["1"]}]""";
+        """[{"disclosureIndex":"1001","disclosureType":"FR","disclosureClass":"FR","title":"Finansal Rapor","companyId":"1001","subReportIds":[],"acceptedDataFileTypes":["data"]}]""";
 
     // ---- (i) shape equality and drift -------------------------------------------------
 
@@ -80,7 +83,7 @@ public sealed class SourceContractProbeTests
     public void AC68i_MissingKey_IsDriftWithThePathNamed()
     {
         var contract = ContractFor(DisclosuresDoubleJson);
-        var drifted = """[{"companyId":"1001","disclosureIndex":"1226255","disclosureClass":"FR","disclosureType":"","acceptedDataFileTypes":["pdf"],"subReportIds":["1"]}]""";
+        var drifted = """[{"disclosureIndex":"1001","disclosureType":"FR","disclosureClass":"FR","companyId":"1001","subReportIds":[],"acceptedDataFileTypes":["data"]}]""";
 
         var result = Evaluate(contract, drifted);
 
@@ -98,7 +101,7 @@ public sealed class SourceContractProbeTests
     {
         var contract = ContractFor(DisclosuresDoubleJson);
         var drifted =
-            """[{"companyId":"1001","disclosureIndex":"1226255","disclosureClass":"FR","disclosureType":"","title":"Finansal Rapor","acceptedDataFileTypes":["pdf"],"subReportIds":["1"],"publishedAt":"2026-10-18"}]""";
+            """[{"disclosureIndex":"1001","disclosureType":"FR","disclosureClass":"FR","title":"Finansal Rapor","companyId":"1001","subReportIds":[],"acceptedDataFileTypes":["data"],"publishedAt":"2026-10-18"}]""";
 
         var result = Evaluate(contract, drifted);
 
@@ -115,7 +118,7 @@ public sealed class SourceContractProbeTests
     {
         var contract = ContractFor(DisclosuresDoubleJson);
         var drifted =
-            """[{"companyId":"1001","disclosureIndex":1226255,"disclosureClass":"FR","disclosureType":"","title":"Finansal Rapor","acceptedDataFileTypes":["pdf"],"subReportIds":["1"]}]""";
+            """[{"disclosureIndex":1226255,"disclosureType":"FR","disclosureClass":"FR","title":"Finansal Rapor","companyId":"1001","subReportIds":[],"acceptedDataFileTypes":["data"]}]""";
 
         var result = Evaluate(contract, drifted);
 
@@ -215,6 +218,11 @@ public sealed class SourceContractProbeTests
         Assert.Contains(result.Findings, f => f.Path == "$" && f.Kind == DriftKind.TypeChanged);
         Assert.Contains(result.Findings, f => f.Path == "$.code");
         Assert.Contains(result.Findings, f => f.Path == "$.message");
+
+        // An array that became an object is a type change, not an empty collection: neither the
+        // "answered empty" explanation nor its downstream missing keys may be fabricated.
+        Assert.DoesNotContain(result.Findings, f => f.Kind == DriftKind.ElementShapeMissing);
+        Assert.DoesNotContain(result.Findings, f => f.Kind == DriftKind.MissingKey);
     }
 
     /// <summary>
@@ -362,6 +370,36 @@ public sealed class SourceContractProbeTests
             p => Assert.True(p.EffectivePacingMs >= ProbePolicy.KapIntervalFloorMs, p.Key));
         Assert.Equal(ProbePolicy.IsYatirimIntervalFloorMs, ProbePolicy.EffectiveInterval("isyatirim", 500));
         Assert.Equal(ProbePolicy.KapIntervalFloorMs, ProbePolicy.EffectiveInterval("kap", 1_000));
+    }
+
+    /// <summary>
+    /// AC68(iv), 01 §10.9.12: the EVDS values route is an <b>anonymous POST</b> with the
+    /// documented body — no credential is required or sent, and no key rides the URL. Pinned so
+    /// the registry cannot silently drift back to the refuted GET-with-key transport.
+    /// </summary>
+    [Fact]
+    public void AC68iv_EvdsProbe_IsAnAnonymousPostWithTheDocumentedBody()
+    {
+        var probe = SourceProbeRegistry.Find(SourceProbeRegistry.EvdsMacro);
+        Assert.NotNull(probe);
+        Assert.Equal("evds", probe.SourceRef);
+        Assert.Equal("POST", probe.Method);
+        Assert.Equal("https://evds3.tcmb.gov.tr/igmevdsms-dis/fe", probe.UrlTemplate);
+        Assert.DoesNotContain("key=", probe.UrlTemplate, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("{apiKey}", probe.UrlTemplate, StringComparison.Ordinal);
+        Assert.Empty(probe.SecretQueryParameters);
+
+        var body = probe.RequestBody;
+        Assert.NotNull(body);
+        Assert.DoesNotContain("{apiKey}", body, StringComparison.Ordinal);
+        Assert.Contains("\"series\":\"{series}\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"aggregationTypes\":\"avg\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"formulas\":\"0\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"startDate\":\"{startDate}\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"endDate\":\"{endDate}\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"frequency\":\"2\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"dateFormat\":\"0\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"ozelFormuller\":[]", body, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -15,8 +15,9 @@ namespace Degerli.SourceProbes;
 /// </summary>
 /// <remarks>
 /// Credentials come from the environment only (<c>Ingestion__Kap__ApiKey</c> /
-/// <c>Ingestion__Kap__ApiSecret</c>, <c>Ingestion__Macro__EvdsApiKey</c>) and are redacted out
-/// of the endpoint recorded in the report.
+/// <c>Ingestion__Kap__ApiSecret</c>) and are redacted out of the endpoint recorded in the
+/// report. The EVDS 3.0 values route is anonymous (<c>01</c> §10.9.12) — no credential is
+/// read or sent for it.
 /// </remarks>
 public sealed class LiveProbeExecutor
 {
@@ -55,7 +56,10 @@ public sealed class LiveProbeExecutor
         using var request = new HttpRequestMessage(new HttpMethod(probe.Method), url);
         if (!string.IsNullOrEmpty(probe.RequestBody))
         {
-            request.Content = new StringContent(probe.RequestBody, Encoding.UTF8, "application/json");
+            // A POST body carries the same {placeholders} as the URL, so a request is built
+            // from one clock reading and never from a literal captured date.
+            var body = Expand(probe.RequestBody, now, _symbolOverride);
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         }
 
         switch (probe.SourceRef.ToLowerInvariant())
@@ -80,21 +84,10 @@ public sealed class LiveProbeExecutor
                     Convert.ToBase64String(Encoding.UTF8.GetBytes($"{key}:{secret}")));
                 break;
 
-            case "evds":
-                var evdsKey = Environment.GetEnvironmentVariable("Ingestion__Macro__EvdsApiKey");
-                secrets.Add(evdsKey);
-                if (string.IsNullOrWhiteSpace(evdsKey))
-                {
-                    return ProbeResult.Unreachable(
-                        probe.Key,
-                        redacted,
-                        "no EVDS API key in the environment (Ingestion__Macro__EvdsApiKey).",
-                        now);
-                }
-
-                break;
-
             default:
+                // EVDS 3.0 (§10.9.12) and every public source are anonymous: a credential is
+                // neither required nor sent. Requiring one here would make an anonymous route
+                // permanently "unreachable" and hide its shape.
                 break;
         }
 
@@ -121,8 +114,8 @@ public sealed class LiveProbeExecutor
     }
 
     /// <summary>
-    /// Expands the <c>{placeholders}</c> a probe's URL template carries. Bounded and
-    /// deterministic: yesterday's date for the date-range sources, the captured disclosure /
+    /// Expands the <c>{placeholders}</c> a probe's URL template (or POST body) carries. Bounded
+    /// and deterministic: yesterday's date for the date-range sources, the captured disclosure /
     /// company identifiers for the KAP list, and a single EVDS series.
     /// </summary>
     internal static string Expand(string template, DateTimeOffset now, string? symbolOverride)
@@ -139,10 +132,6 @@ public sealed class LiveProbeExecutor
             .Replace("{index}", "XU100", StringComparison.Ordinal)
             .Replace("{disclosureIndex}", "1226255", StringComparison.Ordinal)
             .Replace("{companyId}", "1001", StringComparison.Ordinal)
-            .Replace("{series}", "TP.DK.USD.S.YTL", StringComparison.Ordinal)
-            .Replace(
-                "{apiKey}",
-                Environment.GetEnvironmentVariable("Ingestion__Macro__EvdsApiKey") ?? string.Empty,
-                StringComparison.Ordinal);
+            .Replace("{series}", "TP.DK.USD.S.YTL", StringComparison.Ordinal);
     }
 }

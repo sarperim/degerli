@@ -77,6 +77,21 @@ public static class ShapeComparer
                 DriftSeverity.Breaking));
         }
 
+        // One type change at a container explains everything beneath it: when an array becomes
+        // an object (the KAP ER005 envelope), its element paths are not independently "missing
+        // keys" — reporting them would fabricate a second, misleading explanation. Keep the
+        // type change and the paths that survive outside the changed subtree.
+        var changedSubtrees = findings
+            .Where(f => f.Kind == DriftKind.TypeChanged)
+            .Select(f => f.Path)
+            .ToArray();
+        findings.RemoveAll(f =>
+            f.Kind == DriftKind.MissingKey &&
+            changedSubtrees.Any(root =>
+                f.Path.Length > root.Length &&
+                f.Path.StartsWith(root, StringComparison.Ordinal) &&
+                f.Path[root.Length] is '.' or '['));
+
         // One empty collection explains its whole element shape: report the container and the
         // paths that survive, not thirty consequences of the same emptiness.
         findings.RemoveAll(f =>
@@ -150,13 +165,16 @@ public static class ShapeComparer
 
     /// <summary>
     /// True when the missing path is unverifiable because its collection answered <b>empty</b>:
-    /// the element root (<c>$.value[]</c>) is absent from the observed shape while the array
-    /// itself (<c>$.value</c>) is present. That is the İş Yatırım <c>value: []</c> case.
+    /// the element root (<c>$.value[]</c>) is absent from the observed shape while the container
+    /// itself (<c>$.value</c>) is present <b>and is an array</b>. That is the İş Yatırım
+    /// <c>value: []</c> case.
     /// </summary>
     /// <remarks>
     /// A field that is merely missing from a <i>non-empty</i> element is a plain missing key —
     /// the distinction matters, because calling it "empty collection" would hide a removed field
-    /// behind the wrong explanation.
+    /// behind the wrong explanation. The container-kind check matters just as much: an array
+    /// that turned into an <i>object</i> is a type change, not an empty collection, and must not
+    /// manufacture downstream "empty" findings (the KAP <c>ER005</c> envelope).
     /// </remarks>
     private static bool IsEmptyCollectionShape(ShapeSpec observed, string expectedPath)
     {
@@ -173,7 +191,8 @@ public static class ShapeComparer
         }
 
         var arrayPath = elementRoot[..^2];
-        return observed.TryGet(arrayPath, out _);
+        return observed.TryGet(arrayPath, out var container) &&
+               container.Kinds.HasFlag(ShapeKinds.Array);
     }
 
     /// <summary>The element root of a path (<c>$.value[].X</c> → <c>$.value[]</c>).</summary>

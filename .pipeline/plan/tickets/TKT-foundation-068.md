@@ -132,7 +132,9 @@ the harness up transitively):
 
 - Rebased onto `dev` @ `d147e9d`; applied cleanly, no conflict resolution, no file touched outside
   the ticket's scope, and the harness compiled unchanged (no namespace/API drift from 064/078/048).
-- Red without the line: `CS0234` ×6 + `CS0246` ×3 in `SourceContractProbeTests.cs`.
+- Red without the line: `CS0234` ×5 unique + `CS0246` ×3 unique in `SourceContractProbeTests.cs`
+  (five distinct missing-namespace diagnostics, one per `using`, plus three missing-type
+  diagnostics; MSBuild's duplicated log lines make it look like 6/3).
   Green with it: `SourceContractProbeTests` 20/20, `Core.UnitTests` 74/74, `dotnet build
   Degerli.sln` 0 warnings / 0 errors.
 - PR: https://github.com/sarperim/degerli/pull/142 (base `dev`). Acceptance (i)–(v) unchanged

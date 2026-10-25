@@ -15,7 +15,7 @@ namespace Degerli.SourceProbes.Contracts;
 /// endpoint for this source — the probe then reports <b>unreachable</b> with that reason
 /// rather than inventing a URL.
 /// </param>
-/// <param name="RequestBody">A POST body, when the resource needs one (the İş AJAX handler).</param>
+/// <param name="RequestBody">A POST body, when the resource needs one (the İş AJAX handler, the EVDS 3.0 <c>/fe</c> values route).</param>
 /// <param name="DeclaredPacingMs">The interval the probe asks for; <see cref="ProbePolicy"/> clamps it up.</param>
 /// <param name="DoubleCatalogEntry">The fixture catalog constant its contract was derived from.</param>
 /// <param name="SecretQueryParameters">Query parameters whose values must be redacted.</param>
@@ -47,10 +47,14 @@ public sealed record SourceProbe(
 /// the committed double its expected shape was derived from.
 /// </summary>
 /// <remarks>
-/// The endpoints mirror the shipped configuration in <c>src/Api/appsettings.json</c>
-/// (<c>Ingestion:Prices</c>, <c>Ingestion:Intraday</c>, <c>Ingestion:Kap</c>,
-/// <c>Ingestion:Statements</c>, <c>Ingestion:Macro</c>). When that configuration moves, this
-/// registry is updated with it — the probe never guesses a route.
+/// Each endpoint is pinned to its provenance, source by source: the <c>isyatirim</c>,
+/// <c>kap</c> and <c>evds</c> routes mirror the shipped configuration in
+/// <c>src/Api/appsettings.json</c> (<c>Ingestion:Prices</c>, <c>Ingestion:Kap</c>, and the
+/// <c>01</c> §10.9.12 EVDS 3.0 <c>POST /igmevdsms-dis/fe</c> lane); <c>yahoo-chart</c> is a
+/// hand-written public endpoint that appears nowhere in the shipped configuration (it is the
+/// documented contingency, <c>01</c> §10.9.3); <c>tefas-funds</c> pins no endpoint because the
+/// repository pins none. When a pinned source's configuration moves, this registry is updated
+/// with it — the probe never guesses a route.
 /// </remarks>
 public static class SourceProbeRegistry
 {
@@ -148,16 +152,21 @@ public static class SourceProbeRegistry
             "member-securities-ok",
             []),
 
+        // 01 §10.9.12: the values route is an ANONYMOUS POST with a JSON body — no credential
+        // travels on the wire ("the earlier 400s were purely a wrong body shape, not an auth
+        // failure"). The body shape below is verbatim from the section: `-`-joined series
+        // fields, dd-MM-yyyy dates, numeric codes, `ozelFormuller:[]`. One series per probe,
+        // so the per-series joins carry a single element.
         new SourceProbe(
             EvdsMacro,
             "TCMB EVDS 3.0 macro series",
             "evds",
-            "GET",
-            "https://evds3.tcmb.gov.tr/igmevdsms-dis/fe?series={series}&startDate={startDate}&endDate={endDate}&type=json&key={apiKey}",
-            null,
+            "POST",
+            "https://evds3.tcmb.gov.tr/igmevdsms-dis/fe",
+            """{"type":"json","series":"{series}","aggregationTypes":"avg","formulas":"0","startDate":"{startDate}","endDate":"{endDate}","frequency":"2","decimalSeperator":".","decimal":"2","dateFormat":"0","lang":"tr","yon":"0","sira":"0","ozelFormuller":[],"groupSeperator":true,"isRaporSayfasi":false}""",
             2_000,
             "evds-v3-capture",
-            ["key"]),
+            []),
 
         new SourceProbe(
             TefasFunds,

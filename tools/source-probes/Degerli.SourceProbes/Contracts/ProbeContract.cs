@@ -36,7 +36,7 @@ public sealed class ProbeContract
     /// <summary>The probe key (matches <see cref="SourceProbeRegistry"/>).</summary>
     public required string Source { get; init; }
 
-    /// <summary>The endpoint, with placeholders (<c>{symbol}</c>, <c>{index}</c>, <c>{apiKey}</c>).</summary>
+    /// <summary>The endpoint, with placeholders (<c>{symbol}</c>, <c>{index}</c>, <c>{series}</c>).</summary>
     public required string Endpoint { get; init; }
 
     /// <summary>The committed double this shape was derived from.</summary>

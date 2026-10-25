@@ -13,7 +13,8 @@ namespace Degerli.SourceProbes;
 /// </summary>
 /// <remarks>
 /// This executable is <b>never</b> invoked by CI. It has no CI entrypoint, no workflow file
-/// references it, and the L1 suite proves that mechanically (TC-068-ci).
+/// references it, and the L1 suite proves that mechanically
+/// (<c>AC68ii_ProbeHarness_IsNotWiredIntoCi</c>, acceptance (ii)).
 /// </remarks>
 public static class Program
 {

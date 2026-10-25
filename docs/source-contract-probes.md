@@ -52,7 +52,7 @@ One probe per source, each pinned to the committed double its expected shape was
 | `kap-disclosure-detail` | KAP VYK `GET /disclosureDetail/{index}` | `kap-vyk-disclosure-detail` (`RealSourceCatalog`) | captured 2026-10-18 | 12 s |
 | `kap-members` | KAP VYK `GET /members` | `kap-vyk-members` (`RealSourceCatalog`) | constructed, shape live-verified 2026-10-18 | 12 s |
 | `kap-member-securities` | KAP VYK `GET /memberSecurities` | `member-securities-ok` (`CannedSourceCatalog`) | derived from the live 2026-10-22 capture | 12 s |
-| `evds-macro` | TCMB EVDS 3.0 `/igmevdsms-dis/fe` | `evds-v3-capture` (`RealSourceCatalog`) | captured 2026-10-18 | 2 s |
+| `evds-macro` | TCMB EVDS 3.0 `POST /igmevdsms-dis/fe` (anonymous, JSON body) | `evds-v3-capture` (`RealSourceCatalog`) | captured 2026-10-18 | 2 s |
 | `tefas-funds` | TEFAS fund feed | `tefas-tef0001` (`CannedSourceCatalog`) | constructed (FU synthetic) | 2 s |
 
 `tefas-funds` has **no pinned endpoint** in the repository (`TefasSourceOptions.BaseUrl` ships
@@ -123,17 +123,22 @@ Exit codes: `0` clean · `2` drift · `3` unreachable · `1` usage/policy refusa
 
 ### Politeness (enforced in code, `ProbePolicy`)
 
-- **Pacing floors:** İş Yatırım ≥ 3 s, KAP VYK ≥ 12 s between calls (the posture the product's own
-  ingestion already respects, `01` §10.9.2/§10.9.10). A declared interval below the floor is
-  clamped **up**, so a future edit cannot quietly make the tool impolite. Requests are strictly
-  sequential — never parallel.
+- **Pacing floors:** KAP VYK ≥ 12 s (the product's own ingestion posture, `01` §10.9.10/§10.9.11)
+  and İş Yatırım ≥ 3 s — the **ticket's own probe floor**, not the shipped ingestion interval:
+  `01` §10.9.2 and `Ingestion:Prices:RequestDelayMs` pin 500 ms for the product lane, while a
+  one-off operator probe is deliberately more conservative. A declared interval below the floor
+  is clamped **up**, so a future edit cannot quietly make the tool impolite. Requests are
+  strictly sequential — never parallel.
 - **No probing during a scheduled chain window:** the EOD chain (17:30 UTC) and the morning repair
   chain (05:30 UTC) own the sources. The windows `17:00–19:30 UTC` and `05:00–07:30 UTC` are
   refused unless `--force` is passed — an emergency escape, never a routine.
 - Credentials come from the environment only: `Ingestion__Kap__ApiKey` / `Ingestion__Kap__ApiSecret`
-  (the VYK Basic pair) and `Ingestion__Macro__EvdsApiKey` (EVDS). A missing credential is reported
-  as `unreachable` — probing a gateway that requires auth without auth would only produce a
-  401 shape, which teaches nothing.
+  (the VYK Basic pair). A missing KAP credential is reported as `unreachable` — probing a gateway
+  that requires auth without auth would only produce a 401 shape, which teaches nothing.
+- The **EVDS 3.0 values route is anonymous** (`01` §10.9.12): the probe sends the documented
+  `POST /igmevdsms-dis/fe` JSON body and no credential — no key on the wire, nothing to configure.
+  `Ingestion__Macro__EvdsApiKey` survives only as an optional redaction surface for the legacy
+  canonical-double GET and is **not** read by the probe.
 
 ### Where the report goes
 
@@ -189,16 +194,20 @@ clean: "we could not see rows" and "the rows matched" are different answers.
 bulunamadı."}` for indices that no longer exist, while the CI doubles answered the requested
 indices normally. The class fail-stopped the EOD chain six times until TKT-foundation-063 landed.
 
-What the probe says about that answer (excerpt; reproduced by
+What the probe says about that answer (actual output; the offline `check` shows the body
+findings and a live 400 additionally records `http.status` — reproduced by
 `AC68i_StatusChanged_NamesTheErrorEnvelope`):
 
 ```
-[drift] kap-disclosures  400  HTTP 400 — the double serves 200; observed envelope shape only
-  - $            type-changed    expected array · observed object  [breaking]
-  - http.status  status-changed  expected 200 · observed 400       [breaking]
-  - $.code       extra-key       expected absent · observed string [warning]
-  - $.message    extra-key       expected absent · observed string [warning]
+[drift      ] kap-disclosures           400  HTTP 400 — the double serves 200; observed envelope shape only
+    - $  type-changed  expected array · observed object  [breaking]
+    - $.code  extra-key  expected absent · observed string  [warning]
+    - $.message  extra-key  expected absent · observed string  [warning]
+    - http.status  status-changed  expected 200 · observed 400  [breaking]
 ```
+
+An array that became an object is **one** type change, not an empty collection: the probe does
+not add a fabricated "the collection answered empty" finding or downstream missing keys.
 
 The point is not that the probe would have fixed the bug: it is that the **shape** of the failure
 (a 400 with an error envelope the doubles never serve) is visible in one report instead of in six
