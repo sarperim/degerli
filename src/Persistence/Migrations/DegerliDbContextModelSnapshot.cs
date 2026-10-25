@@ -1081,6 +1081,59 @@ namespace Degerli.Persistence.Migrations
                     b.ToTable("kap_disclosures", (string)null);
                 });
 
+            modelBuilder.Entity("Degerli.Persistence.Entities.KapPublicCompanyMap", b =>
+                {
+                    b.Property<long>("InstrumentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("instrument_id");
+
+                    b.Property<string>("KapPublicOid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kap_public_oid");
+
+                    b.Property<DateOnly>("KapPublicOidAsOf")
+                        .HasColumnType("date")
+                        .HasColumnName("kap_public_oid_as_of");
+
+                    b.Property<string>("KapPublicOidSource")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("kap_public_oid_source");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<string>("VykCompanyId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("vyk_company_id");
+
+                    b.Property<DateOnly?>("VykCompanyIdAsOf")
+                        .HasColumnType("date")
+                        .HasColumnName("vyk_company_id_as_of");
+
+                    b.Property<string>("VykCompanyIdSource")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("vyk_company_id_source");
+
+                    b.HasKey("InstrumentId")
+                        .HasName("pk_kap_public_company_map");
+
+                    b.ToTable("kap_public_company_map", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_kap_public_company_map_oid_shape", "kap_public_oid ~ '^[0-9a-f]{32}$'");
+
+                            t.HasCheckConstraint("ck_kap_public_company_map_vyk_evidence", "(vyk_company_id IS NULL AND vyk_company_id_source IS NULL AND vyk_company_id_as_of IS NULL) OR (vyk_company_id IS NOT NULL AND vyk_company_id_source IS NOT NULL AND vyk_company_id_as_of IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_kap_public_company_map_vyk_shape", "vyk_company_id IS NULL OR vyk_company_id ~ '^[0-9]{1,12}$'");
+                        });
+                });
+
             modelBuilder.Entity("Degerli.Persistence.Entities.MacroSeries", b =>
                 {
                     b.Property<string>("Code")
@@ -1841,6 +1894,16 @@ namespace Degerli.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_kap_disclosures_instruments_instrument_id");
+                });
+
+            modelBuilder.Entity("Degerli.Persistence.Entities.KapPublicCompanyMap", b =>
+                {
+                    b.HasOne("Degerli.Persistence.Entities.Instrument", null)
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_kap_public_company_map_instruments_instrument_id");
                 });
 
             modelBuilder.Entity("Degerli.Persistence.Entities.MacroValue", b =>

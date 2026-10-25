@@ -29,6 +29,7 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     public DbSet<Dividend> Dividends => Set<Dividend>();
     public DbSet<ShareCount> ShareCounts => Set<ShareCount>();
     public DbSet<CorporateAction> CorporateActions => Set<CorporateAction>();
+    public DbSet<KapPublicCompanyMap> KapPublicCompanyMaps => Set<KapPublicCompanyMap>();
     public DbSet<KapDisclosure> KapDisclosures => Set<KapDisclosure>();
     public DbSet<DerivedMetric> DerivedMetrics => Set<DerivedMetric>();
     public DbSet<CoverageMetadata> CoverageMetadata => Set<CoverageMetadata>();
@@ -221,6 +222,36 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.ToTable("share_counts");
             b.HasKey(x => x.InstrumentId);
             b.Property(x => x.SourceRef).IsRequired();
+            b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<KapPublicCompanyMap>(b =>
+        {
+            // 01 v1.5.54 §10.9.19 — the stored public-oid ↔ instrument mapping. Three identifier
+            // spaces, three columns, and the shapes are pinned by the store: a VYK numeric
+            // companyId can never be written where a public oid belongs (nor an oid into the VYK
+            // column), so the conflation the doctrine forbids fails at the database, not just in
+            // code. Each space's provenance travels with its value; an unmapped instrument has no
+            // row (honest absence, never a placeholder).
+            b.ToTable("kap_public_company_map", t =>
+            {
+                t.HasCheckConstraint(
+                    "ck_kap_public_company_map_oid_shape",
+                    "kap_public_oid ~ '^[0-9a-f]{32}$'");
+                t.HasCheckConstraint(
+                    "ck_kap_public_company_map_vyk_shape",
+                    "vyk_company_id IS NULL OR vyk_company_id ~ '^[0-9]{1,12}$'");
+                t.HasCheckConstraint(
+                    "ck_kap_public_company_map_vyk_evidence",
+                    "(vyk_company_id IS NULL AND vyk_company_id_source IS NULL AND vyk_company_id_as_of IS NULL) " +
+                    "OR (vyk_company_id IS NOT NULL AND vyk_company_id_source IS NOT NULL AND vyk_company_id_as_of IS NOT NULL)");
+            });
+            b.HasKey(x => x.InstrumentId);
+            b.Property(x => x.InstrumentId).ValueGeneratedNever();
+            b.Property(x => x.KapPublicOid).IsRequired().HasMaxLength(64);
+            b.Property(x => x.KapPublicOidSource).IsRequired().HasMaxLength(256);
+            b.Property(x => x.VykCompanyId).HasMaxLength(32);
+            b.Property(x => x.VykCompanyIdSource).HasMaxLength(256);
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
         });
 

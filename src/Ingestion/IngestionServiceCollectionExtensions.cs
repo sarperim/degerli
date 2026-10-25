@@ -135,7 +135,14 @@ public static class IngestionServiceCollectionExtensions
         // wiring is untouched: selecting the public site for a lane is configuration
         // (TKT-foundation-082/084), never a rewrite, and switching back is configuration too.
         services.Configure<KapPublicSourceOptions>(configuration.GetSection(KapPublicSourceOptions.SectionName));
-        services.AddKeyedSingleton<HttpClient>(KapPublicSourceOptions.ClientKey, (provider, _) =>
+        // The client is **scoped** (TKT-foundation-080): the lane's HTTP client is addressed once,
+        // per run, and `KapPublicHttpSourceClient` normalizes the base in its constructor — a
+        // *singleton* `HttpClient` would be mutated again by the second run's client and
+        // `HttpClient` refuses a `BaseAddress` change once a request has been sent
+        // ("properties can only be modified before sending the first request"), which would break
+        // every run after the first. One client per run keeps the mutation local and is the
+        // lifetime the scoped pacer/source-client already imply.
+        services.AddKeyedScoped<HttpClient>(KapPublicSourceOptions.ClientKey, (provider, _) =>
         {
             var options = provider.GetRequiredService<IOptions<KapPublicSourceOptions>>().Value;
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
@@ -154,6 +161,14 @@ public static class IngestionServiceCollectionExtensions
             provider.GetRequiredService<KapPublicRequestPacer>(),
             provider.GetRequiredService<TimeProvider>()));
         services.AddScoped<KapPublicSourceReader>();
+
+        // The public-site **company identity** lane (01 v1.5.54 §10.9.19, TKT-foundation-080):
+        // the stored public-oid ↔ instrument mapping, its resolution path over the paced identity
+        // search and its store. The mapping is read from the store by every consumer (082/084) —
+        // never re-derived per walk and never assumed from a symbol's spelling.
+        services.AddScoped<KapPublicIdentityReader>();
+        services.AddScoped<KapPublicCompanyMapStore>();
+        services.AddScoped<KapPublicCompanyIdentityResolver>();
 
         services.Configure<StatementsSourceOptions>(configuration.GetSection(StatementsSourceOptions.SectionName));
         services.Configure<DividendsSourceOptions>(configuration.GetSection(DividendsSourceOptions.SectionName));

@@ -37,8 +37,23 @@ public static class KapPublicReasonCodes
 
     /// <summary>A walk stopped at its wall-clock deadline (bounded pass; resumes from the last completed unit).</summary>
     public const string WalkDeadline = "WALK_DEADLINE";
-}
 
+    /// <summary>
+    /// A bound symbol the public-site identity answer cannot map to a company oid (TKT-foundation-080,
+    /// 01 v1.5.54 §10.9.19). It is the <b>same</b> 044 vocabulary word the VYK lane records
+    /// (<c>VykCompanyDirectory.CompanyIdentityUnresolved</c>), applied to this source: the symbol is
+    /// skipped, <b>named</b> and <b>counted</b>, and never guessed. What keeps the two sources apart is
+    /// the evidence class each list is recorded under — <c>kap-public</c> here, never <c>kap</c>.
+    /// </summary>
+    public const string CompanyIdentityUnresolved = "COMPANY_IDENTITY_UNRESOLVED";
+
+    /// <summary>
+    /// The identity answer carried more than one candidate oid for the same symbol — an ambiguous
+    /// answer is never resolved by picking one (that would be a guess), so the symbol is skipped and
+    /// named under its own reason.
+    /// </summary>
+    public const string CompanyIdentityAmbiguous = "COMPANY_IDENTITY_AMBIGUOUS";
+}
 /// <summary>
 /// The four honest statuses of one public-site read (TC-MDF-103 (iv)). They are a closed
 /// set: <see cref="Ok"/>, <see cref="HonestEmpty"/>, <see cref="Quarantined"/> and
