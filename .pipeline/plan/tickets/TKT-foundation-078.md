@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-078: disclosures lane never completes — the per-company walk starts at `EarlyDisclosureIndex=0` and re-reads ~140k index positions per company, so it is structurally guaranteed to time out
 
-- Status: in-review
+- Status: done — **merged 2026-10-24 (PR #139, in `dev`; §13.1 v1.5.52 landed; status flipped by the planner's 2026-10-25 board regeneration from the merge history). LIVE CRITERION REMAINS OPEN** (orchestrator post-merge step, see below).
 - Size: M
 - **Priority: P0 — USER DIRECTIVE 2026-10-24 ("This takes most priority so plan and run it").** It is the gate on *recent KAP data* and on cash-flow statements (051), and therefore on sector performance, market P/E and the DCF calculator.
 

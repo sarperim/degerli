@@ -11,7 +11,7 @@ scope:
 
 # TKT-foundation-051: Cash-flow decoder coverage — zero OCF/CAPEX line items decoded blocks FCF/SNA (DCF blocker); extend the ConceptMap from real captured shapes
 
-- Status: todo
+- Status: **superseded — 2026-10-25 (planner, USER-DIRECTED public-site lane pass): superseded by TKT-foundation-081.** The ticket's goal (OCF/CAPEX decoded, FCF computes, SNA populates) lands there as **TC-MDF-108** (test plan §22). See the supersession note below.
 - Size: M
 - **Priority: P2 — capture-gated (see Dependencies): the implementation dispatches once the orchestrator's paced CF capture set is committed.** Gates the user's DCF goal together with share counts (TKT-foundation-033, still blocked on the prod-gateway NXDOMAIN — dependency recorded, not re-planned here).
 - **Planner-verified evidence (dev DB, read-only, 2026-10-22):**
@@ -30,3 +30,14 @@ scope:
 - UX refs: none (decoder lane; the SNA column's presentation already exists).
 - Dependencies: **capture-gated** — the orchestrator's paced CF capture set must be committed first (item 1); no code dependencies (statements lane is post-046 healthy; `KapXbrlStatementDecoder`/`StatementMapper` are unowned by any open ticket). Coordination: `.pipeline/testing/market-data-foundation.md` rebase convention; records (does not gate on) TKT-foundation-033 for the DCF's share-count half.
 - Parallel group: none
+
+## Supersession record (planner, 2026-10-25)
+
+**Superseded by TKT-foundation-081** (the KAP public-site FR report decoder). Reasons, recorded for the history:
+
+1. **The capture gate can never open on this source.** This ticket's own verified evidence (dev DB, 2026-10-22) shows the VYK dev archive carries **no cash-flow statements at all** (72 IS / 84 BS / 74 EQ, zero CF) — the paced VYK capture set item 1 waited for cannot exist in a source that has none. Waiting on it was waiting on production VYK access by another name.
+2. **The source that carries the CF statement is the KAP public site.** The orchestrator's verified-live investigation (2026-10-25, `.pipeline/plan/kap-public-source-investigation.md`) shows `GET /tr/api/notification/export/excel/{id}` returns the full FR report as HTML tables **including the indirect-method cash-flow statement** (`Nakit Akış Tablosu (Dolaylı Yöntem)`), current + comparative.
+3. **The implementation shape differs.** The pinned approach ("extend `KapXbrlStatementDecoder.ConceptMap`") is VYK-presentation-tree-shaped; the public site is HTML tables — a different decoder with its own label→canonical map (built only from committed captures, never guessed spellings — this ticket's honesty rule carried over verbatim). The canonical chart (`StatementMapper`), the FCF formula (`CanonicalMetrics`, NULL-if-missing) and the SNA consumption are shared and unchanged — one definition per number holds.
+4. **Planning defect repaired:** the TC-MDF-089/090 IDs this ticket referenced were **never authored** in `market-data-foundation.md` (verified by search — the v1.12 precedent class). The goal is authored as **TC-MDF-108** under a new ID; 089–091 remain permanently unused.
+
+**What stays honestly impossible:** the VYK `ConceptMap` CF extension (this ticket's original code target) remains impossible without real VYK CF shapes — never guessed spellings. If production VYK access ever arrives carrying CF data, that extension is a **new ticket** from real captures. This ticket's evidence table (zero OCF/CAPEX, the statement mix, the Hasılat/`REV` answer) remains the permanent record of the VYK lane's CF gap.

@@ -1,0 +1,29 @@
+---
+scope:
+  - src/Ingestion/Metrics/
+  - src/Ingestion/Coverage/
+  - src/Ingestion/Statements/FinancialStatementStore.cs
+  - tests/Api.IntegrationTests/KapPublicRecomputeTests.cs
+  - tests/Api.IntegrationTests/MetricsRecomputeIdempotencyTests.cs
+  - tests/Api.IntegrationTests/ProfileMetricServingTests.cs
+  - .pipeline/testing/market-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-083: Coverage and downstream recompute on current data — the mixed-source world's metrics, medians, market P/E and served financials, stamped by the formula version
+
+- Status: todo
+- Size: M
+- **Priority: P2 — lane ticket 5/6 (the acceptance lane for the user's goal: current fundamentals served).**
+- **Posture — investigation-first, not a new ingest mechanism (the 043/044 convention):** the recompute/medians/snapshot jobs and the served surfaces already exist; this ticket verifies what the mixed-source world (VYK FY2023 `kap` + public-site FY2025/2026 `kap-public`) actually does to them, pins the observed gaps honestly, and repairs only what is broken. **Pinned non-goals:** no new metric formulas; no share-count consumption (see below); no UI work.
+- **Pinned honesty rules for this ticket:**
+  - **Market P/E / per-share metrics stay honestly null where share counts are unresolved** — the 065 Option-A posture stands (`currentCapital` is paid-in capital, never divided into a count; `BR-MOV-010` P/E-exclusion doctrine). If 081 recorded evidenced share-count lines in the report, that finding is routed to 065 and its outcome decides any later change — **never this ticket**.
+  - 070's `formula_version` machinery stamps every written/rewritten row of the refresh (this ticket's **hard dependency on TKT-foundation-070 being merged** — the recompute provenance for the first current-data refresh must be answerable from day one).
+  - Coverage honesty: per-source achieved depth (which periods, which source, how deep) is reported through the coverage-metadata/admin surfaces — a company with only 2023 VYK facts reads as such, never as "current".
+- **Likely work (to be confirmed by the investigation half, in scope where the effect happens):** period-overlap reads through the coexistence rule on the metrics/serving paths (if the preference rule is enforced only in the statement store, the consumers' read paths are where it must actually hold — the 048/070/043 lesson); coverage-reporting seams in `src/Ingestion/Coverage/`; any recompute-repair the mixed world exposes in `src/Ingestion/Metrics/` / `FinancialStatementStore`. **Scope amendment precedent:** if the investigation shows the fix lands outside this list, amend scope per 034 Option A — never widen silently.
+- Traces to: FR-MDF-013/014 (recompute mechanics + honest accounting), FR-MDF-015/NFR-MDF-002 (append-only, historical immutability), FR-MDF-011 (coverage), FR-MOV-006/BR-MOV-010 (market P/E honest-null), FR-RES-005..018 (served financials supply), FR-SCR metric supply.
+- Acceptance: **TC-MDF-111** (test plan §24) — L2 doubles only over the production jobs on the seeded mixed world; red→green recorded (red = the observed pre-ticket behaviour, honestly documented even if it is "mostly works, gaps X/Y"). Non-regression: `MetricsRecomputeIdempotencyTests`, `MarketSnapshotTests`, `MetricsEngineTests`, `ProfileMetricServingTests` re-run green (pre-listed additive deltas only). **Live criteria (orchestrator, post-merge):** on the dev stack after a real public-site statements pass — `metrics-recompute`/`medians`/`market-snapshot` complete with current-period metrics for covered companies, every written row carrying the current `formula_version`, per-source coverage visible, market P/E honestly null (or real only if 065 has landed a count decision — recorded either way); the stock pages show current-period financials. Recorded verbatim.
+- Architecture refs: `01-system-architecture.md` §10.9.13 (recompute doctrine) + §10.9.19 (coexistence consumer note — landed by this ticket) + §13.1 **v1.5.57** (soft reservation; re-pin at merge); test plan §24 (TC-MDF-111).
+- UX refs: none (job/serving lane; the presented surfaces already exist).
+- Dependencies: TKT-foundation-082; **TKT-foundation-070 merged** (formula_version — hard for the acceptance, not for starting the investigation half).
+- Parallel group: none.

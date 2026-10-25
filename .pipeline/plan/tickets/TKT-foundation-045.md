@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-045: API process SIGABRT (exit 134) with zero captured evidence — add crash-evidence capture so an abort is never again undiagnosable
 
-- Status: in-review
+- Status: done — PR #131 merged 2026-10-24 (bookkeeping catch-up 2026-10-25: file left `in-review` past the merge; flagged by planner pass)
 - PR: https://github.com/sarperim/degerli/pull/131 (base `dev`, head `feature/TKT-foundation-045`)
 - Size: S
 - **Priority: P2 — dispatch-ready, investigation-first.**

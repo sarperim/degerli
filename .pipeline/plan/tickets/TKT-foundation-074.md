@@ -7,7 +7,7 @@ scope:
 
 # TKT-foundation-074: IMPLEMENTATION_STATUS.md — a standing implementation-status surface
 
-- Status: in-review
+- Status: done — **PR #136 squash-merged 2026-10-25 02:11 UTC (`1a9ebe0` on dev), head `9621cbb`, CI run 40152779807 (Backend/Web/E2E green).** Review history: rounds 1–3 with 2 fix rounds; **round 3 escalated on DR3-1** (the 2026-10-23 prices 100/100 was falsely attributed to chore #130's re-sweep, which merged 2026-10-24T00:09Z — after the observation; the 100/100 was an operator re-run per ticket 043). **USER AUTHORIZED one more fix round (verbatim: "fix it then", 2026-10-25 ~01:50 UTC); round 4 closed DR3-1 and all riding minors (DR3-2..DR3-11).** Round artefacts: `.pipeline/plan/reviews/TKT-foundation-074-round-{1,2,3,4}.md` (round 4 = the merge basis). Non-blocking residue DR4-1/DR4-2 (ticket-file hygiene nits) recorded in the round-4 artefact.
 - PR: https://github.com/sarperim/degerli/pull/136
 - Size: S
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 11 unparked).**

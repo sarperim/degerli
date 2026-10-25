@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-044: fund jobs failing instantly all evening with `symbols: []` and an EMPTY error field — root-cause the source fault and make failed ledger rows carry their reason
 
-- Status: in-review
+- Status: done — merged 2026-10-24 (PR #132, in `dev`; flipped by the planner's 2026-10-25 board regeneration from the merge history — live criterion per the ticket's own record)
 - PR: https://github.com/sarperim/degerli/pull/132
 - Size: S–M
 - **Priority: P2 — dispatch-ready, investigation-first** (separate lane from the market chain, per the routing).

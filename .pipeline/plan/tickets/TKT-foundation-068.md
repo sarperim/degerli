@@ -2,13 +2,33 @@
 scope:
   - tools/source-probes/
   - tests/Core.UnitTests/SourceContractProbeTests.cs
+  - tests/Core.UnitTests/Degerli.Core.UnitTests.csproj
   - docs/source-contract-probes.md
 ---
+
+<!-- SCOPE AMENDMENT 2026-10-24 (orchestrator, from the 068 coder's blocker report).
+     `tests/Core.UnitTests/Degerli.Core.UnitTests.csproj` was added to `scope:` because it is the
+     only way a C# file inside `Core.UnitTests` can compile against a harness living under `tools/`
+     — the repo has no Directory.Build.props/targets hook in the granted scope, and the established
+     precedent (the shared fixture module) is a referenced project. The change is exactly one line:
+
+       <ProjectReference Include="../../tools/source-probes/Degerli.SourceProbes/Degerli.SourceProbes.csproj" />
+
+     No Degerli.sln edit is required (transitive project-reference restore/build verified by the
+     coder). This is a mechanical build-wiring line, not new product behaviour: it does not widen
+     what 068 may change, it lets the already-written in-scope test file compile. -->
 
 # TKT-foundation-068: Source-contract probes — live shape-drift detection against the committed doubles
 
 - Status: todo
 - Size: M
+- **2026-10-24 — implementation BLOCKED on scope, now unblocked.** The coder completed the whole
+  harness, 8 contracts, 20 tests and the runbook on `feature/TKT-foundation-068` (commit `087c97c`,
+  pushed; no PR opened on purpose) and returned a blocker: the in-scope test file cannot compile
+  without the test project referencing the `tools/` harness. The scope has been amended above with
+  that one line. **Re-dispatch to add the `ProjectReference`, verify `dotnet build Degerli.sln`
+  clean, and open the PR** — the substance is already written and verified (20/20 green, two honest
+  mutation reds). Do not redo the harness.
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 3 unparked).**
 - **Evidence (gathered 2026-10-24 — the drift incidents are real, not hypothetical):**
   - **İş daily feed vs chart feed (2026-10-23, TKT-foundation-047 live criterion):** the live `HisseTekil` response for the current session returned an **empty `value` array** for all 100 symbols (run 218: every symbol honestly `skipped`), while the Yahoo chart feed carried the session. No committed double predicted that a valid-looking envelope could be empty for the current session; the source choice flipped at runtime.

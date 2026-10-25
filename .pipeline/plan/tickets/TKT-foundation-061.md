@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-061: Event-family per-disclosure resilience — one un-fetchable KAP attachment must yield an honest partial, never kill the chain or block the day's snapshot (TONIGHT'S BLOCKER)
 
-- Status: in-review
+- Status: done — PR #125 merged 2026-10-23 (bookkeeping catch-up 2026-10-25: file left `in-review` past the merge; flagged by planner pass)
 - PR: https://github.com/sarperim/degerli/pull/125
 - Size: M
 - **Priority: P1 — TONIGHT'S BLOCKER (Friday EOD chain, 17:30 UTC). Dispatch immediately; the file lanes are free (046 merged; 059 in flight touches only `IngestionScheduler.cs` — disjoint).**
