@@ -675,10 +675,23 @@ public static class KapPublicReportDecoder
 
         if (scale is null || currency is null)
         {
+            var unrecognised = (scale, currency) switch
+            {
+                (null, null) => "multiplier and currency",
+                (null, _) => "multiplier",
+                _ => "currency",
+            };
+
             findings.Add(Finding(
                 KapPublicReportReasons.PresentationUnitUnrecognised,
                 1,
-                $"Sunum Para Birimi '{presentationUnit}' declares an unrecognised scale/currency — both stay null."));
+                $"Sunum Para Birimi '{presentationUnit}' declares an unrecognised {unrecognised} — both stay "
+                + "null (the store refuses rather than scales wrongly)."));
+
+            // Neither half is usable: an unrecognised unit refuses the whole declaration,
+            // exactly like the absent-field branch above — never a partial (scale, null)
+            // pair that would let the store scale a value it cannot label.
+            return (null, null);
         }
 
         return (scale, currency);
