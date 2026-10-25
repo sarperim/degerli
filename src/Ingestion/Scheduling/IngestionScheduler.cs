@@ -588,6 +588,14 @@ public sealed class IngestionScheduler
         Exception? failure = null;
         var hung = false;
 
+        // The instant the attempt actually ended, when that is not "now": the hung path ends the
+        // attempt when the bound is honoured (the cancellation), and the post-cancel settle
+        // window that follows is the watchdog's own grace — not run time. Recording the row's
+        // `finished_at` and measuring the retry from the bound instant keeps 064's "the retry
+        // ladder starts from the attempt's end" rule exact instead of shifting it by the grace
+        // (TKT-foundation-085).
+        DateTimeOffset? attemptEndedAt = null;
+
         // The attempt's owned resources are created inside the failure-classifying try (DR-1,
         // TKT-foundation-059) and disposed in its finally. Anything that throws before the
         // attempt's first await — most realistically a mis-typed `MaxRunDuration` beyond
@@ -685,19 +693,62 @@ public sealed class IngestionScheduler
                 }
 
                 hung = true;
+                attemptEndedAt = _clock.GetUtcNow();
                 attemptCts.Cancel();
                 await deadlineCts.CancelAsync().ConfigureAwait(false);
 
-                // DR-2 (TKT-foundation-059): the cancel window is not instantaneous — a step
-                // that swallows the cancellation can still finish successfully between the
-                // re-check above and this point. Prefer the terminal truth: an attempt that
-                // genuinely completed (no failure) is recorded by its own row and is never also
-                // declared RUN_HUNG (one attempt, one row, one retry decision). A chain that
-                // merely *ended* on our own cancellation is not a success: it is the hung
-                // attempt this report is about.
+                // DR-2 (TKT-foundation-059) as a bounded settle window (TKT-foundation-085): the
+                // cancel window is not instantaneous — a step that swallows the cancellation can
+                // still finish successfully after it, and its continuation may be *queued* rather
+                // than resumed inline on this thread. A single synchronous re-check therefore saw
+                // a pending task under load, wrote RUN_HUNG, and the queued continuation then wrote
+                // the step's own success row: two rows, a spurious alert, a spurious retry. The
+                // re-check is now an interval — the attempt is given the configured grace to
+                // settle — and only its expiry is the hung verdict.
+                //
+                // Prefer the terminal truth: an attempt that genuinely completed (no failure) in
+                // that window is recorded by its own row and is never also declared RUN_HUNG (one
+                // attempt, one row, one retry decision). A chain that merely *ended* on our own
+                // cancellation is not a success: it is the hung attempt this report is about.
+                var settleWindow = _options.PostCancelSettleWindow;
+                Task? settle;
+                try
+                {
+                    settle = CreateSettleDelay();
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    // A mis-typed window (beyond Task.Delay's accepted range) is an ordinary failed
+                    // attempt on the ladder — the DR-1 path — never an escape out of the tick; the
+                    // running attempt is abandoned exactly as the hung path abandons it.
+                    DisposeWithAbandonedWork(work, scope, attemptCts, deadlineCts);
+                    throw;
+                }
+
+                if (settle is not null)
+                {
+                    // The grace is stated when it is given, not only when it expires: an operator
+                    // watching the log of a slow-but-then-fine attempt should see that the watchdog
+                    // waited instead of guessing why nothing was written yet.
+                    _logger.LogWarning(
+                        "Settling attempt {Attempt} for {Date}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} and was cancelled; giving the attempt the {Settle} post-cancel settle window before declaring the run hung ({ReasonCode}, bound={BoundKind}).",
+                        attempt,
+                        run.TradingDate,
+                        expiry.Step.Index,
+                        expiry.Step.Total,
+                        expiry.Step.JobCode,
+                        DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration),
+                        settleWindow,
+                        RunHungReasonCode,
+                        expiry.Bound);
+
+                    await Task.WhenAny(work, settle).ConfigureAwait(false);
+                }
+
                 if (work.IsCompletedSuccessfully && work.Result.Failure is null)
                 {
                     hung = false;
+                    attemptEndedAt = null;
                     var outcome = await work.ConfigureAwait(false);
                     jobCodes = outcome.JobCodes;
                     failure = outcome.Failure;
@@ -713,7 +764,12 @@ public sealed class IngestionScheduler
                     // The chain's own codes are not known on this path, so the hung step is
                     // what the exhausted alert names (R6).
                     jobCodes = [expiry.Step.JobCode];
-                    failure = await HandleHungAttemptAsync(run, attempt, expiry, cancellationToken)
+                    failure = await HandleHungAttemptAsync(
+                            run,
+                            attempt,
+                            expiry,
+                            attemptEndedAt ?? _clock.GetUtcNow(),
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
@@ -770,8 +826,10 @@ public sealed class IngestionScheduler
 
         // Measured from the instant the attempt actually ended, not from the instant it was
         // due: a watchdog-bounded attempt ends up to MaxRunDuration after `now`, and a retry
-        // computed from `now` would already be overdue the moment it is scheduled.
-        var nextAttemptAt = _clock.GetUtcNow() + _options.RetryDelays[attempt - 1];
+        // computed from `now` would already be overdue the moment it is scheduled. The hung
+        // path's `attemptEndedAt` keeps that instant the bound's, so the post-cancel settle
+        // window (TKT-foundation-085) never delays the ladder.
+        var nextAttemptAt = (attemptEndedAt ?? _clock.GetUtcNow()) + _options.RetryDelays[attempt - 1];
         lock (_gate)
         {
             run.NextAttemptAt = nextAttemptAt;
@@ -981,23 +1039,61 @@ public sealed class IngestionScheduler
     }
 
     /// <summary>
+    /// The watchdog's <b>post-cancel settle window</b> as a clock-driven delay (01 v1.5.59
+    /// §10.9.17, TKT-foundation-085), or <c>null</c> when the window is disabled
+    /// (<see cref="IngestionSchedulerOptions.PostCancelSettleWindow"/> <c>&lt;= 0</c>): the
+    /// re-check is then the pre-085 single synchronous one, the documented opt-out.
+    /// <para>
+    /// The delay is a <see cref="Task.Delay(TimeSpan, TimeProvider, CancellationToken)"/> on the
+    /// injected clock, so the grace is deterministic under a fake clock exactly like every other
+    /// scheduling decision here — no real-time sleep bounds a test. A value beyond that
+    /// overload's accepted range throws, which the caller classifies as an ordinary failed
+    /// attempt (the DR-1 path).
+    /// </para>
+    /// </summary>
+    private Task? CreateSettleDelay()
+    {
+        var window = _options.PostCancelSettleWindow;
+        return window > TimeSpan.Zero ? Task.Delay(window, _clock) : null;
+    }
+
+    /// <summary>
+    /// The grace the watchdog gave a cancelled attempt before declaring it hung, as an operator
+    /// reads it in the ledger row, the alert and the log line — or <c>null</c> when the window is
+    /// disabled (then the pre-085 immediate verdict is the honest description and nothing is
+    /// claimed about a grace that was never given).
+    /// </summary>
+    private string? DescribeSettleWindow()
+    {
+        var window = _options.PostCancelSettleWindow;
+        return window > TimeSpan.Zero ? window.ToString() : null;
+    }
+
+    /// <summary>
     /// The watchdog's terminal report (01 v1.5.43 §10.9.17): an honest run-ledger row naming the
     /// step that held the attempt, <b>which bound fired</b> (per-step vs whole-chain ceiling), and
     /// a <c>RUN_HUNG</c> alert saying the same. Returns the failure the attempt reports, so the
     /// ordinary retry ladder takes over from here.
+    /// <para>
+    /// <paramref name="endedAt"/> is the instant the bound ended the attempt; the post-cancel
+    /// settle window after it is the watchdog's grace and deliberately does not move the record's
+    /// timestamps (TKT-foundation-085).
+    /// </para>
     /// </summary>
     private async Task<Exception> HandleHungAttemptAsync(
         ActiveRun run,
         int attempt,
         ChainBoundExpiry expiry,
+        DateTimeOffset endedAt,
         CancellationToken cancellationToken)
     {
         var step = expiry.Step;
         var hungJob = step.JobCode;
         var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
+        var settle = DescribeSettleWindow();
 
         _logger.LogError(
-            "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} and was cancelled ({ReasonCode}, bound={BoundKind}); the retry ladder takes over.",
+            "Hung run detected for {Date} on attempt {Attempt}: chain step {Step}/{Total} '{JobCode}' exceeded the {Bound} and was cancelled ({ReasonCode}, bound={BoundKind}){Settled}; the retry ladder takes over.",
             run.TradingDate,
             attempt,
             step.Index,
@@ -1005,13 +1101,18 @@ public sealed class IngestionScheduler
             hungJob,
             bound,
             RunHungReasonCode,
-            expiry.Bound);
+            expiry.Bound,
+            settle is null
+                ? string.Empty
+                : $"; the cancelled step was given the {settle} post-cancel settle window and did not settle in it");
 
-        await RecordHungRunAsync(run, attempt, expiry, cancellationToken).ConfigureAwait(false);
+        await RecordHungRunAsync(run, attempt, expiry, endedAt, cancellationToken).ConfigureAwait(false);
         await RaiseHungAsync(run, attempt, expiry, cancellationToken).ConfigureAwait(false);
 
         return new TimeoutException(
-            $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in chain step '{hungJob}' ({RunHungReasonCode}, bound={expiry.Bound}).");
+            settle is null
+                ? $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in chain step '{hungJob}' ({RunHungReasonCode}, bound={expiry.Bound})."
+                : $"Scheduled run for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in chain step '{hungJob}' ({RunHungReasonCode}, bound={expiry.Bound}); the step did not settle within the {settle} post-cancel settle window.");
     }
 
     /// <summary>
@@ -1062,11 +1163,13 @@ public sealed class IngestionScheduler
         ActiveRun run,
         int attempt,
         ChainBoundExpiry expiry,
+        DateTimeOffset endedAt,
         CancellationToken cancellationToken)
     {
         var step = expiry.Step;
         var hungJob = step.JobCode;
         var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
+        var settle = DescribeSettleWindow();
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -1076,9 +1179,11 @@ public sealed class IngestionScheduler
             {
                 JobCode = hungJob,
                 StartedAt = run.AttemptStartedAt,
-                FinishedAt = _clock.GetUtcNow(),
+                FinishedAt = endedAt,
                 Status = IngestResult.Failed,
-                Error = $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {bound}.",
+                Error = settle is null
+                    ? $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {bound}."
+                    : $"{RunHungReasonCode}: chain step '{hungJob}' exceeded the {bound} and did not settle within the {settle} post-cancel settle window.",
                 StatsJson = JsonSerializer.Serialize(new
                 {
                     written = 0,
@@ -1099,6 +1204,8 @@ public sealed class IngestionScheduler
                     bound = expiry.Bound,
                     maxStepDurationSeconds = BoundSeconds(_options.MaxStepDuration),
                     maxRunDurationSeconds = BoundSeconds(_options.MaxRunDuration),
+                    // The grace this verdict was given (TKT-foundation-085): 0 when disabled.
+                    settleWindowSeconds = BoundSeconds(_options.PostCancelSettleWindow),
                 }, StatsJsonOptions),
             });
 
@@ -1126,15 +1233,22 @@ public sealed class IngestionScheduler
         var step = expiry.Step;
         var hungJob = step.JobCode;
         var bound = DescribeBound(expiry.Bound, _options.MaxStepDuration, _options.MaxRunDuration);
-        var subject = $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded the {bound} for {run.TradingDate:yyyy-MM-dd}";
+        var settle = DescribeSettleWindow();
+        var subject = settle is null
+            ? $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded the {bound} for {run.TradingDate:yyyy-MM-dd}"
+            : $"Degerli alert: {RunHungReasonCode} — chain step '{hungJob}' exceeded the {bound} for {run.TradingDate:yyyy-MM-dd} (no settle within the {settle} post-cancel settle window)";
 
         return _alerter.RaiseAsync(
             new IngestionAlert(
                 JobCode: hungJob,
                 ReasonCode: RunHungReasonCode,
                 Subject: subject,
-                BodyTr: $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {bound} sınırını aştı ve durduruldu ({attempt}. deneme); son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi.",
-                BodyEn: $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in step {step.Index}/{step.Total} ('{hungJob}') and was cancelled (attempt {attempt}); last-known-good data continues to be served and the retry ladder has taken over.",
+                BodyTr: settle is null
+                    ? $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {bound} sınırını aştı ve durduruldu ({attempt}. deneme); son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi."
+                    : $"Planlı veri zinciri {run.TradingDate:yyyy-MM-dd} için {step.Index}/{step.Total}. adımda ('{hungJob}') {bound} sınırını aştı ve durduruldu ({attempt}. deneme); iptal sonrası {settle} bekleme penceresinde de bitmedi, son bilinen iyi veri sunulmaya devam ediyor ve yeniden deneme merdiveni devreye girdi.",
+                BodyEn: settle is null
+                    ? $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in step {step.Index}/{step.Total} ('{hungJob}') and was cancelled (attempt {attempt}); last-known-good data continues to be served and the retry ladder has taken over."
+                    : $"The scheduled chain for {run.TradingDate:yyyy-MM-dd} exceeded the {bound} in step {step.Index}/{step.Total} ('{hungJob}') and was cancelled (attempt {attempt}); it did not settle within the {settle} post-cancel settle window either; last-known-good data continues to be served and the retry ladder has taken over.",
                 SourceRef: null),
             cancellationToken);
     }

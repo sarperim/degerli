@@ -35,6 +35,9 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     /// <summary>A liveness bound for "the tick never returns" — real time, not the fake clock.</summary>
     private static readonly TimeSpan LivenessBound = TimeSpan.FromSeconds(30);
 
+    /// <summary>The watchdog's shipped post-cancel settle window (TKT-foundation-085).</summary>
+    private static readonly TimeSpan DefaultSettleWindow = IngestionSchedulerOptions.DefaultPostCancelSettleWindow;
+
     private readonly PostgresFixture _postgres;
     private readonly WireMockFixture _wireMock;
 
@@ -273,6 +276,12 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     /// exactly once, as the terminal truth: the post-cancel <c>IsCompletedSuccessfully</c>
     /// re-check suppresses the <c>RUN_HUNG</c> row/alert. Pre-fix the same attempt produced
     /// both its success row and a <c>RUN_HUNG</c> row.
+    /// <para>
+    /// This is the <b>inline-resume</b> half of the guarantee (the swallowing double's
+    /// continuation runs on the cancelling thread). TC-MDF-113(a) is the other half — the
+    /// queued-continuation case that is normal under load, and that this re-check alone could
+    /// not see (TKT-foundation-085). Both are kept: neither assertion set is relaxed.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task TC_MDF_079_DR_2_Attempt_finishing_in_the_cancel_window_writes_one_true_row()
@@ -309,6 +318,66 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
     }
 
     /// <summary>
+    /// <b>TC-MDF-113(a)</b> — <b>the "one attempt, one row" guarantee is deterministic, not an
+    /// interleaving</b> (TKT-foundation-085; this is TC-MDF-079 DR-2 <i>strengthened</i>, with the
+    /// same assertion set and a double that reproduces the production continuation).
+    /// </summary>
+    /// <remarks>
+    /// The doubled step is DR-2's swallowing step <b>plus one <c>await Task.Yield()</c></b>: its
+    /// post-cancellation continuation is queued to the thread pool instead of resumed inline on
+    /// the cancelling thread, which is what an adapter's own <c>await</c> does. The pre-085 code
+    /// re-checked <c>work.IsCompletedSuccessfully</c> once, synchronously — so it saw a pending
+    /// task, wrote <c>RUN_HUNG</c>, and the queued continuation then wrote the step's own success
+    /// row: <b>two ledger rows for one attempt</b>, a spurious <c>RUN_HUNG</c> alert and a
+    /// spurious retry (the E3 escalation of PR #141's review round 2; the CI flake of this very
+    /// case). The bounded post-cancel settle window makes the re-check an interval, so the
+    /// terminal truth is observed whichever way the continuation is scheduled.
+    /// <para>
+    /// Nothing here is relaxed: exactly one row, the step's own <c>succeeded</c> row on attempt 1,
+    /// no <c>reasonCode</c>, no <c>RUN_HUNG</c> row, no <c>RUN_HUNG</c> alert, no retry and no
+    /// exhausted alert — the DR-2 contract verbatim, now across the interleaving that is normal.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TC_MDF_113_Post_cancel_settle_window_makes_the_queued_continuation_one_row()
+    {
+        await ResetAsync();
+
+        var step = new QueuedSwallowingStep();
+        await using var host = BuildEdgeHost("00:10:00", step);
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await step.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — the chain ceiling expires; the step swallows the cancellation and its
+        // continuation is queued, so it finishes *inside* the watchdog's post-cancel settle
+        // window rather than behind its single re-check.
+        clock.Advance(TimeSpan.FromMinutes(11));
+        await AwaitTickAsync(tick);
+
+        // One attempt, one row: the step's own terminal truth.
+        var runs = await LedgerAsync();
+        var row = Assert.Single(runs);
+        Assert.Equal(QueuedSwallowingStep.Code, row.JobCode);
+        Assert.Equal(IngestResult.Succeeded, row.Status);
+        Assert.Equal(1, Attempt(row));
+        Assert.Null(ReasonCode(row));
+        Assert.DoesNotContain(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.DoesNotContain(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.DoesNotContain(
+            host.Logs.Events,
+            logEvent => logEvent.RenderMessage().Contains("Hung run detected"));
+
+        // The completed attempt ends the run: no retry row on the ladder, no exhausted alert.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 47));
+        Assert.Single(await LedgerAsync());
+        Assert.DoesNotContain(host.Mail.Sent, mail => mail.Subject.Contains("failed after"));
+    }
+
+    /// <summary>
     /// DR-3 — the <c>RUN_HUNG</c> row and alert name the step the watchdog actually caught:
     /// the snapshot is hoisted above the cancellation, so a step that swallows the
     /// cancellation and advances the chain cannot rename the hung step in the record.
@@ -332,7 +401,7 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         await swallow.Entered.Task.WaitAsync(LivenessBound);
 
         clock.Advance(TimeSpan.FromMinutes(11));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var hung = Assert.Single(await LedgerAsync(), run => ReasonCode(run) == "RUN_HUNG");
         Assert.Equal(IngestResult.Failed, hung.Status);
@@ -552,6 +621,53 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
         Assert.Same(tick, finished);
         await tick;
+    }
+
+    /// <summary>
+    /// Completes a tick that is <b>waiting on the watchdog's post-cancel settle window</b>
+    /// (TKT-foundation-085). The grace is a delay on the injected clock, armed on a continuation
+    /// thread <i>after</i> the bound fired, so a case that ends in the hung path advances the
+    /// fake clock past it — the same premise the cases already make for the bounds themselves.
+    /// <para>
+    /// The advance is made in exactly two steps, both deterministic: the harness first waits for
+    /// the watchdog's own "settling … giving the attempt the &lt;window&gt; post-cancel settle
+    /// window" log line (which the implementation emits <i>after</i> arming the timer), then
+    /// advances the fake clock by the whole window in one go. Nothing is guessed from timing —
+    /// and the clock is not touched before that line, so the instant the watchdog recorded as the
+    /// attempt's end is still the bound's instant, exactly as before this ticket.
+    /// </para>
+    /// </summary>
+    private static async Task AwaitTickAsync(Task tick, IngestionSchedulerHost host, TimeSpan settleWindow)
+    {
+        if (settleWindow > TimeSpan.Zero)
+        {
+            await WaitForSettleWindowArmedAsync(host.Logs, settleWindow);
+            host.Clock.Advance(settleWindow + SettleAdvanceMargin);
+        }
+
+        await AwaitTickAsync(tick);
+    }
+
+    /// <summary>The margin added to the grace when the harness advances the fake clock past it.</summary>
+    private static readonly TimeSpan SettleAdvanceMargin = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Waits (real time, bounded) for the watchdog to have armed its post-cancel settle window —
+    /// observed through the log line it writes immediately after arming, which is the only
+    /// observable side of a clock delay. The fake clock is untouched here, so the schedule stays
+    /// exact; only the wait for the continuation thread is real.
+    /// </summary>
+    private static async Task WaitForSettleWindowArmedAsync(InMemorySerilogSink logs, TimeSpan settleWindow)
+    {
+        var marker = $"the {settleWindow} post-cancel settle window";
+        var deadline = DateTime.UtcNow + LivenessBound;
+        while (!logs.Contains(logEvent => logEvent.RenderMessage().Contains(marker)))
+        {
+            Assert.True(
+                DateTime.UtcNow < deadline,
+                $"the watchdog never armed a {settleWindow} post-cancel settle window");
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
+        }
     }
 
     /// <summary>The scheduler's "failed on attempt N" classification lines.</summary>
@@ -950,6 +1066,57 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
             // result — that is what lets the chain advance inside the cancel window.
             await cancelled.Task;
             return new IngestResult(Code, 1, 0, 0, _status);
+        }
+    }
+
+    /// <summary>
+    /// The same cancellation-swallowing step with the interleaving that is <b>normal in
+    /// production</b>: the post-cancellation continuation is <b>queued</b> to the thread pool
+    /// instead of resumed inline on the cancelling thread (TKT-foundation-085, TC-MDF-113(a)).
+    /// <para>
+    /// The single <c>await Task.Yield()</c> is the whole difference, and it is the difference
+    /// between one ledger row and two: the scheduler's post-cancel re-check now runs while this
+    /// step's continuation is still pending, so a re-check that does not <i>wait</i> for the
+    /// attempt declares it hung — and this step then writes its own success row beside the
+    /// <c>RUN_HUNG</c> row. DR-2's guarantee ("one attempt, one row") has to hold across the
+    /// queued-continuation case, not only the inline one.
+    /// </para>
+    /// </summary>
+    private sealed class QueuedSwallowingStep : IIngestJob
+    {
+        public const string Code = "queued-swallow-step";
+
+        private int _calls;
+
+        /// <summary>Completes when the doubled step has entered its awaiting branch.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string JobCode => Code;
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) > 1)
+            {
+                return Task.FromResult(new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded));
+            }
+
+            Entered.TrySetResult();
+            return AwaitCancellationAsync(cancellationToken);
+        }
+
+        private async Task<IngestResult> AwaitCancellationAsync(CancellationToken cancellationToken)
+        {
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.None);
+            using var registration = cancellationToken.Register(
+                static state => ((TaskCompletionSource)state!).TrySetResult(),
+                cancelled);
+
+            await cancelled.Task;
+
+            // THE HOP: the rest of this step — and therefore its terminal result — resumes on the
+            // thread pool, exactly as an adapter's `await` inside a caught cancellation would.
+            await Task.Yield();
+            return new IngestResult(Code, 1, 0, 0, IngestResult.Succeeded);
         }
     }
 
