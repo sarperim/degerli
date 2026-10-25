@@ -691,6 +691,12 @@ Planning is complete. The repository currently contains the approved requirement
 
 Implementation is being developed against that package, with tests written before the implementation they are intended to validate.
 
+**What is actually implemented right now — and what only looks implemented — lives in
+[`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)**: per-domain status (`live` /
+`live-degraded` / `ci-only` / `wired-not-configured` / `scaffolded` / `blocked-upstream`), a ledger
+of what CI proves versus what only a live run proves (with the date of the last live observation),
+and the checkable rule for keeping it honest (`scripts/implementation-status.sh`).
+
 The target is a **publicly accessible V1 by December 2026**.
 
 ---
