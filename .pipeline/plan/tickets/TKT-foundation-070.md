@@ -87,7 +87,7 @@ pinned — **no further widening was needed or taken**.
   the two metric **job** classes were outside the amended scope, so the ledger's `written` carries the
   total repairs as 044 established (recorded in `01` §10.9.13 as a follow-up); the demanded *trigger*
   distinction **is** in the ledger. (2) The ticket pointed this case at test plan "§14", which is the
-  §14 share-count section (TKT-foundation-058); the case is authored as a new §17 instead — recorded in
+  §14 share-count section (TKT-foundation-058); the case is authored as a new §19 instead — recorded in
   the plan's change record, test-planner confirmation pending. (3) The migration applies no backfill, by
   design (above). (4) Live criterion for the orchestrator post-merge: after deploy the first
   `metrics-recompute` stamps that day's rows, a second same-day run reports `unchanged`, and the ledger
@@ -106,9 +106,9 @@ squash-merged as #133). Rebased `feature/TKT-foundation-070` onto `origin/dev@f1
 - **`01`**: 064 landed §13.1 **v1.5.43** and its §10.9.17 "The bound's scope, corrected" prose; both are
   **kept** and this ticket's row stays **v1.5.48** (free on the new `dev` — 43 is the landed maximum, so no
   renumber was required). 070's "Definition versioning" subsection in §10.9.13 (v1.5.48) is intact.
-- **Test plan**: 064 landed TC-MDF-098 (§16) and its change record as **v1.17**; 070's §17 / TC-MDF-099
-  entry carried the same **v1.17** label, so it is **renumbered to v1.18** and kept. Both cases, both
-  sections and both change-record entries are present.
+- **Test plan**: 064 landed its per-step-bound watchdog case (§16) and its change record as **v1.17**;
+  070's §17 case entry carried the same **v1.17** label, so it is **renumbered to v1.18** and kept. Both
+  cases, both sections and both change-record entries are present.
 - **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
   *"No changes have been made to the model since the last migration"* (**no snapshot drift**), the
   migration list still ends at `20261024024109_MetricFormulaVersion`, and the freshly-migrated
@@ -130,18 +130,19 @@ Rebased `feature/TKT-foundation-070` onto `origin/dev@aa2d0b8`; the rebased impl
 - **`01`**: 070's §13.1 row stays **v1.5.48**. `aa2d0b8` carries 43 (064), 44 (048) and 52 (078); **48 is
   still free**, so no renumber was required. 048's `v1.5.44` and 078's `v1.5.52` rows are kept verbatim,
   and 070's "Definition versioning" subsection in §10.9.13 is intact.
-- **Test plan**: 078 claimed §17 **and** TC-MDF-099/100/101 **and** v1.18–v1.20; 048 then claimed §18 and
+- **Test plan**: 078 claimed §17 **and** its three cases there **and** v1.18–v1.20; 048 then claimed §18 and
   v1.21. The earlier rebase's "§17 / v1.18" placement recorded above is therefore **superseded**: 070's
   block moves to **§19** and its change record to **v1.22** (the next free section and version),
   leaving **every** 078 and 048 section, case and change-record entry untouched.
-- **Case-ID collision resolved (new finding, not in the original brief):** 078 landed **TC-MDF-099**
-  (`StatementsAndEventsIngestionTests.cs`, the bootstrap-window case) while this ticket's case was also
-  **TC-MDF-099** — a duplicate TC ID in both the test plan and the test source, which would have made
-  TC coverage attribution ambiguous. 078 merged first, so it keeps the ID; 070's case is renumbered to
+- **Case-ID collision resolved (new finding, not in the original brief):** 078 landed its §17
+  bootstrap-window case (`StatementsAndEventsIngestionTests.cs`) while this ticket's case carried the
+  identical ID — a duplicate TC ID in both the test plan and the test source, which would have made TC
+  coverage attribution ambiguous. 078 merged first, so it keeps the ID; 070's case is renumbered to
   **TC-MDF-102** (the next free ID) in §19, in its change record, in the §5 coverage-matrix rows
-  (`FR-MDF-013`, `FR-MDF-014`, `NFR-MDF-001`), and in `MetricsRecomputeIdempotencyTests.cs` (six
-  occurrences: method names and doc comments **only** — reversing the rename reproduces the file
-  byte-for-byte, so no assertion was added, removed, skipped or weakened).
+  (`FR-MDF-013`, `FR-MDF-014`, `NFR-MDF-001`), and in
+  `MetricsRecomputeIdempotencyTests.cs` (six occurrences: method names and doc comments **only** —
+  reversing the rename reproduces the file byte-for-byte, so no assertion was added, removed, skipped or
+  weakened).
 - **Migration**: re-verified on the new base — `dotnet ef migrations has-pending-model-changes` reports
   *"No changes have been made to the model since the last migration"* (**no snapshot drift**); the
   migration list still ends at `20261024024109_MetricFormulaVersion`; the freshly-migrated Testcontainers
