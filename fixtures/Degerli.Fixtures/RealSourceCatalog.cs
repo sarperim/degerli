@@ -9547,15 +9547,14 @@ public static class RealSourceCatalog
         Vyk(VykMembers, VykMembersJson),
         Vyk(VykDisclosures, VykDisclosuresJson),
         CapturedVyk(VykDisclosureDetail, VykDisclosureDetailJson),
-        KapPublicCaptured(KapPublicRobots, KapPublicRobotsLabel, KapPublicRobotsBody, "/robots.txt"),
+        KapPublicCaptured(KapPublicRobots, KapPublicRobotsLabel, KapPublicRobotsBody, statusCode: 666),
         KapPublicCaptured(KapPublicByCriteria, KapPublicByCriteriaLabel, KapPublicByCriteriaJson,
-            "/tr/api/disclosure/members/byCriteria", method: "POST"),
+            method: "POST"),
         KapPublicCaptured(KapPublicMarketProbe, KapPublicMarketProbeLabel, KapPublicMarketProbeJson,
-            "/tr/api/disclosure/members/byCriteria", method: "POST"),
-        KapPublicCaptured(KapPublicReport, KapPublicReportLabel, KapPublicReportHtml,
-            "/tr/api/notification/export/excel/1643141"),
+            method: "POST"),
+        KapPublicCaptured(KapPublicReport, KapPublicReportLabel, KapPublicReportHtml),
         KapPublicCaptured(KapPublicIdentity, KapPublicIdentityLabel, KapPublicIdentityJson,
-            "/tr/api/search/combined", method: "POST"),
+            method: "POST"),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -9605,17 +9604,23 @@ public static class RealSourceCatalog
 
     /// <summary>
     /// One captured KAP public-site body (TKT-foundation-079). Its source is the lane's own
-    /// evidence class <c>kap-public</c>, and its route is the public site's route — never the
-    /// VYK gateway's.
+    /// evidence class <c>kap-public</c> (never the VYK gateway's <c>kap</c>), its default route
+    /// is the <b>source-double serving route</b> every catalog entry uses
+    /// (<c>/real-sources/{name}</c>), and its status is the status the live probe actually
+    /// returned — recorded per entry rather than assumed to be 200, because the <c>robots.txt</c>
+    /// probe answered HTTP 666 and the record must not contradict its own provenance label. The
+    /// live upstream route is recorded in the entry's provenance label (and in the lane's
+    /// <c>Ingestion:KapPublic</c> configuration) — <see cref="RealSourcePayload.DefaultPath"/>
+    /// is the double's route, never a repurposing of the upstream one.
     /// </summary>
     private static RealSourcePayload KapPublicCaptured(
         string name,
         string label,
         string body,
-        string path,
-        string method = "GET") =>
-        new(name, KapPublicSource, method, path, 200, "utf-8", RealSourceProvenance.Captured, label,
-            Encoding.UTF8.GetBytes(body));
+        string method = "GET",
+        int statusCode = 200) =>
+        new(name, KapPublicSource, method, $"/real-sources/{name}", statusCode, "utf-8",
+            RealSourceProvenance.Captured, label, Encoding.UTF8.GetBytes(body));
 
     private static RealSourcePayload EvdsMacro(string name, string json) =>
         Payload(name, EvdsMacroLabel, RealSourceProvenance.Constructed, json, EvdsSource);

@@ -54,16 +54,20 @@ public sealed class RealSourcePricesTests : IClassFixture<WireMockFixture>
             Assert.False(string.IsNullOrWhiteSpace(payload.ProvenanceLabel));
             Assert.StartsWith("/real-sources/", payload.DefaultPath, StringComparison.Ordinal);
             // The real-source catalog is multi-source — İş Yatırım EOD prices (TKT-foundation-015),
-            // KAP XBRL statements (TKT-foundation-017) and the EVDS macro envelope (TKT-foundation-019);
-            // every entry records its concrete source (01 v1.5 §10.9.7): price bodies are
-            // `isyatirim`, statement bodies are `kap`, macro bodies are `evds`. A mislabeled
-            // entry fails here, so the catalog is never a source-blind bag. The assertions of
-            // TC-MDF-063 (raw bytes, declared charset, honest provenance label) are below.
-            var expectedSource = payload.Name.StartsWith("kap-", StringComparison.Ordinal)
-                ? RealSourceCatalog.KapSource
-                : payload.Name.StartsWith("evds-", StringComparison.Ordinal)
-                    ? RealSourceCatalog.EvdsSource
-                    : RealSourceCatalog.IsYatirimSource;
+            // KAP XBRL statements (TKT-foundation-017), the EVDS macro envelope (TKT-foundation-019)
+            // and the KAP public-site captures (TKT-foundation-079, its own `kap-public` evidence
+            // class); every entry records its concrete source (01 v1.5 §10.9.7). A mislabeled entry
+            // fails here, so the catalog is never a source-blind bag. `kap-public-*` is matched
+            // before the `kap-` prefix because the public-site lane is a different evidence class
+            // that happens to share the `kap` name stem — the ordering is what keeps the check real.
+            var expectedSource =
+                payload.Name.StartsWith("kap-public-", StringComparison.Ordinal)
+                    ? RealSourceCatalog.KapPublicSource
+                    : payload.Name.StartsWith("kap-", StringComparison.Ordinal)
+                        ? RealSourceCatalog.KapSource
+                        : payload.Name.StartsWith("evds-", StringComparison.Ordinal)
+                            ? RealSourceCatalog.EvdsSource
+                            : RealSourceCatalog.IsYatirimSource;
             Assert.Equal(expectedSource, payload.Source);
 
             switch (payload.Provenance)
@@ -93,10 +97,33 @@ public sealed class RealSourcePricesTests : IClassFixture<WireMockFixture>
             // request-body shape is pinned by the adapter tests (TC-MOV-028); this contract
             // exercises the response side only.
             _wireMock.StubRealSource(payload.Name);
-            var fetched = string.Equals(payload.Method, "POST", StringComparison.OrdinalIgnoreCase)
-                ? await client.PostJsonAsync(payload.DefaultPath, "{}")
-                : await client.GetStringAsync(payload.DefaultPath);
-            Assert.Equal(payload.Body, fetched);
+            var isPost = string.Equals(payload.Method, "POST", StringComparison.OrdinalIgnoreCase);
+
+            if (payload.StatusCode is >= 200 and < 300)
+            {
+                var fetched = isPost
+                    ? await client.PostJsonAsync(payload.DefaultPath, "{}")
+                    : await client.GetStringAsync(payload.DefaultPath);
+                Assert.Equal(payload.Body, fetched);
+            }
+            else
+            {
+                // An entry may honestly record a non-success status — the KAP public-site
+                // `robots.txt` probe answered HTTP 666 (TKT-foundation-079, TC-MDF-104), and the
+                // catalog records that instead of pretending 200. The double serves the verbatim
+                // bytes under the recorded status and the production client surfaces it as a
+                // source failure: a non-success body is never handed back as a payload.
+                var failure = isPost
+                    ? await Assert.ThrowsAsync<SourceFetchException>(
+                        () => client.PostJsonAsync(payload.DefaultPath, "{}"))
+                    : await Assert.ThrowsAsync<SourceFetchException>(
+                        () => client.GetStringAsync(payload.DefaultPath));
+                Assert.Contains($"HTTP {payload.StatusCode}", failure.Message, StringComparison.Ordinal);
+
+                using var raw = await http.GetAsync(payload.DefaultPath);
+                Assert.Equal(payload.StatusCode, (int)raw.StatusCode);
+                Assert.Equal(payload.RawBytes, await raw.Content.ReadAsByteArrayAsync());
+            }
         }
 
         // Unknown names: TryGet false, Get throws.

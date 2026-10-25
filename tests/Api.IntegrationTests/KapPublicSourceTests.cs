@@ -595,9 +595,18 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
 
         Assert.Equal(RealSourceProvenance.Captured, robots.Provenance);
         Assert.Equal("kap-public", robots.Source);
-        Assert.Equal("/robots.txt", robots.DefaultPath);
-        Assert.Contains("robots.txt", robots.ProvenanceLabel, StringComparison.OrdinalIgnoreCase);
+
+        // The record's status is the status the probe actually saw: HTTP 666, not a
+        // normalised 200. The committed evidence and its own label must agree — a catalog
+        // entry that says "666" in prose and "200" in the field is not honest evidence.
+        Assert.Equal(666, robots.StatusCode);
         Assert.Contains("666", robots.ProvenanceLabel, StringComparison.Ordinal);
+
+        // `DefaultPath` is the source-double's serving route (the catalog-wide
+        // `/real-sources/{name}` convention); the live upstream route the bytes came from is
+        // recorded in the provenance label, not smuggled into the serving route.
+        Assert.Equal($"/real-sources/{RealSourceCatalog.KapPublicRobots}", robots.DefaultPath);
+        Assert.Contains("https://www.kap.org.tr/robots.txt", robots.ProvenanceLabel, StringComparison.Ordinal);
 
         // The verbatim body: the site's own HTML access-error page, not a prose summary.
         Assert.Contains("<html>", robots.Body, StringComparison.Ordinal);
