@@ -1,0 +1,836 @@
+using System.Diagnostics;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Degerli.Api.IntegrationTests.Harness;
+using Degerli.Fixtures;
+using Degerli.Ingestion;
+using Degerli.Ingestion.KapPublic;
+using Degerli.Ingestion.Scheduling;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
+
+namespace Degerli.Api.IntegrationTests;
+
+/// <summary>
+/// TKT-foundation-079 acceptance — the KAP <b>public-site</b> source skeleton
+/// (01 v1.5.53 §10.9.19, FR-MDF-002/008/012, NFR-MDF-001): the options contract, the
+/// single-flight paced client, the honest-status classification and the walk budget.
+/// <para>
+/// <b>Doubles only.</b> Every body these tests serve comes from the committed paced-capture
+/// set in <see cref="RealSourceCatalog"/> (<c>kap-public-*</c>, captured 2026-10-25) or from
+/// the WireMock source double; <b>no test ever calls kap.org.tr</b>. Pacing is bound to 0
+/// where it is not the subject, and observed on a fake clock where it is.
+/// </para>
+/// <para>
+/// Two-source discipline is asserted, not assumed: the lane's evidence class is
+/// <c>kap-public</c> (never the VYK lane's <c>kap</c>), and the public index space
+/// (1643141) is never written where a VYK index (head 1231017) belongs.
+/// </para>
+/// </summary>
+public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
+{
+    private const string ByCriteriaPath = "/tr/api/disclosure/members/byCriteria";
+    private const string ReportPath = "/tr/api/notification/export/excel/1643141";
+    private const string IdentityPath = "/tr/api/search/combined";
+    private const string ProbePath = "/tr/api/probe";
+
+    /// <summary>The ASELS public-site company oid (its own identifier space — not VYK's 866).</summary>
+    private const string AselsPublicOid = "4028e4a1413b7ef401413bc2251e0047";
+
+    private readonly WireMockFixture _wireMock;
+
+    public KapPublicSourceTests(WireMockFixture wireMock) => _wireMock = wireMock;
+
+    // =================================================================================
+    // TC-MDF-103 (i) — the configuration contract
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (i) — the public-site options section binds, the shipped constants are
+    /// pinned as config-equivalence assertions, and the walk deadline sits strictly below the
+    /// scheduler's per-step bound. The lane's full key set is pre-wired so later lane tickets
+    /// (080–084) never re-touch <c>appsettings.json</c> for a shared concern: the routes, the
+    /// pacing/caps/timeouts, the recorded access posture and the two <b>inert</b> source
+    /// selectors (which still ship the incumbent <c>vyk</c>, so nothing flips silently).
+    /// </summary>
+    [Fact]
+    public void TC_MDF_103_a_the_shipped_config_binds_the_full_public_site_key_set()
+    {
+        var appsettingsPath = Path.Combine(FindRepositoryRoot(), "src", "Api", "appsettings.json");
+        Assert.True(File.Exists(appsettingsPath), $"appsettings.json missing at {appsettingsPath}");
+        using var document = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
+        var ingestion = document.RootElement.GetProperty("Ingestion");
+        var kapPublic = ingestion.GetProperty("KapPublic");
+
+        // (i-a) the base, the honest UA, the 3 s politeness pace.
+        Assert.Equal("https://www.kap.org.tr", kapPublic.GetProperty("BaseUrl").GetString());
+        Assert.Equal(KapPublicSourceOptions.DefaultBaseUrl, new KapPublicSourceOptions().BaseUrl);
+        var userAgent = kapPublic.GetProperty("UserAgent").GetString() ?? string.Empty;
+        Assert.Equal(KapPublicSourceOptions.DefaultUserAgent, userAgent);
+        Assert.Contains("Mozilla/5.0", userAgent, StringComparison.Ordinal);
+        Assert.Contains("DegerliBot", userAgent, StringComparison.Ordinal);
+        Assert.Equal(3000, AsInt(kapPublic, "RequestDelayMs"));
+        Assert.Equal(KapPublicSourceOptions.DefaultRequestDelayMs, new KapPublicSourceOptions().RequestDelayMs);
+
+        // (i-b) the live-verified routes (never the VYK gateway's).
+        Assert.Equal(ByCriteriaPath, kapPublic.GetProperty("ByCriteriaPath").GetString());
+        Assert.Equal(
+            "/tr/api/notification/export/excel/{disclosureIndex}",
+            kapPublic.GetProperty("ReportExportPath").GetString());
+        Assert.Equal(IdentityPath, kapPublic.GetProperty("IdentitySearchPath").GetString());
+        Assert.Equal("/tr/sirket/{ticker}", kapPublic.GetProperty("CompanyPagePath").GetString());
+        Assert.Equal("/robots.txt", kapPublic.GetProperty("RobotsPath").GetString());
+
+        // (i-c) the bounds: caps, per-item detail timeout, walk deadline.
+        var shipped = new KapPublicSourceOptions
+        {
+            MaxListPages = AsInt(kapPublic, "MaxListPages"),
+            MaxDetailFetches = AsInt(kapPublic, "MaxDetailFetches"),
+            DetailFetchTimeoutMs = AsInt(kapPublic, "DetailFetchTimeoutMs"),
+            RequestTimeoutMs = AsInt(kapPublic, "RequestTimeoutMs"),
+            MaxWalkDuration = TimeSpan.Parse(kapPublic.GetProperty("MaxWalkDuration").GetString()!),
+            AutomatedAccess = Enum.Parse<KapPublicAccessPosture>(
+                kapPublic.GetProperty("AutomatedAccess").GetString()!, ignoreCase: true),
+        };
+
+        Assert.Equal(KapPublicSourceOptions.DefaultMaxListPages, shipped.MaxListPages);
+        Assert.Equal(KapPublicSourceOptions.DefaultMaxDetailFetches, shipped.MaxDetailFetches);
+        Assert.Equal(KapPublicSourceOptions.DefaultDetailFetchTimeoutMs, shipped.DetailFetchTimeoutMs);
+        Assert.Equal(KapPublicSourceOptions.DefaultRequestTimeoutMs, shipped.RequestTimeoutMs);
+        Assert.Equal(KapPublicSourceOptions.DefaultMaxWalkDuration, shipped.MaxWalkDuration);
+
+        // The deadline must sit strictly inside the scheduler's per-step bound, or a walk can
+        // be watchdog-cancelled with every completed unit discarded (the 078/§10.9.17 class).
+        Assert.True(
+            shipped.MaxWalkDuration < IngestionSchedulerOptions.DefaultMaxStepDuration,
+            $"MaxWalkDuration ({shipped.MaxWalkDuration}) must be < MaxStepDuration " +
+            $"({IngestionSchedulerOptions.DefaultMaxStepDuration}).");
+
+        // (i-d) the recorded access posture (the OQ-2 gate) is a shipped value, not a comment.
+        Assert.Equal(KapPublicAccessPosture.Allowed, shipped.AutomatedAccess);
+        Assert.True(shipped.AllowsAutomatedAccess);
+
+        // (i-e) the two source selectors are pre-wired inertly: both ship the incumbent VYK
+        // source, so selecting the public site stays an explicit, recorded config flip
+        // (TKT-foundation-082/084) and nothing changes behaviour by this ticket.
+        Assert.Equal("vyk", ingestion.GetProperty("Statements").GetProperty("Source").GetString());
+        Assert.Equal("vyk", ingestion.GetProperty("Disclosures").GetProperty("Source").GetString());
+
+        // (i-f) the lane's evidence class is its own — never the VYK lane's `kap`.
+        Assert.Equal("kap-public", KapPublicSourceOptions.SourceName);
+        Assert.Equal("kap-public", KapPublicSourceReader.SourceName);
+        Assert.NotEqual("kap", KapPublicSourceOptions.SourceName);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (i) — the composition root wires the public-site source as its <b>own</b>
+    /// source: the keyed client, the per-run pacer and the reader resolve, the pacer carries
+    /// the configured pace, the client reports the <c>kap-public</c> evidence class, and a
+    /// read through the DI graph reaches the double at the public-site base — while the VYK
+    /// client is untouched and still registered.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_a2_the_public_site_source_is_its_own_di_registration()
+    {
+        ResetDoubles();
+        _wireMock.StubJson(ByCriteriaPath, RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria).Body, method: "POST");
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Default"] = "Host=localhost;Database=composition-only",
+                ["Ingestion:KapPublic:BaseUrl"] = _wireMock.BaseUrl,
+                ["Ingestion:KapPublic:RequestDelayMs"] = "0",
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMarketDataIngestion(configuration);
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var client = scope.ServiceProvider.GetRequiredService<IKapPublicSourceClient>();
+        var reader = scope.ServiceProvider.GetRequiredService<KapPublicSourceReader>();
+        var pacer = scope.ServiceProvider.GetRequiredService<KapPublicRequestPacer>();
+
+        Assert.Equal("kap-public", client.SourceName);
+        Assert.Equal("kap-public", reader.SourceNameOfLane);
+        Assert.Equal(0, pacer.DelayMs);
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Degerli.Ingestion.Kap.IKapSourceClient>());
+
+        var result = await reader.ReadDisclosureListAsync(AselsFrQuery());
+        Assert.True(result.IsOk, $"expected an ok read, got {result.Outcome} ({result.ReasonCode})");
+        Assert.Equal(10, result.Payload!.Count);
+        Assert.Equal(1, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    // =================================================================================
+    // TC-MDF-103 (ii) — pacing
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (ii) — on a fake clock, <b>every</b> consecutive request pair is separated
+    /// by at least the configured delay: the first request waits nothing, the second waits the
+    /// full 3 s, and a request issued 1 s into the gap waits only the 2 s remainder. The pace
+    /// is configuration, not a literal.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_b_every_consecutive_request_waits_out_the_configured_delay()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay recorder = (delay, _) =>
+        {
+            waits.Add(delay);
+            return Task.CompletedTask;
+        };
+
+        var handler = new RecordingHandler(_ => JsonResponse(RealSourceCatalog.Get(
+            RealSourceCatalog.KapPublicByCriteria).Body));
+        var client = BuildClient(handler, clock, delay: recorder, delayMs: 3000);
+
+        await client.GetStringAsync(ProbePath);
+        await client.GetStringAsync(ProbePath);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await client.GetStringAsync(ProbePath);
+
+        Assert.Equal(2, waits.Count);
+        Assert.Equal(TimeSpan.FromSeconds(3), waits[0]);
+        Assert.Equal(TimeSpan.FromSeconds(2), waits[1]);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (ii) — the delay is configuration: a <b>200 ms</b> bound produces ~200 ms
+    /// gaps on the real wire, and a <c>0</c> bound produces none. (The fixture is measured by
+    /// the double's own request stamps — a real-clock politeness measure, no live site.)
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_c_the_pace_is_configuration_a_200ms_bound_produces_200ms_gaps()
+    {
+        ResetDoubles();
+        _wireMock.StubJson(ProbePath, """[]""");
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("[]", Encoding.UTF8, "application/json"),
+        });
+
+        // Unpaced (0 ms): the three requests land back-to-back.
+        var unpaced = BuildClient(handler, TimeProvider.System, delayMs: 0);
+        await unpaced.GetStringAsync(ProbePath);
+        await unpaced.GetStringAsync(ProbePath);
+        await unpaced.GetStringAsync(ProbePath);
+
+        // Paced at 200 ms: consecutive starts are at least ~200 ms apart.
+        var stamped = new List<DateTimeOffset>();
+        var stopwatch = new List<long>();
+        var pacedHandler = new RecordingHandler(_ =>
+        {
+            stamped.Add(DateTimeOffset.UtcNow);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("[]", Encoding.UTF8, "application/json"),
+            };
+        });
+        var paced = BuildClient(pacedHandler, TimeProvider.System, delayMs: 200);
+        var total = Stopwatch.StartNew();
+        await paced.GetStringAsync(ProbePath);
+        await paced.GetStringAsync(ProbePath);
+        await paced.GetStringAsync(ProbePath);
+        total.Stop();
+
+        Assert.Equal(3, stamped.Count);
+        foreach (var pair in stamped.Zip(stamped.Skip(1)))
+        {
+            var gap = pair.Second - pair.First;
+            Assert.True(
+                gap >= TimeSpan.FromMilliseconds(150),
+                $"a 200 ms pace must separate the requests; observed {gap.TotalMilliseconds:0} ms.");
+        }
+
+        Assert.True(
+            total.Elapsed >= TimeSpan.FromMilliseconds(300),
+            $"two 200 ms gaps must cost ≥ 300 ms of wall clock; observed {total.ElapsedMilliseconds} ms.");
+    }
+
+    // =================================================================================
+    // TC-MDF-103 (iii) — request shape
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (iii) — the client sends the realistic User-Agent on every request (the
+    /// double only answers a request carrying it) and the fixture-faithful byCriteria POST
+    /// body: <c>fromDate</c>/<c>toDate</c>/<c>disclosureClass</c>/<c>mkkMemberOidList</c> plus
+    /// the endpoint's empty sibling arrays, in the live member order.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_d_the_client_sends_the_user_agent_and_the_bycriteria_body()
+    {
+        ResetDoubles();
+        var catalog = RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria);
+
+        // The stub matches ONLY on the honest UA token — a request without it would 404 and
+        // the read below would be a source-down (i.e. this is a real on-the-wire assertion).
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ByCriteriaPath).UsingPost()
+                .WithHeader("User-Agent", "*DegerliBot*"))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(catalog.Body));
+
+        var query = AselsFrQuery();
+        var wireReader = new KapPublicSourceReader(BuildClient(null, TimeProvider.System), OptionsOf());
+        var throughDouble = await wireReader.ReadDisclosureListAsync(query);
+        Assert.True(throughDouble.IsOk, $"expected the UA-carrying request to be served ({throughDouble.ReasonCode})");
+        Assert.Equal(10, throughDouble.Payload!.Count);
+        Assert.Equal(1, _wireMock.RequestsFor(ByCriteriaPath));
+
+        // The exact body, in the endpoint's live member order (recorded request).
+        var handler = new RecordingHandler(_ => JsonResponse(catalog.Body));
+        var reader = new KapPublicSourceReader(BuildClient(handler, TimeProvider.System), OptionsOf());
+        Assert.True((await reader.ReadDisclosureListAsync(query)).IsOk);
+        var body = handler.Requests.Last().Body;
+        Assert.Equal(query.ToJson(), body);
+        using var document = JsonDocument.Parse(body!);
+        Assert.Equal("2026-01-01", document.RootElement.GetProperty("fromDate").GetString());
+        Assert.Equal("2026-10-25", document.RootElement.GetProperty("toDate").GetString());
+        Assert.Equal("FR", document.RootElement.GetProperty("disclosureClass").GetString());
+        Assert.Equal(
+            AselsPublicOid,
+            document.RootElement.GetProperty("mkkMemberOidList")[0].GetString());
+        Assert.Equal(0, document.RootElement.GetProperty("subjectList").GetArrayLength());
+        Assert.Equal(0, document.RootElement.GetProperty("disclosureIndexList").GetArrayLength());
+
+        // The request shape and the honest UA travel together on the recorded handler too.
+        var recorded = handler.Requests.Last();
+        Assert.Equal(HttpMethod.Post, recorded.Method);
+        Assert.Contains("DegerliBot", recorded.UserAgent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iii)+(iv) — the report is fetched by its <b>public-site</b>
+    /// <c>disclosureIndex</c> on the configured route, and the body is classified <b>by
+    /// shape</b>: the route declares <c>application/vnd.ms-excel</c> while serving HTML, and a
+    /// type-trusting reader would quarantine every real report.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_e_the_report_is_fetched_by_index_and_classified_by_shape_not_type()
+    {
+        ResetDoubles();
+        var capture = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport);
+
+        // Served exactly as the live route does: the lying content type, the captured bytes.
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ReportPath).UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/vnd.ms-excel")
+                .WithBody(capture.RawBytes));
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadReportAsync(1643141);
+
+        Assert.True(result.IsOk, $"expected the HTML report to classify by shape ({result.ReasonCode})");
+        Assert.Equal(1643141, result.Payload!.DisclosureIndex);
+        Assert.Contains("<table", result.Payload.Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Nakit Akış Tablosu (Dolaylı Yöntem)", result.Payload.Html, StringComparison.Ordinal);
+
+        // The route carries the public index — the lane's own space (never a VYK index).
+        var requested = _wireMock.Server.LogEntries
+            .Where(entry => entry.RequestMessage is not null)
+            .Select(entry => entry.RequestMessage!.Path)
+            .ToList();
+        Assert.Contains(ReportPath, requested);
+        Assert.DoesNotContain("1231017", requested);
+    }
+
+    // =================================================================================
+    // TC-MDF-103 (iv) — the four honest statuses
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — a transport/5xx list failure is a <b>source failure</b>: the read is
+    /// <c>source-down</c> with its named reason, no rows, and nothing quarantined (nothing is
+    /// fabricated from a failure).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_f_a_list_5xx_is_a_source_down_with_no_rows_and_no_quarantine()
+    {
+        ResetDoubles();
+        var body = """
+                   <html><body><p>Yasadiginiz bu erisim problemini "349891-PPE13" ...</p></body></html>
+                   """;
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ByCriteriaPath).UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(503)
+                .WithHeader("Content-Type", "text/html")
+                .WithBody(body));
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadDisclosureListAsync(AselsFrQuery());
+
+        Assert.True(result.IsSourceDown);
+        Assert.Equal(KapPublicReasonCodes.SourceFetchFailed, result.ReasonCode);
+        Assert.Null(result.Payload);
+        Assert.False(result.IsQuarantined);
+        Assert.Contains("503", result.Detail ?? string.Empty, StringComparison.Ordinal);
+        // The failure excerpt is the source's own body (bounded), never a fabrication.
+        Assert.Contains("erisim problemini", result.RawBody ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — a 200 body that fails the shape parse is <b>quarantined</b> as
+    /// <c>UNPARSEABLE_PAYLOAD</c> with the <b>verbatim</b> body, whatever the declared content
+    /// type says: here the site's HTML error page is served as <c>application/json</c> — the
+    /// mirror image of the lying excel route, and the reason the classifier only ever looks at
+    /// the shape.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_g_a_200_body_that_is_not_the_list_shape_quarantines_verbatim()
+    {
+        ResetDoubles();
+        var errorPage = RealSourceCatalog.Get(RealSourceCatalog.KapPublicRobots).Body;
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ByCriteriaPath).UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(errorPage));
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadDisclosureListAsync(AselsFrQuery());
+
+        Assert.True(result.IsQuarantined);
+        Assert.Equal(KapPublicReasonCodes.UnparseablePayload, result.ReasonCode);
+        Assert.Equal(errorPage, result.RawBody);
+
+        // A 200 JSON body whose rows are not the byCriteria shape is the same class — a list of
+        // scalars, or rows missing the members the lane depends on, is never silently partial.
+        var scalarBody = "[1,2,3]";
+        Assert.True(KapPublicSourceReader.ClassifyDisclosureList(scalarBody).IsQuarantined);
+        Assert.True(KapPublicSourceReader.ClassifyDisclosureList(
+            """[{"disclosureIndex":0,"publishDate":null,"disclosureClass":null}]""").IsQuarantined);
+        Assert.True(KapPublicSourceReader.ClassifyDisclosureList("   ").IsQuarantined);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — a well-formed empty window is an <b>honest empty</b> (a named skip,
+    /// never a failure and never a fabricated row): the reason code says so, the body is kept,
+    /// and no payload is invented.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_h_an_empty_window_is_an_honest_empty_with_a_named_reason()
+    {
+        ResetDoubles();
+        _wireMock.StubJson(ByCriteriaPath, "[]", method: "POST");
+
+        var client = BuildClient(null, TimeProvider.System);
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var result = await reader.ReadDisclosureListAsync(AselsFrQuery());
+
+        Assert.True(result.IsHonestEmpty);
+        Assert.Equal(KapPublicReasonCodes.HonestEmpty, result.ReasonCode);
+        Assert.Null(result.Payload);
+        Assert.Equal("[]", result.RawBody);
+        Assert.False(result.IsSourceDown);
+        Assert.False(result.IsQuarantined);
+    }
+
+    /// <summary>
+    /// TC-MDF-103 (iv) — a stalled detail is its own <b>source-down</b> reason: the per-item
+    /// detail timeout fires (the pace is not counted against it) and the read reports
+    /// <c>SOURCE_REQUEST_TIMEOUT</c> instead of hanging the walk.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_k_a_stalled_detail_times_out_as_its_own_source_down_reason()
+    {
+        ResetDoubles();
+        _wireMock.Server
+            .Given(Request.Create().WithPath(ReportPath).UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/vnd.ms-excel")
+                .WithBody("<html><table><tr><td>x</td></tr></table></html>")
+                .WithDelay(TimeSpan.FromMilliseconds(1500)));
+
+        var client = BuildClient(null, TimeProvider.System, detailTimeoutMs: 200);
+        var reader = new KapPublicSourceReader(client, OptionsOf(o => o.DetailFetchTimeoutMs = 200));
+
+        var result = await reader.ReadReportAsync(1643141);
+
+        Assert.True(result.IsSourceDown);
+        Assert.Equal(KapPublicReasonCodes.RequestTimeout, result.ReasonCode);
+        Assert.Null(result.Payload);
+    }
+
+    // =================================================================================
+    // TC-MDF-103 (v) — the walk bounds
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (v) — the walk budget bounds work and wall clock exactly as the 078
+    /// <c>WalkBudget</c> does: the detail ceiling stops the walk after two completed units and
+    /// the position persists for the resume, the page ceiling stops a page walk, and the
+    /// deadline (a fake clock crossing it) truncates with its own reason — every stop is an
+    /// honest bounded pass with a saved position, never a lost unit.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_103_i_the_walk_obeys_its_caps_and_deadline_and_resumes_from_its_position()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
+        var units = new[] { "1643141", "1598316", "1561039" };
+
+        // (v-a) the detail ceiling: two details complete, the third is not begun.
+        var budget = new KapPublicWalkBudget(maxPages: 10, maxDetailFetches: 2,
+            TimeSpan.FromMinutes(10), clock);
+        var completed = new List<string>();
+        foreach (var unit in units)
+        {
+            if (!budget.TryBeginDetail())
+            {
+                break;
+            }
+
+            completed.Add(unit);
+            budget.Complete(unit);
+        }
+
+        Assert.Equal(["1643141", "1598316"], completed);
+        Assert.True(budget.Truncated);
+        Assert.Equal(KapPublicReasonCodes.DetailCap, budget.TruncationReason);
+        Assert.Equal(2, budget.DetailsUsed);
+        Assert.Equal("1598316", budget.LastCompletedUnit);
+
+        // The resume: the next walk starts after the persisted position, never from the start
+        // and never skipping the unit it had not completed.
+        var resumed = units.SkipWhile(unit => unit != budget.LastCompletedUnit).Skip(1).ToList();
+        Assert.Equal(["1561039"], resumed);
+
+        // (v-b) the page ceiling.
+        var pageBudget = new KapPublicWalkBudget(maxPages: 1, maxDetailFetches: 10,
+            TimeSpan.FromMinutes(10), clock);
+        Assert.True(pageBudget.TryBeginPage());
+        Assert.False(pageBudget.TryBeginPage());
+        Assert.Equal(KapPublicReasonCodes.PageCap, pageBudget.TruncationReason);
+
+        // (v-c) the wall clock: crossing the deadline truncates before the next request.
+        var deadlineBudget = new KapPublicWalkBudget(maxPages: 10, maxDetailFetches: 10,
+            TimeSpan.FromMinutes(10), clock);
+        Assert.True(deadlineBudget.TryBeginDetail());
+        deadlineBudget.Complete("1643141");
+        clock.Advance(TimeSpan.FromMinutes(11));
+        Assert.False(deadlineBudget.TryBeginDetail());
+        Assert.Equal(KapPublicReasonCodes.WalkDeadline, deadlineBudget.TruncationReason);
+        Assert.Equal("1643141", deadlineBudget.LastCompletedUnit);
+
+        // (v-d) a non-positive deadline disables the bound (the pre-budget behaviour).
+        var unbounded = new KapPublicWalkBudget(maxPages: 0, maxDetailFetches: 0, TimeSpan.Zero, clock);
+        clock.Advance(TimeSpan.FromDays(1));
+        Assert.True(unbounded.TryBeginDetail());
+        Assert.False(unbounded.Truncated);
+    }
+
+    // =================================================================================
+    // TC-MDF-103 (vi) — never parallel
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-103 (vi) — the client is strictly single-flight: with concurrent callers
+    /// offered (which the lane never does, but a wiring mistake could), no two requests are
+    /// ever in flight together — the double's journal shows the requests serialized, never
+    /// overlapping.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_103_j_requests_are_strictly_sequential_never_overlapping()
+    {
+        var probe = new ConcurrencyProbe();
+        var handler = new RecordingHandler(async _ =>
+        {
+            probe.Enter();
+            await Task.Delay(20);
+            probe.Exit();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("[]", Encoding.UTF8, "application/json"),
+            };
+        });
+        var client = BuildClient(handler, TimeProvider.System, delayMs: 0);
+
+        await Task.WhenAll(
+            client.GetStringAsync(ProbePath),
+            client.GetStringAsync(ProbePath),
+            client.GetStringAsync(ProbePath));
+
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.Equal(1, probe.MaxInFlight);
+    }
+
+    // =================================================================================
+    // TC-MDF-104 — the ToS/robots gate and the OQ-1 probe (recorded evidence + refusal)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-104 (i) — the ToS/robots evidence is in the repo: the <c>robots.txt</c> answer
+    /// is committed <b>verbatim</b> (the site serves its HTML access-error page at that path,
+    /// HTTP 666 — so there is no directive to read and the answer is kept as-is rather than
+    /// summarised), its provenance is a capture with a readable label, and the pinned reading
+    /// is recorded in the architecture's §10.9.19 evidence block.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_104_a_the_robots_capture_and_its_recorded_reading_are_in_the_repo()
+    {
+        var robots = RealSourceCatalog.Get(RealSourceCatalog.KapPublicRobots);
+
+        Assert.Equal(RealSourceProvenance.Captured, robots.Provenance);
+        Assert.Equal("kap-public", robots.Source);
+        Assert.Equal("/robots.txt", robots.DefaultPath);
+        Assert.Contains("robots.txt", robots.ProvenanceLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("666", robots.ProvenanceLabel, StringComparison.Ordinal);
+
+        // The verbatim body: the site's own HTML access-error page, not a prose summary.
+        Assert.Contains("<html>", robots.Body, StringComparison.Ordinal);
+        Assert.Contains("Yasadiginiz bu erisim problemini", robots.Body, StringComparison.Ordinal);
+        Assert.Contains("kapdestek@mkk.com.tr", robots.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Disallow", robots.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("User-agent", robots.Body, StringComparison.OrdinalIgnoreCase);
+
+        // The recorded reading (the go/no-go judgement) lives with the contract it governs.
+        var architecturePath = Path.Combine(
+            FindRepositoryRoot(), ".pipeline", "architecture", "01-system-architecture.md");
+        Assert.True(File.Exists(architecturePath), $"architecture doc missing at {architecturePath}");
+        var architecture = File.ReadAllText(architecturePath);
+        Assert.Contains("#### 10.9.19", architecture, StringComparison.Ordinal);
+        Assert.Contains("kap-public-robots", architecture, StringComparison.Ordinal);
+        Assert.Contains("666", architecture, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TC-MDF-104 (ii) — the OQ-1 probe is committed and honest whatever it showed: an
+    /// <b>empty</b> <c>mkkMemberOidList</c> answered the market-wide list (12 rows on the
+    /// captured window), it classifies through the <b>production</b> reader as a well-formed
+    /// list, and the captured production test entity (<c>KAP TEST A.Ş.</c>, <c>KTEST</c>) is
+    /// present — so any later exclusion of it must be a named, recorded rule, never a silent
+    /// drop. This is the evidence TKT-foundation-084's gate reads.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_104_b_the_oq1_market_wide_probe_is_committed_and_honest()
+    {
+        var probe = RealSourceCatalog.Get(RealSourceCatalog.KapPublicMarketProbe);
+
+        Assert.Equal(RealSourceProvenance.Captured, probe.Provenance);
+        Assert.Equal("kap-public", probe.Source);
+        Assert.Equal("POST", probe.Method);
+        Assert.Contains("OQ-1", probe.ProvenanceLabel, StringComparison.Ordinal);
+        Assert.Contains("market-wide", probe.ProvenanceLabel, StringComparison.OrdinalIgnoreCase);
+
+        var classified = KapPublicSourceReader.ClassifyDisclosureList(probe.Body);
+        Assert.True(classified.IsOk, $"the market-wide probe must classify as a list ({classified.ReasonCode})");
+        var rows = classified.Payload!;
+        Assert.Equal(12, rows.Count);
+        Assert.Equal(1687047L, rows[0].DisclosureIndex);
+        Assert.Equal(new[] { "DG", "DKB", "FR", "ODA" },
+            rows.Select(row => row.DisclosureClass!)
+                .Distinct()
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray());
+        Assert.Contains(rows, row => row.StockCodes == "KTEST" && row.KapTitle == "KAP TEST A.Ş.");
+
+        // Market-wide rows carry no company scope of their own: some stockCodes are null, so
+        // the later feed must count them honestly rather than assume a company.
+        Assert.Contains(rows, row => row.StockCodes is null);
+    }
+
+    /// <summary>
+    /// TC-MDF-104 (iii) — the gate is <b>checkable behaviour</b>, not prose: with the recorded
+    /// posture configured <c>Forbidden</c> the client refuses to issue a single request
+    /// (<see cref="KapPublicAccessRefusedException"/>, its own reason code) and the double
+    /// records none — so a forbidden reading cannot be silently walked past.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_104_c_a_forbidden_posture_refuses_before_any_request_is_issued()
+    {
+        ResetDoubles();
+        _wireMock.StubJson(ByCriteriaPath, RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria).Body, method: "POST");
+
+        var handler = new RecordingHandler(_ => JsonResponse("[]"));
+        var forbiddenOptions = OptionsOf(o => o.AutomatedAccess = KapPublicAccessPosture.Forbidden);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero));
+
+        // The client is built against the public-site double, so a leaked request would be
+        // recorded — none is.
+        var http = new HttpClient { BaseAddress = new Uri(_wireMock.BaseUrl), Timeout = Timeout.InfiniteTimeSpan };
+        var pacer = new KapPublicRequestPacer(forbiddenOptions, clock);
+        var client = new KapPublicHttpSourceClient(http, forbiddenOptions, pacer, clock);
+        var reader = new KapPublicSourceReader(client, forbiddenOptions);
+
+        var exception = await Assert.ThrowsAsync<KapPublicAccessRefusedException>(
+            () => reader.ReadDisclosureListAsync(AselsFrQuery()));
+        Assert.Equal(KapPublicReasonCodes.AutomatedAccessForbidden, exception.ReasonCode);
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+
+        // The refusal holds for every method shape (a report detail is refused the same way).
+        await Assert.ThrowsAsync<KapPublicAccessRefusedException>(() => reader.ReadReportAsync(1643141));
+        Assert.Empty(_wireMock.Server.LogEntries);
+
+        // And the recording handler never saw the refused request either.
+        Assert.Empty(handler.Requests);
+        Assert.False(forbiddenOptions.Value.AllowsAutomatedAccess);
+    }
+
+    // =================================================================================
+    // helpers
+    // =================================================================================
+
+    private static int AsInt(JsonElement section, string name) =>
+        int.Parse(
+            section.GetProperty(name).GetRawText().Trim('"'),
+            System.Globalization.CultureInfo.InvariantCulture);
+
+    private static KapPublicListQuery AselsFrQuery() => new(
+        new DateOnly(2026, 1, 1),
+        new DateOnly(2026, 10, 25),
+        "FR",
+        [AselsPublicOid]);
+
+    private static KapPublicSourceOptions NewOptions(Action<KapPublicSourceOptions>? configure = null)
+    {
+        var options = new KapPublicSourceOptions
+        {
+            BaseUrl = "http://localhost",
+            RequestDelayMs = 0,
+        };
+        configure?.Invoke(options);
+        return options;
+    }
+
+    private static IOptions<KapPublicSourceOptions> OptionsOf(Action<KapPublicSourceOptions>? configure = null) =>
+        Microsoft.Extensions.Options.Options.Create(NewOptions(configure));
+
+    private KapPublicHttpSourceClient BuildClient(
+        HttpMessageHandler? handler,
+        TimeProvider clock,
+        KapPublicDelay? delay = null,
+        int delayMs = 0,
+        int detailTimeoutMs = KapPublicSourceOptions.DefaultDetailFetchTimeoutMs)
+    {
+        var options = OptionsOf(o =>
+        {
+            o.RequestDelayMs = delayMs;
+            o.DetailFetchTimeoutMs = detailTimeoutMs;
+        });
+        // A null handler means "go to the double over the wire" (the WireMock cases); a
+        // recording handler is used where the request shape, the pacing or the flight gate is
+        // the subject.
+        var http = handler is null ? new HttpClient() : new HttpClient(handler);
+        http.BaseAddress = new Uri(_wireMock.BaseUrl);
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        var pacer = new KapPublicRequestPacer(options, clock, delay);
+        return new KapPublicHttpSourceClient(http, options, pacer, clock);
+    }
+
+    private static HttpResponseMessage JsonResponse(string body) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(body, Encoding.UTF8, "application/json"),
+    };
+
+    private void ResetDoubles()
+    {
+        _wireMock.Server.ResetLogEntries();
+        _wireMock.Server.ResetMappings();
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Degerli.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root (Degerli.sln) not found.");
+    }
+
+    /// <summary>
+    /// A recording HTTP handler — the second double of this suite. It captures each request's
+    /// method, path, User-Agent and body so the request <b>shape</b> is asserted directly
+    /// (WireMock's journal is kept for the routes and the on-the-wire counts), and it can
+    /// answer asynchronously to exercise the single-flight gate.
+    /// </summary>
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _respond;
+
+        public RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+            : this(request => Task.FromResult(respond(request)))
+        {
+        }
+
+        public RecordingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) =>
+            _respond = respond;
+
+        public List<RecordedRequest> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var body = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            var userAgent = request.Headers.TryGetValues("User-Agent", out var values)
+                ? string.Join(' ', values)
+                : string.Empty;
+            Requests.Add(new RecordedRequest(
+                request.Method,
+                request.RequestUri?.AbsolutePath ?? string.Empty,
+                userAgent,
+                body));
+            return await _respond(request);
+        }
+    }
+
+    private sealed record RecordedRequest(HttpMethod Method, string Path, string UserAgent, string? Body);
+
+    /// <summary>Counts concurrent requests so the single-flight guarantee is asserted, not assumed.</summary>
+    private sealed class ConcurrencyProbe
+    {
+        private int _inFlight;
+        private int _maxInFlight;
+
+        public int MaxInFlight => Volatile.Read(ref _maxInFlight);
+
+        public void Enter()
+        {
+            var current = Interlocked.Increment(ref _inFlight);
+            int observed;
+            do
+            {
+                observed = Volatile.Read(ref _maxInFlight);
+                if (observed >= current)
+                {
+                    return;
+                }
+            }
+            while (Interlocked.CompareExchange(ref _maxInFlight, current, observed) != observed);
+        }
+
+        public void Exit() => Interlocked.Decrement(ref _inFlight);
+    }
+}

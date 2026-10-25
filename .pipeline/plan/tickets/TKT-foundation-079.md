@@ -11,7 +11,7 @@ scope:
 
 # TKT-foundation-079: KAP public-site source skeleton — the politeness/ToS gate, the HTTP client, the configuration contract and the committed double set (byCriteria list + one FR excel-HTML round-trip, honest statuses)
 
-- Status: todo
+- Status: in-progress
 - Size: L
 - **Priority: P1 — USER-DIRECTED lane (2026-10-25: "i guess we need a kap scraper so lets go on with architect and testbuilder etc so it could work").** First ticket of the public-site source lane; gates TKT-foundation-080..084.
 - **Evidence base (verified live, the factual ground truth):** `.pipeline/plan/kap-public-source-investigation.md` (orchestrator, 2026-10-25). Two endpoints proven current to 2026-10-23 and unauthenticated: `POST https://www.kap.org.tr/tr/api/disclosure/members/byCriteria` (rich disclosure rows) and `GET /tr/api/notification/export/excel/{disclosureIndex}` (full FR report as ~1.8 MB of HTML tables — content-type lies `application/vnd.ms-excel`, body is HTML). Also available: `/tr/api/notification/export/word/{id}`, `/tr/api/BildirimPdf/{id}`, `/tr/api/file/download/{oid}`, `/tr/sirket/{ticker}` + `/tr/api/search/combined` (identity). **The public site's `disclosureIndex` is its own current space (ASELS 2026-06 FR = 1643141; VYK head = 1231017) — never mix the two.**
