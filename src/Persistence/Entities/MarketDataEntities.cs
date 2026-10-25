@@ -317,3 +317,49 @@ public class QuarantinedFact
 
     public string? ResolutionNote { get; set; }
 }
+
+/// <summary>
+/// The <b>stored</b> company-identity mapping for the KAP public-site lane (01 v1.5.54 §10.9.19,
+/// TKT-foundation-080; 02 §3.1). Keyed by our instrument — the mapping is never assumed from a
+/// symbol's spelling, it is a persisted fact with its provenance.
+/// <para>
+/// <b>Three identifier spaces, three columns, never conflated.</b> <see cref="InstrumentId"/> is
+/// ours, <see cref="KapPublicOid"/> is the public site's opaque company oid, and
+/// <see cref="VykCompanyId"/> is the VYK gateway's numeric <c>companyId</c> — each in its own
+/// space-labelled column, each with its own provenance, and neither derived from the other. The
+/// table's CHECK constraints pin the shapes (<c>kap_public_oid</c> must be 32 hex characters,
+/// <c>vyk_company_id</c> must be decimal digits), so a VYK id can never be written where a public
+/// oid belongs nor an oid where the VYK id belongs — the isolation is enforced by the store, not
+/// only by code.
+/// </para>
+/// <para>
+/// <b>Unmapped is honest absence.</b> An instrument with no resolved mapping has <b>no row</b>
+/// (never a placeholder oid, never a fabricated id); the lane counts and names it at run time.
+/// </para>
+/// </summary>
+public class KapPublicCompanyMap
+{
+    /// <summary>Our space: one current mapping per instrument (primary key).</summary>
+    public long InstrumentId { get; set; }
+
+    /// <summary>The public site's opaque company oid (32 lowercase hex characters) — never a companyId.</summary>
+    public string KapPublicOid { get; set; } = null!;
+
+    /// <summary>Which resolution body/route produced the oid (FR-MDF-008).</summary>
+    public string KapPublicOidSource { get; set; } = null!;
+
+    /// <summary>The evidence date of the oid's resolution.</summary>
+    public DateOnly KapPublicOidAsOf { get; set; }
+
+    /// <summary>The VYK gateway's numeric <c>companyId</c> (its own space; NULL when unrecorded).</summary>
+    public string? VykCompanyId { get; set; }
+
+    /// <summary>Which VYK body/route produced the numeric id (FR-MDF-008); NULL with the id.</summary>
+    public string? VykCompanyIdSource { get; set; }
+
+    /// <summary>The evidence date of the VYK id; NULL with the id.</summary>
+    public DateOnly? VykCompanyIdAsOf { get; set; }
+
+    /// <summary>When the stored mapping was last written (an unchanged re-resolution does not move it).</summary>
+    public DateTimeOffset RecordedAt { get; set; }
+}
