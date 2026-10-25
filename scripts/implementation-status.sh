@@ -569,7 +569,9 @@ while IFS= read -r line; do
   [ -n "$line" ] || continue
   cells="$(printf '%s' "$line" | awk -F'|' '{ for (i = 2; i < NF; i++) { gsub(/^ +| +$/, "", $i); printf "%s\x1f", $i } }')"
   id="$(printf '%s' "$cells" | cut -d$'\x1f' -f1 | tr -d '`')"
-  class="$(printf '%s' "$cells" | cut -d$'\x1f' -f2 | tr -d '`' | tr '[:upper:]' '[:lower:]')"
+  # compare on the first token, the same normalization ticket_class applies to the ticket file,
+  # so a multi-word status may be displayed verbatim (`partially resolved`) and still match
+  class="$(printf '%s' "$cells" | cut -d$'\x1f' -f2 | tr -d '`' | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
   blocker="$(printf '%s' "$cells" | cut -d$'\x1f' -f3)"
   [ -n "$id" ] || continue
   [ "$id" = "Ticket" ] && continue

@@ -39,11 +39,12 @@ scope:
 ### What landed
 
 - **`IMPLEMENTATION_STATUS.md`** (repo root): 19 domain rows, each with one fixed-vocabulary
-  status (`live`, `live-degraded`, `wired-not-configured`, `scaffolded`, `blocked-upstream`), a
+  status (`live`, `live-degraded`, `ci-only`, `wired-not-configured`, `scaffolded`,
+  `blocked-upstream`), a
   one-line cited evidence pointer and a `Checks` cell naming the code/config the claim stands on;
-  a **live-criteria ledger** (LC-01..LC-14: claim / what CI proves / what only a live run proves /
+  a **live-criteria ledger** (LC-01..LC-19: claim / what CI proves / what only a live run proves /
   last live observation, dated or explicitly `not yet observed`); the open-ticket ledger for all
-  28 non-terminal tickets; known gaps and parked items; and the **update rule**.
+  26 non-terminal tickets; known gaps and parked items; and the **update rule**.
 - **`scripts/implementation-status.sh`**: read-only, no network, no DB, deterministic (clock
   pinnable with `--today`). It fails when a documented claim no longer holds: a `live`/
   `live-degraded` domain whose `dir:`/`file:` is gone, a claimed `config:` key missing from
@@ -53,13 +54,15 @@ scope:
   missing README pointer, an open ticket missing from the ledger (the set of
   `todo`/`in-review`/`in-progress`/`blocked`/`deferred` tickets must match exactly), a ledger row
   whose class disagrees with its ticket, and a `Last verified` date older than 60 days.
-- **`--self-test`** (design-time description — the suite has since grown to 18 cases, see Fix
-  round 1): builds a valid fixture in `mktemp -d`, then breaks it eleven ways (missing
-  implementation path, absent config key, absent-claimed-present section, undeclared status word,
-  missing section, undated ledger row, missing open-ticket row, stale date, ticket/doc class
-  mismatch, README without the pointer) and requires a non-zero exit for each — **11/11 pass**;
-  the valid fixture passes. No fixture files are committed (they are generated in `/tmp`), so the
-  ticket's three-file scope is exactly what changed.
+- **`--self-test`** (the suite has since grown to 18 cases, see Fix round 1): builds a valid
+  fixture in `mktemp -d`, then breaks it seventeen ways (missing implementation path, absent config
+  key, empty-vs-absent config, section claimed absent but present, undeclared status word, missing
+  section, undated ledger row, missing open-ticket row, multi-word status counted as open, stale
+  date, ticket/doc class mismatch, README without the pointer, empty Evidence cell, `live` row with
+  no LC citation, citation of a nonexistent LC, `live` row whose only LC is undated, and an
+  impossible `--today` usage error) and requires a non-zero exit for each, with the valid fixture
+  passing — **18/18 cases pass**. No fixture files are committed (they are generated in `/tmp`), so
+  the ticket's three-file scope is exactly what changed.
 - **`README.md`**: one pointer paragraph in "Project Status".
 
 ### Cross-checks performed (bash accuracy over optimism)
@@ -70,8 +73,8 @@ Read against the tree at `origin/dev@8f4b5e5` plus the appsettings/ticket text, 
 |---|---|---|
 | Funds | `src/Api/appsettings.json` has **no** `Funds` section (`python3 json` key walk: `Ingestion` keys = Scheduler, TradingCalendar, Prices, Intraday, Universe, Kap, Statements, Dividends, CorporateActions, Disclosures, Macro, MarketSnapshot) and `TefasSourceOptions.SectionName = "Ingestion:Funds"` exists in code with a `SOURCE_NOT_CONFIGURED` guard | `wired-not-configured` (OQ-FDF-002), encoded as `noconfig:Ingestion:Funds:BaseUrl` — the checker fails the day someone wires it until the row is updated |
 | Statements | `Ingestion:Statements:Path` present; TKT-foundation-063 live run 249 `partial` (0 written / 60 unchanged / 25 quarantined) | `live-degraded`, not "done" |
-| Prices | `Ingestion:Prices:UniverseIndex = XU100`; the 2026-10-23 9/100 thin day and the chore-#130 re-sweep to 100/100; 043 superseded, not done | `live-degraded` |
-| Intraday | `Ingestion:Intraday:BaseUrl` present; appsettings `Path` is now the `ChartData/IntradayDelay` chart endpoint (chore #129) while the only live sweep (run 218) predates the repoint | `live-degraded`, ledger LC-06 `not yet observed` |
+| Prices | `Ingestion:Prices:UniverseIndex = XU100`; the 2026-10-23 9/100 thin day (9/100 at 17:36 UTC → 64/100 at 20:09 UTC, run 243's eleven all-zero constituents) repaired to 100/100 only by an operator re-run (undated in ticket 043); chore #130's in-run gate merged 2026-10-24 and has not run on a trading day; 043 superseded, not done | `live-degraded` |
+| Intraday | `Ingestion:Intraday:BaseUrl` present; appsettings `Path` is now the `ChartData/IntradayDelay` chart endpoint (chore #129) while the only live sweep (run 218) predates the repoint | `ci-only`, ledger LC-06 `not yet observed` |
 | Shares | Shares lane reads the **Kap** section (no own config section) and is **not** in `EodIngestChain.JobCodes` (universe-sync, prices, statements, dividends, corporate-actions, disclosures, metrics-recompute, market-snapshot, medians) — so run 219 was operator-triggered | `live-degraded`, unit claim unresolved (065 blocked) |
 | Pipeline | `IngestionSchedulerOptions` ships the 120-min per-step / 4-h chain defaults since 064 merged (PR #133); the old 90-min whole-attempt bound and the 4 h env override are both gone (fix round 1) | `live-degraded`; LC-05 records that 064's live criterion is **unrun**, so the watchdog is not called solved |
 | Macro | `Ingestion:Macro:EvdsApiKey` exists but is empty; TKT-foundation-019 recorded "constructed, capture pending" | `live-degraded` with `config-empty:` — the manual-entry path, not an EVDS pull, is what was observed 2026-10-20 |
@@ -81,8 +84,9 @@ Read against the tree at `origin/dev@8f4b5e5` plus the appsettings/ticket text, 
 - The snapshot row is `live-degraded` and LC-07 says the coverage guard has **no ticket yet**
   (user decision D7), so the nine-symbol aggregate is recorded as a live counter-example rather
   than a fixed defect.
-- TKT-foundation-065 is listed by its **ticket** status (`blocked`); the user's D4-A direction is
-  recorded only in the gitignored `run-report.md`, which is called out as such in the row.
+- TKT-foundation-065 is listed by its **ticket** status (`partially resolved`); the user's D4-A
+  decision is recorded verbatim on the ticket, and the display half (PR #137) is separated from
+  the still-owed contract half rather than being counted as done.
 - TKT-foundation-061/044 rows stay `in-review` (PRs #125/#132 merged, ticket flips pending) — the
   checker's one documented tolerance, stated in the open-ticket section and the update rule.
 - CI does **not** run the checker: `ci.yml` belongs to TKT-foundation-066. The gap is stated in
@@ -113,9 +117,9 @@ are addressed; no finding was disputed and none required an escalation.
   counts.
 - **DR-3 (064):** the 90-minute/4 h-override claim is gone. The pipeline row and LC-05 state the
   shipped 120-min per-step / 4-h chain defaults (`DefaultMaxStepDuration`/`DefaultMaxRunDuration`,
-  PR #133) and that **the live criterion is unrun**, with today's calendar facts (Saturday,
-  `TradingDaysOnly` morning chain, no admin *chain* trigger) and the earliest honest slot
-  **Monday 2026-10-26**. Worked example 3 is now explicitly historical.
+  PR #133) and that **the live criterion is unrun**, with the calendar facts as of the 2026-10-24
+  verification (a Saturday: `TradingDaysOnly` morning chain, no admin *chain* trigger) and the
+  earliest honest slot **Monday 2026-10-26**. Worked example 3 is now explicitly historical.
 - **DR-4 (disclosures/LC-11):** run 252 is recorded verbatim (partial, 50 written, 50/21/50/970,
   truncated false, cursor to head, 864 s, TRALT/TRMET `COMPANY_IDENTITY_UNRESOLVED`) on the
   disclosures row, LC-11 and the new **LC-16**, together with the still-unrun second-run
