@@ -21,6 +21,10 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Core/Degerli.Core.csproj" />
+    <!-- TKT-foundation-068 scope amendment: SourceContractProbeTests.cs exercises the
+         source-contract probe harness (report-only tooling under tools/), which must be
+         referenced as a project — the repo has no Directory.Build.props hook for it. -->
+    <ProjectReference Include="../../tools/source-probes/Degerli.SourceProbes/Degerli.SourceProbes.csproj" />
   </ItemGroup>
 
 </Project>
