@@ -120,6 +120,42 @@ public sealed class IngestionSchedulerOptions
 
     /// <summary>The shipped whole-chain ceiling (4 hours ≈ 2× the healthy ~100–120 min chain).</summary>
     public static readonly TimeSpan DefaultMaxRunDuration = TimeSpan.FromHours(4);
+
+    /// <summary>
+    /// The watchdog's <b>post-cancel settle window</b> (01 v1.5.59 §10.9.17,
+    /// TKT-foundation-085): how long a bound-expired, just-cancelled attempt is given to finish
+    /// before the <c>RUN_HUNG</c> row is written.
+    /// <para>
+    /// The defect it closes is an <b>observation</b> race, not a write race. The post-cancel
+    /// re-check ("did the attempt genuinely finish inside the cancel window?") used to run once,
+    /// synchronously, immediately after the cancellation; that sees a step's terminal state only
+    /// when the step's continuation resumed <i>inline</i> on the cancelling thread. When the
+    /// runtime queues that continuation — the normal async case under load — the re-check saw a
+    /// pending task, wrote <c>RUN_HUNG</c>, and the queued continuation then wrote the step's own
+    /// success row: <b>two ledger rows for one attempt</b>, a spurious alert and a spurious retry.
+    /// The window makes the re-check an <b>interval</b>: the attempt may settle at any point in it.
+    /// </para>
+    /// <para>
+    /// Shipped default <b>5 seconds</b> — long enough for a cancellation-swallowing step's queued
+    /// continuation to run, and two orders of magnitude below the shortest retry-ladder rung
+    /// (5 minutes) and both watchdog bounds (120 minutes per step, 4 hours per chain), so the
+    /// window can never eat a retry's punctuality or delay the ladder's recovery.
+    /// </para>
+    /// <para>
+    /// Zero or negative <b>disables</b> the window: the re-check is then the pre-085 single
+    /// synchronous one and a queued continuation can again produce the double row. That is the
+    /// documented opt-out (mirroring the bounds' own disable semantics), not a recommendation.
+    /// A mis-typed value beyond <c>Task.Delay</c>'s accepted range is an ordinary failed attempt
+    /// on the retry ladder (the DR-1 path), never an escape out of the tick.
+    /// </para>
+    /// </summary>
+    public TimeSpan PostCancelSettleWindow { get; set; } = DefaultPostCancelSettleWindow;
+
+    /// <summary>
+    /// The shipped post-cancel settle window (5 s): a cancellation grace, not a bound — see
+    /// <see cref="PostCancelSettleWindow"/>.
+    /// </summary>
+    public static readonly TimeSpan DefaultPostCancelSettleWindow = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>One per-job cron trigger (e.g. a macro cadence).</summary>

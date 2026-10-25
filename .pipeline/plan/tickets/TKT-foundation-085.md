@@ -11,7 +11,8 @@ scope:
 
 # TKT-foundation-085: Watchdog post-cancel settle window — "one attempt, one row" made deterministic
 
-- Status: todo
+- Status: in-review
+- PR: #143 — https://github.com/sarperim/degerli/pull/143 (branch `feature/TKT-foundation-085`, base `dev`)
 - Size: S
 - **Priority: P1 — dispatch-ready** (scheduler files are free: 059/062/064 all merged; PR #141 / TKT-foundation-079 provably does not touch `src/Ingestion/Scheduling` or `SchedulerTests.cs`). The defect flakes `SchedulerTests.TC_MDF_079_DR_2` **on any head**, so every future PR's CI honesty is degraded until this lands.
 - Source: PR #141 review round 2, escalation **E3** — `.pipeline/plan/reviews/TKT-foundation-079-round-2.md` (§"Fix-round verification" RED-CI-1c + §E3), **USER-AUTHORIZED planning pass 2026-10-25** (user chose "Yes, slice it"). Verified evidence, not a hypothesis:

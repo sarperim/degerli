@@ -55,6 +55,12 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     /// <summary>A liveness bound for "the tick never returns" — real time, not the fake clock.</summary>
     private static readonly TimeSpan LivenessBound = TimeSpan.FromSeconds(30);
 
+    /// <summary>The watchdog's shipped post-cancel settle window (TKT-foundation-085).</summary>
+    private static readonly TimeSpan DefaultSettleWindow = IngestionSchedulerOptions.DefaultPostCancelSettleWindow;
+
+    /// <summary>The 30-second grace TC-MDF-113(b) configures to prove the window is configuration.</summary>
+    private static readonly TimeSpan ConfiguredSettleWindow = TimeSpan.FromSeconds(30);
+
     private readonly PostgresFixture _postgres;
     private readonly WireMockFixture _wireMock;
 
@@ -97,9 +103,10 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         // the configured bound must not be required for anything else to be true.
         clock.Advance(TimeSpan.FromMinutes(11));
 
-        var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
-        Assert.Same(tick, finished);
-        await tick;
+        // The bound fired; the watchdog's post-cancel settle window (TKT-foundation-085) is the
+        // only thing still pending, so the case advances the fake clock past it — the same
+        // premise the cases already make for the bounds themselves.
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         // (1) An honest ledger row for the hung attempt: failed, naming the step, RUN_HUNG.
         var runs = await LedgerAsync();
@@ -216,9 +223,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         await stall.Entered.Task.WaitAsync(LivenessBound);
 
         clock.Advance(TimeSpan.FromMinutes(11));
-        var finished = await Task.WhenAny(tick, Task.Delay(LivenessBound));
-        Assert.Same(tick, finished);
-        await tick;
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var hung = Assert.Single(await LedgerAsync(), run => ReasonCode(run) == "RUN_HUNG");
         Assert.Equal(StallStep.Code, hung.JobCode);
@@ -476,7 +481,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         // 20:40 — the hung step's own 10-minute bound expires (the 4-hour chain ceiling is not
         // what caught it).
         clock.Advance(TimeSpan.FromMinutes(10));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var runs = await LedgerAsync();
         var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
@@ -552,7 +557,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
         // 20:40 — the step's own bound expires; the step observes the cancellation and ends.
         clock.Advance(TimeSpan.FromMinutes(10));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var runs = await LedgerAsync();
         var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
@@ -609,7 +614,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
         // 20:40 — the chain ceiling expires mid-step; the step's own bound (2 h) does not.
         clock.Advance(TimeSpan.FromMinutes(11));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var runs = await LedgerAsync();
         var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
@@ -659,7 +664,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
         // 20:40 — only the 10-minute ceiling could have fired.
         clock.Advance(TimeSpan.FromMinutes(10));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var runs = await LedgerAsync();
         var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
@@ -703,7 +708,7 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
 
         // 20:40 — only the 10-minute step bound could have fired.
         clock.Advance(TimeSpan.FromMinutes(10));
-        await AwaitTickAsync(tick);
+        await AwaitTickAsync(tick, host, DefaultSettleWindow);
 
         var runs = await LedgerAsync();
         var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
@@ -719,6 +724,189 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         // The ladder still owns the retry (no hot loop, no second row).
         await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
         Assert.Equal(1, (await LedgerAsync()).Count(run => ReasonCode(run) == "RUN_HUNG"));
+    }
+
+    /// <summary>
+    /// <b>TC-MDF-113(b)</b> — <b>the settle window does not weaken the bound: a genuinely hung
+    /// step is still named and cancelled</b> (TKT-foundation-085; 064's guarantee, unweakened).
+    /// </summary>
+    /// <remarks>
+    /// A doubled step that never completes is bounded at its own <b>step</b> bound (10 minutes)
+    /// and settles for a configured <b>30-second</b> post-cancel grace. When that grace expires the
+    /// verdict is exactly the pre-085 one — one <c>RUN_HUNG</c> row + one alert naming the step
+    /// that held the attempt, <c>bound: "step"</c>, the ladder taking over from the attempt's own
+    /// end — plus the honest record that a grace was given (<c>settleWindowSeconds</c>, and the
+    /// window in the row's error and the alert text). The next attempt's healthy step lands
+    /// <c>succeeded</c> with no second <c>RUN_HUNG</c>.
+    /// <para>
+    /// The window is deliberately configured larger than the shipped 5 s: this case proves it is
+    /// configuration that governs the grace (the row records 30), and the harness has to advance
+    /// the fake clock past it for the verdict to be written — the grace is a real wait on the
+    /// scheduler's own clock, never a real-time sleep.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TC_MDF_113_Hung_step_is_still_named_after_the_settle_window_elapses()
+    {
+        await ResetAsync();
+
+        var clock = NewClock();
+        var prelude = new InstantStep(PreludeStepCode);
+        var stall = new StallStep(StallMode.HangOnFirstAttempt);
+        await using var host = BuildChainHost(
+            clock,
+            [prelude, stall],
+            maxStepDuration: "00:10:00",
+            postCancelSettleWindow: "00:00:30");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        // 20:40 — the step's own 10-minute bound expires; the attempt is cancelled and given the
+        // configured 30-second grace, which this case's fake clock steps past.
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await AwaitTickAsync(tick, host, ConfiguredSettleWindow);
+
+        var runs = await LedgerAsync();
+        var hung = Assert.Single(runs, run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Equal(IngestResult.Failed, hung.Status);
+        Assert.Equal(StallStep.Code, StatString(hung, "hungJob"));
+        Assert.Equal(2, Stat(hung, "step"));
+        Assert.Equal(2, Stat(hung, "stepCount"));
+
+        // The bound attribution is 064's, unchanged — and the grace it was given is recorded.
+        Assert.Equal("step", StatString(hung, "bound"));
+        Assert.Equal(600, Stat(hung, "maxStepDurationSeconds"));
+        Assert.Equal(30, Stat(hung, "settleWindowSeconds"));
+
+        // The timestamps are the attempt's, not the watchdog's grace: the attempt ended when the
+        // bound cancelled it, so the ladder keeps its punctuality (20:40 + 5 min = 20:45).
+        Assert.Equal(1, Stat(hung, "attempt"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 30), hung.StartedAt!.Value);
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+        Assert.Contains("settle window", hung.Error);
+
+        // One alert, naming the step and the grace an operator needs to know it was given.
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(StallStep.Code, alert.Subject);
+        Assert.Contains("per-step", alert.Subject);
+        Assert.Contains("settle window", alert.Subject);
+        Assert.Contains("settle window", alert.BodyEn);
+
+        // The watchdog's own log line says the same.
+        var hungLog = Assert.Single(
+            host.Logs.Events,
+            logEvent => logEvent.RenderMessage().Contains("Hung run detected"));
+        Assert.Contains("settle window", hungLog.RenderMessage());
+
+        // The retry is measured from the attempt's end: one minute before 20:45 nothing has run.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 44));
+        Assert.DoesNotContain(
+            await LedgerAsync(),
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+
+        // The ladder recovers the stream, and the event produced exactly one RUN_HUNG in total.
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 20, 45));
+        var recovered = await LedgerAsync();
+        var recoveredStep = Assert.Single(
+            recovered,
+            run => run.JobCode == StallStep.Code && run.Status == IngestResult.Succeeded);
+        Assert.Equal(2, Stat(recoveredStep, "attempt"));
+        Assert.Equal(1, recovered.Count(run => ReasonCode(run) == "RUN_HUNG"));
+        Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+    }
+
+    /// <summary>
+    /// <b>TC-MDF-113(c)</b> — <b>the window is bounded, honest and configuration</b>
+    /// (TKT-foundation-085): the shipped default is <b>5 s</b>, <c>&lt;= 0</c> <b>disables</b> it (the
+    /// documented opt-out, which restores the pre-085 single synchronous re-check), and the
+    /// default is small enough that it can never matter to the ladder or the bounds.
+    /// </summary>
+    /// <remarks>
+    /// The disabled half is a behavioural pin as well as a configuration one: with
+    /// <c>PostCancelSettleWindow = 0</c> the hung verdict is reached <b>without</b> any advance of
+    /// the fake clock past a grace (the case awaits the tick on real-time liveness alone), and the
+    /// row says <c>settleWindowSeconds: 0</c> — no grace is claimed that was never given, so the
+    /// alert text does not mention one either.
+    /// </remarks>
+    [Fact]
+    public async Task TC_MDF_113_Settle_window_is_the_shipped_five_seconds_and_zero_disables_it()
+    {
+        // (1) The shipped default, and the two orders of magnitude that make it a grace rather
+        // than a delay of anything an operator watches.
+        var shipped = new IngestionSchedulerOptions();
+        Assert.Equal(TimeSpan.FromSeconds(5), shipped.PostCancelSettleWindow);
+        Assert.Equal(IngestionSchedulerOptions.DefaultPostCancelSettleWindow, shipped.PostCancelSettleWindow);
+        Assert.Equal(TimeSpan.FromSeconds(5), IngestionSchedulerOptions.DefaultPostCancelSettleWindow);
+        Assert.True(
+            shipped.PostCancelSettleWindow < shipped.RetryDelays.Min(),
+            "the settle window must be far below the shortest retry-ladder rung");
+        Assert.Equal(TimeSpan.FromMinutes(5), shipped.RetryDelays.Min());
+        Assert.True(
+            shipped.PostCancelSettleWindow < IngestionSchedulerOptions.DefaultMaxStepDuration,
+            "the settle window must be far below the per-step bound");
+        Assert.True(
+            shipped.PostCancelSettleWindow < IngestionSchedulerOptions.DefaultMaxRunDuration,
+            "the settle window must be far below the whole-chain ceiling");
+
+        // (2) It is configuration, bound through the same options section as the bounds.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ingestion:Scheduler:PostCancelSettleWindow"] = "00:00:30",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.Configure<IngestionSchedulerOptions>(
+            configuration.GetSection(IngestionSchedulerOptions.SectionName));
+        var configured = services.BuildServiceProvider()
+            .GetRequiredService<IOptions<IngestionSchedulerOptions>>()
+            .Value;
+        Assert.Equal(TimeSpan.FromSeconds(30), configured.PostCancelSettleWindow);
+
+        var unconfigured = new ServiceCollection()
+            .Configure<IngestionSchedulerOptions>(
+                new ConfigurationBuilder().Build().GetSection(IngestionSchedulerOptions.SectionName))
+            .BuildServiceProvider()
+            .GetRequiredService<IOptions<IngestionSchedulerOptions>>()
+            .Value;
+        Assert.Equal(TimeSpan.FromSeconds(5), unconfigured.PostCancelSettleWindow);
+
+        // (3) `<= 0` disables it: the hung verdict is immediate (no grace to advance past) and the
+        // record claims no grace.
+        await ResetAsync();
+
+        var clock = NewClock();
+        var stall = new StallStep(StallMode.HangOnFirstAttempt);
+        await using var host = BuildChainHost(
+            clock,
+            [new InstantStep(PreludeStepCode), stall],
+            maxStepDuration: "00:10:00",
+            postCancelSettleWindow: "00:00:00");
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 29));
+
+        clock.SetUtcNow(Trt(2026, 10, 5, 20, 30));
+        var tick = host.Scheduler.TickAsync(Trt(2026, 10, 5, 20, 30));
+        await stall.Entered.Task.WaitAsync(LivenessBound);
+
+        clock.Advance(TimeSpan.FromMinutes(10));
+
+        // No settle advance: with the window disabled there is nothing to wait for.
+        await AwaitTickAsync(tick);
+
+        var hung = Assert.Single(await LedgerAsync(), run => ReasonCode(run) == "RUN_HUNG");
+        Assert.Equal(StallStep.Code, hung.JobCode);
+        Assert.Equal("step", StatString(hung, "bound"));
+        Assert.Equal(0, Stat(hung, "settleWindowSeconds"));
+        Assert.Equal(Trt(2026, 10, 5, 20, 40), hung.FinishedAt!.Value);
+        Assert.DoesNotContain("settle window", hung.Error);
+
+        var alert = Assert.Single(host.Mail.Sent, mail => mail.Subject.Contains("RUN_HUNG"));
+        Assert.Contains(StallStep.Code, alert.Subject);
+        Assert.DoesNotContain("settle window", alert.Subject);
     }
 
     /// <summary>
@@ -971,6 +1159,52 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
     }
 
     /// <summary>
+    /// Completes a tick that is <b>waiting on the watchdog's post-cancel settle window</b>
+    /// (TKT-foundation-085). The grace is a delay on the injected clock, armed on a continuation
+    /// thread <i>after</i> the bound fired, so every case that ends in the hung path advances the
+    /// fake clock past it — the same premise these cases already make for the bounds themselves.
+    /// <para>
+    /// The advance is made in exactly two steps, both deterministic: the harness first waits for
+    /// the watchdog's own "settling … giving the attempt the &lt;window&gt; post-cancel settle
+    /// window" log line (emitted <i>after</i> the timer is armed), then advances the fake clock by
+    /// the whole window in one go. The clock is not touched before that line, so the instant the
+    /// watchdog recorded as the attempt's end is still the bound's instant — the ledger's
+    /// timestamps and the ladder's punctuality are exactly what they were before this ticket.
+    /// </para>
+    /// </summary>
+    private static async Task AwaitTickAsync(Task tick, IngestionSchedulerHost host, TimeSpan settleWindow)
+    {
+        if (settleWindow > TimeSpan.Zero)
+        {
+            await WaitForSettleWindowArmedAsync(host.Logs, settleWindow);
+            host.Clock.Advance(settleWindow + SettleAdvanceMargin);
+        }
+
+        await AwaitTickAsync(tick);
+    }
+
+    /// <summary>The margin added to the grace when the harness advances the fake clock past it.</summary>
+    private static readonly TimeSpan SettleAdvanceMargin = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Waits (real time, bounded) for the watchdog to have armed its post-cancel settle window,
+    /// observed through the log line it writes immediately after arming — the only observable side
+    /// of a clock delay. The fake clock is untouched here, so the schedule stays exact.
+    /// </summary>
+    private static async Task WaitForSettleWindowArmedAsync(InMemorySerilogSink logs, TimeSpan settleWindow)
+    {
+        var marker = $"the {settleWindow} post-cancel settle window";
+        var deadline = DateTime.UtcNow + LivenessBound;
+        while (!logs.Contains(logEvent => logEvent.RenderMessage().Contains(marker)))
+        {
+            Assert.True(
+                DateTime.UtcNow < deadline,
+                $"the watchdog never armed a {settleWindow} post-cancel settle window");
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
+        }
+    }
+
+    /// <summary>
     /// The TC-MDF-098 harness (01 v1.5.43 §10.9.17): the same real scheduler engine and fake
     /// clock, with a chain composed entirely of doubles and the <b>production</b> job runner,
     /// so each step's own ledger row carries its real duration. A null bound leaves the shipped
@@ -980,7 +1214,8 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         FakeTimeProvider clock,
         IReadOnlyList<IIngestJob> chain,
         string? maxRunDuration = null,
-        string? maxStepDuration = null)
+        string? maxStepDuration = null,
+        string? postCancelSettleWindow = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -1008,6 +1243,11 @@ public sealed class EodStallWatchdogTests : IClassFixture<PostgresFixture>, ICla
         if (maxStepDuration is not null)
         {
             settings["Ingestion:Scheduler:MaxStepDuration"] = maxStepDuration;
+        }
+
+        if (postCancelSettleWindow is not null)
+        {
+            settings["Ingestion:Scheduler:PostCancelSettleWindow"] = postCancelSettleWindow;
         }
 
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
