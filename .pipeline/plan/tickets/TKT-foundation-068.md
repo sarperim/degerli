@@ -116,3 +116,24 @@ unchanged; nothing appended to §13.1).
 
 **Do not merge this branch until the ProjectReference above is granted**: `dotnet build Degerli.sln`
 is red without it.
+
+---
+
+## Resolution record (2026-10-25) — unblocked, PR open
+
+The scope amendment on `dev` (this file's `scope:` block) granted
+`tests/Core.UnitTests/Degerli.Core.UnitTests.csproj`, so the blocker above is resolved. Executed
+as granted — **one `ProjectReference` line**, no `Degerli.sln` edit (solution restore/build picks
+the harness up transitively):
+
+```xml
+<ProjectReference Include="../../tools/source-probes/Degerli.SourceProbes/Degerli.SourceProbes.csproj" />
+```
+
+- Rebased onto `dev` @ `d147e9d`; applied cleanly, no conflict resolution, no file touched outside
+  the ticket's scope, and the harness compiled unchanged (no namespace/API drift from 064/078/048).
+- Red without the line: `CS0234` ×6 + `CS0246` ×3 in `SourceContractProbeTests.cs`.
+  Green with it: `SourceContractProbeTests` 20/20, `Core.UnitTests` 74/74, `dotnet build
+  Degerli.sln` 0 warnings / 0 errors.
+- PR: https://github.com/sarperim/degerli/pull/142 (base `dev`). Acceptance (i)–(v) unchanged
+  from the record above. No live source was contacted; no report written inside the repository.
