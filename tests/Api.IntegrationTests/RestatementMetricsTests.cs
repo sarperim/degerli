@@ -100,37 +100,59 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
 
             // Both statement versions remain stored and are queryable by the version filter.
             // The store's natural key now includes the provenance (01 v1.5.57 §10.9.19,
-            // TKT-foundation-083), so the KAP lane's re-ingest is its **own** filing series
-            // beside the fixture world's: the as-reported version is held once per provenance
-            // (the seeded row and the lane's row — the same filed facts) and the restatement
-            // series stays one per source. Nothing is merged, swallowed or overwritten.
+            // TKT-foundation-083), so the re-ingest is its **own** filing series beside the
+            // fixture world's: the seeded as-reported FY rows are retained untouched and the
+            // canned body's facts land under the body's own `sourceRef`
+            // (`kap://statements/REST` — the §10.9.7 canonical-double envelope, not the VYK
+            // decoder's `kap`). Nothing is merged, swallowed or overwritten.
             var restatements = await db.FinancialStatements
                 .Where(s => s.InstrumentId == restId && s.PeriodType == "FY")
                 .ToListAsync();
 
             var restated = restatements.Where(s => s.Version > 0).ToList();
             var asReported = restatements.Where(s => s.Version == 0).ToList();
-            Assert.Equal(3, restated.Count); // IS / BS / CF — the lane's restatement series
-            Assert.Equal(3, asReported.Count(s => s.SourceRef == StatementSourcePreference.IncumbentSource)); // IS / BS / CF
+
+            // The restatement series is one: the re-ingest's body holds exactly the one
+            // restating publication for IS / BS / CF, at version 1.
+            Assert.Equal(3, restated.Count); // IS / BS / CF
+            Assert.All(restated, s => Assert.Equal(1, s.Version));
+            Assert.Single(restated.Select(s => s.SourceRef).Distinct(StringComparer.Ordinal));
+
+            // Two provenances coexist for the as-reported version — the seeded world's and the
+            // re-ingest's — each holding its own IS / BS / CF rows.
+            const string seededSource = "fixture:universe:statements";
             Assert.Equal(2, asReported.GroupBy(s => s.SourceRef).Count()); // two provenances coexist
             Assert.All(asReported.GroupBy(s => s.SourceRef), series => Assert.Equal(3, series.Count())); // each IS / BS / CF
+            Assert.Contains(asReported, s => s.SourceRef == seededSource);
 
             // The served series is the pinned preference's — the same row set the metrics engine
-            // just computed from. The restated income statement reports NI 75 (as-reported
-            // retains 60), and the restatement date is recorded (FU §5 footnote; BR-MDF-011).
+            // just computed from: within the preferred source the latest restatement wins
+            // (BR-MDF-011), so the restated row serves and the as-reported one is retained.
             var served = StatementSourcePreference.Pick(restatements, "IS");
             Assert.NotNull(served);
-            Assert.Equal(StatementSourcePreference.IncumbentSource, served!.SourceRef);
+            Assert.True(served!.Version > 0);
             var restatedIs = Assert.Single(
                 restatements,
                 s => s.SourceRef == served.SourceRef && s.Version > 0 && s.StatementType == "IS");
             var asReportedIs = Assert.Single(
                 restatements,
                 s => s.SourceRef == served.SourceRef && s.Version == 0 && s.StatementType == "IS");
+
+            // The restated income statement reports NI 75 (as-reported retains 60), and the
+            // restatement date is recorded (FU §5 footnote; BR-MDF-011).
             Assert.Equal(new DateOnly(2026, 6, 20), restatedIs.RestatementDate);
             Assert.Null(asReportedIs.RestatementDate);
             Assert.Equal(75m, await LineAsync(db, restatedIs.Id, "NI"));
             Assert.Equal(60m, await LineAsync(db, asReportedIs.Id, "NI"));
+
+            // The seeded world's as-reported row was not rewritten by the re-ingest: still
+            // version 0, still NI 60, still carrying no restatement date.
+            var seededIs = Assert.Single(
+                restatements,
+                s => s.SourceRef == seededSource && s.Version == 0 && s.StatementType == "IS");
+            Assert.NotEqual(seededIs.Id, asReportedIs.Id); // two distinct rows, not one re-pointed
+            Assert.Null(seededIs.RestatementDate);
+            Assert.Equal(60m, await LineAsync(db, seededIs.Id, "NI"));
         }
     }
 
