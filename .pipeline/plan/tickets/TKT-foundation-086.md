@@ -79,4 +79,4 @@ scope:
 
 ### Scope amendment (orchestrator, 2026-10-26)
 
-`src/Ingestion/IngestionServiceCollectionExtensions.cs` added to scope post-implementation: `PricesJob` (scoped `DegerliDbContext`) builds `PriceDerivedShareCountStore` over it — a conventional `AddScoped` registration line, one line, no lifetime change, no design change. Flagged by the implementer, recorded here per the G-2 pattern (amend, never silently exceed).
+`src/Ingestion/IngestionServiceCollectionExtensions.cs` added to scope post-implementation: `PricesJob` (scoped, over the scoped `DegerliDbContext`) takes `PriceDerivedShareCountStore` by constructor injection — a conventional `services.AddScoped<PriceDerivedShareCountStore>()` beside the other prices stores, no lifetime change, no captive dependency, no design change. Flagged by the implementer, recorded here per the G-2 pattern (amend, never silently exceed).

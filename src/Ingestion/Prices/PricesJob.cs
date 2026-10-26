@@ -85,7 +85,7 @@ public sealed class PricesJob : IIngestJob
         IQuarantineService quarantine,
         IIngestionAlerter alerter,
         UniverseSyncStore universe,
-        DegerliDbContext db,
+        PriceDerivedShareCountStore derivedShareCounts,
         IOptions<PricesSourceOptions> options,
         TimeProvider clock,
         ILogger<PricesJob> logger)
@@ -93,8 +93,8 @@ public sealed class PricesJob : IIngestJob
         _adapter = adapter;
         _store = store;
         // The derivation rides the facts this lane already holds (TKT-foundation-086, USER
-        // DECISION D5): it is built over the same scoped context, adds no source and no request.
-        _derivedShareCounts = new PriceDerivedShareCountStore(db);
+        // DECISION D5): injected over the same scoped context, adds no source and no request.
+        _derivedShareCounts = derivedShareCounts;
         _coverage = coverage;
         _quarantine = quarantine;
         _alerter = alerter;
