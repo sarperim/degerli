@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Degerli.Core.Adjustments;
 using Degerli.Core.Metrics;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -333,12 +334,13 @@ public sealed class MetricsEngine
             .OrderBy(d => d)
             .ToList();
 
-        // The highest version serves; earlier versions are retained (02 §5.7, BR-MDF-011).
+        // The restated version of the preferred source serves (02 §5.7, BR-MDF-011); since the
+        // store's natural key includes the source (01 v1.5.57 §10.9.19, TC-MDF-111), the pinned
+        // cross-source preference decides which source's fact is the current one — all of a
+        // period's lines come from that one row, never a mixture of two filings.
         FinancialStatement? Pick(DateOnly periodEnd, string statementType)
-            => statements
-                .Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType)
-                .OrderByDescending(s => s.Version)
-                .FirstOrDefault();
+            => StatementSourcePreference.Pick(
+                statements.Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType));
 
         decimal? Line(FinancialStatement? statement, string code)
         {

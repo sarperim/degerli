@@ -2,6 +2,7 @@ using System.Text.Json;
 using Degerli.Core.Metrics;
 using Degerli.Core.Valuation;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -193,12 +194,13 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             .OrderBy(d => d)
             .ToList();
 
-        // The highest version serves; earlier versions are retained (02 §5.7, BR-MDF-011).
+        // The restated version of the preferred source serves; earlier versions are retained
+        // (02 §5.7, BR-MDF-011). With the source in the store's natural key two sources can hold
+        // the same period (01 v1.5.57 §10.9.19, TC-MDF-111), so the choice goes through the one
+        // pinned preference instead of a version-only pick that row order would decide.
         FinancialStatement? Pick(DateOnly periodEnd, string statementType)
-            => statements
-                .Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType)
-                .OrderByDescending(s => s.Version)
-                .FirstOrDefault();
+            => StatementSourcePreference.Pick(
+                statements.Where(s => s.PeriodEndDate == periodEnd && s.StatementType == statementType));
 
         decimal? Line(FinancialStatement? statement, string code)
         {

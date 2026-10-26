@@ -195,7 +195,12 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
             b.Property(x => x.SourceUnitScale).IsRequired();
             b.Property(x => x.SourceCurrency).IsRequired();
             b.Property(x => x.SourceRef).IsRequired();
-            b.HasIndex(x => new { x.InstrumentId, x.PeriodType, x.PeriodEndDate, x.StatementType, x.Version }).IsUnique();
+            // 01 v1.5.57 §10.9.19 — the source is part of the natural key: two sources may each
+            // hold a fact for the same period, and `version` stays the restatement sequence
+            // *within one source's own filing series* (02 §3.1). Without the source here, a
+            // cross-source fact for one period could only be a silent idempotent swallow or a
+            // false `restated` declaration (TKT-foundation-082's recorded blocker).
+            b.HasIndex(x => new { x.InstrumentId, x.PeriodType, x.PeriodEndDate, x.StatementType, x.SourceRef, x.Version }).IsUnique();
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
         });
 

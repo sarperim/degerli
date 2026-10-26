@@ -192,6 +192,32 @@ public sealed class CoverageRecorder
                 .ConfigureAwait(false),
         };
 
+        // Per-source statements depth (01 v1.5.57 §10.9.19, TC-MDF-111): one range per
+        // (instrument, evidence class), so the aggregate row below can never be mistaken for what
+        // a single source actually reached.
+        var statementSources = new Dictionary<long, Dictionary<string, (DateOnly From, DateOnly To)>>();
+        foreach (var row in await _db.FinancialStatements
+            .Where(s => universeIds.Contains(s.InstrumentId))
+            .GroupBy(s => new { s.InstrumentId, s.SourceRef })
+            .Select(g => new
+            {
+                g.Key.InstrumentId,
+                g.Key.SourceRef,
+                From = g.Min(s => s.PeriodEndDate),
+                To = g.Max(s => s.PeriodEndDate),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (!statementSources.TryGetValue(row.InstrumentId, out var bySource))
+            {
+                bySource = new Dictionary<string, (DateOnly, DateOnly)>(StringComparer.Ordinal);
+                statementSources[row.InstrumentId] = bySource;
+            }
+
+            bySource[row.SourceRef] = (row.From, row.To);
+        }
+
         var written = 0;
         foreach (var instrumentId in universeIds)
         {
@@ -209,6 +235,27 @@ public sealed class CoverageRecorder
                 }
 
                 written++;
+            }
+
+            // Per-source statements depth (01 v1.5.57 §10.9.19, TC-MDF-111): the aggregate
+            // `statements` row above is the union across sources, which cannot say which evidence
+            // class reached which period. Each source that actually holds facts for this
+            // instrument gets its own depth row; a source that has written nothing here gets no
+            // row at all — honest absence, never a claim that it found no statements.
+            if (statementSources.TryGetValue(instrumentId, out var bySource))
+            {
+                foreach (var (sourceRef, range) in bySource)
+                {
+                    Upsert(
+                        existing,
+                        instrumentId,
+                        CoverageDataTypes.StatementsBySource(sourceRef),
+                        range.From,
+                        range.To,
+                        notes: null,
+                        preserveNotes: true);
+                    written++;
+                }
             }
         }
 

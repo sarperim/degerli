@@ -11,7 +11,7 @@ namespace Degerli.Ingestion.Statements;
 /// = as-reported, <c>1, 2, …</c> = successive restatements in publication order (02
 /// §1 principle 5, §3.1). The wire payload still <em>declares</em>
 /// <c>as_reported</c>/<c>restated</c>; this store assigns the sequence per natural key
-/// <c>(instrument, period_type, period_end_date, statement_type)</c>, so a period may be
+/// <c>(instrument, source, period_type, period_end_date, statement_type)</c>, so a period may be
 /// restated repeatedly (e.g. successive TMS 29 re-basings) — BR-MDF-011. A restatement
 /// is identified by its <see cref="StatementFact.RestatementDate"/>, so re-ingesting an
 /// identical payload is an idempotent no-op and a genuinely new restatement becomes the
@@ -115,7 +115,7 @@ public sealed class FinancialStatementStore
 
         var existing = await _db.FinancialStatements
             .Where(s => s.InstrumentId == instrumentId)
-            .Select(s => new { s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version, s.RestatementDate })
+            .Select(s => new { s.PeriodType, s.PeriodEndDate, s.StatementType, s.SourceRef, s.Version, s.RestatementDate })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -126,7 +126,7 @@ public sealed class FinancialStatementStore
         var restatementDates = new Dictionary<string, HashSet<DateOnly?>>(StringComparer.Ordinal);
         foreach (var s in existing)
         {
-            var key = Key(instrumentId.Value, s.PeriodType, s.PeriodEndDate, s.StatementType);
+            var key = Key(instrumentId.Value, s.SourceRef, s.PeriodType, s.PeriodEndDate, s.StatementType);
             Stored(versions, key).Add(s.Version);
             if (s.Version > 0)
             {
@@ -151,7 +151,7 @@ public sealed class FinancialStatementStore
                 continue;
             }
 
-            var key = Key(instrumentId.Value, fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
+            var key = Key(instrumentId.Value, sourceRef, fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
 
             int version;
             if (string.Equals(fact.Version, AsReported, StringComparison.Ordinal))
@@ -278,10 +278,19 @@ public sealed class FinancialStatementStore
         return set;
     }
 
+    /// <summary>
+    /// The store's natural key, source included (<c>01</c> v1.5.57 §10.9.19, TC-MDF-111): the
+    /// source is part of the key, so the same instrument may hold a fact for the same period from
+    /// more than one source (the VYK lane's <c>kap</c> and the public-site lane's
+    /// <c>kap-public</c>), and the restatement sequence <c>version</c> is counted per source —
+    /// never across sources, because a fact from another source is not a restatement of this
+    /// one (02 §3.1).
+    /// </summary>
     private static string Key(
         long instrumentId,
+        string sourceRef,
         string periodType,
         DateOnly periodEndDate,
         string statementType) =>
-        string.Join('|', instrumentId, periodType, periodEndDate.ToString("yyyy-MM-dd"), statementType);
+        string.Join('|', instrumentId, sourceRef, periodType, periodEndDate.ToString("yyyy-MM-dd"), statementType);
 }
