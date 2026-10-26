@@ -27,3 +27,7 @@ scope:
 - UX refs: none (ingest lane; the served presentation already exists).
 - Dependencies: TKT-foundation-080, TKT-foundation-081.
 - Parallel group: none.
+
+## Amendment (user decision B, 2026-10-26)
+
+The overlap-read clause of TC-MDF-110 is split out per the recorded remedies above (option B, chosen by the user 2026-10-26 ~01:50 UTC; test plan v1.28). This ticket implements **TC-MDF-110 as amended**: for a period both sources cover, the public-site fact is **not written** and the overlap is surfaced as a named, counted `SOURCE_OVERLAP_RETAINED` finding — the VYK row retained as-is, as-of queryable, nothing overwritten, nothing swallowed silently, no false restatement flag; the coexistence, per-row provenance and no-cross-source-overwrite assertions are unchanged. The deferred read-preference rule (public-site current wins for the periods it covers; VYK retained and as-of queryable; the served payload selects by the pinned preference, via `source_ref` in the store's natural key) is **TC-MDF-111's overlap-read sub-clause (test plan §24), assigned to TKT-foundation-083** — see its coordination note.
