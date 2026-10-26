@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-082: Statements lane public-site mode — config-selected source, the bounded byCriteria walk, own cursors, per-company isolation, and the two-source coexistence rule
 
-- Status: in-progress — **RE-DISPATCHED 2026-10-26 ~02:15 UTC after user decision B unblocked the ticket (amendment landed on dev at `506fca6`, test plan v1.28).** Implement TC-MDF-110 **as amended**: the overlap-read clause is split out — for a period both sources cover, the public-site fact is **not written** and the overlap surfaces as a named, counted `SOURCE_OVERLAP_RETAINED` finding (VYK row retained as-is and as-of queryable; nothing overwritten, nothing swallowed, no false restatement flag). The deferred read preference is TC-MDF-111's overlap-read sub-clause in 083. Everything else from the original work order stands. Prior block record below for reference. Block evidence and the three rejected workarounds: `## Blocker` section on this branch (commits `42d256e`/`e7f5a14`). Store evidence (dev@1b8925a): `FinancialStatementStore.cs:283,157-163` keys facts by `(instrument, periodType, periodEndDate, statementType)` — source NOT in the key; DB `UNIQUE(…,version)` (`DegerliDbContext.cs:197`, InitialSchema:905-908); `version` is frozen as the restatement sequence (`02` §91-93); served payload has no source preference (`StockFundamentalsEndpoints.cs:583-587`). A public FY2025 over an existing VYK FY2025 row can only be: swallowed as `unchanged` (public fact absent), cross-source in-place overwrite (forbidden), or a false `restated` declaration corrupting `is_restated` — none honest, none in scope. **Remedies (user decision pending):** A — widen 082 (add FinancialStatementStore, Persistence entities/DbContext/one forward-only migration putting `source_ref` in the natural key, StockFundamentalsEndpoints `Pick` preference; pin mechanism in TC-MDF-110); B — split the clause: 082 lands coexistence + provenance + no cross-source overwrite + named/counted `SOURCE_OVERLAP_RETAINED` skip, overlap read-preference moves to 083 (store + mixed-world read verification + `src/Api/Stocks/` scope) with a TC-MDF-110 amendment / TC-MDF-111 sub-case. Full evidence + remedies in the branch's `## Blocker` section (`42d256e`/`e7f5a14`). **TC-MDF-109 (the walk) is NOT blocked — fully implementable in scope.** Fixture constraint recorded: only committed report body is the 6-month interim `1643141`; annual `1561039` has no body (live criterion) — annual column sets must never be faked. Zero live requests.
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/147 (branch `feature/TKT-foundation-082`). **Implemented 2026-10-26** against TC-MDF-109 (i)-(v) and TC-MDF-110 **as amended** (decision B): `Ingestion:Statements:Source` selects `vyk` (shipped default) or `kap-public` with an unrecognised value failing by name (`INVALID_SOURCE_SELECTION`, zero requests); a date-windowed byCriteria walk over 080's stored oid with the site's own `disclosureCategory: FR` selection, newest-first; one `KapPublicWalkBudget` per **pass** shared across companies; own cursor (`kap-public-statements-cursor`) and achieved-depth provenance (`kap-public-statements-depth`); per-company and per-report isolation with the honest statuses; and the coexistence write rule — a period the other source covers is not written, the incumbent row is retained as-is and as-of queryable, and the overlap is a named, counted `SOURCE_OVERLAP_RETAINED` finding (counted example recorded in the PR: 3 withheld + 3 comparatives written). Tests: `tests/Api.IntegrationTests/KapPublicStatementsIngestTests.cs`, 12 cases, red-1 `CS0117` (seam absent) / red-2 10 failed-2 passed (lane inert) → **12/12 green**; targeted non-regression 177/177 + 15/15; build 0 warnings. Docs: test plan **v1.29**, `01` §13.1 **v1.5.56**. **Zero live kap.org.tr requests.** Residual: the live criteria below are the orchestrator's post-merge step. Prior re-dispatch record (for reference): **RE-DISPATCHED 2026-10-26 ~02:15 UTC after user decision B unblocked the ticket (amendment landed on dev at `506fca6`, test plan v1.28).** Implement TC-MDF-110 **as amended**: the overlap-read clause is split out — for a period both sources cover, the public-site fact is **not written** and the overlap surfaces as a named, counted `SOURCE_OVERLAP_RETAINED` finding (VYK row retained as-is and as-of queryable; nothing overwritten, nothing swallowed, no false restatement flag). The deferred read preference is TC-MDF-111's overlap-read sub-clause in 083. Everything else from the original work order stands. Prior block record below for reference. Block evidence and the three rejected workarounds: `## Blocker` section on this branch (commits `42d256e`/`e7f5a14`). Store evidence (dev@1b8925a): `FinancialStatementStore.cs:283,157-163` keys facts by `(instrument, periodType, periodEndDate, statementType)` — source NOT in the key; DB `UNIQUE(…,version)` (`DegerliDbContext.cs:197`, InitialSchema:905-908); `version` is frozen as the restatement sequence (`02` §91-93); served payload has no source preference (`StockFundamentalsEndpoints.cs:583-587`). A public FY2025 over an existing VYK FY2025 row can only be: swallowed as `unchanged` (public fact absent), cross-source in-place overwrite (forbidden), or a false `restated` declaration corrupting `is_restated` — none honest, none in scope. **Remedies (user decision pending):** A — widen 082 (add FinancialStatementStore, Persistence entities/DbContext/one forward-only migration putting `source_ref` in the natural key, StockFundamentalsEndpoints `Pick` preference; pin mechanism in TC-MDF-110); B — split the clause: 082 lands coexistence + provenance + no cross-source overwrite + named/counted `SOURCE_OVERLAP_RETAINED` skip, overlap read-preference moves to 083 (store + mixed-world read verification + `src/Api/Stocks/` scope) with a TC-MDF-110 amendment / TC-MDF-111 sub-case. Full evidence + remedies in the branch's `## Blocker` section (`42d256e`/`e7f5a14`). **TC-MDF-109 (the walk) is NOT blocked — fully implementable in scope.** Fixture constraint recorded: only committed report body is the 6-month interim `1643141`; annual `1561039` has no body (live criterion) — annual column sets must never be faked. Zero live requests.
 - Size: M
 - **Priority: P1 — lane ticket 4/6 (the statements lane actually ingesting current data).**
 - **What to implement:**
@@ -31,3 +31,77 @@ scope:
 ## Amendment (user decision B, 2026-10-26)
 
 The overlap-read clause of TC-MDF-110 is split out per the recorded remedies above (option B, chosen by the user 2026-10-26 ~01:50 UTC; test plan v1.28). This ticket implements **TC-MDF-110 as amended**: for a period both sources cover, the public-site fact is **not written** and the overlap is surfaced as a named, counted `SOURCE_OVERLAP_RETAINED` finding — the VYK row retained as-is, as-of queryable, nothing overwritten, nothing swallowed silently, no false restatement flag; the coexistence, per-row provenance and no-cross-source-overwrite assertions are unchanged. The deferred read-preference rule (public-site current wins for the periods it covers; VYK retained and as-of queryable; the served payload selects by the pinned preference, via `source_ref` in the store's natural key) is **TC-MDF-111's overlap-read sub-clause (test plan §24), assigned to TKT-foundation-083** — see its coordination note.
+
+## Blocker (implementation lane, 2026-10-26) — the period-overlap preference rule needs the store's key and the serving read path
+
+**What is blocked.** TC-MDF-110's expected result contains two different claims:
+
+1. *Coexistence + provenance + no cross-source in-place overwrite* — implementable inside this
+   ticket (the public lane writes its own `SourceRef = kap-public` rows through the existing
+   store; no VYK row is deleted or re-stamped).
+2. *"for a period both sources cover, the pinned preference rule decides the read (public-site
+   current wins for the periods it covers; VYK rows retained and as-of queryable)"* — **not
+   implementable inside this ticket's scope**, because there is no way for two sources to hold
+   the same period simultaneously and for the reader to prefer one.
+
+**Evidence (all read on `dev@1b8925a`, no code changed).**
+
+- `src/Ingestion/Statements/FinancialStatementStore.cs:283` — the store keys a statement by
+  `(instrumentId, periodType, periodEndDate, statementType)`; **the source is not part of the
+  key**. An `as_reported` fact (`FinancialStatementStore.cs:157-163`) whose key already holds
+  version `0` is counted `unchanged` and **not written**, regardless of which source produced it.
+  So a public-site FY2025 filing over an existing VYK FY2025 row is silently swallowed as
+  "unchanged" — neither coexistence nor a preference, and a silent non-write disguised as
+  idempotency.
+- `src/Persistence/DegerliDbContext.cs:197` and the landed migration
+  `src/Persistence/Migrations/20261007113309_InitialSchema.cs:905-908` — the DB enforces
+  `UNIQUE (instrument_id, period_type, period_end_date, statement_type, version)`. Two rows for
+  the same period from two sources are impossible unless the *version* differs.
+- `.pipeline/architecture/02-data-model.md:91-93` (frozen) — `version` is the **restatement
+  sequence** (`0` = as-reported, `1, 2, …` = successive restatements of the same source), and
+  the serving rule is `ORDER BY version DESC LIMIT 1` with `is_restated = version > 0`.
+- `src/Api/Stocks/StockFundamentalsEndpoints.cs:583-587` — the served financials payload picks
+  the highest `version` per `(periodType, periodEndDate, statementType)` and has no source
+  preference at all; with two equal-version rows it would be order-nondeterministic, and with
+  one row it can only serve whoever wrote first.
+
+**Why the three in-scope workarounds are all dishonest (recorded, not attempted).**
+
+- *Let the public payload be swallowed as `unchanged`* → the "public-site current wins" clause
+  is false and the public fact is silently absent.
+- *Overwrite / delete the VYK row in place* → explicitly forbidden ("no deletion, no
+  cross-source in-place overwrites; VYK rows retained and as-of queryable").
+- *Declare the public fact `restated` so the store assigns a higher version* → this makes
+  `Pick` return the public row and "wins", but it records an **as-reported** public filing as a
+  restatement of a VYK filing: it sets `restated: true` / `is_rested` on a first-time fact,
+  corrupts `02` §3.1's frozen version semantics (and `derived_metrics.is_rested` downstream),
+  and is a silent latest-write dressed up as a restatement — the exact thing the TC forbids.
+
+**What this needs (proposed remedies — planner/user decision).**
+
+- **Option A (make 082 land the rule):** amend the frontmatter scope to add
+  `src/Ingestion/Statements/FinancialStatementStore.cs`, `src/Persistence/Entities/MarketDataEntities.cs`,
+  `src/Persistence/DegerliDbContext.cs`, `src/Persistence/Migrations/` (one forward-only
+  migration adding `source_ref` to the natural key) and
+  `src/Api/Stocks/StockFundamentalsEndpoints.cs` (source preference in `Pick`), and amend
+  TC-MDF-110 to state the mechanism precisely (two rows coexist, the `kap-public` row is served
+  for the periods it covers, the `kap` row stays as-of queryable). This is the only option that
+  makes the pinned expectation true as written.
+- **Option B (split the clause):** keep TC-MDF-110 in 082 as *coexistence + provenance + no
+  cross-source overwrite + named/counted `SOURCE_OVERLAP_RETAINED` when the public lane meets a
+  foreign-source row*, and move the *overlap read preference* to TKT-foundation-083 (which
+  already owns `FinancialStatementStore.cs` and the mixed-world read verification), adding
+  `src/Persistence/` and `src/Api/Stocks/` to 083's scope and a TC-MDF-111 sub-case. Requires a
+  test-plan amendment by the test-planner (TC-MDF-110's expected result is not mine to rewrite).
+
+**What is *not* blocked.** TC-MDF-109 is implementable end-to-end inside this ticket's scope
+(config-selected source, the date-windowed byCriteria walk over 080's stored oid, the paced
+client inherited from 079, own `kap-public-*` cursor rows, per-company isolation, bounded
+walk + truncation/resume + achieved-depth provenance, decode through 081, store with
+`SourceRef = kap-public`), with the VYK lane still the shipped default. One honest constraint
+for the walk cases: **the only report *body* double is `kap-public-report-1643141` (the 6-month
+interim)**; the annual `Yıllık` report (`1561039`) appears in the committed byCriteria list but
+has **no committed body** (081's annual golden is its own live-criterion item). The selection
+rule itself is still assertable without a second body (assert the *requested* indices from the
+WireMock journal, and give the un-held annual index its honest per-detail skip); decoding an
+annual column set is not part of TC-MDF-109 and must not be faked from the interim body.
