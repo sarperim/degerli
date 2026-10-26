@@ -29,7 +29,7 @@ scope:
 
 # TKT-foundation-086: The 065 contract half lands — `paidInCapital` under its own name, an honest price-derived `sharesOutstanding` beside it, and the DCF per-share divisor unblocked
 
-- Status: todo
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/146
 - Size: L
 - **Priority: P1 — the user's this-week goal: fair value PER SHARE on the custom DCF (dashboard → stock page → KAP data → DCF).** After 082, the DCF computes company-level intrinsic value on real annual FCF; per-share stays blocked on exactly this ticket's honest divisor.
 - **What this is:** the 065 implementation slice (its acceptance (ii) + the orchestrator's 2026-10-24 refinement, all three items) **plus** the honest share-count source that unblocks the DCF's `share_count` fact. One ticket because the rename is a **breaking contract change** — the API rename, the store rename, the web consumption side and the count source land together or not at all; no silent break, no lying field name left behind.
