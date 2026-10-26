@@ -144,7 +144,10 @@ public sealed class SchemaConformanceTests : IClassFixture<PostgresFixture>
     }
 
     [Theory]
-    [InlineData("financial_statements", new[] { "instrument_id", "period_type", "period_end_date", "statement_type", "version" })]
+    // The statement identity includes the provenance (01 v1.5.57 §10.9.19, TKT-foundation-083):
+    // two sources may each hold a fact for one period. The assertion is unchanged in kind and
+    // pins one more column than before.
+    [InlineData("financial_statements", new[] { "instrument_id", "source_ref", "period_type", "period_end_date", "statement_type", "version" })]
     [InlineData("daily_prices", new[] { "instrument_id", "price_date" })]
     [InlineData("saved_screens", new[] { "user_id", "name" })]
     [InlineData("dcf_scenarios", new[] { "user_id", "instrument_id", "name" })]

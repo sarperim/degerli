@@ -268,17 +268,26 @@ public static class FixtureSeeder
         var instrumentIds = await db.Instruments.ToDictionaryAsync(i => i.Symbol, i => i.Id, ct).ConfigureAwait(false);
         var versions = AssignStatementVersions(set.Statements);
 
+        // The fixture world's own provenance (the statements this method writes).
+        var fixtureSource = $"{SourceRef}:statements";
+
         var existing = (await db.FinancialStatements
-                .Select(s => new { s.InstrumentId, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version })
+                .Select(s => new { s.InstrumentId, s.SourceRef, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version })
                 .ToListAsync(ct)
                 .ConfigureAwait(false))
-            .Select(s => Key(s.InstrumentId, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version))
+            .Select(s => Key(s.InstrumentId, s.SourceRef, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version))
             .ToHashSet(StringComparer.Ordinal);
 
         foreach (var statement in set.Statements)
         {
             var instrumentId = instrumentIds[statement.Symbol];
-            if (!existing.Add(Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, versions[statement])))
+            if (!existing.Add(Key(
+                instrumentId,
+                fixtureSource,
+                statement.PeriodType,
+                statement.PeriodEndDate,
+                statement.StatementType,
+                versions[statement])))
             {
                 continue;
             }
@@ -300,7 +309,7 @@ public static class FixtureSeeder
                 // (the ETL normalization is exercised by the on-demand USDX fixture).
                 SourceUnitScale = FixtureStatementUnitScale,
                 SourceCurrency = FixtureStatementCurrency,
-                SourceRef = $"{SourceRef}:statements",
+                SourceRef = fixtureSource,
                 RecordedAt = At(set.Anchor),
             });
         }
@@ -308,11 +317,11 @@ public static class FixtureSeeder
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         var statementIds = (await db.FinancialStatements
-                .Select(s => new { s.Id, s.InstrumentId, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version })
+                .Select(s => new { s.Id, s.InstrumentId, s.SourceRef, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version })
                 .ToListAsync(ct)
                 .ConfigureAwait(false))
             .ToDictionary(
-                s => Key(s.InstrumentId, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version),
+                s => Key(s.InstrumentId, s.SourceRef, s.PeriodType, s.PeriodEndDate, s.StatementType, s.Version),
                 s => s.Id,
                 StringComparer.Ordinal);
 
@@ -326,7 +335,13 @@ public static class FixtureSeeder
         foreach (var statement in set.Statements)
         {
             var instrumentId = instrumentIds[statement.Symbol];
-            var statementId = statementIds[Key(instrumentId, statement.PeriodType, statement.PeriodEndDate, statement.StatementType, versions[statement])];
+            var statementId = statementIds[Key(
+                instrumentId,
+                fixtureSource,
+                statement.PeriodType,
+                statement.PeriodEndDate,
+                statement.StatementType,
+                versions[statement])];
             foreach (var (itemCode, value) in statement.Lines)
             {
                 if (!existingLines.Add($"{statementId}|{itemCode}"))
@@ -823,6 +838,19 @@ public static class FixtureSeeder
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
-    private static string Key(long instrumentId, string periodType, DateOnly periodEnd, string statementType, int version) =>
-        $"{instrumentId}|{periodType}|{periodEnd:yyyy-MM-dd}|{statementType}|{version}";
+    /// <summary>
+    /// A stored statement's identity within the fixture world: the store's natural key including
+    /// the provenance (<c>01</c> v1.5.57 §10.9.19, TKT-foundation-083). The seeder's own
+    /// bookkeeping map must use the same shape as the store, or a world in which a second
+    /// provenance holds the same <c>(period, statement type, version)</c> — the very world the
+    /// migration makes storable — collapses two distinct facts onto one key here.
+    /// </summary>
+    private static string Key(
+        long instrumentId,
+        string sourceRef,
+        string periodType,
+        DateOnly periodEnd,
+        string statementType,
+        int version) =>
+        $"{instrumentId}|{sourceRef}|{periodType}|{periodEnd:yyyy-MM-dd}|{statementType}|{version}";
 }

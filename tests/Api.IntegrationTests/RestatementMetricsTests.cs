@@ -5,6 +5,7 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -98,19 +99,34 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
             Assert.True(envelope.Restated);
 
             // Both statement versions remain stored and are queryable by the version filter.
+            // The store's natural key now includes the provenance (01 v1.5.57 §10.9.19,
+            // TKT-foundation-083), so the KAP lane's re-ingest is its **own** filing series
+            // beside the fixture world's: the as-reported version is held once per provenance
+            // (the seeded row and the lane's row — the same filed facts) and the restatement
+            // series stays one per source. Nothing is merged, swallowed or overwritten.
             var restatements = await db.FinancialStatements
                 .Where(s => s.InstrumentId == restId && s.PeriodType == "FY")
                 .ToListAsync();
 
             var restated = restatements.Where(s => s.Version > 0).ToList();
             var asReported = restatements.Where(s => s.Version == 0).ToList();
-            Assert.Equal(3, restated.Count);   // IS / BS / CF
-            Assert.Equal(3, asReported.Count); // IS / BS / CF
+            Assert.Equal(3, restated.Count); // IS / BS / CF — the lane's restatement series
+            Assert.Equal(3, asReported.Count(s => s.SourceRef == StatementSourcePreference.IncumbentSource)); // IS / BS / CF
+            Assert.Equal(2, asReported.GroupBy(s => s.SourceRef).Count()); // two provenances coexist
+            Assert.All(asReported.GroupBy(s => s.SourceRef), series => Assert.Equal(3, series.Count())); // each IS / BS / CF
 
-            // The restated income statement reports NI 75 (as-reported retains 60), and the
-            // restatement date is recorded (FU §5 footnote; BR-MDF-011).
-            var restatedIs = restated.Single(s => s.StatementType == "IS");
-            var asReportedIs = asReported.Single(s => s.StatementType == "IS");
+            // The served series is the pinned preference's — the same row set the metrics engine
+            // just computed from. The restated income statement reports NI 75 (as-reported
+            // retains 60), and the restatement date is recorded (FU §5 footnote; BR-MDF-011).
+            var served = StatementSourcePreference.Pick(restatements, "IS");
+            Assert.NotNull(served);
+            Assert.Equal(StatementSourcePreference.IncumbentSource, served!.SourceRef);
+            var restatedIs = Assert.Single(
+                restatements,
+                s => s.SourceRef == served.SourceRef && s.Version > 0 && s.StatementType == "IS");
+            var asReportedIs = Assert.Single(
+                restatements,
+                s => s.SourceRef == served.SourceRef && s.Version == 0 && s.StatementType == "IS");
             Assert.Equal(new DateOnly(2026, 6, 20), restatedIs.RestatementDate);
             Assert.Null(asReportedIs.RestatementDate);
             Assert.Equal(75m, await LineAsync(db, restatedIs.Id, "NI"));
