@@ -8,6 +8,7 @@ using Degerli.Ingestion.Coverage;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Statements;
+using Degerli.Ingestion.Valuation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -113,6 +114,12 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
         Assert.Equal(0.20m, await ReadMetricAsync("ALFA", MetricCodes.OperatingMargin));
         Assert.Equal(0.20m, await ReadMetricAsync("ALFA", MetricCodes.Roe)); // 400 NI / 2,000 equity
 
+        // Growth is a value, not just a row: ALFA's FY2023 incumbent revenue (900) to its FY2025
+        // public-site revenue (2,000) is a two-interval fallback of the 3Y window —
+        // √(2,000 / 900) − 1 = 0.490712. The incumbent's 1,000 for the same period would give
+        // √(1,000 / 900) − 1 ≈ 0.054093, so the figure also proves which source's fact served.
+        Assert.Equal(0.490712m, await ReadMetricAsync("ALFA", MetricCodes.RevCagr3y));
+
         // The current filing carries no share count, so every share-derived figure is honestly
         // NULL — the incumbent's 100 M shares for the same period are never borrowed.
         Assert.Null(await ReadMetricAsync("ALFA", MetricCodes.Pe));
@@ -188,10 +195,16 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
             var periods = document.RootElement.GetProperty("periods").EnumerateArray().ToList();
 
             // One entry per (periodType, periodEndDate): two sources holding one period is one
-            // period on the served surface, never a duplicated row.
+            // period on the served surface, never a duplicated row. The distinct key is the whole
+            // period coordinate — a Q and an FY legitimately share a period end date.
             Assert.Equal(
                 periods.Count,
-                periods.Select(period => period.GetProperty("periodEndDate").GetString()).Distinct().Count());
+                periods
+                    .Select(period => (
+                        period.GetProperty("periodType").GetString(),
+                        period.GetProperty("periodEndDate").GetString()))
+                    .Distinct()
+                    .Count());
 
             var current = Assert.Single(
                 periods,
@@ -212,6 +225,20 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
                 periods,
                 period => period.GetProperty("periodEndDate").GetString() == "2023-12-31");
             Assert.Equal(900m, incipient.GetProperty("revenue").GetProperty("value").GetDecimal());
+
+            // SNA (shareholders' net assets) comes from the same preferred statement: the served
+            // FY2025 balance sheet is the public-site one, equity 2,000 — and it carries no share
+            // count, so the count is honestly absent rather than the incumbent's 100 M borrowed.
+            var sheetResponse = await client.GetAsync(new Uri("/api/v1/stocks/ALFA/balance-sheet", UriKind.Relative));
+            Assert.Equal(HttpStatusCode.OK, sheetResponse.StatusCode);
+
+            using var sheet = JsonDocument.Parse(await sheetResponse.Content.ReadAsStringAsync());
+            var equityFigure = sheet.RootElement.GetProperty("lines").GetProperty("totalEquity");
+            Assert.Equal(2000m, equityFigure.GetProperty("value").GetDecimal());
+            Assert.False(equityFigure.GetProperty("restated").GetBoolean());
+            Assert.Equal(
+                JsonValueKind.Null,
+                sheet.RootElement.GetProperty("lines").GetProperty("sharesDiluted").GetProperty("value").ValueKind);
         }
 
         // Nothing was masked in the store: both sources' rows and their own lines are there, the
@@ -241,6 +268,28 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
                 .SingleAsync(line => line.StatementId == current.Id && line.ItemCode == "REV");
             Assert.Equal(1000m, incumbentRevenue.Value);
             Assert.Equal(2000m, currentRevenue.Value);
+        }
+
+        // The same pick, proven by behaviour in another consumer rather than by inspection: the
+        // DCF job's active ALFA baseline carries base FCF 200 — the public-site cash flow
+        // (OCF 300 − |CAPEX 100|), not the incumbent's 100 (250 − |150|) — so the baseline was
+        // built from the served statement's facts, not from whichever row arrived last.
+        await using (var host = BuildHost())
+        {
+            var dcf = await RunAsync(host, DcfBaselineGenerationJob.Code, T);
+            Assert.Equal("succeeded", dcf.Status);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var alfaId = await InstrumentIdAsync(db, "ALFA");
+            var baseline = await db.DcfBaselines
+                .SingleAsync(row => row.InstrumentId == alfaId && row.IsActive);
+
+            using var baselineParameters = JsonDocument.Parse(baseline.ParamsJson);
+            Assert.Equal(
+                200m,
+                baselineParameters.RootElement.GetProperty("params").GetProperty("base_fcf").GetDecimal());
         }
     }
 
@@ -360,11 +409,13 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
         }
 
         // PF/BR-MOV-010: a member whose current filing has no share count is excluded from the
-        // cap-weighted aggregate and counted — not silently dropped and not given a cap.
+        // cap-weighted aggregate and counted — not silently dropped and not given a cap. The
+        // pre-state is pinned exactly: in this mixed world ALFA is the one excluded constituent
+        // (the served public-site FY2025 balance sheet carries no SHARES_DILUTED, while BETA,
+        // GAMA and UNSEC each seed one and the other twelve keep their fixture balance sheets),
+        // and the differential below holds the repair to exactly one fewer.
         Assert.NotNull(before.MarketPe);
-        Assert.True(
-            before.MarketPeExcludedCount >= 1,
-            $"the share-less current filing must be counted as excluded (was {before.MarketPeExcludedCount})");
+        Assert.Equal(1, before.MarketPeExcludedCount);
 
         // Now the public-site balance sheet is gone for that period: the incumbent's balance
         // sheet (which does carry SHARES_DILUTED) becomes the served fact under preference (ii).

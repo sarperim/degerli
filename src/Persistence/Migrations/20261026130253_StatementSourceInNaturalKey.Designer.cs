@@ -1369,6 +1369,45 @@ namespace Degerli.Persistence.Migrations
                     b.ToTable("metric_catalog", (string)null);
                 });
 
+            modelBuilder.Entity("Degerli.Persistence.Entities.PriceDerivedShareCount", b =>
+                {
+                    b.Property<long>("InstrumentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("instrument_id");
+
+                    b.Property<decimal>("CloseRaw")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)")
+                        .HasColumnName("close_raw");
+
+                    b.Property<decimal>("MarketCapRaw")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)")
+                        .HasColumnName("market_cap_raw");
+
+                    b.Property<DateOnly>("PriceDate")
+                        .HasColumnType("date")
+                        .HasColumnName("price_date");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<long>("SharesOutstanding")
+                        .HasColumnType("bigint")
+                        .HasColumnName("shares_outstanding");
+
+                    b.Property<string>("SourceRef")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_ref");
+
+                    b.HasKey("InstrumentId")
+                        .HasName("pk_price_derived_share_counts");
+
+                    b.ToTable("price_derived_share_counts", (string)null);
+                });
+
             modelBuilder.Entity("Degerli.Persistence.Entities.QuarantinedFact", b =>
                 {
                     b.Property<long>("Id")
@@ -1551,14 +1590,14 @@ namespace Degerli.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("instrument_id");
 
+                    b.Property<decimal>("PaidInCapital")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("paid_in_capital");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("recorded_at");
-
-                    b.Property<decimal>("SharesOutstanding")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
-                        .HasColumnName("shares_outstanding");
 
                     b.Property<string>("SourceRef")
                         .IsRequired()
@@ -1917,6 +1956,16 @@ namespace Degerli.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_macro_values_macro_series_series_code");
+                });
+
+            modelBuilder.Entity("Degerli.Persistence.Entities.PriceDerivedShareCount", b =>
+                {
+                    b.HasOne("Degerli.Persistence.Entities.Instrument", null)
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_price_derived_share_counts_instruments_instrument_id");
                 });
 
             modelBuilder.Entity("Degerli.Persistence.Entities.SavedScreen", b =>
