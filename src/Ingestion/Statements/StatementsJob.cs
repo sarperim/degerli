@@ -480,179 +480,169 @@ public sealed class StatementsJob : IIngestJob
             var symbolQuarantined = 0;
             var symbolOverlap = 0;
 
-            try
-            {
-                var walk = await walker
-                    .WalkAsync(
-                        symbol,
-                        publicOid,
-                        plan,
-                        async (report, disclosureIndex, token) =>
+            // Nothing here guards a SourceFetchException from the walk (review round 2, D15): the
+            // reader (079) converts every transport failure, non-success and timeout into its own
+            // SourceDown result — a list failure becomes KapPublicStatementFailure, a detail failure
+            // a per-report skip — so the walk does not throw for one. The old catch was therefore
+            // unreachable, and had it ever fired mid-walk it would have reported `written 0` beside
+            // rows already stored (the D1 lie). The accounted paths above are the only ones.
+            var walk = await walker
+                .WalkAsync(
+                    symbol,
+                    publicOid,
+                    plan,
+                    async (report, disclosureIndex, token) =>
+                    {
+                        var keep = new List<StatementFact>(report.Payload.Statements.Count);
+                        var retained = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
+                        var disagreed = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
+                        foreach (var fact in report.Payload.Statements)
                         {
-                            var keep = new List<StatementFact>(report.Payload.Statements.Count);
-                            var retained = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
-                            var disagreed = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
-                            foreach (var fact in report.Payload.Statements)
+                            // The coexist rule asks two questions (D5): the store's exact key, and
+                            // the calendar period under any period type. Either answer means the
+                            // period is already covered — the second is a period-type disagreement,
+                            // named under its own code rather than written as a duplicate.
+                            if (foreignPeriods.TryExact(fact.PeriodType, fact.PeriodEndDate, fact.StatementType, out var incumbent))
                             {
-                                // The coexist rule asks two questions (D5): the store's exact key, and
-                                // the calendar period under any period type. Either answer means the
-                                // period is already covered — the second is a period-type disagreement,
-                                // named under its own code rather than written as a duplicate.
-                                if (foreignPeriods.TryExact(fact.PeriodType, fact.PeriodEndDate, fact.StatementType, out var incumbent))
-                                {
-                                    retained.Add((fact, incumbent));
-                                    continue;
-                                }
-
-                                var sameCalendarPeriod = foreignPeriods.AtCalendarPeriod(fact.PeriodEndDate, fact.StatementType);
-                                if (sameCalendarPeriod.Count > 0)
-                                {
-                                    disagreed.Add((fact, sameCalendarPeriod[0]));
-                                    continue;
-                                }
-
-                                keep.Add(fact);
+                                retained.Add((fact, incumbent));
+                                continue;
                             }
 
-                            var outcome = keep.Count == 0
-                                ? new StatementWriteResult(symbol, 0, 0, [])
-                                : await _store
-                                    .UpsertAsync(
-                                        KapPublicSourceOptions.SourceName,
-                                        now,
-                                        report.Payload with { Statements = keep },
-                                        token)
-                                    .ConfigureAwait(false);
-
-                            foreach (var (fact, incumbent) in retained)
+                            var sameCalendarPeriod = foreignPeriods.AtCalendarPeriod(fact.PeriodEndDate, fact.StatementType);
+                            if (sameCalendarPeriod.Count > 0)
                             {
-                                _logger.LogWarning(
-                                    "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} already covers the period; the incumbent row is retained as-is",
-                                    symbol,
-                                    fact.PeriodType,
-                                    fact.PeriodEndDate,
-                                    fact.StatementType,
+                                disagreed.Add((fact, sameCalendarPeriod[0]));
+                                continue;
+                            }
+
+                            keep.Add(fact);
+                        }
+
+                        var outcome = keep.Count == 0
+                            ? new StatementWriteResult(symbol, 0, 0, [])
+                            : await _store
+                                .UpsertAsync(
+                                    KapPublicSourceOptions.SourceName,
+                                    now,
+                                    report.Payload with { Statements = keep },
+                                    token)
+                                .ConfigureAwait(false);
+
+                        foreach (var (fact, incumbent) in retained)
+                        {
+                            _logger.LogWarning(
+                                "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} already covers the period; the incumbent row is retained as-is",
+                                symbol,
+                                fact.PeriodType,
+                                fact.PeriodEndDate,
+                                fact.StatementType,
+                                SourceOverlapRetained,
+                                incumbent.SourceRef);
+                            await QuarantineAsync(
+                                    KapPublicSourceOptions.SourceName,
+                                    OverlapEvidence(symbol, disclosureIndex, fact, incumbent.SourceRef),
                                     SourceOverlapRetained,
-                                    incumbent.SourceRef);
-                                await QuarantineAsync(
-                                        KapPublicSourceOptions.SourceName,
-                                        OverlapEvidence(symbol, disclosureIndex, fact, incumbent.SourceRef),
-                                        SourceOverlapRetained,
-                                        token)
-                                    .ConfigureAwait(false);
-                                symbolQuarantined++;
-                                symbolOverlap++;
-                            }
+                                    token)
+                                .ConfigureAwait(false);
+                            symbolQuarantined++;
+                            symbolOverlap++;
+                        }
 
-                            foreach (var (fact, incumbent) in disagreed)
-                            {
-                                _logger.LogWarning(
-                                    "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} covers the same calendar period as {IncumbentPeriodType}; one real period, two period-type keys",
-                                    symbol,
-                                    fact.PeriodType,
-                                    fact.PeriodEndDate,
-                                    fact.StatementType,
+                        foreach (var (fact, incumbent) in disagreed)
+                        {
+                            _logger.LogWarning(
+                                "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} covers the same calendar period as {IncumbentPeriodType}; one real period, two period-type keys",
+                                symbol,
+                                fact.PeriodType,
+                                fact.PeriodEndDate,
+                                fact.StatementType,
+                                SourcePeriodTypeDisagreement,
+                                incumbent.SourceRef,
+                                incumbent.PeriodType);
+                            await QuarantineAsync(
+                                    KapPublicSourceOptions.SourceName,
+                                    PeriodTypeDisagreementEvidence(symbol, disclosureIndex, fact, incumbent),
                                     SourcePeriodTypeDisagreement,
-                                    incumbent.SourceRef,
-                                    incumbent.PeriodType);
-                                await QuarantineAsync(
-                                        KapPublicSourceOptions.SourceName,
-                                        PeriodTypeDisagreementEvidence(symbol, disclosureIndex, fact, incumbent),
-                                        SourcePeriodTypeDisagreement,
-                                        token)
-                                    .ConfigureAwait(false);
-                                symbolQuarantined++;
-                                symbolOverlap++;
-                            }
+                                    token)
+                                .ConfigureAwait(false);
+                            symbolQuarantined++;
+                            symbolOverlap++;
+                        }
 
-                            foreach (var reasonCode in outcome.RejectedReasonCodes)
-                            {
-                                _logger.LogWarning(
-                                    "statements: refused public-site payload for {Symbol} ({ReasonCode})", symbol, reasonCode);
-                                await QuarantineAsync(KapPublicSourceOptions.SourceName, null, reasonCode, token)
-                                    .ConfigureAwait(false);
-                                symbolQuarantined++;
-                            }
+                        foreach (var reasonCode in outcome.RejectedReasonCodes)
+                        {
+                            _logger.LogWarning(
+                                "statements: refused public-site payload for {Symbol} ({ReasonCode})", symbol, reasonCode);
+                            await QuarantineAsync(KapPublicSourceOptions.SourceName, null, reasonCode, token)
+                                .ConfigureAwait(false);
+                            symbolQuarantined++;
+                        }
 
-                            return new KapPublicStatementWrite(
-                                outcome.Inserted,
-                                outcome.Unchanged,
-                                retained.Count + disagreed.Count);
-                        },
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                        return new KapPublicStatementWrite(
+                            outcome.Inserted,
+                            outcome.Unchanged,
+                            retained.Count + disagreed.Count);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
 
-                // Per-report isolation (the 063 doctrine, applied to this source): a report the
-                // source could not deliver — or delivered in a shape that is not a report — is
-                // quarantined with its evidence and counted; the company's other reports were
-                // written. A transport failure is never counted as a parse event, so it travels
-                // under the unfetchable-detail word, not under SOURCE_FETCH_FAILED.
-                symbolQuarantined += await QuarantineSkipsAsync(walk.Skips, cancellationToken).ConfigureAwait(false);
+            // Per-report isolation (the 063 doctrine, applied to this source): a report the
+            // source could not deliver — or delivered in a shape that is not a report — is
+            // quarantined with its evidence and counted; the company's other reports were
+            // written. A transport failure is never counted as a parse event, so it travels
+            // under the unfetchable-detail word, not under SOURCE_FETCH_FAILED.
+            symbolQuarantined += await QuarantineSkipsAsync(walk.Skips, cancellationToken).ConfigureAwait(false);
 
-                written += walk.Inserted;
-                unchanged += walk.Unchanged;
-                quarantined += symbolQuarantined;
-                overlapRetained += symbolOverlap;
+            written += walk.Inserted;
+            unchanged += walk.Unchanged;
+            quarantined += symbolQuarantined;
+            overlapRetained += symbolOverlap;
 
-                if (walk.Failure is { } failure)
-                {
-                    // A mid-walk list source-down (D1): the company is failed, but the counts above are
-                    // the ones it actually earned — the windows it completed were written and are in
-                    // the store. Reporting `written 0` beside existing rows would be a false ledger;
-                    // reporting the company as complete would be the opposite lie. Both are avoided:
-                    // the company is failed with its real counts, and the run is `partial` because rows
-                    // exist.
-                    failedSymbols.Add(symbol);
-                    _logger.LogWarning(
-                        "statements: company {Symbol} public-site list failed for {Date} ({ReasonCode}) over {From}..{To} after writing {Written} row(s) and keeping {Unchanged} unchanged; the completed position is persisted and the next pass resumes there",
-                        symbol,
-                        request.Date,
-                        SourceFetchFailed,
-                        failure.WindowFrom,
-                        failure.WindowTo,
-                        walk.Inserted,
-                        walk.Unchanged);
-                    symbolStats.Add(new SymbolRunStat(
-                        symbol,
-                        walk.Inserted,
-                        walk.Unchanged,
-                        symbolQuarantined,
-                        true,
-                        SourceFetchFailed));
-                    continue;
-                }
-
-                if (walk.Truncated)
-                {
-                    truncatedCompanies++;
-                    _logger.LogWarning(
-                        "statements: public-site walk for {Symbol} was bounded ({ReasonCode}) after {ReportsFetched} report(s); the cursor keeps the completed position and the next pass resumes there",
-                        symbol,
-                        walk.TruncationReason,
-                        walk.ReportsFetched);
-                }
-
+            if (walk.Failure is { } failure)
+            {
+                // A mid-walk list source-down (D1): the company is failed, but the counts above are
+                // the ones it actually earned — the windows it completed were written and are in
+                // the store. Reporting `written 0` beside existing rows would be a false ledger;
+                // reporting the company as complete would be the opposite lie. Both are avoided:
+                // the company is failed with its real counts, and the run is `partial` because rows
+                // exist.
+                failedSymbols.Add(symbol);
+                _logger.LogWarning(
+                    "statements: company {Symbol} public-site list failed for {Date} ({ReasonCode}) over {From}..{To} after writing {Written} row(s) and keeping {Unchanged} unchanged; the completed position is persisted and the next pass resumes there",
+                    symbol,
+                    request.Date,
+                    SourceFetchFailed,
+                    failure.WindowFrom,
+                    failure.WindowTo,
+                    walk.Inserted,
+                    walk.Unchanged);
                 symbolStats.Add(new SymbolRunStat(
                     symbol,
                     walk.Inserted,
                     walk.Unchanged,
                     symbolQuarantined,
-                    false,
-                    walk.Truncated ? walk.TruncationReason : null));
+                    true,
+                    SourceFetchFailed));
+                continue;
             }
-            catch (SourceFetchException exception)
+
+            if (walk.Truncated)
             {
-                // The disclosure list is source-down: without an index there is no walk, so the
-                // company is failed (a genuine source-down), never reported as having nothing.
+                truncatedCompanies++;
                 _logger.LogWarning(
-                    exception,
-                    "statements: company {Symbol} public-site list failed for {Date} ({ReasonCode})",
+                    "statements: public-site walk for {Symbol} was bounded ({ReasonCode}) after {ReportsFetched} report(s); the cursor keeps the completed position and the next pass resumes there",
                     symbol,
-                    request.Date,
-                    SourceFetchFailed);
-                failedSymbols.Add(symbol);
-                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true, SourceFetchFailed));
+                    walk.TruncationReason,
+                    walk.ReportsFetched);
             }
+
+            symbolStats.Add(new SymbolRunStat(
+                symbol,
+                walk.Inserted,
+                walk.Unchanged,
+                symbolQuarantined,
+                false,
+                walk.Truncated ? walk.TruncationReason : null));
         }
 
         return await CompleteAsync(

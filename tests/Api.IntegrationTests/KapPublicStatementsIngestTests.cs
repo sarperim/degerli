@@ -55,6 +55,13 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
     /// <summary>The ASELS public-site company oid (the public site's own space — never VYK's 866).</summary>
     private const string AselsPublicOid = "4028e4a1413b7ef401413bc2251e0047";
 
+    /// <summary>
+    /// The second company's public-site oid, deliberately <b>different</b> from ASELS's: the list
+    /// request's own body then says which company a pass walked, which is what makes the pass-order
+    /// case (review round 2, D14) an observable assertion instead of an inference.
+    /// </summary>
+    private const string ThyaoPublicOid = "4028e4a1413b7ef401413bc2251e0048";
+
     /// <summary>The interim report with a committed body (6 months ended 30.06.2026).</summary>
     private const long InterimIndex = 1643141L;
 
@@ -601,6 +608,95 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         Assert.Equal(0, notStarted.Written);
 
         Assert.True(result.Written > 0);
+    }
+
+    /// <summary>
+    /// TC-MDF-109 (iii) — the pass order is <b>fair across passes</b> (review round 2, D14): the
+    /// company a bounded pass could not start is walked <b>first</b> by the next pass, so the
+    /// omission is bounded in passes and never permanent starvation.
+    /// <para>
+    /// Pass 1's ceiling of one detail is spent by the head of the universe; the tail is named
+    /// <c>WALK_NOT_STARTED</c> and has <b>no cursor row at all</b>. Pass 2 (same ceiling) must walk
+    /// the never-walked company first — asserted from observable state only: the pass's list request
+    /// carries that company's <b>stored oid</b>, its cursor row appears, the head company's cursor is
+    /// untouched (watermark and seen set unchanged) and it is the one now named not-started. With the
+    /// order reverted to the bare constituent list, pass 2 re-walks the head company and the tail
+    /// company's list is never requested — which is exactly the permanent starvation D2 removed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_109_iii_a_bounded_pass_resumes_the_not_started_company_first()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS", "THYAO");
+        await MapPublicOidAsync("THYAO", ThyaoPublicOid);
+        StubDoubles();
+
+        var passSettings = new Dictionary<string, string?>
+        {
+            ["Ingestion:KapPublic:MaxDetailFetches"] = "1",
+        };
+
+        IngestResult first;
+        await using (var host = BuildIngestion(passSettings))
+        {
+            first = await RunAsync(host);
+        }
+
+        // Pass 1: the ceiling is spent on the head of the universe; the tail never starts and leaves
+        // no position behind (absence is the "never walked" signal the pass order reads).
+        Assert.Equal(
+            "ASELS",
+            Assert.Single(first.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.DetailCap).Symbol);
+        Assert.Equal(
+            "THYAO",
+            Assert.Single(first.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.WalkNotStarted).Symbol);
+        Assert.Equal(1, ListRequestsFor(AselsPublicOid));
+        Assert.Equal(0, ListRequestsFor(ThyaoPublicOid));
+
+        var aselsAfterPassOne = Assert.IsType<KapPublicStatementCursor>(await ReadCursorAsync("ASELS"));
+        Assert.Contains(InterimIndex, aselsAfterPassOne.Seen);
+        Assert.Null(await ReadCursorAsync("THYAO"));
+
+        // Pass 2: the same ceiling, the same universe — and the pass order has changed on its own.
+        IngestResult second;
+        await using (var host = BuildIngestion(passSettings))
+        {
+            second = await RunAsync(host);
+        }
+
+        // The pass's list request names the never-walked company (the oid on the wire), and the head
+        // company's list was not requested again: one request per company across both passes.
+        Assert.Equal(1, ListRequestsFor(ThyaoPublicOid));
+        Assert.Equal(1, ListRequestsFor(AselsPublicOid));
+        Assert.Equal(
+            "THYAO",
+            Assert.Single(second.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.DetailCap).Symbol);
+        Assert.Equal(
+            "ASELS",
+            Assert.Single(second.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.WalkNotStarted).Symbol);
+
+        // The previously-not-started company now has a real position, and the head company's is
+        // exactly where pass 1 left it — the fair order is a reorder, not a reset.
+        var thyao = Assert.IsType<KapPublicStatementCursor>(await ReadCursorAsync("THYAO"));
+        Assert.Contains(InterimIndex, thyao.Seen);
+        var aselsAfterPassTwo = Assert.IsType<KapPublicStatementCursor>(await ReadCursorAsync("ASELS"));
+        Assert.Equal(aselsAfterPassOne.Watermark, aselsAfterPassTwo.Watermark);
+        Assert.Equal(aselsAfterPassOne.Seen, aselsAfterPassTwo.Seen);
+
+        // The resumed company's facts are in the store under its own symbol.
+        Assert.True(second.Written > 0, $"the resumed company's report was written ({second.Status})");
+        await using (var db = _postgres.CreateContext())
+        {
+            var thyaoInstrumentId = await db.Instruments
+                .Where(instrument => instrument.Symbol == "THYAO")
+                .Select(instrument => instrument.Id)
+                .SingleAsync();
+            var thyaoRows = await db.FinancialStatements.CountAsync(
+                statement => statement.InstrumentId == thyaoInstrumentId
+                    && statement.SourceRef == KapPublicSourceOptions.SourceName);
+            Assert.True(thyaoRows > 0, "the resumed company's statement rows were stored under its own symbol");
+        }
     }
 
     /// <summary>
@@ -1307,6 +1403,31 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
             RecordedAt = RecordedAt,
         });
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// How many byCriteria list requests carried <paramref name="oid"/> — the observable answer to
+    /// "which company did a pass walk?" (the pass-order case, review round 2, D14).
+    /// </summary>
+    private int ListRequestsFor(string oid) =>
+        _wireMock.Server.LogEntries.Count(entry =>
+            entry.RequestMessage is { Path: ByCriteriaPath, Body: { } body }
+            && body.Contains($"\"{oid}\"", StringComparison.Ordinal));
+
+    /// <summary>The persisted public-site cursor for <paramref name="symbol"/>, or <c>null</c> when none exists.</summary>
+    private async Task<KapPublicStatementCursor?> ReadCursorAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        var instrumentId = await db.Instruments
+            .Where(instrument => instrument.Symbol == symbol)
+            .Select(instrument => (long?)instrument.Id)
+            .SingleAsync();
+        var notes = await db.CoverageMetadata
+            .Where(row => row.DataType == KapPublicStatementCursorStore.DataType
+                && row.InstrumentId == instrumentId)
+            .Select(row => row.Notes)
+            .FirstOrDefaultAsync();
+        return KapPublicStatementCursor.TryParse(notes);
     }
 
     /// <summary>Adds the bound symbols to <c>XU100</c>'s current membership (the serving path's universe).</summary>
