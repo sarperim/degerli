@@ -93,3 +93,8 @@ subtotal `Faaliyetlerden Elde Edilen Nakit Akışları`.
 - No annual golden is pinned here: the committed capture is a 6-month interim (`Periyot:2`) with no
   annual column. The FY basis stays guarded by the declared-vs-observed duration fail-safe and is
   the post-merge live criterion.
+
+## Live run — 2026-10-26/27 (orchestrator, dev stack, recorded verbatim)
+
+- **The merged decoder processed live excel-HTML end-to-end:** 62 canonical statements written from real kap.org.tr FR reports across 7 companies (periods through Q2-2026), CF statements decoded with line items landing in `fin_line_items` (13,531+ total rows in the store). The interim-report path is live-proven. **The annual-report live criterion (ASELS 2025 Yıllık, index 1561039) remains OPEN** — this night's walk fetched interim reports; the annual attestation path still needs its paced single-report run.
+- Decode-coverage observation (honest): the walk's written statements are 60 CF / 2 IS / 0 BS — the FR excel-HTML reports contain balance sheets, but no BS mapping landed from tonight's reports. IS/BS decode coverage (debt/cash lines for the DCF) is the natural next slice.

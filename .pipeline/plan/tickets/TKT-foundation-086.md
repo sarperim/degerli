@@ -80,3 +80,8 @@ scope:
 ### Scope amendment (orchestrator, 2026-10-26)
 
 `src/Ingestion/IngestionServiceCollectionExtensions.cs` added to scope post-implementation: `PricesJob` (scoped, over the scoped `DegerliDbContext`) takes `PriceDerivedShareCountStore` by constructor injection — a conventional `services.AddScoped<PriceDerivedShareCountStore>()` beside the other prices stores, no lifetime change, no captive dependency, no design change. Flagged by the implementer, recorded here per the G-2 pattern (amend, never silently exceed).
+
+## Live run — 2026-10-26/27 (orchestrator, dev stack, recorded verbatim)
+
+- **Price-derived share counts live:** after the prices run 313 (written 100/100, today's EOD), `price_derived_share_counts` holds **20 rows, every quotient integral and matching known real counts**: ASELS 4,560,000,000; THYAO 1,380,000,000; TUPRS 1,926,795,598; BIMAS 1,200,000,000; AKBNK 5,200,000,000; MGROS 181,054,233; TAVHL 363,281,250; TTRAK 100,066,875; +12 more. The remaining ~80 are honestly withheld (non-integral quotient rule). AEFES among the withheld (non-integral) — its DCF therefore still names `share_count` as missing; TUPRS/TAVHL/MGROS resolved.
+- **dcf-baselines live (runs 309/314, after the pending migrations were applied): written 630, zero failures.** AEFES baseline carries `base_fcf = 15,042,422,000` sourced from the live KAP FY2025 CF statement (canonicalFactRefs: statement, 2026-10-26). TUPRS/TAVHL now miss only `debt`/`cash` (balance-sheet lines — IS/BS decode coverage follow-up).

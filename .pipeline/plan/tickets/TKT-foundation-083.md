@@ -47,3 +47,9 @@ scope:
 - UX refs: none (job/serving lane; the presented surfaces already exist).
 - Dependencies: TKT-foundation-082; **TKT-foundation-070 merged** (formula_version — hard for the acceptance, not for starting the investigation half).
 - Parallel group: none.
+
+## Live run — 2026-10-26/27 (orchestrator, dev stack, recorded verbatim)
+
+- **Serving verified live:** `GET /stocks/AEFES/financials` serves 14 periods with kap-public current periods — AEFES FY2025 FCF 15,042,422,000 and Q2-2026 FCF 2,012,955,000; TUPRS FY2025 FCF 30,346,395,000, Q2-2026 120,508,319,000. Revenue on kap-public periods is null so far (IS decode coverage thin: 60 CF / 2 IS / 0 BS statements from the walk) — recorded honestly, not gapped.
+- **metrics-recompute (runs 305/310) and medians (311): succeeded, written 0** — the mixed world produced no new metric rows this night; investigation owed (CF-only statements and IS coverage are the likely inputs; the 070 input-aware unchanged semantics may also be in play — `unchanged: 0` for both needs explanation). market-snapshot 307/312: succeeded.
+- Live criterion: **partially met** (serving of current-period financials: met; recompute metrics/market-P/E on current data: not yet evidenced). Stays OPEN.

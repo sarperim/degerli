@@ -171,3 +171,9 @@ routed to the test-planner. What changed:
 Evidence: `dotnet build` → 0 warnings, 0 errors; targeted `KapPublicStatementsIngestTests` →
 **16/16 passed**; the D14 remedy-revert red and the round-1 remedy-revert reds recorded above and in
 the v1.29 row. Zero live requests; no file outside the ticket's declared scope changed.
+
+## Live run — 2026-10-26/27 (orchestrator, dev stack, recorded verbatim)
+
+- **First live `Source = kap-public` statements passes: runs 302/303/304 (22:09–22:56 UTC).** Run 302: constituents 30, **written 28**, unchanged 8, quarantined 128, failed 0, identity-isolated 5, overlap-retained 1, not-walked 11 (WALK_PAGE_CAP), truncated, status `partial`. Run 303: **written 34**, unchanged 6, quarantined 77. Run 304: written 0 (all mapped companies' cursors at today; 8 identity quarantines). Companies with live data after 3 passes: **AEFES, KCHOL, MGROS, SASA, TAVHL, TCELL, TUPRS — 62 statements, periods 2023-09-30..2026-06-30, all `kap-public`-tagged.**
+- **Transport-failure quarantine finding:** ~180 report-fetch failures (`DISCLOSURE_DETAIL_UNFETCHABLE`, `failed in transport`, `bodyReceived: false`) hit in bursts after ~30 successful excel exports (AKBNK 102 in pass 1); the same exports fetch fine from the host moments later (886 KB in 2.7 s). Suspected per-connection throttling or container-network MTU — **undetermined, follow-up.** Per the 046 doctrine these quarantines are terminal: the affected companies' windows are marked walked and their cursors advanced past the failed reports. **Follow-up (063 stale-cursor-reset class):** clear the lane cursors for the affected symbols and re-walk to recover their history.
+- Zero live requests from CI; all pacing via 079's client (≥3 s, single-flight).
