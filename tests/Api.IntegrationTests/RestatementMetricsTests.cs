@@ -98,7 +98,8 @@ public sealed class RestatementMetricsTests : IClassFixture<PostgresFixture>, IC
             var envelope = DataEnvelope.Figure(pe.Value, T, restated: pe.IsRested);
             Assert.True(envelope.Restated);
 
-            // Both statement versions remain stored and are queryable by the version filter.
+            // TC-MDF-032 — both statement versions remain stored and are queryable by the
+            // version filter.
             // The store's natural key now includes the provenance (01 v1.5.57 §10.9.19,
             // TKT-foundation-083), so the re-ingest is its **own** filing series beside the
             // fixture world's: the seeded as-reported FY rows are retained untouched and the

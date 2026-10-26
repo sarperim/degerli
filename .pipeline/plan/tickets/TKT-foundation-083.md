@@ -12,6 +12,11 @@ scope:
   - tests/Api.IntegrationTests/ProfileMetricServingTests.cs
   - .pipeline/testing/market-data-foundation.md
   - .pipeline/architecture/01-system-architecture.md
+  - src/Ingestion/Statements/StatementSourcePreference.cs
+  - src/Ingestion/Valuation/DcfBaselineGenerationJob.cs
+  - fixtures/Degerli.Fixtures/FixtureSeeder.cs
+  - tests/Api.IntegrationTests/SchemaConformanceTests.cs
+  - tests/Api.IntegrationTests/RestatementMetricsTests.cs
 ---
 
 # TKT-foundation-083: Coverage and downstream recompute on current data — the mixed-source world's metrics, medians, market P/E and served financials, stamped by the formula version
