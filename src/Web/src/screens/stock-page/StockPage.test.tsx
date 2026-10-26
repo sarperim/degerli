@@ -8,12 +8,14 @@ import { catalogValue } from '@/test/i18n'
 import { problemHandler } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import {
+  BALANCE_SHEET_FIXTURE,
   fill,
   GROWTH_FIXTURE,
   PREPARING_OVERVIEW,
   PUBLISHED_OVERVIEW,
   renderStockPage,
   resetStockPageTest,
+  stockBalanceSheetHandler,
   stockFinancialsHandler,
   stockOverviewHandler,
 } from '@/screens/stock-page/testSupport'
@@ -258,6 +260,43 @@ describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantic
     expect(row as HTMLElement).not.toHaveTextContent(TR('units.currencyTry'))
     expect(row as HTMLElement).not.toHaveTextContent(/ödenmiş sermaye/i)
     expect(row as HTMLElement).not.toHaveTextContent(/paid-in capital/i)
+  })
+
+  it('keeps the row an honest dash — no zero, no count unit — while no decoder emits SHARES_OUT', async () => {
+    // The shipped production state: no statements decoder maps `SHARES_OUT` (0 rows), so the
+    // served figure is null. The row must read as absent — the honest dash — and never as a
+    // `0` count or a count unit attached to nothing.
+    server.use(
+      stockBalanceSheetHandler({
+        ...BALANCE_SHEET_FIXTURE,
+        lines: {
+          ...BALANCE_SHEET_FIXTURE.lines,
+          sharesOutstanding: { value: null, restated: false },
+        },
+      }),
+    )
+    renderStockPage()
+
+    const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
+    await within(balanceSheet).findByText(TR('stockPage.balanceSheet.bookValue'))
+
+    const row = balanceSheet.querySelector(
+      '[data-line="sharesOutstanding"]',
+    ) as HTMLElement
+    expect(row).not.toBeNull()
+    expect(row).toHaveTextContent(TR('stockPage.balanceSheet.lines.sharesOutstanding'))
+
+    // The value slot holds the dash and nothing else: no figure (so no `0`), no count unit,
+    // no currency.
+    const value = row.querySelector('dd') as HTMLElement
+    const dash = value.querySelector('[data-slot="no-value"]')
+    expect(dash).not.toBeNull()
+    expect(dash!.textContent).toBe('—')
+    expect(value.textContent).toBe('—')
+    expect(value.textContent).not.toContain('0')
+    expect(value.querySelector('[data-slot="unit"]')).toBeNull()
+    expect(value).not.toHaveTextContent(TR('units.count'))
+    expect(value).not.toHaveTextContent(TR('units.currencyTry'))
   })
 
   it('carries the English count label and count unit too', async () => {
