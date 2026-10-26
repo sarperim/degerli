@@ -15,6 +15,7 @@
     "percentYoY": "% year-on-year",
     "ratio": "x",
     "currencyTry": "TRY",
+    "count": "shares",
     "usdPerOunce": "USD per ounce",
     "tryPerGram": "TRY per gram",
     "unknown": "Unit not specified"
@@ -183,7 +184,7 @@
         "currentAssets": "Current assets",
         "currentLiabilities": "Current liabilities",
         "sharesDiluted": "Diluted shares",
-        "paidInCapital": "Paid-in capital"
+        "sharesOutstanding": "Shares outstanding"
       },
       "bookValue": "Book value",
       "bookValuePerShare": "Book value per share"

@@ -6,6 +6,7 @@ using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Universe;
 using Degerli.Ingestion.Validation;
+using Degerli.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -68,6 +69,7 @@ public sealed class PricesJob : IIngestJob
 
     private readonly PricesSourceAdapter _adapter;
     private readonly DailyPriceStore _store;
+    private readonly PriceDerivedShareCountStore _derivedShareCounts;
     private readonly CoverageRecorder _coverage;
     private readonly IQuarantineService _quarantine;
     private readonly IIngestionAlerter _alerter;
@@ -83,12 +85,16 @@ public sealed class PricesJob : IIngestJob
         IQuarantineService quarantine,
         IIngestionAlerter alerter,
         UniverseSyncStore universe,
+        PriceDerivedShareCountStore derivedShareCounts,
         IOptions<PricesSourceOptions> options,
         TimeProvider clock,
         ILogger<PricesJob> logger)
     {
         _adapter = adapter;
         _store = store;
+        // The derivation rides the facts this lane already holds (TKT-foundation-086, USER
+        // DECISION D5): injected over the same scoped context, adds no source and no request.
+        _derivedShareCounts = derivedShareCounts;
         _coverage = coverage;
         _quarantine = quarantine;
         _alerter = alerter;
@@ -332,6 +338,31 @@ public sealed class PricesJob : IIngestJob
             var outcome = await _store
                 .UpsertAsync(request.Date, fetched.SourceRef, _clock.GetUtcNow(), fetched.Payload.Items, cancellationToken)
                 .ConfigureAwait(false);
+
+            // The honest share-count derivation (TKT-foundation-086, USER DECISION D5,
+            // 01 v1.5.60 §10.9.11): the same payload carries `PD` beside the close, so the
+            // count is `PD ÷ close` — integral or withheld, never rounded. No new fetch, no
+            // new source, zero additional requests.
+            var derived = await _derivedShareCounts
+                .UpsertAsync(
+                    fetched.SourceRef,
+                    request.Date,
+                    _clock.GetUtcNow(),
+                    fetched.Payload.Items,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (derived.Written > 0 || derived.Stale > 0 || derived.WithheldTotal > 0)
+            {
+                _logger.LogInformation(
+                    "prices: symbol {Symbol} derived share count for {Date} — written {Written}, unchanged {Unchanged}, stale {Stale}, withheld {Withheld} ({Reasons})",
+                    symbol,
+                    request.Date,
+                    derived.Written,
+                    derived.Unchanged,
+                    derived.Stale,
+                    derived.WithheldTotal,
+                    string.Join(", ", derived.Withheld.Select(pair => $"{pair.Key}={pair.Value}")));
+            }
 
             var symbolQuarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
                 .ConfigureAwait(false);

@@ -73,6 +73,29 @@
 
 Also `index_levels` (`index_id`, `level_date`, `close`, `source_ref`) — same grain for indices (FR-MDF-006).
 
+**`share_counts`** — *Per-instrument paid-in capital* (FR-MDF-002/008; 01 §10.9.11, TKT-foundation-058 as renamed by TKT-foundation-086 — the table was never documented before, a 058 gap closed at v1.5.60). One row per instrument; the figure the VYK `/memberSecurities` security lines carry (`currentCapital`, summed across the instrument's matching tertip lines).
+| column | type | notes |
+|---|---|---|
+| instrument_id | bigint PK, FK→instruments (`Restrict`) | one row per instrument |
+| paid_in_capital | numeric(18,4) NOT NULL | **paid-in capital in TRY** (USER DECISION D4) — 64/556 live rows carry sub-unit precision, so it is money, never a share count. The column was `shares_outstanding` before v1.5.60's forward-only rename; the values are unchanged and the name now says what the value is. |
+| recorded_at | timestamptz NOT NULL | when the value was last written (the served `paidInCapitalAsOf`); an unchanged re-run does not move it |
+| source_ref | text NOT NULL | provenance — `kap` (the VYK gateway) |
+
+**Honest absence:** an instrument with no security line (or only closed lines) has **no row** — never a zero (the 031/052 doctrine) — and a matched group whose tertip lines are not all readable is withheld, its stale row removed. **This table is never a source of shares outstanding** (D4 verbatim: *"no `sharesOutstanding` claim from that lane"*).
+
+**`price_derived_share_counts`** — *Per-instrument price-derived share count* (FR-MDF-008; 01 §10.9.11, TKT-foundation-086, USER DECISION D5). One row per instrument; the honest count the prices lane derives from the payload it already fetches: `count = PD ÷ close` (İş Yatırım's market capitalisation and close, from **one** row).
+| column | type | notes |
+|---|---|---|
+| instrument_id | bigint PK, FK→instruments (`Restrict`) | one row per instrument |
+| shares_outstanding | bigint NOT NULL | the derived count — **integer-valued by construction** (a non-integral quotient is withheld, never rounded) and never zero |
+| market_cap_raw | numeric(28,8) NOT NULL | the source's `PD` (TL) — the numerator, stored so the arithmetic is auditable from the row |
+| close_raw | numeric(28,8) NOT NULL | the close (TL) — the denominator, stored for the same reason |
+| price_date | date NOT NULL | the session date of the operand pair — the served `sharesOutstandingAsOf` |
+| recorded_at | timestamptz NOT NULL | when the row was last written; an unchanged re-run does not move it |
+| source_ref | text NOT NULL | provenance — `isyatirim` (the prices lane) |
+
+**The honesty rule:** written only when `PD` is present and positive, the close is positive, and `PD ÷ close` is integral within the store's pinned tolerance; otherwise the operand pair is **withheld and counted** under `PD_MISSING` / `CLOSE_INVALID` / `NON_INTEGRAL_QUOTIENT` and **no row** is written (never rounded, never zero). The row is input-aware (identical operands → no write, no `recorded_at` movement; changed operands repaired in place), **monotonic** (an older fact never regresses it — `stale`), and a withheld fact leaves an existing row alone. **Precedence (pinned):** a statement-reported `SHARES_DILUTED` count supersedes this derived count when a statements decoder evidences one; this store is the fallback, not the authority. **The derived count never enters `fin_line_items`** (§6.1): it is not a reported statement line, it is a derived fact with its own store and provenance (UPSTREAM-1's per-line provenance stays owed, untouched by this lane).
+
 **`financial_statements`** — *Financial statement* (FR-MDF-002, BR-MDF-011/FR-MDF-019)
 | column | type | notes |
 |---|---|---|
@@ -265,7 +288,7 @@ Serving rule: latest `published` version per instrument; none → `preparing` st
 
 ### 6.1 Canonical chart of accounts (`fin_line_items.item_code`)
 
-`REV` revenue · `COGS` cost of sales · `GROSS_PROFIT` (= REV−COGS when not reported) · `SGA` · `EBIT` operating income · `DEPR_AMORT` D&A · `EBITDA` (= EBIT + D&A when not reported) · `FIN_EXP` net interest/finance expense · `TAX_EXP` income tax expense · `PRETAX_INC` · `NI` net income · `MINORITY_INT` · **`OCF` operating cash flow (net cash from operating activities — *İşletme Faaliyetlerinden Nakit Akışları*, reported directly on every KAP cash-flow statement; v1.3, issue 4)** · `CAPEX` (capital expenditure; stored as the source reports it — KAP reports outflows as negative) · `ΔWC` change in working capital (from CF statement components; retained for reference — no longer used in canonical FCF) · `CASH` cash & equivalents · `ST_DEBT`, `LT_DEBT` · `TOTAL_EQUITY` (attributable) · `CUR_ASSETS`, `CUR_LIAB` · `SHARES_DILUTED` · `SHARES_OUT`. `OTHER_*` codes pass through source items not yet mapped (recorded, ignored by metrics — honest gap, not silent drop).
+`REV` revenue · `COGS` cost of sales · `GROSS_PROFIT` (= REV−COGS when not reported) · `SGA` · `EBIT` operating income · `DEPR_AMORT` D&A · `EBITDA` (= EBIT + D&A when not reported) · `FIN_EXP` net interest/finance expense · `TAX_EXP` income tax expense · `PRETAX_INC` · `NI` net income · `MINORITY_INT` · **`OCF` operating cash flow (net cash from operating activities — *İşletme Faaliyetlerinden Nakit Akışları*, reported directly on every KAP cash-flow statement; v1.3, issue 4)** · `CAPEX` (capital expenditure; stored as the source reports it — KAP reports outflows as negative) · `ΔWC` change in working capital (from CF statement components; retained for reference — no longer used in canonical FCF) · `CASH` cash & equivalents · `ST_DEBT`, `LT_DEBT` · `TOTAL_EQUITY` (attributable) · `CUR_ASSETS`, `CUR_LIAB` · `SHARES_DILUTED` · `SHARES_OUT`. `OTHER_*` codes pass through source items not yet mapped (recorded, ignored by metrics — honest gap, not silent drop). **The price-lane derived share count is not a canonical line item** (TKT-foundation-086, v1.5.60): `price_derived_share_counts` (§3.1) carries a *derived* fact with its own operands and provenance and is never written into `fin_line_items` — a derived figure in the statement's own table would blur reported and computed data, which is the distinction the whole store is built to keep. The DCF's `share_count` fact reads `SHARES_DILUTED` first and this store second (precedence: a reported count wins).
 
 ### 6.2 The 18 screener metrics (FR-SCR-001 / FR-MDF-013)
 

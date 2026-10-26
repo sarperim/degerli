@@ -12,7 +12,17 @@ public sealed record PricesPayload(
     [property: JsonPropertyName("date")] DateOnly Date,
     [property: JsonPropertyName("items")] IReadOnlyList<PriceFact> Items);
 
-/// <summary>One instrument's EOD row within a payload.</summary>
+/// <summary>
+/// One instrument's EOD row within a payload.
+/// <para>
+/// <see cref="MarketCap"/> is the source's <b>market capitalization</b> (<c>PD</c>, TL) when
+/// the envelope carries one — additive and <b>nullable</b> (TKT-foundation-086, USER DECISION
+/// D5). The İş Yatırım daily body carries it in the same row as the close; the canonical double
+/// and the Yahoo contingency carry none, which is an honest absence, never a zero. It is the
+/// numerator of the price-lane share-count derivation (<c>count = PD ÷ close</c>) and is stored
+/// as an operand, never served as a fact in its own right.
+/// </para>
+/// </summary>
 public sealed record PriceFact(
     [property: JsonPropertyName("symbol")] string Symbol,
     [property: JsonPropertyName("previousClose")] decimal? PreviousClose,
@@ -20,7 +30,8 @@ public sealed record PriceFact(
     [property: JsonPropertyName("high")] decimal? High,
     [property: JsonPropertyName("low")] decimal? Low,
     [property: JsonPropertyName("close")] decimal? Close,
-    [property: JsonPropertyName("volume")] long? Volume);
+    [property: JsonPropertyName("volume")] long? Volume,
+    [property: JsonPropertyName("marketCap")] decimal? MarketCap = null);
 
 /// <summary>
 /// The historical price payload served in backfill mode (TKT-mdf-007, FR-MDF-010):
@@ -72,7 +83,11 @@ public sealed record YahooQuote(
     [property: JsonPropertyName("close")] IReadOnlyList<decimal?>? Close,
     [property: JsonPropertyName("volume")] IReadOnlyList<long?>? Volume);
 
-/// <summary>One dated instrument row within a backfill history payload.</summary>
+/// <summary>
+/// One dated instrument row within a backfill history payload. <see cref="MarketCap"/> is the
+/// source's <c>PD</c> (TL) when the row carries one — additive, nullable, and honest absence
+/// otherwise (TKT-foundation-086, USER DECISION D5; see <see cref="PriceFact.MarketCap"/>).
+/// </summary>
 public sealed record DatedPriceFact(
     [property: JsonPropertyName("symbol")] string Symbol,
     [property: JsonPropertyName("date")] DateOnly Date,
@@ -80,7 +95,8 @@ public sealed record DatedPriceFact(
     [property: JsonPropertyName("high")] decimal? High,
     [property: JsonPropertyName("low")] decimal? Low,
     [property: JsonPropertyName("close")] decimal? Close,
-    [property: JsonPropertyName("volume")] long? Volume);
+    [property: JsonPropertyName("volume")] long? Volume,
+    [property: JsonPropertyName("marketCap")] decimal? MarketCap = null);
 
 /// <summary>A fact refused by the fact-storage invariants, with its reason code.</summary>
 public sealed record RejectedPriceFact(PriceFact Fact, string ReasonCode);

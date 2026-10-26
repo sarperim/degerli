@@ -184,6 +184,9 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<ISourceAdapter<PricesPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
         services.AddScoped<IBackfillSourceAdapter<PricesHistoryPayload>>(provider => provider.GetRequiredService<PricesSourceAdapter>());
         services.AddScoped<DailyPriceStore>();
+        // The price-derived share count rides the facts this lane already holds (TKT-foundation-086,
+        // USER DECISION D5): scoped over the same scoped context as the job that writes it.
+        services.AddScoped<PriceDerivedShareCountStore>();
         services.AddScoped<CoverageRecorder>();
         services.AddScoped<FundCoverageRecorder>();
 

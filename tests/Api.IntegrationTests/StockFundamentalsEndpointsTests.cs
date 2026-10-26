@@ -279,10 +279,11 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         AssertFigure(root, "bookValuePerShare", 10.0m, restated: false);
     }
 
-    // -- TC-MDF-093 — the market-data share count serves (TKT-foundation-058) ---
+    // -- TC-MDF-093 — the market-data capital figure serves (TKT-foundation-058; renamed to
+    //    paid-in capital by TKT-foundation-086's contract half) ---------------------------
 
     [Fact]
-    public async Task TC_MDF_093_balance_sheet_serves_market_share_count_and_honest_null_when_absent()
+    public async Task TC_MDF_093_balance_sheet_serves_market_paid_in_capital_and_honest_null_when_absent()
     {
         await SeedAsync();
 
@@ -296,7 +297,7 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             db.ShareCounts.Add(new ShareCount
             {
                 InstrumentId = alfa.Id,
-                SharesOutstanding = 4_560_000_000m,
+                PaidInCapital = 4_560_000_000m,
                 RecordedAt = recordedAt,
                 SourceRef = "kap",
             });
@@ -306,7 +307,8 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
         using var client = CreateClient(factory);
 
-        // (1) A stored count serves as sharesOutstanding + asOf.
+        // (1) A stored capital figure serves as paidInCapital + its own asOf — never under a
+        // count name (USER DECISION D4: no `sharesOutstanding` claim from that lane).
         using (var response = await client.GetAsync("/api/v1/stocks/ALFA/balance-sheet"))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -319,17 +321,21 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             Assert.False(root.GetProperty("stale").GetBoolean());
 
             var shareCount = root.GetProperty("shareCount");
-            Assert.Equal(4_560_000_000m, shareCount.GetProperty("sharesOutstanding").GetDecimal());
-            Assert.Equal(T.ToString("yyyy-MM-dd"), shareCount.GetProperty("asOf").GetString());
+            Assert.Equal(4_560_000_000m, shareCount.GetProperty("paidInCapital").GetDecimal());
+            Assert.Equal(T.ToString("yyyy-MM-dd"), shareCount.GetProperty("paidInCapitalAsOf").GetString());
+
+            // No derived row is seeded here: the count fact is honestly absent.
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstanding").ValueKind);
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstandingAsOf").ValueKind);
 
             // The statement-reported figures are untouched (golden stability): the market
-            // count is a distinct field, not a replacement for the BS line.
+            // figure is a distinct field, not a replacement for the BS line.
             AssertFigure(root.GetProperty("lines"), "sharesOutstanding", 100m, restated: false);
             AssertFigure(root.GetProperty("lines"), "sharesDiluted", 100m, restated: false);
             Assert.Equal(10.0m, root.GetProperty("bookValuePerShare").GetProperty("value").GetDecimal());
         }
 
-        // (2) An instrument with no stored count is honestly absent: nulls, never zeros —
+        // (2) An instrument with no stored figure is honestly absent: nulls, never zeros —
         // while the balance-sheet section itself still serves.
         using (var response = await client.GetAsync("/api/v1/stocks/LAMDA/balance-sheet"))
         {
@@ -341,8 +347,8 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             Assert.Equal(T.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
 
             var shareCount = root.GetProperty("shareCount");
-            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstanding").ValueKind);
-            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("asOf").ValueKind);
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("paidInCapital").ValueKind);
+            Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("paidInCapitalAsOf").ValueKind);
         }
     }
 

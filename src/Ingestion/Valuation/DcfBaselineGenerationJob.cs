@@ -120,6 +120,12 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var written = 0;
+        // The derived share-count read path (TKT-foundation-086, USER DECISION D5, 01 v1.5.60
+        // §10.9.11): the price lane's own count, the fallback the statement supersedes.
+        var derivedCounts = await _db.PriceDerivedShareCounts
+            .Where(row => instrumentIds.Contains(row.InstrumentId))
+            .ToDictionaryAsync(row => row.InstrumentId, cancellationToken)
+            .ConfigureAwait(false);
         foreach (var instrument in instruments)
         {
             var instrumentStatements = statements
@@ -128,7 +134,11 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
 
             var paramsJson = DcfSectorApplicability.IsFinancialSector(instrument.AccountingProfile)
                 ? SectorNotApplicableEnvelope(instrument.AccountingProfile)
-                : DeriveBaseline(instrumentStatements, linesByStatement, buildDate);
+                : DeriveBaseline(
+                    instrumentStatements,
+                    linesByStatement,
+                    buildDate,
+                    derivedCounts.GetValueOrDefault(instrument.Id));
 
             baselinesByInstrument.TryGetValue(instrument.Id, out var existing);
             var nextVersion = existing is { Count: > 0 }
@@ -163,11 +173,19 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
     /// Derives the baseline <c>params_json</c> for one instrument: the four canonical
     /// fact values (latest FY, restated version preferred) plus the builder defaults,
     /// alongside the per-fact provenance refs and the missing-fact list.
+    /// <para>
+    /// <c>share_count</c> carries the pinned precedence (TKT-foundation-086): a statement-reported
+    /// <c>SHARES_DILUTED</c> count (as-reported) <b>wins</b>; the price-lane derived count
+    /// supplies it only where the statement is silent; both absent → the fact stays in
+    /// <c>missingInputs</c> (UXR-VAL-009 — nothing is divided by a guess). The ref records which
+    /// source supplied it and its own as-of (UXR-VAL-010).
+    /// </para>
     /// </summary>
     private string DeriveBaseline(
         IReadOnlyList<FinancialStatement> statements,
         IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
-        DateOnly buildDate)
+        DateOnly buildDate,
+        PriceDerivedShareCount? derivedShareCount)
     {
         var periods = statements
             .Select(s => s.PeriodEndDate)
@@ -225,7 +243,7 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
         var refs = new Dictionary<string, object?>(StringComparer.Ordinal);
         var missing = new List<string>();
 
-        void Fact(string name, decimal? value, bool restated)
+        void Fact(string name, decimal? value, bool restated, string source = "statement", DateOnly? asOf = null)
         {
             if (value is null)
             {
@@ -236,8 +254,11 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
             parameters[name] = value.Value;
             refs[name] = new Dictionary<string, object?>
             {
-                ["asOf"] = buildDate,
+                ["asOf"] = asOf ?? buildDate,
                 ["restated"] = restated,
+                // Which lane supplied the fact (UXR-VAL-010): `statement` for a
+                // statement-reported figure, `price-derived` for the derived share count.
+                ["source"] = source,
             };
         }
 
@@ -249,7 +270,18 @@ public sealed class DcfBaselineGenerationJob : IIngestJob
         Fact("base_fcf", baseFcf, fcfRested);
         Fact("debt", debt, balanceRested);
         Fact("cash", cash, balanceRested);
-        Fact("share_count", shareCount, balanceRested);
+        // The pinned precedence: the statement-reported diluted count wins; the derived count
+        // (its own price-date as-of) supplies only when the statement is silent; both absent →
+        // `missingInputs` and no per-share divisor is ever guessed.
+        var shareCountFromStatement = shareCount is not null;
+        decimal? servedShareCount = shareCount
+            ?? (derivedShareCount is null ? null : (decimal?)derivedShareCount.SharesOutstanding);
+        Fact(
+            "share_count",
+            servedShareCount,
+            shareCountFromStatement && balanceRested,
+            source: shareCountFromStatement ? "statement" : "price-derived",
+            asOf: shareCountFromStatement ? null : derivedShareCount?.PriceDate);
 
         var ordered = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var name in ParameterOrder)

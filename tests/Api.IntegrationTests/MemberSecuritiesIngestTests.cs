@@ -85,14 +85,14 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
 
         // ASELS A (closed, 2,421,818,181.816) + B (open, 2,138,181,818.184) = the real
         // 4.56B count — the aggregation is the point, not an artefact of one tertip.
-        Assert.Equal(4_560_000_000m, rows["ASELS"].SharesOutstanding);
+        Assert.Equal(4_560_000_000m, rows["ASELS"].PaidInCapital);
         // THYAO C (closed, 0.01) + A (open, 1,379,999,999.99) = 1.38B.
-        Assert.Equal(1_380_000_000m, rows["THYAO"].SharesOutstanding);
-        Assert.Equal(1_926_795_598m, rows["TUPRS"].SharesOutstanding);
-        Assert.Equal(4_200_000_000m, rows["GARAN"].SharesOutstanding);
-        Assert.Equal(592_105_263m, rows["AEFES"].SharesOutstanding);
+        Assert.Equal(1_380_000_000m, rows["THYAO"].PaidInCapital);
+        Assert.Equal(1_926_795_598m, rows["TUPRS"].PaidInCapital);
+        Assert.Equal(4_200_000_000m, rows["GARAN"].PaidInCapital);
+        Assert.Equal(592_105_263m, rows["AEFES"].PaidInCapital);
         // ISDMR's two tertips are both trading-open: A 20 + B 2,899,999,980 = 2.9B.
-        Assert.Equal(2_900_000_000m, rows["ISDMR"].SharesOutstanding);
+        Assert.Equal(2_900_000_000m, rows["ISDMR"].PaidInCapital);
 
         foreach (var row in rows.Values)
         {
@@ -122,7 +122,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
 
         // DRVFM carries the DRVFB line's ISIN but not its trading code: the fallback resolves it.
         Assert.True(rows.ContainsKey("DRVFM"));
-        Assert.Equal(1_234_567m, rows["DRVFM"].SharesOutstanding);
+        Assert.Equal(1_234_567m, rows["DRVFM"].PaidInCapital);
 
         // OTHER carries ASELS's ISIN — but the ASELS line matches ASELS by trading code first, so
         // OTHER is never a candidate (primary wins; no second row for one line).
@@ -152,7 +152,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
         Assert.False(rows.ContainsKey("CLSDR"));
 
         Assert.Equal(7, rows.Count);
-        Assert.DoesNotContain(rows.Values, row => row.SharesOutstanding == 0m);
+        Assert.DoesNotContain(rows.Values, row => row.PaidInCapital == 0m);
     }
 
     /// <summary>
@@ -209,10 +209,10 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
         await using var db = _postgres.CreateContext();
         var rows = await RowsBySymbolAsync(db);
 
-        Assert.Equal(100m, rows["SPELL1"].SharesOutstanding);
-        Assert.Equal(200m, rows["SPELL2"].SharesOutstanding);
+        Assert.Equal(100m, rows["SPELL1"].PaidInCapital);
+        Assert.Equal(200m, rows["SPELL2"].PaidInCapital);
         Assert.False(rows.ContainsKey("SPELL0"));
-        Assert.DoesNotContain(rows.Values, row => row.SharesOutstanding == 0m);
+        Assert.DoesNotContain(rows.Values, row => row.PaidInCapital == 0m);
     }
 
     /// <summary>
@@ -254,7 +254,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
 
         await using var db = _postgres.CreateContext();
         var rows = await RowsBySymbolAsync(db);
-        Assert.Equal(4_560_000_000m, rows["ASELS"].SharesOutstanding);
+        Assert.Equal(4_560_000_000m, rows["ASELS"].PaidInCapital);
     }
 
     /// <summary>
@@ -285,7 +285,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
 
         await using (var db = _postgres.CreateContext())
         {
-            Assert.Equal(1_000_000_000m, (await RowsBySymbolAsync(db))["DRVE"].SharesOutstanding);
+            Assert.Equal(1_000_000_000m, (await RowsBySymbolAsync(db))["DRVE"].PaidInCapital);
         }
 
         // The next run withholds the group (one tertip lost its currentCapital): no row may remain.
@@ -339,7 +339,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
         Assert.False(rows.ContainsKey("NOCAP"));
         // DRVE has a readable A line but its B tertip is unreadable: the group is withheld.
         Assert.False(rows.ContainsKey("DRVE"));
-        Assert.DoesNotContain(rows.Values, row => row.SharesOutstanding == 0m);
+        Assert.DoesNotContain(rows.Values, row => row.PaidInCapital == 0m);
 
         // The skip rides the run ledger's stats, so the gap is visible operationally.
         var run = await db.IngestRuns.SingleAsync(r => r.JobCode == SharesJob.Code);
@@ -392,7 +392,7 @@ public sealed class MemberSecuritiesIngestTests : IClassFixture<PostgresFixture>
         {
             var rows = await RowsBySymbolAsync(db);
             Assert.Equal(7, rows.Count);
-            Assert.Equal(4_560_000_001m, rows["ASELS"].SharesOutstanding);
+            Assert.Equal(4_560_000_001m, rows["ASELS"].PaidInCapital);
             Assert.Equal(later, rows["ASELS"].RecordedAt);
             // The untouched rows keep their original instant.
             Assert.Equal(RecordedAt, rows["GARAN"].RecordedAt);

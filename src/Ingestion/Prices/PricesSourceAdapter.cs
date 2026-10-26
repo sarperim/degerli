@@ -421,7 +421,7 @@ public sealed class PricesSourceAdapter : ISourceAdapter<PricesPayload>, IBackfi
     }
 
     private static PriceFact ToPriceFact(DatedPriceFact row) =>
-        new(row.Symbol, null, row.Open, row.High, row.Low, row.Close, row.Volume);
+        new(row.Symbol, null, row.Open, row.High, row.Low, row.Close, row.Volume, row.MarketCap);
 
     private static decimal? At(IReadOnlyList<decimal?>? values, int index) =>
         values is not null && index >= 0 && index < values.Count ? values[index] : null;
