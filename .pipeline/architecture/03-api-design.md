@@ -46,6 +46,29 @@
 
 Stock-page sections are separate endpoints by design (M-5): sections render, load, fail, and retry independently (SCR-005 §5); one mega-endpoint would couple their failure domains.
 
+### The `shareCount` block on `GET /api/v1/stocks/{symbol}/balance-sheet` (TKT-foundation-086, v1.5.60)
+
+The balance-sheet payload's `shareCount` object serves **two distinct market-data facts, each with its own unit, name and as-of** — authored here because the block was never documented (a 058 doc gap). It sits beside the statement's own `lines.*` figures and never replaces them.
+
+```json
+"shareCount": {
+  "paidInCapital": 4560000000.0,
+  "paidInCapitalAsOf": "2026-10-06",
+  "sharesOutstanding": 4560000000,
+  "sharesOutstandingAsOf": "2026-10-06"
+}
+```
+
+| field | type | meaning |
+|---|---|---|
+| `paidInCapital` | number \| null | **paid-in capital in TRY** (USER DECISION D4) — the `share_counts` store's figure, summed from the VYK `/memberSecurities` security lines' `currentCapital`. **Never a share count** (64/556 live rows carry sub-unit precision). Renamed from the misleading `sharesOutstanding` in v1.5.60. |
+| `paidInCapitalAsOf` | `yyyy-MM-dd` \| null | the store row's `recorded_at` date |
+| `sharesOutstanding` | integer \| null | the **price-lane derived count** (`PD ÷ close`, USER DECISION D5) — integer-valued by construction, from `price_derived_share_counts`; `null` when the lane has no consistent operand pair for the instrument |
+| `sharesOutstandingAsOf` | `yyyy-MM-dd` \| null | the derived row's `price_date` (the session the operand pair belongs to) |
+
+**Honesty rules.** Each field is `null` — never `0` — when its store has no row for the instrument (the honest-data envelope is unchanged; the block is additive inside it). The old single `asOf` is **removed**: it could not say which of the two facts it dated. Neither figure is ever a substitute for the statement-reported `lines.sharesDiluted` / `lines.sharesOutstanding` / `bookValuePerShare`, which keep their own values and `restated` flags byte-identical. **The web row `lines.sharesOutstanding` keeps count semantics** (a share-count label and a count unit) and is an honest dash until a statements decoder emits `SHARES_OUT`; `lines.sharesDiluted` is untouched. **Downstream:** the DCF baseline job consumes the derived count as its `share_count` fact only when the statement is silent (a reported `SHARES_DILUTED` wins) and records `canonicalFactRefs.share_count.source` (`"statement"` | `"price-derived"`) plus that source's own `asOf`; per-share metrics and market-P/E remain excluded (BR-MOV-010).
+
+
 ## 4. Screener
 
 ### `POST /api/v1/screener/run` — UC-SCR-001 (ad-hoc), UC-SCR-003 (re-run)

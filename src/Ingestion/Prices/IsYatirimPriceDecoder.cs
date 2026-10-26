@@ -17,6 +17,12 @@ namespace Degerli.Ingestion.Prices;
 ///   <item><c>HGDG_HACIM</c> (fallback <c>HG_HACIM</c>) → volume, a scientific-notation-capable
 ///         JSON number stored as <c>bigint</c> rounded half-away-from-zero. The stored semantic
 ///         is <b>TRY turnover (₺)</b> (FLG-09);</item>
+///   <item><c>PD</c> → <b>market capitalization</b> (TL), additive and nullable (TKT-foundation-086,
+///         USER DECISION D5). It arrives in the same row as the close and is the numerator of the
+///         price-lane share-count derivation (<c>count = PD ÷ close</c>); an envelope without it
+///         (the <c>HG_*</c> fallback shape, the canonical double, Yahoo) carries none — an honest
+///         absence, never a zero, and never defaulted from <c>SERMAYE</c> (a nominal-capital
+///         figure is not a market cap);</item>
 ///   <item><c>open</c> → <b>NULL</b> — an honest gap: the source provides only AOF-weighted
 ///         fields and open is never invented from <c>HGDG_AOF</c>.</item>
 /// </list>
@@ -105,7 +111,9 @@ public static class IsYatirimPriceDecoder
                 High: ReadDecimal(item, "HGDG_MAX", "HG_MAX"),
                 Low: ReadDecimal(item, "HGDG_MIN", "HG_MIN"),
                 Close: ReadDecimal(item, "HGDG_KAPANIS", "HG_KAPANIS"),
-                Volume: ReadVolume(item, "HGDG_HACIM", "HG_HACIM")));
+                Volume: ReadVolume(item, "HGDG_HACIM", "HG_HACIM"),
+                // The market cap (TL) — read verbatim, never derived, never defaulted.
+                MarketCap: ReadDecimal(item, "PD")));
         }
 
         return rows;

@@ -5,7 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Degerli.Ingestion.Shares;
 
 /// <summary>
-/// What one <c>shares</c> store pass did (TKT-foundation-058, 01 v1.5.36 §10.9.11).
+/// What one <c>shares</c> store pass did (TKT-foundation-058 as renamed by
+/// TKT-foundation-086, 01 v1.5.60 §10.9.11).
 /// <see cref="Inserted"/> + <see cref="Updated"/> + <see cref="Removed"/> are the run's
 /// <c>written</c> facts (a withdrawn stale row is a write); <see cref="SkippedLines"/> counts the
 /// unreadable security lines of <b>our</b> instruments (a matched group withheld because one of
@@ -19,35 +20,35 @@ public sealed record ShareCountWriteResult(int Inserted, int Updated, int Unchan
 }
 
 /// <summary>
-/// The per-instrument share-count store (FR-MDF-002's lane, 01 v1.5.36 §10.9.11): matches each
-/// member's security lines to our instruments and writes one <c>share_counts</c> row per matched
-/// instrument.
+/// The per-instrument <b>paid-in capital</b> store (FR-MDF-002's lane, TKT-foundation-058 as
+/// renamed by TKT-foundation-086, 01 v1.5.60 §10.9.11): matches each member's security lines to
+/// our instruments and writes one <c>share_counts</c> row per matched instrument.
 /// <para>
 /// <b>Matching:</b> a line resolves to an instrument by its <c>borsaKodu</c> (<b>primary</b>,
 /// case-insensitive) and, when no instrument carries that code, by its <c>isin</c>
 /// (<b>fallback</b>). A member's lines are grouped per resolved instrument and the group is
 /// matched only when <b>at least one of its lines is trading-open</b> (<c>borsadaIslemeAcik</c>)
-/// — a delisted/closed line never seeds a count on its own.
+/// — a delisted/closed line never seeds a figure on its own.
 /// </para>
 /// <para>
-/// <b>Tertip aggregation (evidenced hypothesis, unit unresolved):</b> a matched instrument's count
-/// is the sum of its lines' <c>currentCapital</c> — ASELS's A+B lines sum to the real 4.56B count
-/// (live 2026-10-22), which is what the shared line carries across tertips. Whether
-/// <c>currentCapital</c> is a <b>share count</b> or <b>paid-in TL</b> remains <b>unresolved</b>
-/// pending the ticket's post-merge live cross-validation (the committed double carries
-/// <c>capital == currentCapital</c> on every line, so a matching value cannot discriminate the
-/// unit); values are treated as counts only after that table passes, and a refuted rule is
-/// recorded on the ticket, never shipped as a fabricated number.
+/// <b>Tertip aggregation, unit resolved to money (USER DECISION D4, 2026-10-26):</b> a matched
+/// instrument's figure is the sum of its lines' <c>currentCapital</c> — ASELS's A+B lines sum to
+/// the real 4.56B paid-in capital (live 2026-10-22). The 065/058 cross-validation closed what the
+/// old doc left open: the value is <b>paid-in capital in Turkish lira</b>, not a share count (64
+/// of 556 live rows carry sub-unit precision, which no count can), which is why the column, the
+/// entity property and the served field are named <c>paidInCapital</c> now. This store is never a
+/// source of shares outstanding — the honest count comes from the price-lane derivation
+/// (<see cref="PriceDerivedShareCount"/>) or, when evidenced, from a statement-reported count.
 /// </para>
 /// <para>
 /// <b>Honest absence:</b> an instrument with no line produces no row (never a zero). A matched
 /// group whose lines are not all readable is <b>withheld</b> (its total is unknown — a partial sum
-/// would be a fabricated count) and its unreadable lines are counted as skipped; a previously
-/// stored row for a withheld group is <b>removed</b>, so a stale count is never left being served.
+/// would be a fabricated figure) and its unreadable lines are counted as skipped; a previously
+/// stored row for a withheld group is <b>removed</b>, so a stale figure is never left being served.
 /// An instrument simply <b>absent</b> from a snapshot is left alone (last known wins — the
 /// 042/050 "a stored row the current run no longer computes is left alone" doctrine): only a
-/// matched-but-unreadable group is withdrawn. A re-run is input-aware: an unchanged count writes
-/// nothing, a changed count repairs the row in place.
+/// matched-but-unreadable group is withdrawn. A re-run is input-aware: an unchanged figure writes
+/// nothing, a changed figure repairs the row in place.
 /// </para>
 /// </summary>
 public sealed class ShareCountStore
@@ -81,7 +82,7 @@ public sealed class ShareCountStore
             }
         }
 
-        var counts = new SortedDictionary<long, decimal>();
+        var capitals = new SortedDictionary<long, decimal>();
         var withheld = new HashSet<long>();
         var skipped = 0;
         foreach (var member in payload.Members)
@@ -116,25 +117,25 @@ public sealed class ShareCountStore
 
                 if (lines.Any(line => line.CurrentCapital is null))
                 {
-                    // A partial tertip sum is not the instrument's count. The group is withheld
+                    // A partial tertip sum is not the instrument's paid-in capital. The group is withheld
                     // (honest absence) and its unreadable lines are counted as skipped — a line
                     // the source carries for a member we do not cover is out of scope, not a
                     // skip. A withheld group wins over a complete group for the same instrument
                     // — an unknown total is never replaced by a partial one.
                     withheld.Add(instrumentId);
-                    counts.Remove(instrumentId);
+                    capitals.Remove(instrumentId);
                     skipped += lines.Count(line => line.CurrentCapital is null);
                     continue;
                 }
 
                 if (!withheld.Contains(instrumentId))
                 {
-                    counts[instrumentId] = lines.Sum(line => line.CurrentCapital!.Value);
+                    capitals[instrumentId] = lines.Sum(line => line.CurrentCapital!.Value);
                 }
             }
         }
 
-        var instrumentIds = counts.Keys.Concat(withheld).ToList();
+        var instrumentIds = capitals.Keys.Concat(withheld).ToList();
         var existing = await _db.ShareCounts
             .Where(row => instrumentIds.Contains(row.InstrumentId))
             .ToDictionaryAsync(row => row.InstrumentId, cancellationToken)
@@ -156,14 +157,14 @@ public sealed class ShareCountStore
         var inserted = 0;
         var updated = 0;
         var unchanged = 0;
-        foreach (var (instrumentId, shares) in counts)
+        foreach (var (instrumentId, paidInCapital) in capitals)
         {
             if (!existing.TryGetValue(instrumentId, out var row))
             {
                 _db.ShareCounts.Add(new ShareCount
                 {
                     InstrumentId = instrumentId,
-                    SharesOutstanding = shares,
+                    PaidInCapital = paidInCapital,
                     RecordedAt = recordedAt,
                     SourceRef = sourceRef,
                 });
@@ -171,15 +172,15 @@ public sealed class ShareCountStore
                 continue;
             }
 
-            if (row.SharesOutstanding == shares)
+            if (row.PaidInCapital == paidInCapital)
             {
-                // Input-aware: the stored count already matches the source — no write, and
+                // Input-aware: the stored figure already matches the source — no write, and
                 // `recorded_at` (the served asOf) must not move.
                 unchanged++;
                 continue;
             }
 
-            row.SharesOutstanding = shares;
+            row.PaidInCapital = paidInCapital;
             row.RecordedAt = recordedAt;
             row.SourceRef = sourceRef;
             updated++;

@@ -15,6 +15,7 @@
     "percentYoY": "% (yıllık)",
     "ratio": "x",
     "currencyTry": "₺",
+    "count": "adet",
     "usdPerOunce": "USD/ons",
     "tryPerGram": "₺/g",
     "unknown": "Birim belirtilmemiş"
@@ -183,7 +184,7 @@
         "currentAssets": "Dönen varlıklar",
         "currentLiabilities": "Kısa vadeli yükümlülükler",
         "sharesDiluted": "Seyreltilmiş pay sayısı",
-        "paidInCapital": "Ödenmiş sermaye"
+        "sharesOutstanding": "Pay sayısı"
       },
       "bookValue": "Defter değeri",
       "bookValuePerShare": "Hisse başına defter değeri"

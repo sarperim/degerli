@@ -305,19 +305,30 @@ public static class StockFundamentalsEndpoints
         var shares = Line(sheet, SharesDiluted, lines);
         var bvps = equity is not null && shares is > 0m ? equity.Value / shares.Value : (decimal?)null;
 
-        // The market-data share count (TKT-foundation-058, 01 v1.5.36 §10.9.11): served from the
-        // per-instrument share_counts store, distinct from the statement-reported
-        // `lines.sharesDiluted`/`lines.sharesOutstanding` figures above. Honest absence: an
-        // instrument with no stored count serves nulls (a dash), never a zero.
-        var storedShareCount = await db.ShareCounts
+        // The market-data facts (TKT-foundation-086, 01 v1.5.60 §10.9.11), two distinct stores
+        // and two distinct units:
+        //  • paidInCapital — the `share_counts` store's figure, <b>TRY</b> (USER DECISION D4:
+        //    the `/memberSecurities` capital is money, never a share count), own as-of.
+        //  • sharesOutstanding — the price-lane derived count (`PD ÷ close`, USER DECISION D5),
+        //    own as-of (the price date), honest absence otherwise.
+        // Neither is a replacement for the statement-reported `lines.sharesDiluted`/
+        // `lines.sharesOutstanding` figures above; an absent fact serves null, never zero.
+        var storedCapital = await db.ShareCounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(row => row.InstrumentId == instrument.Id, cancellationToken);
+        var derivedCount = await db.PriceDerivedShareCounts
             .AsNoTracking()
             .FirstOrDefaultAsync(row => row.InstrumentId == instrument.Id, cancellationToken);
         var shareCount = new
         {
-            sharesOutstanding = storedShareCount?.SharesOutstanding,
-            asOf = storedShareCount is null
+            paidInCapital = storedCapital?.PaidInCapital,
+            paidInCapitalAsOf = storedCapital is null
                 ? null
-                : DateOnly.FromDateTime(storedShareCount.RecordedAt.UtcDateTime).ToString("yyyy-MM-dd"),
+                : DateOnly.FromDateTime(storedCapital.RecordedAt.UtcDateTime).ToString("yyyy-MM-dd"),
+            sharesOutstanding = derivedCount?.SharesOutstanding,
+            sharesOutstandingAsOf = derivedCount is null
+                ? null
+                : derivedCount.PriceDate.ToString("yyyy-MM-dd"),
         };
 
         var bsLines = new Dictionary<string, object?>(StringComparer.Ordinal)

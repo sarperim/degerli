@@ -232,17 +232,16 @@ describe('TC-RES-027 — active-section preservation', () => {
 })
 
 /**
- * TKT-foundation-072 (iii) — the balance-sheet capital figure is paid-in capital in
- * TRY, never a share count.
+ * TC-MDF-115 (v) — the balance-sheet `SHARES_OUT` row is a share COUNT again.
  *
- * TKT-foundation-065 / USER DECISION D4 (Option A): the served `shareCount` value is
- * the sum of `/memberSecurities` `currentCapital` — money (64/556 rows carry sub-unit
- * precision), not a proven count of shares. The display side therefore carries the
- * paid-in-capital label and the TRY unit; a bare number that reads as a share count
- * would be a false claim about the data (FR-RES-017).
+ * TKT-foundation-086 reverts the 072 (iii) mislabel (TKT-foundation-065's consequence 2):
+ * the row carries the statement's `SHARES_OUT` line — a count of shares — while the
+ * paid-in-capital figure lives in the `shareCount.paidInCapital` block, never here. The
+ * label and the unit therefore say a count, never TRY; the row is an honest dash until a
+ * statements decoder actually emits `SHARES_OUT` (none does today).
  */
-describe('TKT-foundation-072 (iii) — balance-sheet paid-in capital carries its TRY unit', () => {
-  it('labels the served figure as paid-in capital with a TRY unit, never as a share count', async () => {
+describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantics', () => {
+  it('labels the row as a share count with a count unit, never as paid-in capital', async () => {
     renderStockPage()
 
     const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
@@ -251,17 +250,17 @@ describe('TKT-foundation-072 (iii) — balance-sheet paid-in capital carries its
     const row = balanceSheet.querySelector('[data-line="sharesOutstanding"]')
     expect(row).not.toBeNull()
     expect(row as HTMLElement).toHaveTextContent(
-      TR('stockPage.balanceSheet.lines.paidInCapital'),
+      TR('stockPage.balanceSheet.lines.sharesOutstanding'),
     )
-    expect(row as HTMLElement).toHaveTextContent(TR('units.currencyTry'))
+    expect(row as HTMLElement).toHaveTextContent(TR('units.count'))
 
-    // The old count reading must be gone from this row.
-    expect(row as HTMLElement).not.toHaveTextContent(/pay sayısı/i)
-    expect(row as HTMLElement).not.toHaveTextContent(/adet/i)
-    expect(row as HTMLElement).not.toHaveTextContent(/shares/i)
+    // The reverted money reading must be gone from this row.
+    expect(row as HTMLElement).not.toHaveTextContent(TR('units.currencyTry'))
+    expect(row as HTMLElement).not.toHaveTextContent(/ödenmiş sermaye/i)
+    expect(row as HTMLElement).not.toHaveTextContent(/paid-in capital/i)
   })
 
-  it('carries the English paid-in-capital label and TRY unit too', async () => {
+  it('carries the English count label and count unit too', async () => {
     const EN = (key: string) => catalogValue('en', key)
     renderStockPage(['/stocks/ALFA'], { language: 'en' })
 
@@ -273,8 +272,9 @@ describe('TKT-foundation-072 (iii) — balance-sheet paid-in capital carries its
     const row = balanceSheet.querySelector(
       '[data-line="sharesOutstanding"]',
     ) as HTMLElement
-    expect(row).toHaveTextContent(EN('stockPage.balanceSheet.lines.paidInCapital'))
-    expect(row).toHaveTextContent(EN('units.currencyTry'))
-    expect(row).not.toHaveTextContent(/shares/i)
+    expect(row).toHaveTextContent(EN('stockPage.balanceSheet.lines.sharesOutstanding'))
+    expect(row).toHaveTextContent(EN('units.count'))
+    expect(row).not.toHaveTextContent(EN('units.currencyTry'))
+    expect(row).not.toHaveTextContent(/paid-in capital/i)
   })
 })

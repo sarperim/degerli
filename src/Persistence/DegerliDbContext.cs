@@ -28,6 +28,7 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
     public DbSet<FinLineItem> FinLineItems => Set<FinLineItem>();
     public DbSet<Dividend> Dividends => Set<Dividend>();
     public DbSet<ShareCount> ShareCounts => Set<ShareCount>();
+    public DbSet<PriceDerivedShareCount> PriceDerivedShareCounts => Set<PriceDerivedShareCount>();
     public DbSet<CorporateAction> CorporateActions => Set<CorporateAction>();
     public DbSet<KapPublicCompanyMap> KapPublicCompanyMaps => Set<KapPublicCompanyMap>();
     public DbSet<KapDisclosure> KapDisclosures => Set<KapDisclosure>();
@@ -217,10 +218,32 @@ public class DegerliDbContext : IdentityDbContext<ApplicationUser, ApplicationRo
 
         builder.Entity<ShareCount>(b =>
         {
-            // 01 v1.5.36 §10.9.11 — the per-instrument share-count store: one row per
-            // instrument (PK), honest absence (no row) for an instrument with no security line.
+            // 01 v1.5.60 §10.9.11 — the per-instrument PAID-IN CAPITAL store (renamed by
+            // TKT-foundation-086 from the lying `shares_outstanding`): one row per instrument
+            // (PK), honest absence (no row) for an instrument with no security line. The column
+            // is `paid_in_capital` — the unit is money (USER DECISION D4), and the name says so.
             b.ToTable("share_counts");
             b.HasKey(x => x.InstrumentId);
+            b.Property(x => x.PaidInCapital)
+                .HasColumnName("paid_in_capital")
+                .HasPrecision(18, 4);
+            b.Property(x => x.SourceRef).IsRequired();
+            b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PriceDerivedShareCount>(b =>
+        {
+            // 01 v1.5.60 §10.9.11 / 02 §3.1 — the price-lane share-count derivation
+            // (TKT-foundation-086, USER DECISION D5). Both operands are stored so the
+            // arithmetic is auditable from the row; the count is integer-valued by
+            // construction (a non-integral quotient is withheld, never stored); the price
+            // date is the fact's as-of. Honest absence (no row) for an instrument the lane has
+            // not produced a consistent operand pair for.
+            b.ToTable("price_derived_share_counts");
+            b.HasKey(x => x.InstrumentId);
+            b.Property(x => x.InstrumentId).ValueGeneratedNever();
+            b.Property(x => x.MarketCapRaw).HasPrecision(28, 8);
+            b.Property(x => x.CloseRaw).HasPrecision(28, 8);
             b.Property(x => x.SourceRef).IsRequired();
             b.HasOne<Instrument>().WithMany().HasForeignKey(x => x.InstrumentId).OnDelete(DeleteBehavior.Restrict);
         });

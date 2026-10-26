@@ -21,7 +21,6 @@ import {
   formatNumber,
   formatPercent,
 } from '@/lib/format'
-import { PAID_IN_CAPITAL_UNIT_CODE, unitLabel } from '@/lib/units'
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import {
@@ -492,14 +491,16 @@ const BALANCE_SHEET_LINE_KEYS: Record<
   currentAssets: 'stockPage.balanceSheet.lines.currentAssets',
   currentLiabilities: 'stockPage.balanceSheet.lines.currentLiabilities',
   sharesDiluted: 'stockPage.balanceSheet.lines.sharesDiluted',
-  // TKT-foundation-065 / USER DECISION D4 (Option A): the figure served under this
-  // line is paid-in capital in TRY (`currentCapital`), not a proven count of shares
-  // — 64/556 instruments carry sub-unit precision. The label and the unit say money.
-  sharesOutstanding: 'stockPage.balanceSheet.lines.paidInCapital',
+  // TKT-foundation-086 (reverting the 072 mislabel, 065 consequence 2): this line is
+  // the statement's `SHARES_OUT` row — a COUNT of shares, not money. The paid-in-capital
+  // figure lives in the `shareCount.paidInCapital` block and never on this row; the unit
+  // says a count. No statements decoder emits `SHARES_OUT` today, so the row stays an
+  // honest dash until one does.
+  sharesOutstanding: 'stockPage.balanceSheet.lines.sharesOutstanding',
 }
 
-/** The balance-sheet line whose served figure is money, not a share count (065/D4). */
-const PAID_IN_CAPITAL_LINE: (typeof BALANCE_SHEET_LINES)[number] = 'sharesOutstanding'
+/** The balance-sheet line carrying a share count — the unit is a count, never TRY. */
+const SHARES_OUTSTANDING_LINE: (typeof BALANCE_SHEET_LINES)[number] = 'sharesOutstanding'
 
 /** SCR-005 §6 — Balance Sheet (FR-RES-011/027). */
 export function BalanceSheetSection({ symbol }: { symbol: string }) {
@@ -553,11 +554,7 @@ export function BalanceSheetSection({ symbol }: { symbol: string }) {
                         sectionData.lines[code] ?? { value: null, restated: false }
                       }
                       locale={locale}
-                      unit={
-                        code === PAID_IN_CAPITAL_LINE
-                          ? unitLabel(PAID_IN_CAPITAL_UNIT_CODE, t)
-                          : undefined
-                      }
+                      unit={code === SHARES_OUTSTANDING_LINE ? t('units.count') : undefined}
                     />
                   </dd>
                 </div>
