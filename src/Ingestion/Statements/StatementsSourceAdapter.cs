@@ -12,6 +12,80 @@ public sealed class StatementsSourceOptions
     public const string SectionName = "Ingestion:Statements";
 
     /// <summary>
+    /// The VYK gateway source selector value (01 v1.5 §10.9.11) — the shipped default.
+    /// </summary>
+    public const string VykSource = "vyk";
+
+    /// <summary>
+    /// The KAP <b>public-site</b> source selector value (01 v1.5.56 §10.9.19, TKT-foundation-082).
+    /// </summary>
+    public const string KapPublicSource = "kap-public";
+
+    /// <summary>
+    /// Which source the statements lane reads (01 v1.5.56 §10.9.19, TKT-foundation-082): the VYK
+    /// gateway (<see cref="VykSource"/>, the shipped default) or the KAP public site
+    /// (<see cref="KapPublicSource"/>).
+    /// <para>
+    /// <b>Selecting a source is configuration, never a rewrite.</b> The VYK wiring stays intact and
+    /// the public lane is opt-in: switching back is a config change, and an unrecognised value
+    /// fails the run by name (<see cref="TryParseSource"/>) instead of silently running the other
+    /// source under the wrong provenance.
+    /// </para>
+    /// </summary>
+    public string Source { get; set; } = VykSource;
+
+    /// <summary>
+    /// The public-site lane's <b>bootstrap lookback</b> in months (01 v1.5.56 §10.9.19,
+    /// TKT-foundation-082): how far back a company with <b>no persisted cursor</b> asks for
+    /// reports. It is a <b>request</b>, recorded as such — the depth a pass actually achieved is
+    /// recorded beside it (<c>kap-public-statements-depth</c>), so an unwalked range never reads
+    /// as "no statements exist" (FR-MDF-010).
+    /// </summary>
+    public int KapPublicLookbackMonths { get; set; } = 24;
+
+    /// <summary>
+    /// How many days one public-site byCriteria list request covers (01 v1.5.56 §10.9.19). The
+    /// public list is <b>date-windowed</b>, not index-paged, so the window is the unit of bounded
+    /// listing: a narrower window is a smaller answer, at the cost of more list requests (each
+    /// paced and counted against the pass's page ceiling).
+    /// </summary>
+    public int KapPublicWindowDays { get; set; } = 365;
+
+    /// <summary>
+    /// Normalizes <paramref name="source"/> to a known selector. Unset/blank binds the shipped
+    /// default; an unrecognised value is <b>not</b> mapped onto either source (a typo must fail
+    /// loudly instead of reading the wrong source under the right-looking provenance).
+    /// </summary>
+    public static bool TryParseSource(string? source, out string selected)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            selected = VykSource;
+            return true;
+        }
+
+        var trimmed = source.Trim();
+        if (string.Equals(trimmed, VykSource, StringComparison.OrdinalIgnoreCase))
+        {
+            selected = VykSource;
+            return true;
+        }
+
+        if (string.Equals(trimmed, KapPublicSource, StringComparison.OrdinalIgnoreCase))
+        {
+            selected = KapPublicSource;
+            return true;
+        }
+
+        selected = trimmed;
+        return false;
+    }
+
+    /// <summary>True when the configured <see cref="Source"/> selects the public-site lane.</summary>
+    public bool KapPublicSelected => TryParseSource(Source, out var selected)
+        && string.Equals(selected, KapPublicSource, StringComparison.Ordinal);
+
+    /// <summary>
     /// Route template of the per-company KAP financial-statement resource. A
     /// <c>{symbol}</c> token is substituted in place by the company-scoped
     /// <see cref="StatementsSourceAdapter.FetchCompanyAsync"/>; a template without the token

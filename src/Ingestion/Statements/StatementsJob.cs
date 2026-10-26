@@ -1,10 +1,12 @@
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Kap;
+using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Quarantine;
 using Degerli.Ingestion.Sources;
 using Degerli.Ingestion.Universe;
 using Degerli.Ingestion.Validation;
+using Degerli.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -44,12 +46,39 @@ public sealed class StatementsJob : IIngestJob
     /// </summary>
     public const string CompanyIdentityUnresolved = "COMPANY_IDENTITY_UNRESOLVED";
 
+    /// <summary>
+    /// Reason code for a public-site fact withheld because the <b>other</b> source already covers
+    /// the same period (01 v1.5.56 §10.9.19, TKT-foundation-082; TC-MDF-110 as amended).
+    /// <para>
+    /// The incumbent row is retained exactly as it is — not overwritten, not deleted, not
+    /// relabelled as a restatement — and the public-site fact is <b>not written</b>. The overlap is
+    /// not swallowed as an idempotent <c>unchanged</c> (the store's natural key excludes the source,
+    /// so a cross-source fact would otherwise collapse silently): it is a <b>named, counted
+    /// finding</b>, quarantined with the evidence that names both sources, and re-ingestable once
+    /// the source joins the natural key (TC-MDF-111, TKT-foundation-083).
+    /// </para>
+    /// </summary>
+    public const string SourceOverlapRetained = "SOURCE_OVERLAP_RETAINED";
+
+    /// <summary>
+    /// Reason code for an <c>Ingestion:Statements:Source</c> value the lane does not recognise.
+    /// A typo must <b>fail</b> the run by name: silently running the other source would stamp the
+    /// wrong provenance on every fact it wrote and look healthy in the ledger.
+    /// </summary>
+    public const string InvalidSourceSelection = "INVALID_SOURCE_SELECTION";
+
     private readonly StatementsSourceAdapter _adapter;
     private readonly FinancialStatementStore _store;
     private readonly IQuarantineWriter _quarantine;
     private readonly IIngestionAlerter _alerter;
     private readonly UniverseSyncStore _universe;
     private readonly KapDisclosureCursorStore _cursorStore;
+    private readonly KapPublicSourceReader _kapPublicReader;
+    private readonly KapPublicCompanyMapStore _kapPublicMaps;
+    private readonly KapPublicStatementTargets _kapPublicTargets;
+    private readonly KapPublicStatementCursorStore _kapPublicCursors;
+    private readonly KapPublicStatementDepthStore _kapPublicDepths;
+    private readonly KapPublicSourceOptions _kapPublicOptions;
     private readonly StatementsSourceOptions _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<StatementsJob> _logger;
@@ -61,6 +90,10 @@ public sealed class StatementsJob : IIngestJob
         IIngestionAlerter alerter,
         UniverseSyncStore universe,
         KapDisclosureCursorStore cursorStore,
+        KapPublicSourceReader kapPublicReader,
+        KapPublicCompanyMapStore kapPublicMaps,
+        DegerliDbContext db,
+        IOptions<KapPublicSourceOptions> kapPublicOptions,
         IOptions<StatementsSourceOptions> options,
         TimeProvider clock,
         ILogger<StatementsJob> logger)
@@ -71,9 +104,20 @@ public sealed class StatementsJob : IIngestJob
         _alerter = alerter;
         _universe = universe;
         _cursorStore = cursorStore;
+        _kapPublicReader = kapPublicReader;
+        _kapPublicMaps = kapPublicMaps;
+        _kapPublicOptions = kapPublicOptions.Value;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
+
+        // The public lane's own stores (01 v1.5.56 §10.9.19): its cursor and its achieved-depth
+        // provenance, both in `coverage_metadata` under data types that are neither the VYK
+        // cursor's nor any CoverageRecorder-owned type. They are constructed from the run's
+        // context because they are this lane's private write shape, not a shared seam.
+        _kapPublicTargets = new KapPublicStatementTargets(db);
+        _kapPublicCursors = new KapPublicStatementCursorStore(db);
+        _kapPublicDepths = new KapPublicStatementDepthStore(db);
     }
 
     /// <inheritdoc />
@@ -84,6 +128,25 @@ public sealed class StatementsJob : IIngestJob
         IngestionRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Which source this lane reads is configuration (01 v1.5.56 §10.9.19). An unrecognised
+        // value fails the run <b>by name</b> and fetches nothing: a typo silently falling back to
+        // the other source would stamp the wrong provenance on every fact and look healthy.
+        if (!StatementsSourceOptions.TryParseSource(_options.Source, out var selectedSource))
+        {
+            _logger.LogError(
+                "statements: unrecognised source selection '{Source}' in {Section}:{Key}; expected '{Vyk}' or '{KapPublic}'. Nothing was fetched ({ReasonCode})",
+                _options.Source,
+                StatementsSourceOptions.SectionName,
+                nameof(StatementsSourceOptions.Source),
+                StatementsSourceOptions.VykSource,
+                StatementsSourceOptions.KapPublicSource,
+                InvalidSourceSelection);
+            return new IngestResult(Code, 0, 0, 0, IngestResult.Failed)
+            {
+                FailureReason = $"{InvalidSourceSelection}: Ingestion:Statements:Source '{_options.Source}' is neither '{StatementsSourceOptions.VykSource}' nor '{StatementsSourceOptions.KapPublicSource}'",
+            };
+        }
+
         // The fetch bound: the current constituents of the configured index (01 v1.5 §10.9.2).
         // A bound naming an unpublished index resolves to an empty set (degrade, never throw —
         // the instruments the bound needs may not exist yet).
@@ -95,6 +158,11 @@ public sealed class StatementsJob : IIngestJob
                 _options.UniverseIndex,
                 request.Date);
             return EmptyBoundResult();
+        }
+
+        if (string.Equals(selectedSource, StatementsSourceOptions.KapPublicSource, StringComparison.Ordinal))
+        {
+            return await RunKapPublicAsync(request, constituents, cancellationToken).ConfigureAwait(false);
         }
 
         var written = 0;
@@ -270,6 +338,317 @@ public sealed class StatementsJob : IIngestJob
     }
 
     /// <summary>
+    /// The public-site run (01 v1.5.56 §10.9.19, TKT-foundation-082; TC-MDF-109). Per bound
+    /// company: resolve the <b>stored</b> public oid (TKT-foundation-080 — never a symbol's
+    /// spelling), walk the company's financial reports over date windows through the lane's own
+    /// paced, single-flight client (079) and decoder (081), and write each report's facts with the
+    /// lane's own provenance — unless the other source already covers the period, in which case the
+    /// fact is withheld as a named, counted <see cref="SourceOverlapRetained"/> finding.
+    /// <para>
+    /// <b>Politeness is structural, not advisory.</b> The walk budget is created <b>once per
+    /// pass</b> and shared by every company, so the pass's list requests, detail requests and wall
+    /// clock are bounded as a whole: the caps are not a per-company allowance that a wide universe
+    /// multiplies. Every request is admitted by that budget before it is issued, and the 079 client
+    /// keeps its ≥3 s pacing, its single-flight gate, its honest User-Agent and its posture gate
+    /// untouched — this job adds no request path of its own.
+    /// </para>
+    /// </summary>
+    private async Task<IngestResult> RunKapPublicAsync(
+        IngestionRequest request,
+        IReadOnlyList<string> constituents,
+        CancellationToken cancellationToken)
+    {
+        var now = _clock.GetUtcNow();
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var lookbackMonths = _options.KapPublicLookbackMonths > 0 ? _options.KapPublicLookbackMonths : 1;
+        var plan = new KapPublicStatementWalkPlan(
+            today.AddMonths(-lookbackMonths),
+            today,
+            _options.KapPublicWindowDays);
+
+        // One budget for the whole pass: the politeness caps bound the run, not each company.
+        var budget = new KapPublicWalkBudget(
+            _kapPublicOptions.MaxListPages,
+            _kapPublicOptions.MaxDetailFetches,
+            _kapPublicOptions.MaxWalkDuration,
+            _clock);
+        var walker = new KapPublicStatementsWalker(
+            _kapPublicReader,
+            _kapPublicCursors,
+            _kapPublicDepths,
+            budget,
+            _logger);
+
+        var instrumentIds = await _kapPublicTargets
+            .GetInstrumentIdsAsync(constituents, cancellationToken)
+            .ConfigureAwait(false);
+        var publicOids = await _kapPublicMaps
+            .GetPublicOidsAsync(instrumentIds.Values.Distinct().ToList(), cancellationToken)
+            .ConfigureAwait(false);
+
+        var written = 0;
+        var unchanged = 0;
+        var quarantined = 0;
+        var overlapRetained = 0;
+        var identityIsolated = 0;
+        var notWalked = 0;
+        var truncatedCompanies = 0;
+        var failedSymbols = new List<string>();
+        var symbolStats = new List<SymbolRunStat>(constituents.Count);
+
+        foreach (var symbol in constituents)
+        {
+            if (budget.Truncated)
+            {
+                // The pass is bounded: the remaining companies are not walked <b>this pass</b>.
+                // Their stored cursors keep their position, so the next pass resumes them; the
+                // omission is named here rather than read as "they had nothing".
+                notWalked++;
+                _logger.LogWarning(
+                    "statements: public-site walk for {Symbol} not started — the pass is bounded ({ReasonCode}); it resumes on the next run",
+                    symbol,
+                    budget.TruncationReason);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false, budget.TruncationReason));
+                continue;
+            }
+
+            if (!instrumentIds.TryGetValue(symbol, out var instrumentId)
+                || !publicOids.TryGetValue(instrumentId, out var publicOid))
+            {
+                // The stored mapping is the only source of the oid (080): an unmapped company is
+                // named and counted, never fetched under a guessed identity.
+                identityIsolated++;
+                _logger.LogWarning(
+                    "statements: company {Symbol} has no stored public-site oid for {Date} ({ReasonCode}); isolated and the loop continues",
+                    symbol,
+                    request.Date,
+                    KapPublicReasonCodes.CompanyIdentityUnresolved);
+                await QuarantineAsync(
+                        KapPublicSourceOptions.SourceName,
+                        IdentityEvidence(symbol),
+                        KapPublicReasonCodes.CompanyIdentityUnresolved,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 1, false, KapPublicReasonCodes.CompanyIdentityUnresolved));
+                quarantined++;
+                continue;
+            }
+
+            // What the other source already holds for this instrument: the coexistence inputs are
+            // read once per company, before the walk, and every fact is tested against them.
+            var foreignPeriods = await _kapPublicTargets
+                .GetForeignPeriodsAsync(instrumentId, KapPublicSourceOptions.SourceName, cancellationToken)
+                .ConfigureAwait(false);
+
+            var symbolQuarantined = 0;
+            var symbolOverlap = 0;
+
+            try
+            {
+                var walk = await walker
+                    .WalkAsync(
+                        symbol,
+                        publicOid,
+                        plan,
+                        async (report, disclosureIndex, token) =>
+                        {
+                            var keep = new List<StatementFact>(report.Payload.Statements.Count);
+                            var retained = new List<StatementFact>();
+                            foreach (var fact in report.Payload.Statements)
+                            {
+                                var key = KapPublicStatementTargets.Key(fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
+                                if (foreignPeriods.ContainsKey(key))
+                                {
+                                    retained.Add(fact);
+                                }
+                                else
+                                {
+                                    keep.Add(fact);
+                                }
+                            }
+
+                            var outcome = keep.Count == 0
+                                ? new StatementWriteResult(symbol, 0, 0, [])
+                                : await _store
+                                    .UpsertAsync(
+                                        KapPublicSourceOptions.SourceName,
+                                        now,
+                                        report.Payload with { Statements = keep },
+                                        token)
+                                    .ConfigureAwait(false);
+
+                            foreach (var fact in retained)
+                            {
+                                var key = KapPublicStatementTargets.Key(fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
+                                var incumbent = foreignPeriods[key];
+                                _logger.LogWarning(
+                                    "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} already covers the period; the incumbent row is retained as-is",
+                                    symbol,
+                                    fact.PeriodType,
+                                    fact.PeriodEndDate,
+                                    fact.StatementType,
+                                    SourceOverlapRetained,
+                                    incumbent);
+                                await QuarantineAsync(
+                                        KapPublicSourceOptions.SourceName,
+                                        OverlapEvidence(symbol, disclosureIndex, fact, incumbent),
+                                        SourceOverlapRetained,
+                                        token)
+                                    .ConfigureAwait(false);
+                                symbolQuarantined++;
+                                symbolOverlap++;
+                            }
+
+                            foreach (var reasonCode in outcome.RejectedReasonCodes)
+                            {
+                                _logger.LogWarning(
+                                    "statements: refused public-site payload for {Symbol} ({ReasonCode})", symbol, reasonCode);
+                                await QuarantineAsync(KapPublicSourceOptions.SourceName, null, reasonCode, token)
+                                    .ConfigureAwait(false);
+                                symbolQuarantined++;
+                            }
+
+                            return new KapPublicStatementWrite(outcome.Inserted, outcome.Unchanged, retained.Count);
+                        },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Per-report isolation (the 063 doctrine, applied to this source): a report the
+                // source could not deliver — or delivered in a shape that is not a report — is
+                // quarantined with its evidence and counted; the company's other reports were
+                // written. A transport failure is never counted as a parse event, so it travels
+                // under the unfetchable-detail word, not under SOURCE_FETCH_FAILED.
+                foreach (var skip in walk.Skips)
+                {
+                    var reasonCode = string.Equals(
+                        skip.ReasonCode,
+                        KapPublicReasonCodes.UnparseablePayload,
+                        StringComparison.Ordinal)
+                        ? QuarantineReason.UnparseablePayload
+                        : VykDisclosureWalker.DisclosureDetailUnfetchable;
+                    _logger.LogWarning(
+                        "statements: public-site report {Index} for {Symbol} could not be walked ({SourceReason}: {Detail}); quarantined with evidence as {ReasonCode}",
+                        skip.DisclosureIndex,
+                        skip.Symbol,
+                        skip.ReasonCode,
+                        skip.Detail,
+                        reasonCode);
+                    await QuarantineAsync(
+                            KapPublicSourceOptions.SourceName,
+                            skip.EvidenceJson,
+                            reasonCode,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    symbolQuarantined++;
+                }
+
+                if (walk.Truncated)
+                {
+                    truncatedCompanies++;
+                    _logger.LogWarning(
+                        "statements: public-site walk for {Symbol} was bounded ({ReasonCode}) after {ReportsFetched} report(s); the cursor keeps the completed position and the next pass resumes there",
+                        symbol,
+                        walk.TruncationReason,
+                        walk.ReportsFetched);
+                }
+
+                written += walk.Inserted;
+                unchanged += walk.Unchanged;
+                quarantined += symbolQuarantined;
+                overlapRetained += symbolOverlap;
+                symbolStats.Add(new SymbolRunStat(
+                    symbol,
+                    walk.Inserted,
+                    walk.Unchanged,
+                    symbolQuarantined,
+                    false,
+                    walk.Truncated ? walk.TruncationReason : null));
+            }
+            catch (SourceFetchException exception)
+            {
+                // The disclosure list is source-down: without an index there is no walk, so the
+                // company is failed (a genuine source-down), never reported as having nothing.
+                _logger.LogWarning(
+                    exception,
+                    "statements: company {Symbol} public-site list failed for {Date} ({ReasonCode})",
+                    symbol,
+                    request.Date,
+                    SourceFetchFailed);
+                failedSymbols.Add(symbol);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, true, SourceFetchFailed));
+            }
+        }
+
+        return await CompleteAsync(
+            request,
+            constituents.Count,
+            written,
+            unchanged,
+            quarantined,
+            failedSymbols,
+            parseFailed: 0,
+            identityIsolated,
+            cursorResets: 0,
+            symbolStats,
+            cancellationToken,
+            truncatedWalk: truncatedCompanies > 0 || notWalked > 0,
+            notWalked,
+            overlapRetained).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The evidence a quarantine row keeps for a withheld cross-source fact: both provenances, the
+    /// period, and the report it came from — enough to re-ingest it once the source joins the
+    /// natural key, and enough for an operator to see the overlap is a <b>decision</b>, not a
+    /// failure.
+    /// </summary>
+    private static string OverlapEvidence(
+        string symbol,
+        long disclosureIndex,
+        StatementFact fact,
+        string incumbentSource)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("symbol", symbol);
+            writer.WriteNumber("kapPublicDisclosureIndex", disclosureIndex);
+            writer.WriteString("periodType", fact.PeriodType);
+            writer.WriteString("periodEndDate", fact.PeriodEndDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("statementType", fact.StatementType);
+            writer.WriteString("withheldSource", KapPublicSourceOptions.SourceName);
+            writer.WriteString("incumbentSource", incumbentSource);
+            writer.WriteBoolean("incumbentRetainedAsIs", true);
+            writer.WriteString(
+                "note",
+                "the period is already covered by the incumbent source; the public-site fact is not written, " +
+                "the incumbent row is untouched, and this record is re-ingestable once the source joins the natural key");
+            writer.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>The evidence a quarantine row keeps for an unmapped company (no oid was invented).</summary>
+    private static string IdentityEvidence(string symbol)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("symbol", symbol);
+            writer.WriteString("reasonCode", KapPublicReasonCodes.CompanyIdentityUnresolved);
+            writer.WriteString(
+                "note",
+                "no stored kap_public_company_map row for this instrument; the oid is never guessed from the symbol's spelling");
+            writer.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>
     /// The run's terminal outcome: aggregate the per-company counts, emit the run summary and
     /// raise a single aggregate alert naming the failed companies (the TC-MDF-073 posture).
     /// <para>
@@ -294,7 +673,10 @@ public sealed class StatementsJob : IIngestJob
         int identityIsolated,
         int cursorResets,
         IReadOnlyList<SymbolRunStat> symbolStats,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool truncatedWalk = false,
+        int notWalked = 0,
+        int overlapRetained = 0)
     {
         if (failedSymbols.Count > 0)
         {
@@ -318,12 +700,14 @@ public sealed class StatementsJob : IIngestJob
             : failedSymbols.Count > 0
                 || quarantined > 0
                 || identityIsolated > 0
+                || notWalked > 0
+                || (truncatedWalk && written == 0)
                 || (written == 0 && cursorResets > 0)
                     ? IngestResult.Partial
                     : IngestResult.Succeeded;
 
         _logger.LogInformation(
-            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, identity-isolated {IdentityIsolated}, cursor-resets {CursorResets} ({Status})",
+            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, identity-isolated {IdentityIsolated}, cursor-resets {CursorResets}, overlap-retained {OverlapRetained}, not-walked {NotWalked}, truncated {Truncated} ({Status})",
             request.Date,
             constituentCount,
             written,
@@ -332,6 +716,9 @@ public sealed class StatementsJob : IIngestJob
             failedSymbols.Count,
             identityIsolated,
             cursorResets,
+            overlapRetained,
+            notWalked,
+            truncatedWalk,
             status);
 
         return new IngestResult(Code, written, unchanged, quarantined, status) { SymbolStats = symbolStats };
