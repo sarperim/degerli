@@ -43,12 +43,6 @@ public class ShareCount
 
     /// <summary>Provenance of the fact (FR-MDF-008) — <c>kap</c> for the VYK gateway.</summary>
     public string SourceRef { get; set; } = null!;
-
-    /// <summary>
-    /// The stored column's name is part of the contract (TKT-foundation-086's forward-only
-    /// rename): <c>paid_in_capital</c>, never <c>shares_outstanding</c>.
-    /// </summary>
-    public const string TableName = "share_counts";
 }
 
 /// <summary>
@@ -105,7 +99,4 @@ public class PriceDerivedShareCount
 
     /// <summary>Provenance of the fact (FR-MDF-008) — <c>isyatirim</c> for the price lane.</summary>
     public string SourceRef { get; set; } = null!;
-
-    /// <summary>The store's table name (01 v1.5.60 §10.9.11, 02 §3.1).</summary>
-    public const string TableName = "price_derived_share_counts";
 }
