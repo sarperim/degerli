@@ -1,4 +1,5 @@
 using Degerli.Api.IntegrationTests.Harness;
+using System.Text.Json;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
@@ -6,6 +7,7 @@ using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Statements;
+using Degerli.Ingestion.Universe;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -154,8 +156,10 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
             Assert.Equal(KapPublicIdentitySyncJob.Code, ledger.JobCode);
             Assert.Equal(IngestResult.Succeeded, ledger.Status);
             Assert.Null(ledger.Error);
-            Assert.Contains("\"written\":1", ledger.StatsJson, StringComparison.Ordinal);
-            Assert.Contains("\"trigger\":\"admin\"", ledger.StatsJson, StringComparison.Ordinal);
+            using var stats = JsonDocument.Parse(ledger.StatsJson!);
+            Assert.Equal(1, stats.RootElement.GetProperty("written").GetInt32());
+            Assert.Equal(0, stats.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(IngestionTrigger.Admin, stats.RootElement.GetProperty("trigger").GetString());
         }
 
         // One identity request per bound symbol — the resolver's, through the lane's client; and
@@ -206,9 +210,13 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
 
             var ledger = Assert.Single(await db.IngestRuns.ToListAsync());
             Assert.Equal(IngestResult.Partial, ledger.Status);
-            Assert.Contains("\"skipped\":1", ledger.StatsJson, StringComparison.Ordinal);
-            Assert.Contains("\"ALFA\"", ledger.StatsJson, StringComparison.Ordinal);
-            Assert.Contains(KapPublicReasonCodes.CompanyIdentityUnresolved, ledger.StatsJson, StringComparison.Ordinal);
+            using var stats = JsonDocument.Parse(ledger.StatsJson!);
+            Assert.Equal(1, stats.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(1, stats.RootElement.GetProperty("written").GetInt32());
+            // The unresolved company is *named* in the ledger, not just counted.
+            var stat = Assert.Single(stats.RootElement.GetProperty("symbols").EnumerateArray());
+            Assert.Equal("ALFA", stat.GetProperty("symbol").GetString());
+            Assert.Equal(KapPublicReasonCodes.CompanyIdentityUnresolved, stat.GetProperty("reason").GetString());
         }
 
         // Named in the log as well as the ledger — and never fetched beyond its identity search.
@@ -248,7 +256,19 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
         Assert.Equal(0, result.Unchanged);
         Assert.NotNull(result.FailureReason);
         Assert.Contains(KapPublicReasonCodes.SourceFetchFailed, result.FailureReason!, StringComparison.Ordinal);
-        Assert.Contains("ASELS", result.FailureReason!, StringComparison.Ordinal);
+        // The reason names the symbol the pass stopped at — the first of the bound universe the
+        // resolver walks (the universe store returns constituents symbol-ascending), so the
+        // operator can tell which company it died on.
+        string stoppedAt;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var constituents = await scope.ServiceProvider
+                .GetRequiredService<UniverseSyncStore>()
+                .GetCurrentConstituentSymbolsAsync("XU030");
+            stoppedAt = Assert.Single(constituents, symbol => result.FailureReason!.Contains(symbol, StringComparison.Ordinal));
+            Assert.Equal(constituents[0], stoppedAt);
+        }
+        Assert.Contains(stoppedAt, result.FailureReason!, StringComparison.Ordinal);
 
         await using (var db = _postgres.CreateContext())
         {
@@ -259,6 +279,7 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
             Assert.Equal(IngestResult.Failed, ledger.Status);
             Assert.NotNull(ledger.Error);
             Assert.Contains(KapPublicReasonCodes.SourceFetchFailed, ledger.Error!, StringComparison.Ordinal);
+            Assert.Contains(stoppedAt, ledger.Error!, StringComparison.Ordinal);
         }
 
         Assert.Equal(1, _wireMock.RequestsFor(IdentityPath));
