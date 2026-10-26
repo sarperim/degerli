@@ -169,6 +169,10 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<KapPublicIdentityReader>();
         services.AddScoped<KapPublicCompanyMapStore>();
         services.AddScoped<KapPublicCompanyIdentityResolver>();
+        // The identity pass's bind read (TKT-foundation-087): the same store-side target lookup the
+        // public-site statements lane reads before it writes. Registered so the `kap-public-identity`
+        // job resolves from the container like its lane peers instead of being constructed by hand.
+        services.AddScoped<KapPublicStatementTargets>();
 
         services.Configure<StatementsSourceOptions>(configuration.GetSection(StatementsSourceOptions.SectionName));
         services.Configure<DividendsSourceOptions>(configuration.GetSection(DividendsSourceOptions.SectionName));
