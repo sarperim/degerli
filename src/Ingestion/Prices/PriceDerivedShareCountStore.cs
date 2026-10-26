@@ -153,7 +153,10 @@ public sealed class PriceDerivedShareCountStore
             }
 
             var quotient = marketCap / close;
-            var rounded = decimal.Round(quotient, 0, MidpointRounding.ToZero);
+            // Round to the nearest integer symmetric about the tolerance: a residue just above an
+            // integer and one just below it are equally honest, so the gate below rejects both
+            // beyond `IntegralTolerance` (and a `.5` quotient, 0.5 off, is always withheld).
+            var rounded = decimal.Round(quotient, 0, MidpointRounding.AwayFromZero);
             if (rounded < 1m || rounded > long.MaxValue || decimal.Abs(quotient - rounded) > IntegralTolerance)
             {
                 // The operands disagree (or the quotient is not a usable count): withheld, never

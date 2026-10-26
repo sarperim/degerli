@@ -361,6 +361,70 @@ public sealed class PriceDerivedShareCountsTests : IClassFixture<PostgresFixture
         }
     }
 
+    /// <summary>
+    /// TC-MDF-114 (v) — the integrality tolerance is <b>symmetric</b> about the integer, and a
+    /// quotient half a share past it is never rounded anywhere: a residue just <i>below</i> the
+    /// next integer (<c>x.99995</c>) is that integer exactly as one just <i>above</i> it
+    /// (<c>x.00005</c>) is, because "within one ten-thousandth of an integer" has no direction.
+    /// A <c>.5</c> quotient is half a billion shares away from either side on a 4.5B count —
+    /// far outside the tolerance — so it stays a named, counted skip, never a rounding.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_114_the_integrality_tolerance_is_symmetric_and_never_rounds_a_half()
+    {
+        await ResetAsync();
+        var recordedAt = new DateTimeOffset(CaptureDate.ToDateTime(new TimeOnly(18, 30)), TimeSpan.Zero);
+
+        // (a) PD ÷ 376 = 4,560,000,000.5 exactly — the midpoint is not a count.
+        var halfPast = AselsFact()
+            .Select(fact => fact with { MarketCap = 1_714_560_000_188m })
+            .ToList();
+        await using (var db = _postgres.CreateContext())
+        {
+            var result = await new PriceDerivedShareCountStore(db)
+                .UpsertAsync("isyatirim", CaptureDate, recordedAt, halfPast);
+
+            Assert.Equal(0, result.Written);
+            Assert.Equal(1, Withheld(result, PriceDerivedShareCountStore.NonIntegralQuotient));
+            Assert.Equal(0, await db.PriceDerivedShareCounts.CountAsync());
+        }
+
+        // (b) PD ÷ 376 = 4,560,000,000.99995 — a hair BELOW the next integer, and inside the
+        // pinned tolerance, so the count is that integer (the old truncate-then-compare rule
+        // withheld this side while accepting the mirrored x.00005).
+        var justBelow = AselsFact()
+            .Select(fact => fact with { MarketCap = 1_714_560_000_375.9812m })
+            .ToList();
+        await using (var db = _postgres.CreateContext())
+        {
+            var result = await new PriceDerivedShareCountStore(db)
+                .UpsertAsync("isyatirim", CaptureDate, recordedAt, justBelow);
+
+            Assert.Equal(1, result.Inserted);
+            Assert.Equal(0, Withheld(result, PriceDerivedShareCountStore.NonIntegralQuotient));
+        }
+
+        // (c) The mirrored side still derives as before: PD ÷ 376 = 4,560,000,000.00005 is
+        // 4,560,000,000, and the same-date changed operands repair the row in place.
+        var justAbove = AselsFact()
+            .Select(fact => fact with { MarketCap = 1_714_560_000_000.0188m })
+            .ToList();
+        await using (var db = _postgres.CreateContext())
+        {
+            var result = await new PriceDerivedShareCountStore(db)
+                .UpsertAsync("isyatirim", CaptureDate, recordedAt, justAbove);
+
+            Assert.Equal(1, result.Updated);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var row = await db.PriceDerivedShareCounts.SingleAsync();
+            Assert.Equal(AselsCount, row.SharesOutstanding);
+            Assert.NotEqual(0L, row.SharesOutstanding);
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // TC-MDF-114 (vi) — the prices job derives end-to-end (no new fetch, no new source)
     // ---------------------------------------------------------------------------------
