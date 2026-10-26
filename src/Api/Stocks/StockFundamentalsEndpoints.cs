@@ -3,6 +3,7 @@ using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -590,12 +591,15 @@ public static class StockFundamentalsEndpoints
                 group => group.ToDictionary(line => line.ItemCode, line => line.Value, StringComparer.Ordinal));
     }
 
-    /// <summary>Picks the latest served version of a statement type: the highest version.</summary>
+    /// <summary>
+    /// Picks the served statement of one type from a period group: the highest restatement
+    /// version of the <b>preferred source</b> (<see cref="StatementSourcePreference"/>, <c>01</c>
+    /// v1.5.57 §10.9.19, TC-MDF-111) — the public-site current fact wins for the periods it
+    /// covers, the incumbent's retained rows serve otherwise, and the choice never depends on the
+    /// rows' arrival order.
+    /// </summary>
     private static FinancialStatement? Pick(IReadOnlyList<FinancialStatement> rows, string statementType)
-        => rows
-            .Where(row => row.StatementType == statementType)
-            .OrderByDescending(row => row.Version)
-            .FirstOrDefault();
+        => StatementSourcePreference.Pick(rows, statementType);
 
     private static bool IsRestated(FinancialStatement? statement) => statement is not null && statement.Version > 0;
 

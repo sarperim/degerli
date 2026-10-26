@@ -18,6 +18,28 @@ public static class CoverageDataTypes
     public const string Disclosures = "disclosures";
 
     /// <summary>
+    /// The separator of the per-source statements depth family (<c>statements:{sourceRef}</c>).
+    /// Since the statement store's natural key includes the source (<c>01</c> v1.5.57 §10.9.19,
+    /// TC-MDF-111) one instrument's statements can arrive from more than one evidence class, so
+    /// the aggregate <see cref="Statements"/> depth alone can no longer say <b>which</b> source
+    /// reached how far — and a company whose only facts are 2023's incumbent rows must read as
+    /// exactly that, never as "current".
+    /// </summary>
+    public const string StatementsSourceSeparator = ":";
+
+    /// <summary>
+    /// The per-source statements depth data type for <paramref name="sourceRef"/> — e.g.
+    /// <c>statements:kap</c> and <c>statements:kap-public</c>. Deliberately outside
+    /// <see cref="InstrumentScoped"/>: the no-silent-gaps rule owns one row per instrument ×
+    /// fact type, and a per-source row is present only when that source actually holds facts for
+    /// the instrument — its absence means "this source has written nothing here", never "this
+    /// source found no statements" (which is the public lane's own achieved-depth provenance,
+    /// <c>kap-public-statements-depth</c>).
+    /// </summary>
+    public static string StatementsBySource(string sourceRef) =>
+        Statements + StatementsSourceSeparator + sourceRef;
+
+    /// <summary>
     /// Index-constituent membership history (FR-MDF-007, BR-MDF-005) — recorded at
     /// <c>universe</c> scope (one record for the whole covered universe, not per
     /// instrument). Free structured pre-launch constituent history does not exist, so the

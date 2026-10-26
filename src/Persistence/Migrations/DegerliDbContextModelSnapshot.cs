@@ -657,7 +657,7 @@ namespace Degerli.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_financial_statements");
 
-                    b.HasIndex("InstrumentId", "PeriodType", "PeriodEndDate", "StatementType", "Version")
+                    b.HasIndex("InstrumentId", "PeriodType", "PeriodEndDate", "StatementType", "SourceRef", "Version")
                         .IsUnique()
                         .HasDatabaseName("ix_financial_statements_instrument_id_period_type_period_end_d");
 

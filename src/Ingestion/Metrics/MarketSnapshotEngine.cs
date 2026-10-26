@@ -1,4 +1,5 @@
 using Degerli.Core.Metrics;
+using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -91,10 +92,11 @@ public sealed class MarketSnapshotEngine
                 .ToDictionaryAsync(p => p.InstrumentId, p => p.CloseRaw, cancellationToken)
                 .ConfigureAwait(false);
 
-        // Latest FY statement per instrument: the restated version serves (BR-MDF-011).
+        // Latest FY statement per instrument: the restated version of the preferred source serves
+        // (BR-MDF-011; 01 v1.5.57 §10.9.19 — the pinned cross-source preference, TC-MDF-111).
         var statements = await _db.FinancialStatements
             .Where(s => coveredIds.Contains(s.InstrumentId) && s.PeriodType == "FY")
-            .Select(s => new { s.Id, s.InstrumentId, s.PeriodEndDate, s.StatementType, s.Version })
+            .Select(s => new { s.Id, s.InstrumentId, s.PeriodEndDate, s.StatementType, s.SourceRef, s.Version })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -124,10 +126,14 @@ public sealed class MarketSnapshotEngine
                 return null;
             }
 
-            var chosen = versions
-                .Where(s => s.StatementType == statementType)
-                .OrderByDescending(s => s.Version)
-                .FirstOrDefault();
+            // The serving read path's pinned preference decides which source's fact is current —
+            // never a version-only choice, which two same-version sources would resolve by row
+            // order (01 v1.5.57 §10.9.19).
+            var chosen = StatementSourcePreference.Pick(
+                versions.Where(s => s.StatementType == statementType),
+                s => s.SourceRef,
+                s => s.Version,
+                s => s.Id);
             if (chosen is null
                 || !linesByStatement.TryGetValue(chosen.Id, out var map)
                 || !map.TryGetValue(itemCode, out var value))
