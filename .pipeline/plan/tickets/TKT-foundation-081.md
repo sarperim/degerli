@@ -2,6 +2,7 @@
 scope:
   - src/Ingestion/Statements/KapPublicReportDecoder.cs
   - src/Ingestion/Statements/KapPublicReportModels.cs
+  - src/Ingestion/Degerli.Ingestion.csproj
   - tests/Api.IntegrationTests/KapPublicReportDecoderTests.cs
   - tests/Api.IntegrationTests/RealSourceStatementsTests.cs
   - tests/Api.IntegrationTests/StatementNormalizationTests.cs
@@ -18,10 +19,11 @@ scope:
 
 # TKT-foundation-081: Public-site FR report decoder — the excel-HTML tables onto the canonical statement model, **including the cash-flow statement (supersedes TKT-foundation-051)**
 
-- Status: todo
+- Status: in-review
 - Size: L
+- PR: https://github.com/sarperim/degerli/pull/145 (branch `feature/TKT-foundation-081`, base `dev`)
 - **Priority: P1 — lane ticket 3/6 and the user's headline goal (current fundamentals; the CF statement is the 051/DCF/SNA unblock).**
-- **Supersession decision (planner, 2026-10-25 — recorded on 051's file too):** 051 is **superseded by this ticket, not duplicated.** Reasons: (a) 051's own verified evidence shows the VYK dev archive carries **zero cash-flow statements** (72 IS / 84 BS / 74 EQ) — the paced VYK capture set 051 waited for cannot exist; (b) the public-site excel-HTML report carries the full indirect-method CF statement (`Nakit Akış Tablosu (Dolaylı Yöntem)`, current + comparative — investigation-verified, line ~887 of the flattened text with the hedging note family); (c) 051's pinned approach ("extend `KapXbrlStatementDecoder.ConceptMap` from captured shapes") was VYK-presentation-tree-shaped — this source is HTML tables, a different decoder with its own label→canonical map; duplicating the CF mapping in two decoders would violate the one-definition doctrine (`02` §6.1 collapses spellings onto the canonical chart — both maps target the same canonical codes, `StatementMapper` untouched); (d) **planning defect found and repaired:** the TC-MDF-089/090 IDs 051 referenced were never authored in the test plan (verified by search — the v1.12 precedent class); the goal is authored as **TC-MDF-108**. The VYK `ConceptMap` CF extension remains honestly impossible without real VYK CF shapes (never guessed spellings); if production VYK ever arrives carrying CF data, that is a new ticket from real captures.
+- **Supersession decision (planner, 2026-10-25 — recorded on 051's file too):** 051 is **superseded by this ticket, not duplicated.** Reasons: (a) 051's own verified evidence shows the VYK dev archive carries **zero cash-flow statements** (72 IS / 84 BS / 74 EQ) — the paced VYK capture set 051 waited for cannot exist; (b) the public-site excel-HTML report carries the full indirect-method CF statement (`Nakit Akış Tablosu (Dolaylı Yöntem)`, current + comparative — investigation-verified, line ~887 of the flattened text with the hedging note family); (c) 051's pinned approach ("extend `KapXbrlStatementDecoder.ConceptMap` from captured shapes") was VYK-presentation-tree-shaped — this source is HTML tables, a different decoder with its own label→canonical map; duplicating the CF mapping in two decoders would violate the one-definition doctrine (`02` §6.1 collapses spellings onto the canonical chart — both maps target the same canonical codes, `StatementMapper` untouched); (d) **planning defect found and repaired:** the two acceptance-TC identities 051 referenced were never authored in the test plan (verified by search — the v1.12 precedent class); the goal is authored as **TC-MDF-108**. The VYK `ConceptMap` CF extension remains honestly impossible without real VYK CF shapes (never guessed spellings); if production VYK ever arrives carrying CF data, that is a new ticket from real captures.
 - **What to implement (capture-first, never guessed):** the excel-HTML report decoder (new files under `src/Ingestion/Statements/` — additive; the VYK/XBRL decode paths untouched): header metadata decode (`Gönderim Tarihi`, `Bildirim Tipi`, `Yıl`, `Periyot`, `Sunum Para Birimi` — **`1.000 TL` → `SourceUnitScale = thousands`**, `Finansal Tablo Niteliği` Konsolide, `Cari`/`Önceki Dönem` period ends); statement typing per table heading (IS/BS/CF/EQ); the label→canonical map built **only** from labels present in 079's committed captures (map provenance recorded — which capture supplied which spelling); Turkish number parsing (`.` thousands / `,` decimal, presentation unit) pinned by fixture goldens; the honesty rules — every decoded line traceable to its table+label, unattributable value = honest-null drop with a counted reason (never a guess, never zero), unmapped label = `OTHER_*` passthrough, duplicate-label rule per the TC-MDF-065 doctrine (equal collapse / unequal quarantine); the **CF statement decode** (OCF/CAPEX + the companions genuinely present — never invented) feeding the existing FCF formula (`CanonicalMetrics`, NULL-if-missing preserved) and the SNA supply.
 - **Pinned non-scope (flow-back rule):** if the captured report carries evidenced share-count lines (pay adedi / `SHARES_OUT` material), **record the finding and route it to TKT-foundation-065** (its Option B/C decision) — this ticket never consumes, divides or relabels a share count.
 - Traces to: FR-MDF-002/003 (statement ingest incl. CF), FR-MDF-008 (provenance `kap-public`), FR-MDF-012 (quarantine), FR-RES-005..018 (SNA/FCF display supply), FR-VAL-001 (DCF baseline — FCF), `02` §3.1 (unit/currency normalization) + §6.1 (concept-map doctrine, extended to the HTML label space), `CanonicalMetrics` FCF v1.3.
@@ -70,3 +72,24 @@ never silently mixed. TTM-by-subtraction is explicitly a future refinement, not 
 The decoder must therefore surface the **report period type** (Yıllık / 6 Aylık / 3 Aylık) from
 the report metadata so downstream consumers can select annuals and label interims — the row
 shape already carries `year`/`ruleType`/`period` from byCriteria.
+
+### Decision record — the OCF row (2026-10-26, DR-2; user-authorized round 3)
+
+The 2026-10-25 record above pinned a **value** (`OCF 21,061,426`, the comparative column of the
+before-tax subtotal) but not a **row**; the review escalated the ambiguity and the user chose the
+row. `OCF` maps to the statement's own operating total **`İŞLETME FAALİYETLERİNDEN NAKİT
+AKIŞLARI`** — the figure **after** tax paid and other operating payments — not the before-tax
+subtotal `Faaliyetlerden Elde Edilen Nakit Akışları`.
+
+- Candidate rows in the committed 6-month capture (thousand TL, current / comparative):
+  `İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI` 15.206.440 / 18.013.334; `Faaliyetlerden Elde Edilen
+  Nakit Akışları` 20.382.722 / 21.061.426.
+- Chosen basis consequence: FCF = OCF − |CAPEX| with CAPEX 33.746.150 / 17.190.837 gives interim
+  FCF **−18.539.710** / **822.497** instead of the superseded −13.363.428 / 3.870.589 — roughly a
+  25% difference on the metric this ticket exists to supply in the current column.
+- The before-tax subtotal **remains decoded** as a labelled `OTHER_CF_OPERATING_*` companion (it is
+  not mapped to any canonical code), so the financials display keeps both measures and nothing
+  downstream can mistake one for the other.
+- No annual golden is pinned here: the committed capture is a 6-month interim (`Periyot:2`) with no
+  annual column. The FY basis stays guarded by the declared-vs-observed duration fail-safe and is
+  the post-merge live criterion.
