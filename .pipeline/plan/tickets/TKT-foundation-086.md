@@ -10,6 +10,7 @@ scope:
   - src/Ingestion/Prices/PricesSourceAdapter.cs
   - src/Ingestion/Prices/PriceDerivedShareCountStore.cs
   - src/Ingestion/Prices/PricesJob.cs
+  - src/Ingestion/IngestionServiceCollectionExtensions.cs
   - src/Ingestion/Valuation/DcfBaselineGenerationJob.cs
   - tests/Api.IntegrationTests/PriceDerivedShareCountsTests.cs
   - tests/Api.IntegrationTests/MemberSecuritiesIngestTests.cs
@@ -75,3 +76,7 @@ scope:
 - UX refs: SCR-005 (balance-sheet section — the reverted `lines.sharesOutstanding` row: count label + count unit, honest dash), SCR-006 (DCF calculator — parameter #8's baseline default gains a real value; no structural change), UXR-VAL-009 (missing-inputs explanation — `share_count` leaves the missing set only when a source exists), UXR-VAL-010 (the count's provenance/as-of carried into the parameter display), UXR-RES-0xx (balance-sheet line labels) — the exact TR/EN copy for the reverted row is **UX flow-back** (the 072 precedent: the ux-designer confirms the entries; the coder ships minimal, unopinionated copy meanwhile).
 - Dependencies: none hard — 058/072/081 are merged; **dispatched behind TKT-foundation-082 by queue policy** (see coordination). 083's market-P/E honest-null posture is compatible by design (non-goal above).
 - Parallel group: none (shares the two permanent docs with the lane; last-lander rebase).
+
+### Scope amendment (orchestrator, 2026-10-26)
+
+`src/Ingestion/IngestionServiceCollectionExtensions.cs` added to scope post-implementation: `PricesJob` (scoped `DegerliDbContext`) builds `PriceDerivedShareCountStore` over it — a conventional `AddScoped` registration line, one line, no lifetime change, no design change. Flagged by the implementer, recorded here per the G-2 pattern (amend, never silently exceed).
