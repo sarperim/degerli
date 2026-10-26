@@ -10,7 +10,8 @@ scope:
 
 # TKT-foundation-064: Scheduler watchdog — bound each chain step, keep a whole-chain ceiling
 
-- Status: in-review — **PR https://github.com/sarperim/degerli/pull/133** (branch `feature/TKT-foundation-064`, head **`ec8951e`**, rebased onto **`origin/dev@60a01cf`**). Doc slice landed: `01` §10.9.17 "The bound's scope, corrected" + §13.1 **v1.5.43**; test plan §16 TC-MDF-098 implemented + v1.17 record.
+- Status: done — **PR #133 merged earlier this run; live criterion OBSERVED 2026-10-26 05:45 UTC (window: 14 h, 23 runs).** Verbatim ledger (`ingest_runs`): `total=23, hung=0, failed=21` — **zero RUN_HUNG across the window; the criterion is met.** Today's scheduled chain fired as designed: `macro-daily 05:00:00 → 05:00:05 succeeded`; `prices 05:30:00 → 05:30:00 succeeded`. The 21 failures are all three funds jobs (`fund-nav`/`fund-holdings`/`fund-performance`, 7 runs each, yesterday 16:00–18:50), every one `SOURCE_NOT_CONFIGURED: The TEFAS fund source has no base address: 'Ingestion:Funds:BaseUrl…'` — the known pre-existing funds state (120/120 historical runs of those jobs failed identically), honest named degradation, unrelated to the scheduler race this ticket fixed. **Deploy pin LIFTED 05:45 UTC** — the dev box takes the accumulated batch (079/080/081/085/082; 086 pending user D5 ratification).
+  — pre-merge record: - Status: in-review — **PR https://github.com/sarperim/degerli/pull/133** (branch `feature/TKT-foundation-064`, head **`ec8951e`**, rebased onto **`origin/dev@60a01cf`**). Doc slice landed: `01` §10.9.17 "The bound's scope, corrected" + §13.1 **v1.5.43**; test plan §16 TC-MDF-098 implemented + v1.17 record.
 - Size: M
 - **Priority: P2 — correctness of the watchdog (USER GRANT 2026-10-23 afternoon).** The current bound is per **attempt**, not per **step**, so a healthy chain can never finish.
 - **Verified evidence (dev stack, 2026-10-23):**
