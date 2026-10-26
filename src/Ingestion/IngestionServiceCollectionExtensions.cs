@@ -359,6 +359,13 @@ public static class IngestionServiceCollectionExtensions
         services.AddScoped<IIngestJob, FundHoldingsJob>();
         services.AddScoped<IIngestJob, MacroDailyJob>();
         services.AddScoped<IIngestJob, MacroCpiJob>();
+        // The public-site identity-population trigger (TKT-foundation-087): admin-triggerable, not a
+        // step of either ingest chain (a company's public oid changes rarely — the shares-lane
+        // scheduling precedent). Without this line the lane's resolver had no production caller, so
+        // `kap_public_company_map` never populated and a `kap-public` statements walk isolated every
+        // company. Registering it here is the whole invocation surface: runner, run ledger, admin
+        // summary and admin trigger all discover jobs through this list.
+        services.AddScoped<IIngestJob, KapPublicIdentitySyncJob>();
 
         services.AddScoped<IIngestionJobRunner, IngestionJobRunner>();
 
