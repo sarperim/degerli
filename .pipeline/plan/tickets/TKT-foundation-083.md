@@ -16,7 +16,8 @@ scope:
 
 # TKT-foundation-083: Coverage and downstream recompute on current data — the mixed-source world's metrics, medians, market P/E and served financials, stamped by the formula version
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/148
 - Size: M
 - **Priority: P2 — lane ticket 5/6 (the acceptance lane for the user's goal: current fundamentals served).**
 - **Posture — investigation-first, not a new ingest mechanism (the 043/044 convention):** the recompute/medians/snapshot jobs and the served surfaces already exist; this ticket verifies what the mixed-source world (VYK FY2023 `kap` + public-site FY2025/2026 `kap-public`) actually does to them, pins the observed gaps honestly, and repairs only what is broken. **Pinned non-goals:** no new metric formulas; no share-count consumption (see below); no UI work.
