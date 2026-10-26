@@ -54,11 +54,28 @@ public sealed class StatementsJob : IIngestJob
     /// relabelled as a restatement — and the public-site fact is <b>not written</b>. The overlap is
     /// not swallowed as an idempotent <c>unchanged</c> (the store's natural key excludes the source,
     /// so a cross-source fact would otherwise collapse silently): it is a <b>named, counted
-    /// finding</b>, quarantined with the evidence that names both sources, and re-ingestable once
-    /// the source joins the natural key (TC-MDF-111, TKT-foundation-083).
+    /// finding</b>, quarantined with the evidence that names both sources. Once the source joins the
+    /// natural key (TC-MDF-111, TKT-foundation-083) the withheld fact can coexist as its own row —
+    /// but the lane has already marked the report completed (its index is in the cursor's seen set
+    /// and its cursor was advanced), so re-ingesting it needs an explicit <b>cursor reset</b> or
+    /// 083's recorded re-pin, not a later pass of this lane.
     /// </para>
     /// </summary>
     public const string SourceOverlapRetained = "SOURCE_OVERLAP_RETAINED";
+
+    /// <summary>
+    /// Reason code for a public-site fact withheld because the other source already covers the
+    /// same <b>calendar</b> period under a <b>different period type</b> (01 v1.5.56 §10.9.19,
+    /// TKT-foundation-082; review round 1, D5).
+    /// <para>
+    /// The store's natural key includes <c>periodType</c>, so VYK's <c>FY 2025-12-31</c> and the
+    /// public decoder's fail-safe <c>Q 2025-12-31</c> are different keys for <b>one real period</b>.
+    /// An exact-key-only overlap check would write a second row for that period with no finding.
+    /// The fact is therefore withheld like an overlap, but named under its own reason: the
+    /// disagreement is a period-type decode fact an operator must see, not a quiet retention.
+    /// </para>
+    /// </summary>
+    public const string SourcePeriodTypeDisagreement = "SOURCE_PERIOD_TYPE_DISAGREEMENT";
 
     /// <summary>
     /// Reason code for an <c>Ingestion:Statements:Source</c> value the lane does not recognise.
@@ -386,6 +403,24 @@ public sealed class StatementsJob : IIngestJob
             .GetPublicOidsAsync(instrumentIds.Values.Distinct().ToList(), cancellationToken)
             .ConfigureAwait(false);
 
+        // Fair iteration across passes (review round 1, D2). The budget is run-sticky, so a fixed
+        // universe order would let the same head companies spend it every pass and starve the tail
+        // forever. Least-recently-walked first — never-walked companies ahead of everyone — makes the
+        // omission self-correcting: whoever this pass could not start is at the front of the next.
+        var watermarks = await _kapPublicCursors
+            .GetWatermarksAsync(constituents, cancellationToken)
+            .ConfigureAwait(false);
+        var walkOrder = constituents
+            .Select((symbol, index) => (
+                Symbol: symbol,
+                Index: index,
+                Watermark: watermarks.TryGetValue(symbol, out var watermark) ? watermark : (DateOnly?)null))
+            .OrderBy(candidate => candidate.Watermark.HasValue ? 1 : 0)
+            .ThenBy(candidate => candidate.Watermark ?? DateOnly.MinValue)
+            .ThenBy(candidate => candidate.Index)
+            .Select(candidate => candidate.Symbol)
+            .ToList();
+
         var written = 0;
         var unchanged = 0;
         var quarantined = 0;
@@ -396,19 +431,21 @@ public sealed class StatementsJob : IIngestJob
         var failedSymbols = new List<string>();
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
 
-        foreach (var symbol in constituents)
+        foreach (var symbol in walkOrder)
         {
             if (budget.Truncated)
             {
-                // The pass is bounded: the remaining companies are not walked <b>this pass</b>.
-                // Their stored cursors keep their position, so the next pass resumes them; the
-                // omission is named here rather than read as "they had nothing".
+                // The pass is bounded: this company was <b>not started</b> at all. Its cursor did not
+                // move, and the pass order above puts it near the front of the next pass — so the
+                // omission is bounded in passes, never permanent (D2). It is named under its own
+                // reason code, distinct from a company that was walked and then truncated.
                 notWalked++;
                 _logger.LogWarning(
-                    "statements: public-site walk for {Symbol} not started — the pass is bounded ({ReasonCode}); it resumes on the next run",
+                    "statements: public-site walk for {Symbol} not started — the pass is bounded ({ReasonCode}); the fair pass order resumes it on the next run ({NotStartedReason})",
                     symbol,
-                    budget.TruncationReason);
-                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false, budget.TruncationReason));
+                    budget.TruncationReason,
+                    KapPublicReasonCodes.WalkNotStarted);
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false, KapPublicReasonCodes.WalkNotStarted));
                 continue;
             }
 
@@ -453,18 +490,28 @@ public sealed class StatementsJob : IIngestJob
                         async (report, disclosureIndex, token) =>
                         {
                             var keep = new List<StatementFact>(report.Payload.Statements.Count);
-                            var retained = new List<StatementFact>();
+                            var retained = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
+                            var disagreed = new List<(StatementFact Fact, ForeignStatementPeriod Incumbent)>();
                             foreach (var fact in report.Payload.Statements)
                             {
-                                var key = KapPublicStatementTargets.Key(fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
-                                if (foreignPeriods.ContainsKey(key))
+                                // The coexist rule asks two questions (D5): the store's exact key, and
+                                // the calendar period under any period type. Either answer means the
+                                // period is already covered — the second is a period-type disagreement,
+                                // named under its own code rather than written as a duplicate.
+                                if (foreignPeriods.TryExact(fact.PeriodType, fact.PeriodEndDate, fact.StatementType, out var incumbent))
                                 {
-                                    retained.Add(fact);
+                                    retained.Add((fact, incumbent));
+                                    continue;
                                 }
-                                else
+
+                                var sameCalendarPeriod = foreignPeriods.AtCalendarPeriod(fact.PeriodEndDate, fact.StatementType);
+                                if (sameCalendarPeriod.Count > 0)
                                 {
-                                    keep.Add(fact);
+                                    disagreed.Add((fact, sameCalendarPeriod[0]));
+                                    continue;
                                 }
+
+                                keep.Add(fact);
                             }
 
                             var outcome = keep.Count == 0
@@ -477,10 +524,8 @@ public sealed class StatementsJob : IIngestJob
                                         token)
                                     .ConfigureAwait(false);
 
-                            foreach (var fact in retained)
+                            foreach (var (fact, incumbent) in retained)
                             {
-                                var key = KapPublicStatementTargets.Key(fact.PeriodType, fact.PeriodEndDate, fact.StatementType);
-                                var incumbent = foreignPeriods[key];
                                 _logger.LogWarning(
                                     "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} already covers the period; the incumbent row is retained as-is",
                                     symbol,
@@ -488,11 +533,32 @@ public sealed class StatementsJob : IIngestJob
                                     fact.PeriodEndDate,
                                     fact.StatementType,
                                     SourceOverlapRetained,
-                                    incumbent);
+                                    incumbent.SourceRef);
                                 await QuarantineAsync(
                                         KapPublicSourceOptions.SourceName,
-                                        OverlapEvidence(symbol, disclosureIndex, fact, incumbent),
+                                        OverlapEvidence(symbol, disclosureIndex, fact, incumbent.SourceRef),
                                         SourceOverlapRetained,
+                                        token)
+                                    .ConfigureAwait(false);
+                                symbolQuarantined++;
+                                symbolOverlap++;
+                            }
+
+                            foreach (var (fact, incumbent) in disagreed)
+                            {
+                                _logger.LogWarning(
+                                    "statements: public-site fact withheld for {Symbol} {PeriodType} {PeriodEnd} {StatementType} ({ReasonCode}) — the incumbent source {Incumbent} covers the same calendar period as {IncumbentPeriodType}; one real period, two period-type keys",
+                                    symbol,
+                                    fact.PeriodType,
+                                    fact.PeriodEndDate,
+                                    fact.StatementType,
+                                    SourcePeriodTypeDisagreement,
+                                    incumbent.SourceRef,
+                                    incumbent.PeriodType);
+                                await QuarantineAsync(
+                                        KapPublicSourceOptions.SourceName,
+                                        PeriodTypeDisagreementEvidence(symbol, disclosureIndex, fact, incumbent),
+                                        SourcePeriodTypeDisagreement,
                                         token)
                                     .ConfigureAwait(false);
                                 symbolQuarantined++;
@@ -508,7 +574,10 @@ public sealed class StatementsJob : IIngestJob
                                 symbolQuarantined++;
                             }
 
-                            return new KapPublicStatementWrite(outcome.Inserted, outcome.Unchanged, retained.Count);
+                            return new KapPublicStatementWrite(
+                                outcome.Inserted,
+                                outcome.Unchanged,
+                                retained.Count + disagreed.Count);
                         },
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -518,28 +587,39 @@ public sealed class StatementsJob : IIngestJob
                 // quarantined with its evidence and counted; the company's other reports were
                 // written. A transport failure is never counted as a parse event, so it travels
                 // under the unfetchable-detail word, not under SOURCE_FETCH_FAILED.
-                foreach (var skip in walk.Skips)
+                symbolQuarantined += await QuarantineSkipsAsync(walk.Skips, cancellationToken).ConfigureAwait(false);
+
+                written += walk.Inserted;
+                unchanged += walk.Unchanged;
+                quarantined += symbolQuarantined;
+                overlapRetained += symbolOverlap;
+
+                if (walk.Failure is { } failure)
                 {
-                    var reasonCode = string.Equals(
-                        skip.ReasonCode,
-                        KapPublicReasonCodes.UnparseablePayload,
-                        StringComparison.Ordinal)
-                        ? QuarantineReason.UnparseablePayload
-                        : VykDisclosureWalker.DisclosureDetailUnfetchable;
+                    // A mid-walk list source-down (D1): the company is failed, but the counts above are
+                    // the ones it actually earned — the windows it completed were written and are in
+                    // the store. Reporting `written 0` beside existing rows would be a false ledger;
+                    // reporting the company as complete would be the opposite lie. Both are avoided:
+                    // the company is failed with its real counts, and the run is `partial` because rows
+                    // exist.
+                    failedSymbols.Add(symbol);
                     _logger.LogWarning(
-                        "statements: public-site report {Index} for {Symbol} could not be walked ({SourceReason}: {Detail}); quarantined with evidence as {ReasonCode}",
-                        skip.DisclosureIndex,
-                        skip.Symbol,
-                        skip.ReasonCode,
-                        skip.Detail,
-                        reasonCode);
-                    await QuarantineAsync(
-                            KapPublicSourceOptions.SourceName,
-                            skip.EvidenceJson,
-                            reasonCode,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    symbolQuarantined++;
+                        "statements: company {Symbol} public-site list failed for {Date} ({ReasonCode}) over {From}..{To} after writing {Written} row(s) and keeping {Unchanged} unchanged; the completed position is persisted and the next pass resumes there",
+                        symbol,
+                        request.Date,
+                        SourceFetchFailed,
+                        failure.WindowFrom,
+                        failure.WindowTo,
+                        walk.Inserted,
+                        walk.Unchanged);
+                    symbolStats.Add(new SymbolRunStat(
+                        symbol,
+                        walk.Inserted,
+                        walk.Unchanged,
+                        symbolQuarantined,
+                        true,
+                        SourceFetchFailed));
+                    continue;
                 }
 
                 if (walk.Truncated)
@@ -552,10 +632,6 @@ public sealed class StatementsJob : IIngestJob
                         walk.ReportsFetched);
                 }
 
-                written += walk.Inserted;
-                unchanged += walk.Unchanged;
-                quarantined += symbolQuarantined;
-                overlapRetained += symbolOverlap;
                 symbolStats.Add(new SymbolRunStat(
                     symbol,
                     walk.Inserted,
@@ -597,10 +673,48 @@ public sealed class StatementsJob : IIngestJob
     }
 
     /// <summary>
+    /// Quarantines the walk's per-report skips with their evidence and their honest reason
+    /// (unparseable payload vs unfetchable detail), returning how many were written. A transport
+    /// failure is never counted as a parse event.
+    /// </summary>
+    private async Task<int> QuarantineSkipsAsync(
+        IReadOnlyList<KapPublicStatementSkip> skips,
+        CancellationToken cancellationToken)
+    {
+        var count = 0;
+        foreach (var skip in skips)
+        {
+            var reasonCode = string.Equals(
+                skip.ReasonCode,
+                KapPublicReasonCodes.UnparseablePayload,
+                StringComparison.Ordinal)
+                ? QuarantineReason.UnparseablePayload
+                : VykDisclosureWalker.DisclosureDetailUnfetchable;
+            _logger.LogWarning(
+                "statements: public-site report {Index} for {Symbol} could not be walked ({SourceReason}: {Detail}); quarantined with evidence as {ReasonCode}",
+                skip.DisclosureIndex,
+                skip.Symbol,
+                skip.ReasonCode,
+                skip.Detail,
+                reasonCode);
+            await QuarantineAsync(
+                    KapPublicSourceOptions.SourceName,
+                    skip.EvidenceJson,
+                    reasonCode,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
     /// The evidence a quarantine row keeps for a withheld cross-source fact: both provenances, the
-    /// period, and the report it came from — enough to re-ingest it once the source joins the
-    /// natural key, and enough for an operator to see the overlap is a <b>decision</b>, not a
-    /// failure.
+    /// period, and the report it came from — enough for an operator to see the overlap is a
+    /// <b>decision</b>, not a failure. Re-ingesting it after the source joins the natural key needs an
+    /// explicit cursor reset (the lane has already marked the report completed), so the note says that
+    /// rather than promising a later pass will pick it up (review round 1, D9).
     /// </summary>
     private static string OverlapEvidence(
         string symbol,
@@ -623,7 +737,44 @@ public sealed class StatementsJob : IIngestJob
             writer.WriteString(
                 "note",
                 "the period is already covered by the incumbent source; the public-site fact is not written, " +
-                "the incumbent row is untouched, and this record is re-ingestable once the source joins the natural key");
+                "the incumbent row is untouched. The report itself is marked completed by this lane, so " +
+                "re-ingesting this fact after the source joins the natural key needs a cursor reset (or " +
+                "TKT-foundation-083's recorded re-pin), not a later pass by itself");
+            writer.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>
+    /// The evidence for a fact withheld because the incumbent covers the same <b>calendar</b> period
+    /// under a different period type (D5): the calendar key both sides agree on, each side's period
+    /// type, and both provenances — so the disagreement is visible and re-ingestable by decision.
+    /// </summary>
+    private static string PeriodTypeDisagreementEvidence(
+        string symbol,
+        long disclosureIndex,
+        StatementFact fact,
+        ForeignStatementPeriod incumbent)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("symbol", symbol);
+            writer.WriteNumber("kapPublicDisclosureIndex", disclosureIndex);
+            writer.WriteString("periodEndDate", fact.PeriodEndDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("statementType", fact.StatementType);
+            writer.WriteString("withheldSource", KapPublicSourceOptions.SourceName);
+            writer.WriteString("withheldPeriodType", fact.PeriodType);
+            writer.WriteString("incumbentSource", incumbent.SourceRef);
+            writer.WriteString("incumbentPeriodType", incumbent.PeriodType);
+            writer.WriteBoolean("incumbentRetainedAsIs", true);
+            writer.WriteString(
+                "note",
+                "the incumbent source already covers this calendar period under a different period type " +
+                "(the store's natural key includes the period type, so writing this fact would duplicate one " +
+                "real period); the public-site fact is not written and the incumbent row is untouched");
             writer.WriteEndObject();
         }
 
@@ -692,8 +843,11 @@ public sealed class StatementsJob : IIngestJob
         }
 
         // Every constituent a genuine source failure → failed (the retry ladder's meaning). A
-        // parse-only world keeps the pre-063 posture (all unparseable → failed).
-        var allGenuinelyFailed = failedSymbols.Count + parseFailed == constituentCount;
+        // parse-only world keeps the pre-063 posture (all unparseable → failed). A run that wrote
+        // rows is never `failed` even when every company also hit a failure: `failed` means "nothing
+        // was ingested", so the partial writes win (review round 1, D1 — a mid-walk list source-down
+        // after real writes).
+        var allGenuinelyFailed = written == 0 && failedSymbols.Count + parseFailed == constituentCount;
 
         var status = allGenuinelyFailed
             ? IngestResult.Failed

@@ -84,9 +84,31 @@ public sealed record KapPublicStatementWalkPlan(DateOnly From, DateOnly To, int 
 }
 
 /// <summary>
+/// A <b>list</b> the source could not deliver, in the middle of a walk that may already have
+/// written facts (TKT-foundation-082 review round 1, D1). It travels <b>with</b> the walk's counts
+/// instead of unwinding the walk: without its index the company cannot be walked further, but the
+/// work it already completed is real, and a result that reported zero would be a lie.
+/// </summary>
+/// <param name="ReasonCode">The source's own reason (<see cref="KapPublicReasonCodes"/>).</param>
+/// <param name="Detail">The source's own detail text.</param>
+/// <param name="WindowFrom">The window whose list failed (the first day it asked for).</param>
+/// <param name="WindowTo">The window's last day.</param>
+public sealed record KapPublicStatementFailure(
+    string ReasonCode,
+    string? Detail,
+    DateOnly WindowFrom,
+    DateOnly WindowTo);
+
+/// <summary>
 /// One company's walk result: the cursor to persist (the walker already persisted it), what was
-/// covered, what was skipped and — the honesty half — the depth actually achieved versus the
-/// depth requested.
+/// covered, what was skipped, what failed and — the honesty half — the depth actually achieved
+/// versus the depth requested.
+/// <para>
+/// <see cref="Failure"/> is set only for a genuine <b>list</b> source-down. The counts beside it are
+/// still the pass's real counts (a mid-walk failure does not erase the windows it completed), and
+/// <see cref="Truncated"/> stays <c>false</c> — a source-down is not a budget truncation, so nothing
+/// here may read as a bounded-but-complete pass.
+/// </para>
 /// </summary>
 public sealed record KapPublicStatementWalkResult(
     string Symbol,
@@ -106,7 +128,8 @@ public sealed record KapPublicStatementWalkResult(
     int OverlapRetained,
     IReadOnlyList<KapPublicStatementSkip> Skips,
     bool Truncated,
-    string? TruncationReason);
+    string? TruncationReason,
+    KapPublicStatementFailure? Failure = null);
 
 /// <summary>
 /// The public-site statements <b>walk</b> (01 v1.5.56 §10.9.19, TKT-foundation-082;
@@ -131,8 +154,10 @@ public sealed record KapPublicStatementWalkResult(
 /// <b>Isolation.</b> A detail the source cannot deliver (transport, non-success, timeout) or a
 /// body that is not a report is a <b>named, counted skip with its evidence</b> — the company's
 /// other reports are still written and the walk continues. A <b>list</b> that is source-down is
-/// not isolated: the walk cannot proceed without its index, so it surfaces as a
-/// <see cref="SourceFetchException"/> for the job to fail the company with.
+/// not isolated: the walk cannot proceed without its index, so it stops, returns
+/// <see cref="KapPublicStatementFailure"/> and lets the job fail the company — <b>without</b>
+/// discarding the counts of the windows it already completed (a mid-walk source-down reports the
+/// rows it wrote, never a false zero).
 /// </para>
 /// </summary>
 public sealed class KapPublicStatementsWalker
@@ -172,10 +197,16 @@ public sealed class KapPublicStatementsWalker
     /// <summary>
     /// True when a listed row is one of the company's financial reports (see
     /// <see cref="FinancialReportCategory"/>).
+    /// <para>
+    /// The <b>category</b> alone is the discriminator (01 v1.5.56 §10.9.19 pins it, and says
+    /// explicitly that the <c>disclosureType</c> is not): the two fields coincide on the committed
+    /// capture, but a row whose category is <c>FR</c> while its disclosure type is anything else is
+    /// still a financial report, and requiring both would drop it silently — a lane whose contract is
+    /// that every skip is named and counted cannot have an unnamed filter (review round 1, D10).
+    /// </para>
     /// </summary>
     public static bool IsFinancialReport(KapPublicDisclosureRow row) =>
-        string.Equals(row.DisclosureCategory?.Trim(), FinancialReportCategory, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(row.DisclosureType?.Trim(), FinancialReportCategory, StringComparison.OrdinalIgnoreCase);
+        string.Equals(row.DisclosureCategory?.Trim(), FinancialReportCategory, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Walks one company. The persisted cursor (when any) decides where the walk starts; a
@@ -186,8 +217,11 @@ public sealed class KapPublicStatementsWalker
     /// <param name="plan">The date range and window width.</param>
     /// <param name="sink">The job's write hook, called once per decoded report.</param>
     /// <param name="cancellationToken">Cancellation.</param>
-    /// <exception cref="SourceFetchException">The disclosure list is source-down: the walk has no
-    /// index to walk, so the company is failed rather than reported as having nothing.</exception>
+    /// <returns>
+    /// The pass's real counts. A genuine <b>list</b> source-down does not throw and does not erase
+    /// them: it is reported through <see cref="KapPublicStatementWalkResult.Failure"/>, alongside the
+    /// windows, reports and rows the pass had already completed.
+    /// </returns>
     public async Task<KapPublicStatementWalkResult> WalkAsync(
         string symbol,
         PublicCompanyOid publicOid,
@@ -217,6 +251,7 @@ public sealed class KapPublicStatementsWalker
         DateOnly? achievedTo = null;
         var truncated = false;
         string? truncationReason = null;
+        KapPublicStatementFailure? failure = null;
 
         try
         {
@@ -248,10 +283,15 @@ public sealed class KapPublicStatementsWalker
 
                 if (listed.IsSourceDown)
                 {
-                    // No index, no walk: the company is failed by the job (a genuine source-down),
-                    // never recorded as a company with nothing to say.
-                    throw new SourceFetchException(
-                        $"KAP public-site disclosure list for '{symbol}' failed over {window.From:yyyy-MM-dd}..{window.To:yyyy-MM-dd} ({listed.ReasonCode}): {listed.Detail}");
+                    // No index, no walk — but the windows already completed are real work and their
+                    // facts are already stored. The failure travels with the pass's counts (D1):
+                    // the job fails the company with the rows it wrote, never with a false zero.
+                    failure = new KapPublicStatementFailure(
+                        listed.ReasonCode ?? KapPublicReasonCodes.SourceFetchFailed,
+                        listed.Detail,
+                        window.From,
+                        window.To);
+                    break;
                 }
 
                 if (listed.IsQuarantined)
@@ -284,8 +324,11 @@ public sealed class KapPublicStatementsWalker
                     .Where(IsFinancialReport)
                     .GroupBy(row => row.DisclosureIndex)
                     .Select(group => group.First())
-                    // Most current first: a bounded pass spends its detail budget on the reports a
-                    // consumer needs now, and truncation loses the oldest, never the newest.
+                    // Most current first *within this window*: the budget is spent on the reports a
+                    // consumer needs now. Across windows the order is oldest window first (the
+                    // watermark has to advance monotonically), so a multi-window bootstrap that is
+                    // bounded part-way loses the *newest windows* until a later pass — never a silent
+                    // claim that the newer periods do not exist.
                     .OrderByDescending(PublishedOrMin)
                     .ThenByDescending(row => row.DisclosureIndex)
                     .Where(row => !state.Contains(row.DisclosureIndex))
@@ -370,8 +413,8 @@ public sealed class KapPublicStatementsWalker
         }
         finally
         {
-            // Progress is persisted even when a source failure unwinds the walk, so a failed pass
-            // never costs the units it already completed.
+            // Progress is persisted even when a list fails or a source failure unwinds the walk, so
+            // a failed pass never costs the units it already completed.
             await _cursors.SetAsync(symbol, state, CancellationToken.None).ConfigureAwait(false);
 
             await _depths
@@ -389,7 +432,7 @@ public sealed class KapPublicStatementsWalker
         }
 
         _logger?.LogInformation(
-            "kap-public statements: {Symbol} walked {WindowsWalked}/{WindowsListed} window(s) {RequestedFrom}..{RequestedTo} — reports listed {ReportsListed}, fetched {ReportsFetched}, written {Inserted}, unchanged {Unchanged}, overlap-retained {OverlapRetained}, skipped {Skips}, truncated {Truncated} ({TruncationReason})",
+            "kap-public statements: {Symbol} walked {WindowsWalked}/{WindowsListed} window(s) {RequestedFrom}..{RequestedTo} — reports listed {ReportsListed}, fetched {ReportsFetched}, written {Inserted}, unchanged {Unchanged}, overlap-retained {OverlapRetained}, skipped {Skips}, truncated {Truncated} ({TruncationReason}), list-failure {Failure}",
             symbol,
             windowsWalked,
             windowsListed,
@@ -402,7 +445,8 @@ public sealed class KapPublicStatementsWalker
             overlapRetained,
             skips.Count,
             truncated,
-            truncationReason);
+            truncationReason,
+            failure is null ? "none" : $"{failure.ReasonCode} over {failure.WindowFrom:yyyy-MM-dd}..{failure.WindowTo:yyyy-MM-dd}");
 
         return new KapPublicStatementWalkResult(
             symbol,
@@ -422,7 +466,8 @@ public sealed class KapPublicStatementsWalker
             overlapRetained,
             skips,
             truncated,
-            truncationReason);
+            truncationReason,
+            failure);
     }
 
     /// <summary>

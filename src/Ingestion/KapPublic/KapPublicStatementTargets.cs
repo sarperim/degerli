@@ -46,16 +46,21 @@ public sealed class KapPublicStatementTargets
 
     /// <summary>
     /// The statement rows <paramref name="instrumentId"/> already holds from a source
-    /// <b>other than</b> <paramref name="laneSource"/>, keyed by the store's natural key
-    /// (period type | period end | statement type) and valued by the incumbent's provenance.
+    /// <b>other than</b> <paramref name="laneSource"/> — the <b>two-source coexistence</b> question
+    /// (TC-MDF-110): for a period the other source already covers, this lane must not write, must not
+    /// overwrite and must not relabel; the incumbent row stays as it is, and the overlap is named and
+    /// counted instead of being swallowed as an idempotent <c>unchanged</c>.
     /// <para>
-    /// This is the <b>two-source coexistence</b> question (TC-MDF-110): for a period the other
-    /// source already covers, this lane must not write, must not overwrite and must not relabel —
-    /// the incumbent row stays as it is, and the overlap is named and counted instead of being
-    /// swallowed as an idempotent <c>unchanged</c>.
+    /// The answer has <b>two</b> shapes, because the store's exact key is not the only way one real
+    /// period can be covered: the exact <c>periodType|periodEnd|statementType</c> key, <b>and</b> the
+    /// calendar period (same <c>periodEndDate</c> + <c>statementType</c>, different period type). VYK
+    /// defaults to <c>FY</c> at 12-31 while this lane's decoder fails safe to <c>Q</c> for an unknown
+    /// or duration-mismatched period, so a public annual report and a VYK annual row for the same
+    /// 12-31 period can disagree on the period type — an exact-key-only check would then write a
+    /// second row for one real period with no finding at all (review round 1, D5).
     /// </para>
     /// </summary>
-    public async Task<IReadOnlyDictionary<string, string>> GetForeignPeriodsAsync(
+    public async Task<ForeignStatementCoverage> GetForeignPeriodsAsync(
         long instrumentId,
         string laneSource,
         CancellationToken cancellationToken = default)
@@ -75,15 +80,13 @@ public sealed class KapPublicStatementTargets
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        var periods = rows
+            .Select(row => new ForeignStatementPeriod(row.PeriodType, row.PeriodEndDate, row.StatementType, row.SourceRef))
+            .ToList();
+
         // The first incumbent recorded for a key is the one named: the store's natural key is
         // (instrument, period, statement type), so at most one provenance answers per key today.
-        var foreign = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var row in rows)
-        {
-            foreign.TryAdd(Key(row.PeriodType, row.PeriodEndDate, row.StatementType), row.SourceRef);
-        }
-
-        return foreign;
+        return new ForeignStatementCoverage(periods);
     }
 
     /// <summary>
@@ -96,6 +99,77 @@ public sealed class KapPublicStatementTargets
         string.Join(
             '|',
             periodType,
+            periodEndDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            statementType);
+}
+
+/// <summary>One foreign-source statement period that covers a period this lane may not write over.</summary>
+/// <param name="PeriodType">The <b>incumbent's</b> stored period type.</param>
+/// <param name="PeriodEndDate">The calendar period end both sides agree on.</param>
+/// <param name="StatementType">The statement type both sides agree on.</param>
+/// <param name="SourceRef">The incumbent's provenance (named in the finding's evidence).</param>
+public sealed record ForeignStatementPeriod(
+    string PeriodType,
+    DateOnly PeriodEndDate,
+    string StatementType,
+    string SourceRef);
+
+/// <summary>
+/// The foreign-source coverage of one instrument, answerable by the store's exact natural key
+/// <b>and</b> by calendar period (review round 1, D5). Both answers mean "do not write"; the caller
+/// names the exact-key case <c>SOURCE_OVERLAP_RETAINED</c> and the calendar case
+/// <c>SOURCE_PERIOD_TYPE_DISAGREEMENT</c>, because the second is a period-type decode disagreement
+/// that an operator must be able to see rather than a plain overlap.
+/// </summary>
+public sealed class ForeignStatementCoverage
+{
+    private readonly Dictionary<string, ForeignStatementPeriod> _exact;
+    private readonly Dictionary<string, List<ForeignStatementPeriod>> _byCalendar;
+
+    public ForeignStatementCoverage(IEnumerable<ForeignStatementPeriod> periods)
+    {
+        ArgumentNullException.ThrowIfNull(periods);
+
+        _exact = new Dictionary<string, ForeignStatementPeriod>(StringComparer.Ordinal);
+        _byCalendar = new Dictionary<string, List<ForeignStatementPeriod>>(StringComparer.Ordinal);
+        foreach (var period in periods)
+        {
+            _exact.TryAdd(
+                KapPublicStatementTargets.Key(period.PeriodType, period.PeriodEndDate, period.StatementType),
+                period);
+
+            var calendarKey = CalendarKey(period.PeriodEndDate, period.StatementType);
+            if (!_byCalendar.TryGetValue(calendarKey, out var sameDate))
+            {
+                sameDate = [];
+                _byCalendar.Add(calendarKey, sameDate);
+            }
+
+            sameDate.Add(period);
+        }
+    }
+
+    /// <summary>The incumbent covering the <b>exact</b> natural key, when there is one.</summary>
+    public bool TryExact(
+        string periodType,
+        DateOnly periodEndDate,
+        string statementType,
+        out ForeignStatementPeriod incumbent) =>
+        _exact.TryGetValue(KapPublicStatementTargets.Key(periodType, periodEndDate, statementType), out incumbent!);
+
+    /// <summary>
+    /// The incumbents covering the same <b>calendar</b> period (period end + statement type) under
+    /// <b>any</b> period type. A non-empty answer with no exact-key match is a period-type
+    /// disagreement, not an overlap.
+    /// </summary>
+    public IReadOnlyList<ForeignStatementPeriod> AtCalendarPeriod(DateOnly periodEndDate, string statementType) =>
+        _byCalendar.TryGetValue(CalendarKey(periodEndDate, statementType), out var periods)
+            ? periods
+            : [];
+
+    private static string CalendarKey(DateOnly periodEndDate, string statementType) =>
+        string.Join(
+            '|',
             periodEndDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             statementType);
 }

@@ -358,8 +358,9 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
             first = await RunAsync(host);
         }
 
-        // The newest report came first: a bounded pass spends its budget on what a consumer needs
-        // now, and truncation loses the oldest, never the newest.
+        // Within the (single) window the newest report came first: a bounded pass spends its budget
+        // on what a consumer needs now. Across windows the walk is oldest-first (the watermark has to
+        // advance monotonically), so this is a window-scoped statement, not a global one.
         Assert.True(first.Written > 0);
         Assert.Equal(KapPublicReasonCodes.DetailCap, Assert.Single(first.SymbolStats).Reason);
         Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
@@ -474,36 +475,218 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
             $"\"fromDate\":\"{watermark:yyyy-MM-dd}\"",
             resumed.RequestMessage!.Body!,
             StringComparison.Ordinal);
+
+        // The resumed pass updates the achieved depth but must NOT rewrite the configured request:
+        // the lookback is still the range nobody has achieved yet (review round 1, D12).
+        await using (var db = _postgres.CreateContext())
+        {
+            var depth = Assert.Single(
+                await db.CoverageMetadata
+                    .Where(row => row.DataType == KapPublicStatementDepthStore.DataType)
+                    .ToListAsync());
+            using var notes = JsonDocument.Parse(depth.Notes!);
+            Assert.Equal(
+                firstWindow.ToString("yyyy-MM-dd"),
+                notes.RootElement.GetProperty("requestedFrom").GetString());
+            Assert.False(notes.RootElement.GetProperty("bootstrapped").GetBoolean());
+        }
     }
 
     /// <summary>
-    /// TC-MDF-109 (iii) — the <b>wall-clock</b> bound is real and is the lane's own 90-minute bound,
-    /// which is strictly below the scheduler's per-step bound: the budget truncates with
-    /// <c>WALK_DEADLINE</c> when the injected clock passes it (no sleeps, no wall-clock dependence).
+    /// TC-MDF-109 (iii) — a list outage in a <b>later</b> window does not erase what the earlier
+    /// windows already wrote (review round 1, D1). The company is still failed (a genuine
+    /// source-down), but the run reports the rows it actually ingested and is <c>partial</c>, never
+    /// <c>failed</c>-with-zero and never falsely complete; the persisted position is the last
+    /// <b>completed</b> window, and the depth record does not claim the requested range was achieved.
     /// </summary>
     [Fact]
-    public async Task TC_MDF_109_iii_the_wall_clock_bound_truncates_the_pass()
+    public async Task TC_MDF_109_iii_a_midwalk_list_outage_keeps_the_counts_of_the_windows_already_written()
     {
-        var clock = new FakeTimeProvider(RecordedAt);
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        var bootstrapStart = T.AddMonths(-24);
+        var firstWindowEnd = bootstrapStart.AddDays(364);
+        var secondWindowStart = firstWindowEnd.AddDays(1);
+        StubWindowedList(bootstrapStart, secondWindowStart);
+
+        IngestResult result;
+        await using (var host = BuildIngestion(new Dictionary<string, string?>
+        {
+            ["Ingestion:Statements:KapPublicWindowDays"] = "365",
+        }))
+        {
+            result = await RunAsync(host);
+        }
+
+        // Rows exist in the store, so the ledger must say so: pre-fix this run reported `written 0`
+        // beside stored rows and a `failed` status.
+        await using (var db = _postgres.CreateContext())
+        {
+            var stored = await db.FinancialStatements.CountAsync(
+                row => row.SourceRef == KapPublicSourceOptions.SourceName);
+            Assert.True(stored > 0, "the first window wrote rows before the second window's list failed");
+            Assert.Equal(stored, result.Written);
+        }
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+
+        var stat = Assert.Single(result.SymbolStats);
+        Assert.True(stat.Failed, "the company is still failed by name");
+        Assert.Equal(result.Written, stat.Written);
+        // The first window's two bodyless reports are the honest per-report skips; they survive too.
+        Assert.Equal(2, result.Quarantined);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var cursorRow = Assert.Single(
+                await db.CoverageMetadata
+                    .Where(row => row.DataType == KapPublicStatementCursorStore.DataType)
+                    .ToListAsync());
+            var cursor = KapPublicStatementCursor.TryParse(cursorRow.Notes)!;
+            // The completed window advanced the watermark; the failed one did not.
+            Assert.Equal(firstWindowEnd, cursor.Watermark);
+
+            var depth = Assert.Single(
+                await db.CoverageMetadata
+                    .Where(row => row.DataType == KapPublicStatementDepthStore.DataType)
+                    .ToListAsync());
+            using var notes = JsonDocument.Parse(depth.Notes!);
+            Assert.Equal(bootstrapStart.ToString("yyyy-MM-dd"), notes.RootElement.GetProperty("requestedFrom").GetString());
+            Assert.Equal(T.ToString("yyyy-MM-dd"), notes.RootElement.GetProperty("requestedTo").GetString());
+            Assert.Equal(firstWindowEnd.ToString("yyyy-MM-dd"), notes.RootElement.GetProperty("achievedTo").GetString());
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-109 (iii) — the detail ceiling is <b>per pass</b>, not per company (review round 1, D3;
+    /// test plan v1.29 item 3). Two mapped companies with a ceiling of <b>one</b> detail: the pass
+    /// issues exactly one report request in total, so a per-company allowance (which would issue two)
+    /// is excluded; the company that was not started is named under <c>WALK_NOT_STARTED</c> and its
+    /// list is never requested.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_109_iii_the_detail_ceiling_is_shared_by_the_pass_not_multiplied_per_company()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS", "THYAO");
+        await MapPublicOidAsync("THYAO");
+        StubDoubles();
+
+        IngestResult result;
+        await using (var host = BuildIngestion(new Dictionary<string, string?>
+        {
+            ["Ingestion:KapPublic:MaxDetailFetches"] = "1",
+        }))
+        {
+            result = await RunAsync(host);
+        }
+
+        var reportRequests = _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex));
+        Assert.Equal(1, reportRequests);
+        Assert.True(reportRequests <= 1, "the pass's detail requests never exceed its ceiling");
+
+        // Only one company was listed at all: the second was never started.
+        Assert.Equal(
+            1,
+            _wireMock.Server.LogEntries.Count(entry => entry.RequestMessage?.Path == ByCriteriaPath));
+
+        var walked = Assert.Single(result.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.DetailCap);
+        Assert.Equal("ASELS", walked.Symbol);
+        Assert.False(walked.Failed);
+
+        var notStarted = Assert.Single(result.SymbolStats, stat => stat.Reason == KapPublicReasonCodes.WalkNotStarted);
+        Assert.Equal("THYAO", notStarted.Symbol);
+        Assert.False(notStarted.Failed);
+        Assert.Equal(0, notStarted.Written);
+
+        Assert.True(result.Written > 0);
+    }
+
+    /// <summary>
+    /// TC-MDF-109 (iii) — the <b>wall-clock</b> bound is the job's own: the shipped 90-minute bound is
+    /// strictly below the scheduler's per-step bound, and the <b>walk</b> truncates with
+    /// <c>WALK_DEADLINE</c> when the injected clock passes it — no sleeps, no wall-clock dependence.
+    /// <para>
+    /// This is a walk-level case, not a direct unit drive of <see cref="KapPublicWalkBudget"/>
+    /// (review round 1, D4): the production job builds the budget from
+    /// <c>Ingestion:KapPublic:MaxWalkDuration</c>, the pacer advances the shared fake clock between two
+    /// admitted requests, and the assertions are the walk's own — the named deadline on the company's
+    /// stat, the <b>persisted</b> completed position in the cursor (the report it finished, watermark
+    /// unmoved) and the <b>truncated depth</b> row that says so.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_109_iii_the_wall_clock_bound_truncates_the_walk_and_persists_its_position()
+    {
         var options = new KapPublicSourceOptions();
 
         // The shipped bound, and the relation to the scheduler that makes it usable.
         Assert.Equal(TimeSpan.FromMinutes(90), options.MaxWalkDuration);
         Assert.True(options.MaxWalkDuration < IngestionSchedulerOptions.DefaultMaxStepDuration);
 
-        var budget = new KapPublicWalkBudget(
-            options.MaxListPages,
-            options.MaxDetailFetches,
-            options.MaxWalkDuration,
-            clock);
+        await ResetAsync();
+        await BindAsync("ASELS");
+        StubDoubles();
 
-        Assert.True(budget.TryBeginPage());
-        clock.Advance(TimeSpan.FromMinutes(90));
-        Assert.False(budget.TryBeginPage());
-        Assert.True(budget.Truncated);
-        Assert.Equal(KapPublicReasonCodes.WalkDeadline, budget.TruncationReason);
+        // A one-minute walk bound; the pacer's wait advances the fake clock by two minutes, so the
+        // deadline expires between the first completed report and the next detail request.
+        var clock = new FakeTimeProvider(RecordedAt);
+        var advanceOnPace = new KapPublicDelay((_, _) =>
+        {
+            clock.Advance(TimeSpan.FromMinutes(2));
+            return Task.CompletedTask;
+        });
 
-        await Task.CompletedTask;
+        IngestResult result;
+        await using (var host = BuildIngestion(
+            new Dictionary<string, string?>
+            {
+                ["Ingestion:KapPublic:RequestDelayMs"] = "1",
+                ["Ingestion:KapPublic:MaxWalkDuration"] = "00:01:00",
+            },
+            clock,
+            advanceOnPace))
+        {
+            result = await RunAsync(host);
+        }
+
+        // The walk stopped on the deadline, after exactly one completed report.
+        Assert.Equal(KapPublicReasonCodes.WalkDeadline, Assert.Single(result.SymbolStats).Reason);
+        Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, AnnualIndex)));
+        Assert.True(result.Written > 0, $"the completed report's facts were written ({result.Status})");
+
+        // The persisted position is the last *completed* report, and the window is not claimed as
+        // walked: its watermark still sits at the bootstrap start.
+        var bootstrapStart = T.AddMonths(-24);
+        await using (var db = _postgres.CreateContext())
+        {
+            var cursorRow = Assert.Single(
+                await db.CoverageMetadata
+                    .Where(row => row.DataType == KapPublicStatementCursorStore.DataType)
+                    .ToListAsync());
+            var cursor = KapPublicStatementCursor.TryParse(cursorRow.Notes)!;
+            Assert.Contains(InterimIndex, cursor.Seen);
+            Assert.Equal(bootstrapStart, cursor.Watermark);
+
+            // The depth row records the truncation by name: asked for the lookback, achieved no
+            // complete window.
+            var depth = Assert.Single(
+                await db.CoverageMetadata
+                    .Where(row => row.DataType == KapPublicStatementDepthStore.DataType)
+                    .ToListAsync());
+            using var notes = JsonDocument.Parse(depth.Notes!);
+            Assert.True(notes.RootElement.GetProperty("truncated").GetBoolean());
+            Assert.Equal(
+                KapPublicReasonCodes.WalkDeadline,
+                notes.RootElement.GetProperty("truncationReason").GetString());
+            Assert.Equal(bootstrapStart.ToString("yyyy-MM-dd"), notes.RootElement.GetProperty("requestedFrom").GetString());
+            Assert.Equal(T.ToString("yyyy-MM-dd"), notes.RootElement.GetProperty("requestedTo").GetString());
+            Assert.False(notes.RootElement.TryGetProperty("achievedFrom", out _));
+            Assert.Null(depth.AvailableFrom);
+        }
     }
 
     // =============================================================================================
@@ -803,6 +986,95 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         }
     }
 
+    /// <summary>
+    /// TC-MDF-110 (as amended) — a <b>calendar-period duplicate under a different period type</b> is
+    /// withheld, not written twice (review round 1, D5). VYK stores the annual 2025-12-31 period as
+    /// <c>FY</c> while the public decoder fails safe to <c>Q</c> for an annual report whose
+    /// <c>Periyot</c> is absent/unknown; the store's natural key includes the period type, so an
+    /// exact-key-only overlap check would write a second row for one real period with no finding.
+    /// The fix names the disagreement under its own reason and leaves the incumbent untouched.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_110_b_a_cross_source_period_type_disagreement_is_named_and_withheld()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+        StubDoubles();
+
+        var decoded = KapPublicReportDecoder.Decode(
+            RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body,
+            "ASELS");
+        var foreignPeriodEnd = new DateOnly(2025, 12, 31);
+        var disagreementFacts = decoded.Payload.Statements
+            .Where(fact => fact.PeriodEndDate == foreignPeriodEnd)
+            .ToList();
+        var writeableFacts = decoded.Payload.Statements.Except(disagreementFacts).ToList();
+        Assert.NotEmpty(disagreementFacts);
+        Assert.NotEmpty(writeableFacts);
+        Assert.All(disagreementFacts, fact => Assert.Equal("Q", fact.PeriodType));
+
+        // The incumbent holds the same calendar period, statement type by statement type, as FY.
+        long instrumentId;
+        await using (var db = _postgres.CreateContext())
+        {
+            instrumentId = (await db.Instruments.SingleAsync(instrument => instrument.Symbol == "ASELS")).Id;
+            foreach (var fact in disagreementFacts)
+            {
+                await SeedVykStatementAsync(db, instrumentId, foreignPeriodEnd, "FY", fact.StatementType);
+            }
+        }
+
+        await using (var host = BuildIngestion())
+        {
+            var result = await RunAsync(host);
+            Assert.Equal(writeableFacts.Count, result.Written);
+            Assert.Equal(IngestResult.Partial, result.Status);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            // Named: one finding per withheld fact, under the disagreement's own reason.
+            var findings = await db.QuarantinedFacts
+                .Where(quarantine => quarantine.ReasonCode == StatementsJob.SourcePeriodTypeDisagreement)
+                .ToListAsync();
+            Assert.Equal(disagreementFacts.Count, findings.Count);
+            Assert.All(findings, row =>
+            {
+                Assert.Equal(KapPublicSourceOptions.SourceName, row.SourceRef);
+                using var evidence = JsonDocument.Parse(row.PayloadJson!);
+                Assert.Equal("ASELS", evidence.RootElement.GetProperty("symbol").GetString());
+                Assert.Equal("2025-12-31", evidence.RootElement.GetProperty("periodEndDate").GetString());
+                Assert.Equal("Q", evidence.RootElement.GetProperty("withheldPeriodType").GetString());
+                Assert.Equal("FY", evidence.RootElement.GetProperty("incumbentPeriodType").GetString());
+                Assert.Equal("kap", evidence.RootElement.GetProperty("incumbentSource").GetString());
+            });
+            // It is not reported as a plain overlap: the two cases stay distinguishable.
+            Assert.Empty(await db.QuarantinedFacts
+                .Where(quarantine => quarantine.ReasonCode == StatementsJob.SourceOverlapRetained)
+                .ToListAsync());
+
+            // Not written twice: the calendar period still holds exactly the FY incumbents.
+            var rowsAtPeriod = await db.FinancialStatements
+                .Where(statement => statement.InstrumentId == instrumentId
+                    && statement.PeriodEndDate == foreignPeriodEnd)
+                .ToListAsync();
+            Assert.Equal(disagreementFacts.Count, rowsAtPeriod.Count);
+            Assert.All(rowsAtPeriod, row =>
+            {
+                Assert.Equal("FY", row.PeriodType);
+                Assert.Equal("kap", row.SourceRef);
+            });
+
+            // The report's other periods are still written under this lane's provenance.
+            var publicRows = await db.FinancialStatements
+                .Where(statement => statement.InstrumentId == instrumentId
+                    && statement.SourceRef == KapPublicSourceOptions.SourceName)
+                .ToListAsync();
+            Assert.DoesNotContain(publicRows, row => row.PeriodEndDate == foreignPeriodEnd);
+            Assert.Equal(writeableFacts.Count, publicRows.Count);
+        }
+    }
+
     // =============================================================================================
     // Harness
     // =============================================================================================
@@ -812,7 +1084,10 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
     /// double (the 079/080 harness convention: pacing bound to <c>0</c>, posture selected explicitly
     /// because the code default is a refusal).
     /// </summary>
-    private IngestionHost BuildIngestion(IReadOnlyDictionary<string, string?>? extraSettings = null)
+    private IngestionHost BuildIngestion(
+        IReadOnlyDictionary<string, string?>? extraSettings = null,
+        TimeProvider? clock = null,
+        KapPublicDelay? publicDelay = null)
     {
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -843,8 +1118,16 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<TimeProvider>(new FakeTimeProvider(RecordedAt));
+        services.AddSingleton<TimeProvider>(clock ?? new FakeTimeProvider(RecordedAt));
         services.AddMarketDataIngestion(configuration);
+
+        // A walk-level wall-clock case needs the pacer to move the injected clock (the pacer is the
+        // only production seam that runs between two admitted requests); the default stays the real
+        // timer, so every other case is untouched.
+        if (publicDelay is not null)
+        {
+            services.AddSingleton(publicDelay);
+        }
 
         return new IngestionHost(services.BuildServiceProvider());
     }
@@ -891,6 +1174,42 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
             RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria).Body,
             statusCode,
             method: "POST");
+
+    /// <summary>
+    /// A two-window list double: the <b>first</b> window answers the committed capture, the
+    /// <b>second</b> answers a 500 (a genuine list source-down). Each window is matched on the
+    /// request's own <c>fromDate</c>, so the failure lands exactly where the test says it does.
+    /// </summary>
+    private void StubWindowedList(DateOnly firstWindowFrom, DateOnly secondWindowFrom)
+    {
+        _wireMock.Server
+            .Given(Request.Create()
+                .WithPath(ByCriteriaPath)
+                .UsingPost()
+                .WithBody((string? body) =>
+                    body!.Contains($"\"fromDate\":\"{firstWindowFrom:yyyy-MM-dd}\"", StringComparison.Ordinal)))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria).Body));
+
+        _wireMock.Server
+            .Given(Request.Create()
+                .WithPath(ByCriteriaPath)
+                .UsingPost()
+                .WithBody((string? body) =>
+                    body!.Contains($"\"fromDate\":\"{secondWindowFrom:yyyy-MM-dd}\"", StringComparison.Ordinal)))
+            .RespondWith(Response.Create()
+                .WithStatusCode(500)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{"error":"list unavailable"}"""));
+
+        var report = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport);
+        _wireMock.StubBytes(
+            string.Format(ReportRoute, InterimIndex),
+            report.RawBytes,
+            "text/html; charset=utf-8");
+    }
 
     /// <summary>The canonical statements double the VYK lane reads when it is selected.</summary>
     private void StubVykCanonical() =>
@@ -968,6 +1287,26 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
             });
             await db.SaveChangesAsync();
         }
+    }
+
+    /// <summary>
+    /// Maps one more symbol to a stored public oid, so a two-company case can walk both (the map is
+    /// per instrument; the oid it points at is the same public company — the point of the case is the
+    /// <b>budget</b>, not the identity).
+    /// </summary>
+    private async Task MapPublicOidAsync(string symbol, string oid = AselsPublicOid)
+    {
+        await using var db = _postgres.CreateContext();
+        var instrument = await db.Instruments.SingleAsync(candidate => candidate.Symbol == symbol);
+        db.KapPublicCompanyMaps.Add(new KapPublicCompanyMap
+        {
+            InstrumentId = instrument.Id,
+            KapPublicOid = oid,
+            KapPublicOidSource = "test: budget-fairness mapping",
+            KapPublicOidAsOf = T,
+            RecordedAt = RecordedAt,
+        });
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Adds the bound symbols to <c>XU100</c>'s current membership (the serving path's universe).</summary>

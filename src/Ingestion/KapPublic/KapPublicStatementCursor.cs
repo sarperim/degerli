@@ -47,8 +47,15 @@ public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<
     /// Accumulating rather than replacing is the honest rule: a window that took <b>two</b> passes to
     /// walk (the first bounded, the second resuming it) has one seen set, and replacing it at the end
     /// of the second pass would forget the first pass's completions and re-fetch them. Keeping an
-    /// index is never wrong — a completed report keeps its own index forever — and the set is bounded
-    /// by the reports inside the boundary window.
+    /// index is never wrong — a completed report keeps its own index forever.
+    /// </para>
+    /// <para>
+    /// <b>The set is not bounded by one window.</b> Because the seen set accumulates across the whole
+    /// walk and is re-persisted on every window close and on every completed report, the
+    /// <c>coverage_metadata.notes</c> row grows for the lane's lifetime (each index ever walked stays
+    /// in it). That is a size cost, not a correctness one, and it is stated here rather than claimed
+    /// away (review round 1, D11): pruning it safely needs index→window attribution the cursor does not
+    /// record, so pruning is a schema change in its own right.
     /// </para>
     /// </summary>
     public static KapPublicStatementCursor AfterWindow(DateOnly windowLastDay, IEnumerable<long> completedSince) =>
@@ -172,6 +179,49 @@ public sealed class KapPublicStatementCursorStore
     }
 
     /// <summary>
+    /// The persisted watermark of every symbol that has one, in one read per run
+    /// (TKT-foundation-082 review round 1, D2). The public run uses it to iterate the universe
+    /// <b>least-recently-walked first</b>, so a company the pass budget skipped is at the front of
+    /// the next pass instead of being starved forever behind the same head companies.
+    /// A symbol with no cursor row is simply absent — absence means "never walked", and the caller
+    /// orders it first.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, DateOnly>> GetWatermarksAsync(
+        IReadOnlyCollection<string> symbols,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        if (symbols.Count == 0)
+        {
+            return new Dictionary<string, DateOnly>(StringComparer.Ordinal);
+        }
+
+        var wanted = symbols.Distinct(StringComparer.Ordinal).ToList();
+        var rows = await _db.CoverageMetadata
+            .Where(row => row.Scope == InstrumentScope
+                && row.DataType == DataType
+                && row.InstrumentId != null)
+            .Join(
+                _db.Instruments.Where(instrument => wanted.Contains(instrument.Symbol)),
+                row => row.InstrumentId,
+                instrument => (long?)instrument.Id,
+                (row, instrument) => new { instrument.Symbol, row.Notes })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var watermarks = new Dictionary<string, DateOnly>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            if (row.Symbol is not null && KapPublicStatementCursor.TryParse(row.Notes) is { } cursor)
+            {
+                watermarks.TryAdd(row.Symbol, cursor.Watermark);
+            }
+        }
+
+        return watermarks;
+    }
+
+    /// <summary>
     /// Upserts <paramref name="symbol"/>'s cursor (idempotent on the instrument/data-type key). An
     /// unresolvable symbol is a no-op — there is nothing to key the position to.
     /// </summary>
@@ -254,6 +304,15 @@ public sealed class KapPublicStatementDepthStore
     /// for, <paramref name="achievedFrom"/>/<paramref name="achievedTo"/> are the windows the pass
     /// completed (<c>null</c> when it completed none — the achieved depth is then honestly unknown,
     /// never zero). Idempotent on the instrument/data-type key: a later pass updates the one row.
+    /// <para>
+    /// <b>The configured request is not overwritten by a resumed pass.</b> A bootstrap records
+    /// <paramref name="requestedFrom"/> (the configured lookback start). A resumed pass is given its
+    /// own start (the stored watermark) as its effective walk start, but the <i>request</i> did not
+    /// change: the configured lookback is still the range nobody has achieved yet. Overwriting it with
+    /// the watermark would silently turn "asked for 24 months, walked 6" into "asked for 6 and got it"
+    /// (FR-MDF-010; review round 1, D12). Only a real bootstrap writes
+    /// <paramref name="requestedFrom"/>.
+    /// </para>
     /// </summary>
     public async Task RecordAsync(
         string symbol,
@@ -296,12 +355,50 @@ public sealed class KapPublicStatementDepthStore
             };
             _db.CoverageMetadata.Add(row);
         }
+        else if (!bootstrapped && TryReadRequestedFrom(row.Notes) is { } storedRequest)
+        {
+            // A resumed pass keeps the configured request the bootstrap recorded; only its own
+            // walk start (the watermark) moved. See the remark on this method.
+            requestedFrom = storedRequest;
+        }
 
         row.AvailableFrom = achievedFrom;
         row.AvailableTo = achievedTo;
         row.Notes = Notes(requestedFrom, requestedTo, achievedFrom, achievedTo, bootstrapped, truncated, truncationReason);
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The <c>requestedFrom</c> already recorded in a depth row's notes, if readable.</summary>
+    private static DateOnly? TryReadRequestedFrom(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(notes);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("requestedFrom", out var requested)
+                && requested.ValueKind == JsonValueKind.String
+                && DateOnly.TryParseExact(
+                    requested.GetString(),
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsed))
+            {
+                return parsed;
+            }
+        }
+        catch (JsonException)
+        {
+            // An unreadable row is not reinterpreted: this pass's own request is what it records.
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -39,6 +39,16 @@ public static class KapPublicReasonCodes
     public const string WalkDeadline = "WALK_DEADLINE";
 
     /// <summary>
+    /// A company was <b>not started at all</b> because the pass's shared budget was already spent by
+    /// earlier companies (TKT-foundation-082). It is a distinct word from the per-walk truncation
+    /// codes (<see cref="PageCap"/>/<see cref="DetailCap"/>/<see cref="WalkDeadline"/>): a
+    /// truncated-but-walked company and a never-started company are different facts, and the ledger
+    /// must be able to tell them apart. Fair ordering by cursor age means the companies skipped this
+    /// pass are the first ones the next pass walks, so the omission is bounded in passes, never permanent.
+    /// </summary>
+    public const string WalkNotStarted = "WALK_NOT_STARTED";
+
+    /// <summary>
     /// A bound symbol the public-site identity answer cannot map to a company oid (TKT-foundation-080,
     /// 01 v1.5.54 §10.9.19). It is the <b>same</b> 044 vocabulary word the VYK lane records
     /// (<c>VykCompanyDirectory.CompanyIdentityUnresolved</c>), applied to this source: the symbol is
