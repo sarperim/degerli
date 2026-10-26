@@ -169,6 +169,12 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
     public async Task TC_VAL_008_missing_statement_inputs_are_named_and_not_computed()
     {
         await SeedAsync();
+
+        // Also seed the other lane's count — a deliberately different value — so the
+        // precedence is actually exercised: if the derived count ever took priority over
+        // an as-reported statement figure, the assertions below would fail.
+        await SeedDerivedCountAsync("PART", count: 240_000_000, priceDate: T);
+
         await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
         await RunBaselineJobAsync(factory, BuildDate);
         using var client = CreateClient(factory);
@@ -200,6 +206,18 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
         Assert.Equal(150m, parameters.GetProperty("cash").GetDecimal());
         Assert.Equal(120m, parameters.GetProperty("share_count").GetDecimal());
         Assert.Equal(0.10m, parameters.GetProperty("growth_rate").GetDecimal());
+
+        // TC-VAL-008 — the served 120 is PART's as-reported balance-sheet SHARES_DILUTED
+        // line, and the provenance ref must say so. The declared precedence (TKT-foundation-086;
+        // `01` §10.9.11 / `02` §3.1) is that a statement-reported count wins, so the
+        // price-derived lane seeded above (240,000,000) must never override as-reported
+        // evidence — neither the value, nor the source, nor the as-of may come from it.
+        var shareCountRef = baseline.GetProperty("canonicalFactRefs").GetProperty("share_count");
+        Assert.Equal("statement", shareCountRef.GetProperty("source").GetString());
+        Assert.False(shareCountRef.GetProperty("restated").GetBoolean());
+
+        // The as-of is the canonical-fact build date, never the derived row's price date (T).
+        Assert.Equal(BuildDate.ToString("yyyy-MM-dd"), shareCountRef.GetProperty("asOf").GetString());
 
         // Supplying all eight values still computes — it is the user's model (RISK-VAL-001).
         var userModel = new Dictionary<string, object?>
