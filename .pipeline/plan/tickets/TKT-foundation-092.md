@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-092: Quarantined-cursor recovery — the ~180 transport-failure `DISCLOSURE_DETAIL_UNFETCHABLE` quarantines become re-walkable once, bounded and recorded, so the affected companies' history is not cursor-locked forever
 
-- Status: in-review
+- Status: done
 - Size: M
 - **Priority: P2 — follow-up slice 3b of the 2026-10-27 live-run wave: coverage repair, not new capability. AKBNK, TTKOM and TUPRS's Q2-2023/H1-2024 windows are locked out of their own history by quarantines that were transient transport failures.**
 - **The verified live root cause (runs 302/303, recorded on 082):** after ~30 successful excel exports, report fetches failed in transport bursts (~180 `DISCLOSURE_DETAIL_UNFETCHABLE`, `failed in transport`, `bodyReceived: false` — AKBNK 102 in pass 1); the same exports fetch fine from the host moments later (886 KB in 2.7 s — suspected per-connection throttling or container-network MTU, **undetermined**). Per the 063/046 doctrine these quarantines are terminal: the walk marks the failed index completed (`state.With(index)` — it enters the seen set) and the cursor advances past it, so **the affected windows can never be re-walked by an ordinary pass**. The companies' history is silently bounded by a transient outage.
@@ -144,3 +144,12 @@ covered by a plain unit assertion over a literal pre-092 cursor notes document i
 `KapPublicStatementsIngestTests.Cursor_written_before_092_keeps_its_position_and_has_no_replay_state`
 (same watermark and seen set, empty backlog/tombstone), deliberately **untagged** because §32 defines no
 back-compatibility sub-case.
+
+## Merge record — 2026-10-28 (orchestrator)
+
+- **PR #154 squash-merged to `dev` as `778380e`** after 3 review rounds (2 fixer dispatches, cap reached; 8+4+3 findings all triaged, 0 disputes/escalations/blockers). Round artifacts: `.pipeline/plan/reviews/TKT-foundation-092-round-{1,2,3}.md`.
+- All four concurrency-surfaced rulings verified settled on disk: (1) replay scope = body-less transport failures only, stated in arch §10.9.19 + ticket, 082 suite byte-identical; (2) docs §32 contiguous, arch v1.5.68, test plan v1.44, stale v1.5.40/v1.5.67 collisions corrected; (3) counts reach three log sites, "not a stored ledger field" explicit, Jobs.cs untouched; (4) re-quarantine second-row + recovered-leaves-row both documented and verified add-only.
+- Raced-edit window (duplicate session incident): no residue at any head — verified single replay loop, no `IsReplayPending` remnant, coherent log lines.
+- Open non-blocking: R-1/X-1/X-2 docs nits (log-site count undercounted as "two" vs three; v1.43 corrected in place without annotation) — recorded residue, one docs commit when convenient.
+- 088's DR-1/DR-2 restored as pinned non-goals, still fenced to the user.
+- Live recovery pass (AKBNK/TTKOM/TUPRS) is the orchestrator's post-merge criterion — running with the wave's live chain. **Status: done** (code+review; live criteria recorded when run).
