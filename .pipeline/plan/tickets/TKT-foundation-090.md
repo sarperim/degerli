@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-090: Cumulative-vs-period semantics verification — one real source report determines whether the decoder stores YTD interim figures as period figures, and the honest behaviour when semantics cannot be determined
 
-- Status: in-review
+- Status: done
 - PR: [#152](https://github.com/sarperim/degerli/pull/152) → `dev`
 - Size: M
 - **Priority: P1 — follow-up slice 2 of the 2026-10-27 live-run wave. This protects every DCF baseline number: the FY baselines consume these statements, and the interim financials display labels them.**
@@ -92,3 +92,11 @@ No stored rows are rewritten by this ticket (FR-MDF-015). If a stored interim ro
 - Zero live kap.org.tr requests in this lane; the committed doubles were the entire input.
 
 **Flagged:** (a) the KCHOL number stays unverified (no committed body — §4 above); (b) DR-1/DR-2 remain fenced and untouched; (c) the re-walk repair is a recorded orchestrator/user step, not done here; (d) **routing — the served-label gap (057's surface):** the interim's declared span never leaves the decode (`Group.ToFact()` drops it; `FinancialStatement` and the financials payload carry no span), so the served `periodType` `Q` + `2026-06-30` still renders "2026 Q2" on SCR-005. Closing it — expose the span through the payload/store, or label interims by their dated range — is a display/consumer ticket, not this one; no API/UI code was changed here. (e) **routing — TUPRS-specific attribution:** Q3-2025 ₺36,9bn and Q2-2026 ₺120,5bn stay unattributed because no TUPRS interim body is committed; attributing them needs a paced live capture of those bodies in a later lane — **no live capture was made in this lane**, and none is claimed.
+
+## Merge record — 2026-10-27 (orchestrator)
+
+- **PR #152 squash-merged to `dev` as `d7edc3c`** after 2 review rounds (1 fixer dispatch — 5 major record-accuracy findings fixed, no production-behavior change after round 1; final MERGEABLE). Round artifacts: `.pipeline/plan/reviews/TKT-foundation-090-round-{1,2}.md`.
+- Review verified against the committed fixture: the YTD-vs-quarter hypothesis is disposed of on the interim path (the decoder picks the column whose declared duration is the report's own; MİGROS IS/OCI carry a discrete `3 Aylık` sibling already skipped). The new guard (`semanticsUndetermined` → fail safe to `Q`, one finding per report) is strictly narrowing — no unattested body can reach `FY`.
+- **Routed (not waived):** R-1 interim span not served — SCR-005 renders `Q` as a discrete quarter while the stored interim value is cumulative (display/consumer follow-up, 057's surface); R-2 KCHOL FY2025 −₺204.9bn unattributed (capture/label investigation); R-3 TUPRS Q3-2025/Q2-2026 figures unattributed (paced live capture owed). DR-10 nit (ASELSAN 1643141 credited as TC witness vs inspection) left unfixed.
+- 088's DR-1/DR-2 remain fenced.
+- Post-merge live criteria (orchestrator-owned, owed): after a `kap-public` walk, no `FY`-typed half-year row; the `2026-06-30` `/financials` period reads `Q`. **Status: done** (code+review; live criteria recorded when run).
