@@ -185,6 +185,15 @@ public sealed record KapPublicColumn(
 /// <param name="DisplayedText">The cell's displayed text, verbatim (the cross-check only).</param>
 /// <param name="ColumnHeader">The period column header this value came from, verbatim.</param>
 /// <param name="PeriodEndDate">The period end the column header declared.</param>
+/// <param name="PeriodStartDate">The range start the column header declared (null on an instant
+/// column such as a balance sheet's) — the <b>true declared duration</b> of the figure
+/// (TKT-foundation-090). A cumulative interim figure therefore states the span it covers
+/// (<c>01.01.2026 – 30.06.2026</c>) on the decode result. This is decode-result provenance: it
+/// is available to the decode's own consumers and tests, and is <b>not</b> carried into
+/// <c>StatementFact</c>/<c>FinancialStatement</c> or the served financials payload.</param>
+/// <param name="DurationMonths">The declared range length in months (null for an instant
+/// column, and always null together with <paramref name="PeriodStartDate"/>) — the same duration
+/// the column was selected on.</param>
 /// <param name="RowOrder">The row's ordinal within its table (0-based) — the last leg of the trace.</param>
 public sealed record KapPublicLine(
     string StatementType,
@@ -198,6 +207,8 @@ public sealed record KapPublicLine(
     string DisplayedText,
     string ColumnHeader,
     DateOnly PeriodEndDate,
+    DateOnly? PeriodStartDate,
+    int? DurationMonths,
     int RowOrder);
 
 /// <summary>
@@ -330,6 +341,15 @@ public static class KapPublicReportReasons
     /// statement period type then fails safe to <c>Q</c> — an FY row is never emitted on a
     /// contradicted declaration.</summary>
     public const string PeriodDurationMismatch = "PERIOD_DURATION_MISMATCH";
+
+    /// <summary>
+    /// The report declares a period (<c>Periyot</c>) but <b>no</b> column declares a readable
+    /// date range, so nothing in the body attests what the figures cover — the cumulative-vs-
+    /// discrete semantics are undetermined (TKT-foundation-090). Counted once per report; the
+    /// statement period type fails safe to <c>Q</c> (never <c>FY</c> on an unattested
+    /// declaration), so a half-year's balance sheet can never enter a DCF's annual basis.
+    /// </summary>
+    public const string PeriodSemanticsUndetermined = "PERIOD_SEMANTICS_UNDETERMINED";
 
     /// <summary>A statement table decoded lines but <b>none</b> mapped to a canonical code —
     /// only <c>OTHER_*</c> passthroughs. A label-spelling drift must be named, not left as a

@@ -1433,6 +1433,265 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     }
 
     // =================================================================================
+    // TC-MDF-119 — cumulative (year-to-date) vs discrete-period semantics
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-119 (i) — <b>the determination, taken from the committed interim body's own
+    /// column headers and cells.</b> The MİGROS 2026-06 filing (public index <c>1648240</c>,
+    /// <c>Periyot 2</c> → <c>6 Aylık</c>) declares its main income-statement and cash-flow
+    /// columns as <c>Cari Dönem 01.01.2026 - 30.06.2026</c> — a <b>six-month cumulative
+    /// (year-to-date) range</b>. The income-statement tables carry the discrete quarter as a
+    /// <b>separate</b> <c>Cari Dönem 3 Aylık 01.04.2026 - 30.06.2026</c> column; the
+    /// cash-flow table carries <b>only</b> the two declared-range columns (current and prior),
+    /// so the CF figure's span is attested by its own declared range alone. The decoder's
+    /// column selection is therefore <b>not</b> storing a year-to-date figure under a
+    /// discrete-quarter label: it decodes the column whose declared duration is the report's
+    /// own, and names + skips the quarter columns where they exist. The arithmetic is the
+    /// body's own and is decisive — the decoded <c>NI</c> is the six-month cell
+    /// (<c>1.078.256</c>), while the three-month column's <c>DÖNEM KARI (ZARARI)</c> cell is
+    /// <c>-644.936</c>; the decoded <c>REV</c> is the six-month <c>Hasılat</c>
+    /// (<c>241.298.039</c>), not the three-month <c>124.399.203</c>.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_119_the_interim_column_is_the_declared_cumulative_range_never_a_quarter()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var report = KapPublicReportDecoder.Decode(body, "MGROS");
+
+        Assert.Equal(2026, report.Header.Year);
+        Assert.Equal(2, report.Header.Period);
+        Assert.Equal("6 Aylık", report.Header.PeriodType);
+        Assert.Equal(6, report.Header.PeriodMonths);
+
+        // The cash-flow table's main column declares the six-month range its figures cover.
+        var cashFlow = report.Tables.Single(t => t.StatementType == "CF");
+        var currentFlow = cashFlow.Columns[0];
+        Assert.Equal("Cari Dönem 01.01.2026 - 30.06.2026", currentFlow.Verbatim);
+        Assert.Equal(new DateOnly(2026, 1, 1), currentFlow.PeriodStart);
+        Assert.Equal(new DateOnly(2026, 6, 30), currentFlow.PeriodEnd);
+        Assert.Equal(6, currentFlow.DurationMonths);
+        Assert.True(currentFlow.Decoded);
+        Assert.Null(currentFlow.SkipReason);
+
+        // The cash-flow table has exactly two columns — current and prior, both declared
+        // ranges. Unlike the income-statement tables it has no discrete `3 Aylık` sibling
+        // (TKT-foundation-090), so the CF span rests on its own declaration.
+        Assert.Equal(2, cashFlow.Columns.Count);
+        Assert.All(cashFlow.Columns, column =>
+        {
+            Assert.Equal(6, column.DurationMonths);
+            Assert.True(column.Decoded);
+        });
+
+        // The discrete quarter is its own column, named and skipped — never merged, never
+        // stored under the same period end.
+        var quarters = report.Tables
+            .Where(t => t.StatementType == "IS")
+            .SelectMany(t => t.Columns)
+            .Where(c => c.DurationMonths == 3)
+            .ToList();
+        Assert.Equal(4, quarters.Count); // current + comparative, in both IS tables
+        Assert.All(quarters, column =>
+        {
+            Assert.False(column.Decoded);
+            Assert.Equal(KapPublicReportReasons.SubPeriodColumn, column.SkipReason);
+            Assert.Contains("3 Aylık", column.Verbatim, StringComparison.Ordinal);
+        });
+        Assert.Contains(quarters, c => c.PeriodStart == new DateOnly(2026, 4, 1)
+            && c.PeriodEnd == new DateOnly(2026, 6, 30)
+            && c.IsCurrent);
+        Assert.True(report.Count(KapPublicReportReasons.SubPeriodColumn) > 0);
+
+        // Both columns are in the body; the decoded figure is the cumulative one, and the
+        // duration travels with every decoded line.
+        Assert.Contains("241298039", body, StringComparison.Ordinal);   // 6M Hasılat (raw)
+        Assert.Contains("124399203", body, StringComparison.Ordinal);   // 3M Hasılat (raw)
+        Assert.Contains("-644936", body, StringComparison.Ordinal);     // 3M DÖNEM KARI (raw)
+        Assert.Contains("1078256", body, StringComparison.Ordinal);     // 6M DÖNEM KARI (raw)
+
+        var income = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+        Assert.Equal(241_298_039m, income.Lines["REV"]);
+        Assert.Equal(1_078_256m, income.Lines["NI"]);
+
+        var cash = report.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+        Assert.Equal(17_837_860m, cash.Lines["OCF"]);
+        Assert.Equal(-6_297_863m, cash.Lines["CAPEX"]);
+        Assert.Equal(11_539_997m, CanonicalMetrics.FreeCashFlow(cash.Lines["OCF"], cash.Lines["CAPEX"]));
+
+        // Every decoded flow value states the span it was decoded under: six months from
+        // 1 January — the decode result's own provenance, which the decode's consumers and
+        // tests can read (TC-MDF-119 (iii)). The store and the served payload carry no span.
+        var flowLines = report.LinesFor("CF", new DateOnly(2026, 6, 30));
+        Assert.NotEmpty(flowLines);
+        Assert.All(flowLines, line =>
+        {
+            Assert.Equal(new DateOnly(2026, 1, 1), line.PeriodStartDate);
+            Assert.Equal(6, line.DurationMonths);
+        });
+        Assert.All(
+            report.LinesFor("IS", new DateOnly(2026, 6, 30)),
+            line => Assert.Equal(6, line.DurationMonths));
+    }
+
+    /// <summary>
+    /// TC-MDF-119 (ii) — <b>the annual bodies are twelve-month columns, and their FCF is the
+    /// year</b> — so the FY basis the DCF consumes is unaffected by cumulative semantics. The
+    /// TÜPRAŞ 2025 Yıllık body's cash-flow column declares <c>01.01.2025 - 31.12.2025</c> and
+    /// its own cells give OCF <c>49.464.734</c> − |CAPEX <c>19.118.339</c>| = <b>30.346.395</b>
+    /// thousand TL = ₺30,35bn (the recorded FY2025 figure); the ASELSAN 2025 Yıllık body gives
+    /// <c>48.901.969</c> − |<c>38.168.467</c>| = <b>10.733.502</b>. Both statements exist once
+    /// per column and both are typed <c>FY</c> because a twelve-month duration attests them.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_119_the_annual_columns_are_twelve_months_and_their_fcf_is_the_year()
+    {
+        foreach (var (name, symbol, ocf, capex, fcf) in new (string, string, decimal, decimal, decimal)[]
+        {
+            (RealSourceCatalog.KapPublicReportTuprs, "TUPRS", 49_464_734m, -19_118_339m, 30_346_395m),
+            (RealSourceCatalog.KapPublicReportAselsAnnual, "ASELS", 48_901_969m, -38_168_467m, 10_733_502m),
+        })
+        {
+            var report = KapPublicReportDecoder.Decode(CaptureBodies[name], symbol);
+            Assert.Equal("Yıllık", report.Header.PeriodType);
+            Assert.Equal(4, report.Header.Period);
+
+            var cashFlow = report.Tables.Single(t => t.StatementType == "CF");
+            Assert.All(cashFlow.Columns, column =>
+            {
+                Assert.Equal(12, column.DurationMonths);
+                Assert.True(column.Decoded);
+            });
+            Assert.Equal(new DateOnly(2025, 1, 1), cashFlow.Columns[0].PeriodStart);
+            Assert.Equal(new DateOnly(2025, 12, 31), cashFlow.Columns[0].PeriodEnd);
+
+            var annual = report.Payload.Statements.Single(
+                s => s.StatementType == "CF" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+            Assert.Equal("FY", annual.PeriodType);
+            Assert.Equal(ocf, annual.Lines["OCF"]);
+            Assert.Equal(capex, annual.Lines["CAPEX"]);
+            Assert.Equal(fcf, CanonicalMetrics.FreeCashFlow(annual.Lines["OCF"], annual.Lines["CAPEX"]));
+
+            Assert.All(
+                report.LinesFor("CF", new DateOnly(2025, 12, 31)),
+                line =>
+                {
+                    Assert.Equal(new DateOnly(2025, 1, 1), line.PeriodStartDate);
+                    Assert.Equal(12, line.DurationMonths);
+                });
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-119 (iii) — <b>a cumulative interim can never be consumed as an annual, proved
+    /// through the store and the consumer's own predicate.</b> Decoded and written, the MİGROS
+    /// 2026-06 report stores its six-month cumulative cash flow as <c>Q</c> at
+    /// <c>2026-06-30</c> with the body's cumulative <c>OCF</c>; an FY-equality filter — the
+    /// predicate every FY-only consumer applies (<c>DcfBaselineGenerationJob</c>:
+    /// <c>s.PeriodType == "FY"</c>) — therefore matches <b>nothing</b> in what this report
+    /// stored. The test re-applies that predicate over the stored rows; it does not run the job.
+    /// A half-year can therefore never enter the annual basis — what the display *labels* that
+    /// `Q` row is 057's surface, not this case's claim.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_119_a_cumulative_interim_is_stored_as_q_and_the_fy_filter_cannot_reach_it()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportMgros], "MGROS");
+        var (store, instrumentId) = await StoreAsync("MGROS");
+
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 8, 11, 21, 43, 53, TimeSpan.Zero),
+            report.Payload);
+        Assert.Equal(6, result.Inserted);
+
+        await using var db = _postgres.CreateContext();
+        var stored = await db.FinancialStatements
+            .Where(s => s.InstrumentId == instrumentId)
+            .ToListAsync();
+        Assert.Equal(6, stored.Count);
+        Assert.All(stored, statement => Assert.Equal("Q", statement.PeriodType));
+
+        // The consumer's FY filter — the only path into a DCF baseline.
+        var annualBasis = stored.Where(s => s.PeriodType == "FY").ToList();
+        Assert.Empty(annualBasis);
+
+        var cashFlow = stored.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+        var lines = await db.FinLineItems
+            .Where(l => l.StatementId == cashFlow.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
+        // The six-month cumulative cell, scaled by the store (thousands → TL) — never the
+        // three-month cell and never annualized. The store has no span field; the declared
+        // span lives on the decode result (asserted in (i)).
+        Assert.Equal(17_837_860_000m, lines["OCF"]);
+        Assert.Equal(-6_297_863_000m, lines["CAPEX"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-119 (iv) — <b>the honest behaviour when the semantics cannot be determined.</b>
+    /// A report that self-declares an annual period while <b>none</b> of its columns declares a
+    /// readable date range attests nothing: the pre-ticket decoder accepted the declaration
+    /// silently and typed its instant (balance-sheet) rows <c>FY</c>, which would let a
+    /// half-year's <c>debt</c>/<c>cash</c> into the DCF's annual basis. Now the ambiguity is a
+    /// named, counted finding (<c>PERIOD_SEMANTICS_UNDETERMINED</c>) and every row fails safe to
+    /// <c>Q</c> — never FY on an unattested declaration, and never a guessed period for the
+    /// flow tables whose columns cannot be attributed at all (those cells stay
+    /// <c>COLUMN_UNATTRIBUTED</c> drops).
+    /// </summary>
+    [Fact]
+    public void TC_MDF_119_a_period_no_column_attests_is_named_and_fails_safe_to_q()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var stripped = WithoutDeclaredRanges(body);
+        Assert.DoesNotContain("01.01.2026 - 30.06.2026", stripped, StringComparison.Ordinal);
+
+        // The dangerous shape: the declaration says annual, nothing attests a duration.
+        var annual = KapPublicReportDecoder.Decode(
+            Mutate(stripped, "   Periyot:2", "   Periyot:4"),
+            "MGROS");
+
+        Assert.Equal("Yıllık", annual.Header.PeriodType); // surfaced verbatim, never rewritten
+
+        // The danger this closes: on the pre-ticket behaviour the declaration alone typed the
+        // half-year balance sheet FY — the shape that puts a 30.06 debt/cash into a DCF baseline.
+        Assert.DoesNotContain(annual.Payload.Statements, s => s.PeriodType == "FY");
+        Assert.All(annual.Payload.Statements, s => Assert.Equal("Q", s.PeriodType));
+
+        var finding = Assert.Single(
+            annual.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PeriodSemanticsUndetermined);
+        Assert.Equal(1, finding.Count);
+        Assert.Contains("no column", finding.Detail, StringComparison.Ordinal);
+
+        // The half-year balance sheet is still stored — honestly as an interim, its own date
+        // being the only period evidence it carries.
+        Assert.Contains(
+            annual.Payload.Statements,
+            s => s.StatementType == "BS"
+                && s.PeriodEndDate == new DateOnly(2026, 6, 30)
+                && s.PeriodType == "Q");
+        Assert.Contains(
+            annual.Payload.Statements,
+            s => s.StatementType == "BS"
+                && s.PeriodEndDate == new DateOnly(2025, 12, 31)
+                && s.PeriodType == "Q");
+
+        // No flow fact is invented from columns that cannot be attributed to a period.
+        Assert.DoesNotContain(annual.Payload.Statements, s => s.StatementType is "IS" or "CF");
+        Assert.True(annual.Count(KapPublicReportReasons.ColumnUnattributed) > 0);
+
+        // The same body under its own `6 Aylık` declaration is named too: an interim's Q typing
+        // must rest on evidence as well, not on the absence of a danger.
+        var interim = KapPublicReportDecoder.Decode(stripped, "MGROS");
+        Assert.Equal(1, interim.Count(KapPublicReportReasons.PeriodSemanticsUndetermined));
+        Assert.All(interim.Payload.Statements, s => Assert.Equal("Q", s.PeriodType));
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
@@ -1462,6 +1721,18 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         var instrumentId = await db.Instruments.Where(i => i.Symbol == symbol).Select(i => i.Id).SingleAsync();
         return (new FinancialStatementStore(db), instrumentId);
     }
+
+    /// <summary>
+    /// Strips every declared date <b>range</b> from the body's column headers, leaving the
+    /// single-date instants (the balance sheet's) intact — so the report declares a period that
+    /// none of its duration columns any longer attests. Derived from the committed capture,
+    /// never an invented body (TC-MDF-119 (iv)).
+    /// </summary>
+    private static string WithoutDeclaredRanges(string body) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            body,
+            @"\d{2}\.\d{2}\.\d{4} - \d{2}\.\d{2}\.\d{4}",
+            "—");
 
     /// <summary>
     /// Replaces the <paramref name="occurrence"/>-th occurrence of <paramref name="oldValue"/>
