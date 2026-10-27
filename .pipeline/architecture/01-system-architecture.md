@@ -2432,7 +2432,8 @@ committed TÜPRAŞ `1554106` capture (test plan §29, TC-MDF-118): with its IS/B
 `dcf-baselines` pass produces `missingInputs: []` with `base_fcf`, `debt` (= the balance sheet's
 `ST_DEBT` + `LT_DEBT`), `cash` (= `CASH`) and `share_count` (086's price-derived lane) all in
 `params`, each statement fact's `canonicalFactRefs` entry naming `source: "statement"` with the
-baseline's as-of (and the count naming `price-derived` with its `price_date`), so
+baseline's as-of (and the count naming `price-derived` with its `asOf` set to the row's
+`price_date`), so
 `GET /stocks/{symbol}/dcf` no longer answers `missing_inputs` and `POST …/dcf/compute` returns a
 `fairValuePerShare`; with the same capture's IS/BS rows withheld (the live pre-088 shape, 60 CF /
 2 IS / 0 BS) the state is again `missing_inputs` naming `['cash','debt']` and revenue is null —
@@ -2452,9 +2453,10 @@ work is done here).
   instance method, so the engines
   `MetricsEngine.ResolveComputeDayAsync`/`SectorMedianEngine.ResolveComputeDayAsync` delegate to it
   rather than re-deriving a day of their own): the target is the latest trading day ≤
-  `request.Date` with stored prices in the covered universe. No weekday assumption (the calendar
-  ships no holidays), no fabricated day; with no stored price at all there is genuinely no session
-  to describe, so the pass writes nothing and claims nothing. The jobs' constructors, the DI
+  `request.Date` with stored prices in the covered universe. The resolver never consults the trading
+  calendar (weekend or holiday) — stored prices are the truth — and fabricates no day; with no
+  stored price at all there is genuinely no session to describe, so the pass writes nothing and
+  claims nothing. The jobs' constructors, the DI
   composition and the test fixture harness are unchanged, so no consumer outside the lanes moved.
 - **The routed decisions this consumer consumes as stored, never resolving them.** 088's **DR-2**
   (`Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları` stays `OTHER_BS_*`) means the served `debt`

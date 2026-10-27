@@ -26,7 +26,7 @@ namespace Degerli.Ingestion.Metrics;
 /// ≤ <c>request.Date</c> that has stored prices for the covered universe</b>, resolved through
 /// the one implementation of that rule
 /// (<see cref="MetricsEngine.ResolveComputeDayAsync"/>, delegating to
-/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(MarketSnapshotStore, DateOnly, System.Threading.CancellationToken)"/>)
+/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(DegerliDbContext, DateOnly, System.Threading.CancellationToken)"/>)
 /// exactly as the snapshot lane does. The doctrine is not snapshot-specific — §10.9.13 governs
 /// every derived-fact write — and before this change a request for a day with no stored prices
 /// silently wrote <b>nothing</b> and reported a green <c>written: 0, unchanged: 0</c> (the

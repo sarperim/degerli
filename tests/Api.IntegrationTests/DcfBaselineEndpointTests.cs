@@ -515,6 +515,7 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
         // The facts really are the public-site statements' own lines: the company holds no
         // other provenance, and the served debt/cash equal that balance sheet's rows — so the
         // refs point at the `kap-public` statements in substance, not merely by label.
+        Dictionary<DateOnly, Dictionary<string, decimal>> storedIncome;
         await using (var db = _postgres.CreateContext())
         {
             var instrumentId = await db.Instruments
@@ -536,6 +537,51 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
 
             Assert.Equal(servedDebt, lines["ST_DEBT"] + lines["LT_DEBT"]);
             Assert.Equal(servedCash, lines["CASH"]);
+
+            // …and the income statements' own periods, for the financials assertion below.
+            var incomeStatements = statements
+                .Where(statement => statement.StatementType == "IS" && statement.PeriodType == "FY")
+                .OrderBy(statement => statement.PeriodEndDate)
+                .ToList();
+            Assert.Equal(
+                [new DateOnly(2024, 12, 31), new DateOnly(2025, 12, 31)],
+                incomeStatements.Select(statement => statement.PeriodEndDate).ToArray());
+
+            var incomeStatementIds = incomeStatements.Select(statement => statement.Id).ToArray();
+            var incomeLines = await db.FinLineItems
+                .Where(line => incomeStatementIds.Contains(line.StatementId))
+                .ToListAsync();
+            storedIncome = incomeStatements.ToDictionary(
+                statement => statement.PeriodEndDate,
+                statement => incomeLines
+                    .Where(line => line.StatementId == statement.Id)
+                    .ToDictionary(line => line.ItemCode, line => line.Value));
+        }
+
+        // The financials surface serves those periods' revenue/net income from the stored income
+        // statements — the ticket's item 2 and live criterion (ii), asserted on the positive
+        // path (the CF-only control below asserts the nulls), so a regression that dropped
+        // served revenue/NI on the full IS+BS+CF world could not leave this case green.
+        using (var response = await client.GetAsync(new Uri($"/api/v1/stocks/{Tuprs}/financials", UriKind.Relative)))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var periods = document.RootElement.GetProperty("periods").EnumerateArray().ToList();
+
+            foreach (var (periodEnd, income) in storedIncome)
+            {
+                var serving = Assert.Single(
+                    periods,
+                    period => period.GetProperty("periodType").GetString() == "FY"
+                        && period.GetProperty("periodEndDate").GetString() == periodEnd.ToString("yyyy-MM-dd"));
+                Assert.Equal(income["REV"], serving.GetProperty("revenue").GetProperty("value").GetDecimal());
+                Assert.Equal(income["NI"], serving.GetProperty("netIncome").GetProperty("value").GetDecimal());
+
+                // The IS row carries neither `EBITDA` nor `DEPR_AMORT`, so the pinned
+                // `Line(EBITDA) ?? Sum(EBIT, DEPR_AMORT)` seam answers null — honestly null,
+                // never a figure guessed from the cash-flow statement's own D&A.
+                Assert.Equal(JsonValueKind.Null, serving.GetProperty("ebitda").GetProperty("value").ValueKind);
+            }
         }
 
         // …and the per-share value is served by the compute path over exactly that divisor.

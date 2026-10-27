@@ -22,7 +22,7 @@ namespace Degerli.Ingestion.Metrics;
 /// The medians describe the same day the metrics describe, so the day is resolved by the same
 /// stored-prices-as-truth rule the <c>metrics-recompute</c> and <c>market-snapshot</c> lanes
 /// use (<see cref="SectorMedianEngine.ResolveComputeDayAsync"/>, delegating to
-/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(MarketSnapshotStore, DateOnly, System.Threading.CancellationToken)"/>):
+/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(DegerliDbContext, DateOnly, System.Threading.CancellationToken)"/>):
 /// the latest trading day ≤ <c>request.Date</c> with stored prices for the covered universe.
 /// A request for a day with no stored prices therefore describes the latest real session
 /// instead of silently reporting a green zero; with no stored price at all there is no day to

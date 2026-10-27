@@ -81,7 +81,10 @@ production `dcf-baselines` job:
   — green; asserts the completion, the eight-parameter set, the three `statement` refs +
   `price-derived` count ref, the served values **cross-checked against the stored balance
   sheet's own `ST_DEBT`+`LT_DEBT` / `CASH`** and the CF statement's `OCF − |CAPEX|`, and the
-  served `fairValuePerShare`.
+  served `fairValuePerShare`; **plus (review round 2, R1) the served `GET …/financials` periods'
+  `revenue`/`netIncome` cross-checked against the stored income statement rows for FY2024 and
+  FY2025, with `ebitda` honestly null — the doc claim asserted on the positive path, not only on
+  the CF-only control where they are null.**
 - **TC-MDF-118 (a) control** `TC_MDF_118_the_cash_flow_only_world_leaves_debt_cash_and_revenue_missing`
   — green; the recorded red reproduced (CF-only world: `missing_inputs` = `['cash','debt']`,
   no fair value, `400` naming `debt`, revenue/NI null) so the completion assertion is
