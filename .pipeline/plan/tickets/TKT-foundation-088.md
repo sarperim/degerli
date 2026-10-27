@@ -11,7 +11,7 @@ scope:
 
 # TKT-foundation-088: IS/BS decode coverage — the public-site FR decoder maps the income-statement and balance-sheet lines (capture-first), so the DCF's `debt`/`cash` facts and the financials table's revenue/NI rows have a source
 
-- Status: in-review
+- Status: done
 - Size: M
 - **Priority: P1 — follow-up slice 1a of the 2026-10-27 live-run wave (the user's this-week goal: fair value per share on real KAP data; this ticket is the decode half, TKT-foundation-089 the consumption half).**
 - **The live evidence this slice answers (2026-10-26/27 first live `kap-public` run, recorded on 081/082/083/086/087):** 62 statements written across 7 companies — **60 CF / 2 IS / 0 BS**. The FR excel-HTML reports *contain* income statements and balance sheets (the ASELS capture decodes BS 4+4 / IS 3+3 lines), but live reports from the walked companies produced no IS/BS statement rows. Consequences, all recorded live: `GET /stocks/{symbol}/dcf` for TUPRS/TAVHL returns `state: "missing_inputs"` naming `['debt','cash']`; revenue on kap-public financials periods is null (083's live note); `metrics-recompute` wrote 0 rows (083's open criterion).
@@ -160,3 +160,12 @@ counts: 22 / 42 / 24; `DUPLICATE_LABEL_CONFLICT`: 0 / 0 / 0.
   `Source = kap-public` pass writing IS **and** BS rows with per-type counts verbatim; (ii) the
   ASELSAN `1561039` annual decode with its own OCF/CAPEX goldens (081's open criterion);
   (iii) TUPRS FY2025 `fin_line_items` gaining `ST_DEBT`/`LT_DEBT`/`CASH`.
+
+## Merge record — 2026-10-27 (orchestrator)
+
+- **PR #150 squash-merged to `dev` as `05f4079`** after review round 1 (MERGEABLE, 0 blocking findings). Round artifact: `.pipeline/plan/reviews/TKT-foundation-088-round-1.md`.
+- **Two `major` findings open and routed (NOT waived — merge did not close them):**
+  - **DR-1:** `TOTAL_EQUITY` writes the NCI-inclusive total under the code `02` §6.1 defines as attributable (TÜPRAŞ FY2025: 369.8bn total vs 364.1bn attributable; ASELSAN 251.8 vs 250.4). The VYK decoder already maps the total under the same code, so this PR matches the established cross-source behavior; the §6.1 clarification (or the attributable mapping) is a planner/user decision recorded for the morning report.
+  - **DR-2:** the routed current-portion-of-long-term-borrowings question is materially larger than the ticket stated — TÜPRAŞ current portion 12.86bn vs stored debt 37.39bn = **25.6% understatement of true borrowings**, affecting DCF `debt`, `ev_ebitda`, `net_debt_ebitda`, `roic` (§6.4 "total debt ST+LT"). The line currently lands in `OTHER_BS_*`. **Open user decision:** map `Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları` into `ST_DEBT` (a small follow-up), or keep the strict split. Until decided, the DCF's `debt` is KAP-sourced but partial.
+- Nits DR-3/4/5 recorded in the round artifact, unfixed.
+- Post-merge live criteria (orchestrator-owned) still owed: paced `kap-public` pass writing IS+BS rows; ASELS 1561039 annual OCF/CAPEX goldens; TUPRS FY2025 `fin_line_items` gaining `ST_DEBT`/`LT_DEBT`/`CASH`.
