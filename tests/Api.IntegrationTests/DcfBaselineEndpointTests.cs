@@ -415,6 +415,15 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
 
     // ---------------------------------------------------------------------------
     // TC-MDF-118 (a) — the per-share DCF completes on the decoded kap-public statements
+    //
+    // TKT-foundation-089 non-regression in this file: the pinned baseline-read cases above —
+    // TC-VAL-005 (`TC_VAL_005_get_baseline_returns_version_params_refs_and_canonical_price`,
+    // the GET payload's version/params/refs/price) and TC-VAL-008
+    // (`TC_VAL_008_missing_statement_inputs_are_named_and_not_computed`, the missing-input set,
+    // the no-computation-on-partial-data rule and the as-reported share-count precedence) —
+    // belong to the suite this ticket lists as non-regression, so they re-run against every
+    // change on this lane. This PR only appends cases to this file; it edits none of them and
+    // relaxes no expectation (the diff carries zero deletions in this file).
     // ---------------------------------------------------------------------------
 
     /// <summary>
