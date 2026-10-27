@@ -16,6 +16,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Serilog;
 using Serilog.Events;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
 
 namespace Degerli.Api.IntegrationTests;
 
@@ -385,6 +387,68 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
     }
 
     // =================================================================================
+    // TC-MDF-120 (f) — comma-coded identities through the production job surface
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-120 (f) — the comma-token rule is reachable through the <b>production</b> invocation
+    /// surface, and its two outcomes reach the ledger as two <b>different</b> words: a comma-coded
+    /// single-candidate company is mapped and <c>written</c>, while a symbol whose candidates share
+    /// the token is <c>COMPANY_IDENTITY_AMBIGUOUS</c> — named in the per-symbol stats, counted in
+    /// <c>skipped</c>, never stored — and the run is honestly <c>partial</c>. An operator reading the
+    /// ledger can therefore tell "KAP does not carry this company's code" from "KAP answers several
+    /// companies and this lane refuses to guess" (FR-MDF-012, NFR-MDF-001).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_f_the_job_maps_comma_coded_identities_and_names_the_ambiguous_one()
+    {
+        // A test-private index: the shared container's XU030 accumulates members from the cases
+        // that ran before this one (TKT-foundation-087's recorded DR-1 — a leftover constituent has
+        // no stub here and would read as a source-down rather than the ambiguity under test), so
+        // this case binds its own bound instead of depending on test order.
+        await ResetAsync(("XU091", ["ISCTR", "GARAN"]));
+
+        var isctrBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrCommaCoded).Body;
+        var garanBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityGaranCommaCoded).Body;
+        StubIdentityFor("ISCTR", isctrBody);
+        StubIdentityFor("GARAN", garanBody);
+
+        await using var provider = BuildIngestion("XU091");
+        var result = await RunAsync(provider);
+
+        Assert.Equal(IngestResult.Partial, result.Status);
+        Assert.Equal(1, result.Written);
+        Assert.Equal(1, result.Skipped);
+
+        var skipped = Assert.Single(result.SymbolStats);
+        Assert.Equal("GARAN", skipped.Symbol);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, skipped.Reason);
+        Assert.Equal(0, skipped.Written);
+        Assert.False(skipped.Failed);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+            var isctr = await db.Instruments.SingleAsync(instrument => instrument.Symbol == "ISCTR");
+            Assert.Equal(isctr.Id, row.InstrumentId);
+            Assert.Contains("keyword=ISCTR", row.KapPublicOidSource, StringComparison.Ordinal);
+
+            var ledger = Assert.Single(await db.IngestRuns.ToListAsync());
+            Assert.Equal(KapPublicIdentitySyncJob.Code, ledger.JobCode);
+            Assert.Equal(IngestResult.Partial, ledger.Status);
+            using var stats = JsonDocument.Parse(ledger.StatsJson!);
+            Assert.Equal(1, stats.RootElement.GetProperty("skipped").GetInt32());
+            var stat = Assert.Single(stats.RootElement.GetProperty("symbols").EnumerateArray());
+            Assert.Equal("GARAN", stat.GetProperty("symbol").GetString());
+            Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, stat.GetProperty("reason").GetString());
+        }
+
+        // One identity search per bound symbol, nothing else.
+        Assert.Equal(2, _wireMock.RequestsFor(IdentityPath));
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
@@ -396,6 +460,22 @@ public sealed class KapPublicIdentityJobTests : IClassFixture<PostgresFixture>, 
             .RunAsync(KapPublicIdentitySyncJob.Code, new IngestionRequest(T));
 
     private void StubIdentity(string body) => _wireMock.StubJson(IdentityPath, body, method: "POST");
+
+    /// <summary>
+    /// Stubs the identity route for one bound symbol only, matched on the request's exact live body
+    /// shape (<c>{"keyword":"&lt;symbol&gt;"}</c>) — a bound universe with two different answers needs
+    /// per-symbol stubs, and matching the body also proves which symbol the pass asked about.
+    /// </summary>
+    private void StubIdentityFor(string keyword, string body) =>
+        _wireMock.Server
+            .Given(Request.Create()
+                .WithPath(IdentityPath)
+                .UsingPost()
+                .WithBody(KapPublicIdentityReader.RequestJson(keyword)))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(body));
 
     private void ResetDoubles()
     {

@@ -71,8 +71,13 @@ public sealed record KapPublicIdentityResolutionResult(
 /// </para>
 /// <list type="bullet">
 /// <item>a hit binds only when it is a <b>company</b> hit (<c>searchType</c> <c>C</c>) whose
-/// <c>cmpOrFundCode</c> is the bound symbol — a hit for another company is not a match, and an
-/// ambiguous answer is never resolved by picking one;</item>
+/// <c>cmpOrFundCode</c>, <b>comma-split into tokens</b> (trimmed, ordinal-ignore-case), carries the
+/// bound symbol — the comma-coding convention TKT-foundation-046 fixed for the VYK directory, applied
+/// to this source's field (TKT-foundation-091). An exact single-token code is the degenerate case of
+/// that rule. A hit for another company is not a match, and where <b>several distinct company
+/// candidates</b> carry the token the answer is <b>ambiguous, never picked</b> — the source's answer
+/// is a search result list, not a directory of record, so no first-wins/last-wins tie-break is
+/// applied; an ambiguity stays unresolved, named and counted, until a rule is evidenced;</item>
 /// <item>a bound symbol with no such hit is skipped, <b>named</b> and <b>counted</b>
 /// (<c>COMPANY_IDENTITY_UNRESOLVED</c> / <c>COMPANY_IDENTITY_AMBIGUOUS</c>) and never fetched —
 /// there is no fallback guess;</item>
@@ -202,15 +207,43 @@ public sealed class KapPublicCompanyIdentityResolver
     }
 
     /// <summary>
-    /// Matches one symbol's hits to exactly one public oid, or names why it cannot. Only company hits
-    /// (<c>searchType</c> <c>C</c>) whose code is the bound symbol are candidates; anything else is
-    /// ignored rather than guessed from.
+    /// Matches one symbol's hits to exactly one public oid, or names why it cannot.
+    /// <para>
+    /// <b>Candidacy is a token rule, not an equality rule (v1.5.65 §10.9.19, TKT-foundation-091).</b>
+    /// The site serves several companies' codes <b>comma-joined</b> in one field (<c>"garan,tgb"</c>
+    /// — the same convention TKT-foundation-046 fixed for the VYK directory), so a hit is a candidate
+    /// when the bound symbol is one of its <b>comma-split tokens</b> (trimmed, ordinal-ignore-case).
+    /// An exact single-token code is simply the degenerate case of that rule, so nothing 080 pinned
+    /// changes. Only company hits (<c>searchType</c> <c>C</c>) are ever candidates: a fund hit that
+    /// spells the same token never binds a stock instrument.
+    /// </para>
+    /// <para>
+    /// <b>Several distinct company candidates sharing the token is an honest ambiguity — never a
+    /// pick.</b> This deliberately diverges from 046's VYK <i>last-wins</i> rule: that list is a
+    /// <b>directory of record</b> (one row per member, so a tie is a data defect to break
+    /// deterministically), whereas this source's answer is a <b>search result list</b> (several real
+    /// companies legitimately carry the token), so an ambiguity stays unresolved and <b>named</b>
+    /// until a disambiguation rule is evidenced — never smuggled in as a first-wins, a last-wins or a
+    /// "closest title".
+    /// </para>
+    /// <para>
+    /// <b>Recorded residue, not fixed here (TKT-foundation-091's DR-3):</b> a malformed
+    /// <c>memberOrFundOid</c> is rejected as <c>COMPANY_IDENTITY_UNRESOLVED</c> before ambiguity is
+    /// counted, so an answer carrying two company candidates where one oid is malformed reports
+    /// <i>unresolved</i> rather than <c>COMPANY_IDENTITY_AMBIGUOUS</c>. Nothing is guessed and
+    /// nothing is stored either way — only the reason code is imperfect in that edge — and the
+    /// widened candidate set made a pre-existing branch reachable, so changing it is a
+    /// classification rule this lane does not smuggle in; it is routed to the user.
+    /// </para>
     /// </summary>
     private static Classification Classify(string symbol, IReadOnlyList<KapPublicCompanyHit> hits)
     {
-        var candidates = hits
+        var companyHits = hits
             .Where(hit => string.Equals(hit.SearchType, KapPublicIdentityReader.CompanySearchType, StringComparison.OrdinalIgnoreCase))
-            .Where(hit => string.Equals(hit.CmpOrFundCode, symbol, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var candidates = companyHits
+            .Where(hit => CarriesToken(hit.CmpOrFundCode, symbol))
             .ToList();
 
         if (candidates.Count == 0)
@@ -218,7 +251,7 @@ public sealed class KapPublicCompanyIdentityResolver
             return Classification.Unresolved(
                 hits.Count == 0
                     ? "the identity answer carried no company hit for the symbol"
-                    : $"the identity answer carried {hits.Count} company-or-fund hit(s) but none for this symbol");
+                    : $"the identity answer carried {hits.Count} company-or-fund hit(s) but none whose comma-split code carries this symbol as a token");
         }
 
         var oids = new List<PublicCompanyOid>();
@@ -236,10 +269,46 @@ public sealed class KapPublicCompanyIdentityResolver
         var distinct = oids.Distinct().ToList();
         if (distinct.Count > 1)
         {
+            // Name what was refused, so the operator can see the choice the resolver declined to
+            // make. Bounded: the detail is a log/stat value, not a dump of the answer.
+            var named = string.Join(
+                ", ",
+                candidates
+                    .Select(candidate => candidate.CmpOrFundCode)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Where(code => !string.IsNullOrWhiteSpace(code))
+                    .Take(5));
             return Classification.Ambiguous(
-                $"the identity answer carried {distinct.Count} distinct oids for one symbol — refusing to pick one");
+                $"the identity answer carried {distinct.Count} distinct company candidates whose code carries this symbol as a token" +
+                (named.Length > 0 ? $" ({named})" : string.Empty) +
+                " — refusing to pick one");
         }
 
         return new Classification(distinct[0], null, null);
+    }
+
+    /// <summary>
+    /// Whether one <c>cmpOrFundCode</c> value carries <paramref name="symbol"/> as a
+    /// <b>comma-separated token</b> (trimmed, ordinal-ignore-case) — the 046 rule class applied to
+    /// this source's field. A code that merely <i>contains</i> the symbol inside a longer token is
+    /// not a match, and neither is an empty token.
+    /// </summary>
+    private static bool CarriesToken(string? cmpOrFundCode, string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(cmpOrFundCode))
+        {
+            return false;
+        }
+
+        foreach (var token in cmpOrFundCode.Split(','))
+        {
+            var trimmed = token.Trim();
+            if (trimmed.Length > 0 && string.Equals(trimmed, symbol, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

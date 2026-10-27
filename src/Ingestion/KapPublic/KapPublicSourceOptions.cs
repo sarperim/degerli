@@ -88,16 +88,25 @@ public sealed class KapPublicSourceOptions
 
     /// <summary>
     /// The shipped User-Agent. It is <b>browser-shaped</b> (the shape a real browser sends,
-    /// which the site's edge expects) with an <b>honest crawler token appended</b> — the lane
-    /// identifies itself rather than impersonating a human visitor. Whether the edge accepts
-    /// a bare bot-only UA was <b>not</b> probed (probing with a deliberately lying UA is not
-    /// an acceptable politeness experiment); the recorded capture set was taken with this
-    /// shape.
+    /// which the site's edge expects) with an <b>honest self-identification token appended</b>
+    /// (<c>Degerli/0.1</c>) — the lane identifies itself rather than impersonating a human
+    /// visitor. Whether the edge accepts a bare bot-only UA was <b>not</b> probed (probing with
+    /// a deliberately lying UA is not an acceptable politeness experiment); the recorded capture
+    /// set was taken with this shape.
+    /// <para>
+    /// <b>The parenthetical is WAF-blocked (087 live finding, probe-verified).</b> The site's
+    /// edge answers <c>…DegerliBot/0.1 (kap.org.tr public-site reader; polite, paced,
+    /// single-flight)</c> with <b>HTTP 666 on every route</b>, while this comment-free form —
+    /// the same honest token, no parentheses — passes (HTTP 200 on <c>search/combined</c> and
+    /// <c>byCriteria</c>, one request at a time). The value below is the live-verified passing
+    /// string: this pin is why the blocked spelling cannot silently return
+    /// (<c>TC-MDF-103(a)</c>/<c>(d)</c>). The politeness posture (≥ 3 s pacing, single-flight)
+    /// is unaffected by the UA shape.
+    /// </para>
     /// </summary>
     public const string DefaultUserAgent =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/124.0 Safari/537.36 DegerliBot/0.1 (kap.org.tr public-site reader; polite, " +
-        "paced, single-flight)";
+        "Chrome/124.0 Safari/537.36 Degerli/0.1";
 
     /// <summary>
     /// The shipped per-walk <b>list-page</b> ceiling: <b>40</b>. 40 pages × 3 s of pacing =

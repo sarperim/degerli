@@ -138,6 +138,20 @@ public static class RealSourceCatalog
     public const string KapPublicReportMgros = "kap-public-report-1648240";
     public const string KapPublicIdentity = "kap-public-identity-ASELS";
 
+    // TKT-foundation-091's comma-coded identity answers. Run 301 (TKT-foundation-087's live pass)
+    // observed that `/tr/api/search/combined` answers several XU030 companies with a COMMA-JOINED
+    // `cmpOrFundCode` and that the exact-equality rule could never match them; the only per-symbol
+    // fact 087's record carries is GARAN's "garan,tgb" with several candidate rows. These two
+    // entries are the committed doubles the comma-token rule is authored against.
+    // HONESTY, stated on the entry itself: they are CONSTRUCTED, not captured — this ticket issued
+    // ZERO live requests (the lane's politeness directive), so no verbatim answer for these symbols
+    // exists in the repository. Recorded run-301 facts: the comma-joined code and that several
+    // candidate rows exist, for GARAN only. Everything else — the oids, GARAN's second candidate
+    // and the token it shares, ISCTR's whole answer, the row order — is constructed for the branch
+    // shape, on the committed ASELS answer's exact frame.
+    public const string KapPublicIdentityGaranCommaCoded = "kap-public-identity-garan-comma-coded";
+    public const string KapPublicIdentityIsctrCommaCoded = "kap-public-identity-isctr-comma-coded";
+
     /// <summary>Concrete source name of the KAP public-site payloads (never `kap`).</summary>
     public const string KapPublicSource = "kap-public";
 
@@ -191,6 +205,8 @@ public static class RealSourceCatalog
         KapPublicReportAselsAnnual,
         KapPublicReportMgros,
         KapPublicIdentity,
+        KapPublicIdentityGaranCommaCoded,
+        KapPublicIdentityIsctrCommaCoded,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -465,6 +481,34 @@ public static class RealSourceCatalog
         "companyId (ASELS 866) and our InstrumentId; the mapping is stored, never assumed " +
         "(TKT-foundation-080). Verbatim.";
 
+    // ---- TKT-foundation-091's comma-coded identity doubles ---------------------------------
+    // CONSTRUCTED (never labelled a capture): see the constants' comment above. The two bodies
+    // exist so the comma-token rule and its honest-ambiguity branch are authored against committed
+    // bytes, exactly as 080's rules were authored against the committed ASELS answer.
+    private const string KapPublicIdentityGaranCommaCodedLabel =
+        "CONSTRUCTED, not captured: a comma-coded identity answer of the shape the run-301 live " +
+        "pass (TKT-foundation-087, 2026-10-27) recorded for a GARAN keyword — POST " +
+        "/tr/api/search/combined answering companies whose cmpOrFundCode is comma-JOINED with " +
+        "several candidate rows, the recorded code being 'garan,tgb', which the exact-equality " +
+        "rule could never match (the convention TKT-foundation-046 fixed for the VYK directory). " +
+        "Constructed because TKT-foundation-091 issued ZERO live requests (the lane's politeness " +
+        "directive): no verbatim GARAN answer exists in this repository, and 087's record carries " +
+        "only the comma-joined code and the multiple candidate rows. Constructed for the branch " +
+        "shape: the oids, the second candidate ('garan,gryo', GARANTİ YATIRIM ORTAKLIĞI) and the " +
+        "fact that it shares the 'garan' token — 087's record does not say that — the row order, " +
+        "and the frame (the committed ASELS answer's exact shape).";
+
+    private const string KapPublicIdentityIsctrCommaCodedLabel =
+        "CONSTRUCTED, not captured: a comma-coded identity answer with exactly ONE distinct " +
+        "company candidate — a company whose cmpOrFundCode is comma-joined ('isctr,isatr', the " +
+        "two share groups of one bank) beside a FUND hit that carries the bare 'isctr' token. " +
+        "087's run-301 record lists ISCTR among the eight symbols the comma-coding root cause " +
+        "covers but carries nothing per-symbol for it, and TKT-foundation-091 issued ZERO live " +
+        "requests (the lane's politeness directive), so this is not a capture: the comma-joined " +
+        "code, its second token, the mixed company/fund shape, the oids and the row order are " +
+        "all constructed for the branch shape. The frame is the committed ASELS answer's exact " +
+        "shape.";
+
     // ---- TKT-foundation-088's IS/BS coverage captures -------------------------------------
     // Three further public-site FR bodies, committed for the debt/cash decode evidence the
     // 1643141 double cannot carry (its balance sheet and income statement are trimmed to a
@@ -544,6 +588,15 @@ public static class RealSourceCatalog
 
     // The identity-resolution answer (TKT-foundation-080's double).
     private const string KapPublicIdentityJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e0047","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"asels","indexList":null}]}]""";
+
+    // TKT-foundation-091 — the comma-coded answers (CONSTRUCTED; see the labels above). The
+    // GARAN body carries TWO distinct company candidates that both carry the `garan` token (the
+    // honest-ambiguity branch); the ISCTR body carries ONE company whose code is comma-joined plus
+    // a FUND hit spelling the bare token (the token rule binds the company, the fund never binds).
+    private const string KapPublicIdentityGaranCommaCodedJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE GARANTİ BANKASI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e00f1","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"garan,tgb","indexList":null},{"searchValue":"GARANTİ YATIRIM ORTAKLIĞI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e00f2","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"garan,gryo","indexList":null}]}]""";
+
+    private const string KapPublicIdentityIsctrCommaCodedJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE İŞ BANKASI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e01c1","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"isctr,isatr","indexList":null},{"searchValue":"İŞ PORTFÖY HİSSE SENEDİ FONU","searchType":"F","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e01c2","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"isctr","indexList":null}]}]""";
+
 
     // The bounded-trimmed excel-HTML report (TKT-foundation-081's decode input).
     private const string KapPublicReportHtml = """"
@@ -31954,6 +32007,10 @@ public static class RealSourceCatalog
         KapPublicCaptured(KapPublicReportMgros, KapPublicReportMgrosLabel, KapPublicReportMgrosHtml),
         KapPublicCaptured(KapPublicIdentity, KapPublicIdentityLabel, KapPublicIdentityJson,
             method: "POST"),
+        KapPublicDerived(KapPublicIdentityGaranCommaCoded, KapPublicIdentityGaranCommaCodedLabel,
+            KapPublicIdentityGaranCommaCodedJson),
+        KapPublicDerived(KapPublicIdentityIsctrCommaCoded, KapPublicIdentityIsctrCommaCodedLabel,
+            KapPublicIdentityIsctrCommaCodedJson),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>
@@ -32020,6 +32077,18 @@ public static class RealSourceCatalog
         int statusCode = 200) =>
         new(name, KapPublicSource, method, $"/real-sources/{name}", statusCode, "utf-8",
             RealSourceProvenance.Captured, label, Encoding.UTF8.GetBytes(body));
+
+    /// <summary>
+    /// One <b>constructed</b> KAP public-site body (TKT-foundation-091). The provenance is
+    /// <see cref="RealSourceProvenance.Constructed"/> — never <c>Captured</c> — so the catalog's own
+    /// label rule (a constructed body never claims a verbatim capture) is enforced by the entry it
+    /// is built from, and a reader of the record can tell a derived answer from a captured one
+    /// without reading the label prose. The source class and the serving route are the lane's own
+    /// (<c>kap-public</c>, <c>/real-sources/{name}</c>), exactly like the captured entries.
+    /// </summary>
+    private static RealSourcePayload KapPublicDerived(string name, string label, string body) =>
+        new(name, KapPublicSource, "POST", $"/real-sources/{name}", 200, "utf-8",
+            RealSourceProvenance.Constructed, label, Encoding.UTF8.GetBytes(body));
 
     private static RealSourcePayload EvdsMacro(string name, string json) =>
         Payload(name, EvdsMacroLabel, RealSourceProvenance.Constructed, json, EvdsSource);

@@ -73,7 +73,16 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         var userAgent = kapPublic.GetProperty("UserAgent").GetString() ?? string.Empty;
         Assert.Equal(KapPublicSourceOptions.DefaultUserAgent, userAgent);
         Assert.Contains("Mozilla/5.0", userAgent, StringComparison.Ordinal);
-        Assert.Contains("DegerliBot", userAgent, StringComparison.Ordinal);
+        // TC-MDF-103 (i) — a realistic User-Agent pinned as a config-equivalence assertion
+        // (this is the TC_MDF_103_a case's UA half). The WAF-blocked spelling (087 live
+        // finding): the honest token WITHOUT a trailing parenthetical comment is the
+        // live-verified passing string, so this pin keeps the blocked spelling (HTTP 666 on
+        // every route) from silently returning. (The UA's browser tokens legitimately
+        // contain "(" — the blocked marker is the trailing "DegerliBot/0.1 (…)" form, so it
+        // is pinned token-and-comment, not punctuation.)
+        Assert.Contains("Degerli/0.1", userAgent, StringComparison.Ordinal);
+        Assert.DoesNotContain("DegerliBot", userAgent, StringComparison.Ordinal);
+        Assert.DoesNotContain("public-site reader", userAgent, StringComparison.Ordinal);
         Assert.Equal(3000, AsInt(kapPublic, "RequestDelayMs"));
         Assert.Equal(KapPublicSourceOptions.DefaultRequestDelayMs, new KapPublicSourceOptions().RequestDelayMs);
 
@@ -358,11 +367,13 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         ResetDoubles();
         var catalog = RealSourceCatalog.Get(RealSourceCatalog.KapPublicByCriteria);
 
-        // The stub matches ONLY on the honest UA token — a request without it would 404 and
-        // the read below would be a source-down (i.e. this is a real on-the-wire assertion).
+        // TC-MDF-103 (iii) — request shape: the client sends the realistic User-Agent header
+        // (this is the TC_MDF_103_d case's UA half). The stub matches ONLY on the honest UA
+        // token — a request without it would 404 and the read below would be a source-down
+        // (i.e. this is a real on-the-wire assertion).
         _wireMock.Server
             .Given(Request.Create().WithPath(ByCriteriaPath).UsingPost()
-                .WithHeader("User-Agent", "*DegerliBot*"))
+                .WithHeader("User-Agent", "*Degerli/0.1*"))
             .RespondWith(Response.Create()
                 .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")
@@ -391,10 +402,11 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         Assert.Equal(0, document.RootElement.GetProperty("subjectList").GetArrayLength());
         Assert.Equal(0, document.RootElement.GetProperty("disclosureIndexList").GetArrayLength());
 
-        // The request shape and the honest UA travel together on the recorded handler too.
+        // The request shape and the honest UA travel together on the recorded handler too
+        // (TC-MDF-103 (iii): the realistic User-Agent header is actually sent).
         var recorded = handler.Requests.Last();
         Assert.Equal(HttpMethod.Post, recorded.Method);
-        Assert.Contains("DegerliBot", recorded.UserAgent, StringComparison.Ordinal);
+        Assert.Contains("Degerli/0.1", recorded.UserAgent, StringComparison.Ordinal);
     }
 
     /// <summary>

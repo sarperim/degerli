@@ -14,6 +14,8 @@ using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
 
 namespace Degerli.Api.IntegrationTests;
 
@@ -507,6 +509,272 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
     }
 
     // =================================================================================
+    // TC-MDF-120 — comma-coded identity matching (cmpOrFundCode token resolution)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-120 (a) — a company hit whose <c>cmpOrFundCode</c> is <b>comma-joined</b> is a candidate
+    /// when the bound symbol is one of its comma-split tokens: the run-301 shape (`"garan,tgb"`)
+    /// resolves instead of staying <c>COMPANY_IDENTITY_UNRESOLVED</c> forever. The double is the
+    /// committed (constructed) comma-coded answer; a <b>fund</b> hit carrying the bare token rides
+    /// beside the company and never binds a stock instrument.
+    /// <para>
+    /// Red on the pre-ticket head: the exact-equality rule cannot match a joined code, so this
+    /// answer was <c>COMPANY_IDENTITY_UNRESOLVED</c> — the live state run 301 recorded for 8 of 30
+    /// XU030 companies.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_a_a_comma_coded_single_company_answer_resolves_through_the_token_rule()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("ISCTR", "TÜRKİYE İŞ BANKASI A.Ş.", "TRAISCTR91N2");
+        var bindings = await BindingsAsync("ISCTR");
+
+        var body = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrCommaCoded).Body;
+        var companyOid = OidInCommittedBody(body, "isctr,isatr");
+        var fundOid = OidInCommittedBody(body, "isctr");
+        StubIdentityFor("ISCTR", body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.False(result.IsSourceDown, result.Detail);
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(1, result.Bound);
+        Assert.Equal(1, result.Resolved);
+        Assert.Equal(1, result.Inserted);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(0, result.Unchanged);
+        Assert.Empty(result.Unresolved);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(bindings[0].InstrumentId, row.InstrumentId);
+        // The COMPANY's oid is stored — the fund hit that spelled the bare token never binds.
+        Assert.Equal(companyOid, row.KapPublicOid);
+        Assert.NotEqual(fundOid, row.KapPublicOid);
+        Assert.Contains("keyword=ISCTR", row.KapPublicOidSource, StringComparison.Ordinal);
+        Assert.Equal(T, row.KapPublicOidAsOf);
+
+        // One identity request for the one bound symbol, and nothing else: a resolved token
+        // mapping issues no further fetch of its own.
+        Assert.Equal(1, _wireMock.RequestsFor(IdentityPath));
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-120 (b) — where <b>several distinct company candidates</b> share the symbol token, the
+    /// symbol is <c>COMPANY_IDENTITY_AMBIGUOUS</c>: named, counted, <b>nothing stored</b>. This is the
+    /// ticket's deliberate divergence from TKT-foundation-046's VYK last-wins rule — that directory is
+    /// a <b>directory of record</b>, whereas this source's answer is a <b>search result list</b>, so an
+    /// unresolved ambiguity stays unresolved. Nothing is picked (no first-wins, no last-wins, no
+    /// "closest title"), and the refusal names both candidates so an operator can see the choice the
+    /// resolver declined to make.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_b_multiple_company_candidates_sharing_the_token_are_ambiguous_and_never_picked()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("GARAN", "TÜRKİYE GARANTİ BANKASI A.Ş.", "TRAGARAN91N1");
+        var bindings = await BindingsAsync("GARAN");
+
+        var body = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityGaranCommaCoded).Body;
+        StubIdentityFor("GARAN", body);
+        var logs = new InMemorySerilogSink();
+
+        await using var provider = BuildIngestion(logs);
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(1, result.Bound);
+        Assert.Equal(0, result.Resolved);
+        Assert.Equal(0, result.Inserted);
+        Assert.Equal(1, result.UnresolvedCount);
+
+        var unresolved = Assert.Single(result.Unresolved);
+        Assert.Equal("GARAN", unresolved.Symbol);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, unresolved.ReasonCode);
+        // The refusal names the candidates it declined to choose between (both joined codes).
+        Assert.Contains("garan,tgb", unresolved.Detail!, StringComparison.Ordinal);
+        Assert.Contains("garan,gryo", unresolved.Detail!, StringComparison.Ordinal);
+
+        // Nothing was stored — an ambiguity is never resolved by picking one.
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        // Named and counted, not merely counted.
+        Assert.Contains(
+            logs.Events,
+            evt => evt.RenderMessage().Contains("GARAN", StringComparison.Ordinal)
+                && evt.RenderMessage().Contains(KapPublicReasonCodes.CompanyIdentityAmbiguous, StringComparison.Ordinal));
+
+        // And a second pass over the same answer does not gradually drift into a pick either.
+        var again = await ResolveAsync(provider, bindings);
+        Assert.Equal(1, again.UnresolvedCount);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, again.Unresolved[0].ReasonCode);
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        Assert.Equal(2, _wireMock.RequestsFor(IdentityPath));
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-120 (c) — the rule is a <b>token</b> rule, not a substring rule, and it is
+    /// case-insensitive with padded parts trimmed (the 046 rule class applied to this source's
+    /// field). Three in-memory mutations of the committed comma-coded double: a code that merely
+    /// <i>contains</i> the symbol (`"xisctr,isatr"`) is not a match; a padded, mixed-case code
+    /// (`" isctr , ISATR "`) is; and a single-token code (`"isctr"`) is the degenerate exact case.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_c_the_rule_is_token_equality_with_trimming_and_case_folding()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("ISCTR", "TÜRKİYE İŞ BANKASI A.Ş.", "TRAISCTR91N2");
+        var bindings = await BindingsAsync("ISCTR");
+
+        var committed = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrCommaCoded).Body;
+        var companyOid = OidInCommittedBody(committed, "isctr,isatr");
+
+        // (c-1) a substring is not a token: the symbol appears inside a longer token, so no
+        // candidate is produced and the symbol is honestly unresolved.
+        var substring = committed.Replace("\"isctr,isatr\"", "\"xisctr,isatr\"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, substring);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("ISCTR", substring);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(0, result.Resolved);
+            Assert.Equal(KapPublicReasonCodes.CompanyIdentityUnresolved, Assert.Single(result.Unresolved).ReasonCode);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        // (c-2) padded parts are trimmed and the comparison folds case, exactly as the exact-match
+        // rule always has.
+        var padded = committed.Replace("\"isctr,isatr\"", "\" isctr , ISATR \"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, padded);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("ISCTR", padded);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(1, result.Resolved);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(companyOid, Assert.Single(await db.KapPublicCompanyMaps.ToListAsync()).KapPublicOid);
+        }
+
+        // (c-3) a single-token code is the degenerate case of the token rule — the exact-equality
+        // path 080 shipped, unchanged.
+        var single = committed.Replace("\"isctr,isatr\"", "\"isctr\"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, single);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("ISCTR", single);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(1, result.Resolved);
+            Assert.Equal(1, result.Inserted);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(companyOid, Assert.Single(await db.KapPublicCompanyMaps.ToListAsync()).KapPublicOid);
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-120 (d) — a bound universe mixing all three shapes (an exact single-token code, a
+    /// comma-coded single candidate, a comma-coded ambiguous answer) is resolved symbol by symbol:
+    /// the two resolvable companies are stored, the ambiguous one is named and counted, and the pass
+    /// <b>continues</b> past it — the per-company isolation doctrine (FR-MDF-012), never a fail-stop
+    /// and never a whole-pass abort.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_d_a_mixed_bound_resolves_what_it_can_and_names_the_ambiguity()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        await BindSymbolAsync("ISCTR", "TÜRKİYE İŞ BANKASI A.Ş.", "TRAISCTR91N2");
+        await BindSymbolAsync("GARAN", "TÜRKİYE GARANTİ BANKASI A.Ş.", "TRAGARAN91N1");
+        var bindings = await BindingsAsync("ASELS", "GARAN", "ISCTR");
+
+        StubIdentityFor("ASELS", RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentity).Body);
+        var isctrBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrCommaCoded).Body;
+        StubIdentityFor("ISCTR", isctrBody);
+        StubIdentityFor("GARAN", RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityGaranCommaCoded).Body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(3, result.Bound);
+        Assert.Equal(2, result.Resolved);
+        Assert.Equal(2, result.Inserted);
+        Assert.Equal(1, result.UnresolvedCount);
+        Assert.Equal("GARAN", Assert.Single(result.Unresolved).Symbol);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, result.Unresolved[0].ReasonCode);
+
+        await using var db = _postgres.CreateContext();
+        var rows = await db.KapPublicCompanyMaps.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.KapPublicOid == AselsPublicOid);
+        Assert.Contains(rows, row => row.KapPublicOid == OidInCommittedBody(isctrBody, "isctr,isatr"));
+        var garanId = bindings.Single(binding => binding.Symbol == "GARAN").InstrumentId;
+        Assert.DoesNotContain(rows, row => row.InstrumentId == garanId);
+
+        // Every bound symbol was searched exactly once; the ambiguous one was never fetched beyond
+        // its identity search (this seam has no byCriteria step at all).
+        Assert.Equal(3, _wireMock.RequestsFor(IdentityPath));
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-120 (e) — the exact-equality case is the <b>degenerate</b> case of the token rule: the
+    /// committed single-token ASELS capture resolves to exactly the same oid, provenance and as-of it
+    /// always did. This is the delta's falsifiability — the token rule must not disturb what 080's
+    /// cases pin.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_120_e_a_single_token_code_is_unchanged_by_the_token_rule()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        var bindings = await BindingsAsync("ASELS");
+        StubIdentity(RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentity).Body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(1, result.Resolved);
+        Assert.Equal(1, result.Inserted);
+        Assert.Empty(result.Unresolved);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(AselsPublicOid, row.KapPublicOid);
+        Assert.Equal(T, row.KapPublicOidAsOf);
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
@@ -621,6 +889,88 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
     }
 
     private void StubIdentity(string body) => _wireMock.StubJson(IdentityPath, body, method: "POST");
+
+    /// <summary>
+    /// Stubs the identity route for one bound symbol only, matched on the request's <b>exact</b> live
+    /// body shape (<c>{"keyword":"&lt;symbol&gt;"}</c>). A mixed-bound case needs per-symbol answers,
+    /// and matching on the body is also what proves the pass asked about the symbol it was bound to.
+    /// </summary>
+    private void StubIdentityFor(string keyword, string body) =>
+        _wireMock.Server
+            .Given(Request.Create()
+                .WithPath(IdentityPath)
+                .UsingPost()
+                .WithBody(KapPublicIdentityReader.RequestJson(keyword)))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(body));
+
+    /// <summary>
+    /// The <c>memberOrFundOid</c> a <b>committed</b> catalog body carries for one
+    /// <c>cmpOrFundCode</c> — read out of the double rather than typed in, so a golden can never
+    /// drift from the body it claims to assert (the 080 convention for the VYK id).
+    /// </summary>
+    private static string OidInCommittedBody(string body, string cmpOrFundCode)
+    {
+        using var document = JsonDocument.Parse(body);
+        var block = document.RootElement
+            .EnumerateArray()
+            .Single(category => category.GetProperty("category").GetString() == KapPublicIdentityReader.CompanyCategory);
+        var hit = block.GetProperty("results")
+            .EnumerateArray()
+            .Single(result => result.GetProperty("cmpOrFundCode").GetString() == cmpOrFundCode);
+        return hit.GetProperty("memberOrFundOid").GetString()!;
+    }
+
+    private async Task ClearMapsAsync()
+    {
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM kap_public_company_map");
+    }
+
+    /// <summary>
+    /// Binds one further symbol into the fixture world (instrument row + current XU100 membership) —
+    /// the real companies the run-301 evidence names do not exist in the synthetic fixture universe,
+    /// and a case about a <b>bound</b> instrument must bind it rather than invent an id.
+    /// </summary>
+    private async Task BindSymbolAsync(string symbol, string name, string isin)
+    {
+        await using var db = _postgres.CreateContext();
+        var xu100 = await db.Indices.Where(index => index.Code == "XU100").Select(index => index.Id).SingleAsync();
+        var instrument = await db.Instruments.SingleOrDefaultAsync(row => row.Symbol == symbol);
+        if (instrument is null)
+        {
+            instrument = new Instrument
+            {
+                Symbol = symbol,
+                Isin = isin,
+                Name = name,
+                Status = "active",
+                SourceRef = "test:kap-public-identity",
+                RecordedAt = RecordedAt,
+            };
+            db.Instruments.Add(instrument);
+            await db.SaveChangesAsync();
+        }
+
+        var bound = await db.IndexConstituents.AnyAsync(
+            constituent => constituent.IndexId == xu100
+                && constituent.InstrumentId == instrument.Id
+                && constituent.EffectiveTo == null);
+        if (!bound)
+        {
+            db.IndexConstituents.Add(new IndexConstituent
+            {
+                IndexId = xu100,
+                InstrumentId = instrument.Id,
+                EffectiveFrom = new DateOnly(2025, 1, 2),
+                SourceRef = "test:kap-public-identity",
+                RecordedAt = RecordedAt,
+            });
+            await db.SaveChangesAsync();
+        }
+    }
 
     private void ResetDoubles()
     {
