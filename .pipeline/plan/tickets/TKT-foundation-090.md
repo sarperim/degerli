@@ -11,6 +11,7 @@ scope:
 # TKT-foundation-090: Cumulative-vs-period semantics verification — one real source report determines whether the decoder stores YTD interim figures as period figures, and the honest behaviour when semantics cannot be determined
 
 - Status: in-review
+- PR: [#152](https://github.com/sarperim/degerli/pull/152) → `dev`
 - Size: M
 - **Priority: P1 — follow-up slice 2 of the 2026-10-27 live-run wave. This protects every DCF baseline number: the FY baselines consume these statements, and the interim financials display labels them.**
 - **The suspicion (recorded verbatim from the 2026-10-26/27 live run, on this ticket so it is never lost):** TUPRS **Q3-2025 FCF ₺36.9bn > FY2025 ₺30.3bn**; TUPRS **Q2-2026 FCF ₺120.5bn** dwarfs every other period; KCHOL **FY2025 FCF −₺204.9bn** is similarly suspect. Hypothesis (to be verified, not assumed): Turkish interim FR reports carry **cumulative (year-to-date) columns** — a "Q2" filing's main columns cover 01.01–30.06 — and the decoder may be storing the YTD figure under the interim's `periodEndDate` as if it were that period's discrete figure, so consumers (quarter-labelled display, any future TTM) misread it. An alternative hypothesis for the FY anomalies (a wrong row mapped, a comparative-column confusion) is equally live until the verification runs — the ticket determines which.
