@@ -59,11 +59,13 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
   check, so a bounded replay issues no list request at all.
 - **Named outcomes** (`KapPublicStatementWalkResult` + `StatementsJob`): `ReplaysAttempted`, `Recovered`
   (facts written — a repair of a hole, counted apart from ordinary `Inserted`), `StillQuarantined`
-  (re-quarantined terminally, replay spent). The job surfaces them in **two log lines only** — a
-  per-company line (with the remaining backlog) and the run's **completion log line**, which names
-  `quarantine-replays N (recovered R, still-quarantined S)`. They are **not** a stored ledger/stats
-  field: `IngestResult` and `SymbolRunStat` are untouched by this ticket, so the counts are observable in
-  the log and nowhere else. No third attempt ever fires, in this process or a later one.
+  (re-quarantined terminally, replay spent). They surface in **three log lines** — the walker's
+  per-symbol summary (`KapPublicStatementsWalk.cs:597-616`), the job's per-company replay line (with the
+  remaining backlog, emitted only when a replay was attempted — `StatementsJob.cs:650-656`) and the run's
+  **completion log line**, which names `quarantine-replays N (recovered R, still-quarantined S)`
+  (`StatementsJob.cs:879-895`). They are **not** a stored ledger/stats field: `IngestResult` and
+  `SymbolRunStat` are untouched by this ticket, so the counts are observable in the log and nowhere
+  else. No third attempt ever fires, in this process or a later one.
 
 ### Recorded deliberate behaviours (dispatcher R4 — rules a reader would otherwise infer from a count)
 
@@ -93,9 +95,12 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
   Enumerable.Empty<long>())`) → **4 failed / 0 passed**: (i) `Expected: 1, Actual: 0` on the recovered
   report's request (the live cursor-locked world), (ii)/(iii) the `quarantine-replays …` run line missing,
   (iv) `Expected: "WALK_DETAIL_CAP", Actual: null`. Restored and re-run green.
-- **Non-regression, targeted:** `KapPublicStatementsIngestTests` **20/20**; `StatementsAndEventsIngestionTests`
+- **Non-regression, targeted (round-1 baseline, before the DR-2 cursor test — +1 case):**
+  `KapPublicStatementsIngestTests` **20/20**; `StatementsAndEventsIngestionTests`
   + `EodChainTests` + `MorningChainTests` + `KapPublicIdentityJobTests` + `KapDisclosure*` **77/77**
-  (**97/97** total). `dotnet build` 0 warnings, 0 errors.
+  (**97/97** total — the class is **21** cases / **98** in total with the DR-2 test added). `dotnet build`
+  0 warnings, 0 errors. The counts were not re-measured after the test landed: review round 2 is docs-only
+  and CI is the authority for the post-change suite.
 
 ### Harness notes (recorded so they are not re-discovered)
 
@@ -107,7 +112,7 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
   every other case keeps the deterministic fake clock.
 - **Recorded limit:** WireMock enters an **aborted** response into its journal only when it eventually
   completes, so a per-index request count is evidence only for doubles that answer at once. The
-  still-failing replays are witnessed by the run's own ledger line and the persisted tombstones; the abort
+  still-failing replays are witnessed by the run's completion log line and the persisted tombstones; the abort
   delay is far longer than any case's runtime, so no late entry can flake a later pass's counts.
 
 ### Docs
@@ -125,8 +130,10 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
 ### Not done here, as pinned
 
 Decoder, identity resolver (088/090/091, merged), the quarantine evidence format, the transport-burst root
-cause (an ops finding) — and the **live recovery run** itself, which is
-the orchestrator's post-merge criterion: one paced `Source = kap-public` pass over at least AKBNK, TTKOM and
+cause (an ops finding), the **088 fenced user decisions — `TOTAL_EQUITY` (NCI-inclusive) and the narrow
+`debt` mapping — open upstream, not this ticket's** (held by the dispatcher; the `DR-1`/`DR-2` labels in
+088's review name those decisions, not this ticket's finding ids) — and the **live recovery run** itself,
+which is the orchestrator's post-merge criterion: one paced `Source = kap-public` pass over at least AKBNK, TTKOM and
 TUPRS, replayed/recovered/still-quarantined counts verbatim, the recovered windows' statements visible in the
 store, and a second pass making no further replay attempts on the same indices.
 

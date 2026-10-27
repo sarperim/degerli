@@ -2646,17 +2646,18 @@ bounded, persisted and recorded, never a retry ladder:
   report's facts under `kap-public` and is counted **recovered**; one that fails again (or answers a
   non-report body) is re-quarantined **terminally** with its evidence, its one replay spent, and is
   counted **still-quarantined**. The walk result carries `ReplaysAttempted`/`Recovered`/
-  `StillQuarantined`, and the job surfaces them in **two log lines only** — the per-company cursor line
-  (which also names the remaining backlog) and the run's completion line
-  (`quarantine-replays N (recovered R, still-quarantined S)`). They are **not** a stored ledger or stats
-  field: `IngestResult` and `SymbolRunStat` are unchanged by this ticket, so the counts are observable in
-  the log and nowhere else. Each recovered index's own line states what the write did
-  (`quarantined → recovered ({Inserted} inserted, {Unchanged} unchanged, {OverlapRetained}
-  overlap-retained)`), so a recovery whose report was entirely retained under the 083 coexistence rule —
-  recovered, `0` inserted, overlap-retained `> 0` — is never described as "written". No third attempt
-  ever fires for the same index, in this process or a later one: the tombstone is persisted. The
-  **explicit cursor reset remains the escape hatch** for anything beyond the one automatic replay (the
-  v1.5.56/v1.31 condition, unchanged).
+  `StillQuarantined`, and three log lines carry them — the walker's per-symbol summary
+  (`KapPublicStatementsWalk.cs:597-616`), the job's per-company replay line, emitted only when a replay
+  was attempted (`StatementsJob.cs:650-656`, guarded at `:648`), and the run's completion line
+  (`StatementsJob.cs:879-895`, `quarantine-replays N (recovered R, still-quarantined S)`). They are
+  **not** a stored ledger or stats field: `IngestResult` and `SymbolRunStat` are unchanged by this
+  ticket, so the counts are observable in the log and nowhere else. Each recovered index's own line
+  states what the write did (`quarantined → recovered ({Inserted} inserted, {Unchanged} unchanged,
+  {OverlapRetained} overlap-retained)`), so a recovery whose report was entirely retained under the 083
+  coexistence rule — recovered, `0` inserted, overlap-retained `> 0` — is never described as "written".
+  No third attempt ever fires for the same index, in this process or a later one: the tombstone is
+  persisted. The **explicit cursor reset remains the escape hatch** for anything beyond the one
+  automatic replay (the v1.5.56/v1.31 condition, unchanged).
 - **The quarantine ledger is append-only: one row per attempt, never deduped or superseded (recorded
   rule, TKT-foundation-092 review round 1).** A replay that fails again writes a **second**
   `DISCLOSURE_DETAIL_UNFETCHABLE` row for the *same* disclosure index. That is deliberate: the audit
