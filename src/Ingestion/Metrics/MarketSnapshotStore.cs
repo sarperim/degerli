@@ -53,11 +53,27 @@ public sealed class MarketSnapshotStore
     /// that has no prices.
     /// </para>
     /// </summary>
-    public async Task<DateOnly?> ResolveLatestStoredTradingDayAsync(
+    public Task<DateOnly?> ResolveLatestStoredTradingDayAsync(
+        DateOnly onOrBefore,
+        CancellationToken cancellationToken = default) =>
+        ResolveLatestStoredTradingDayAsync(_db, onOrBefore, cancellationToken);
+
+    /// <summary>
+    /// The same rule, reachable without composing this store: the latest stored trading day
+    /// at or before <paramref name="onOrBefore"/> over the current XU100 covered universe
+    /// (<c>01</c> §10.9.13). The <c>metrics-recompute</c> and <c>medians</c> lanes read it
+    /// through their engines (TKT-foundation-089) so that <b>one</b> implementation of the
+    /// stored-prices-as-truth rule serves every derived-fact lane — no lane re-derives a day
+    /// of its own, and none fabricates one from a weekday assumption.
+    /// </summary>
+    public static async Task<DateOnly?> ResolveLatestStoredTradingDayAsync(
+        DegerliDbContext db,
         DateOnly onOrBefore,
         CancellationToken cancellationToken = default)
     {
-        var xu100Id = await _db.Indices
+        ArgumentNullException.ThrowIfNull(db);
+
+        var xu100Id = await db.Indices
             .Where(i => i.Code == "XU100")
             .Select(i => i.Id)
             .SingleOrDefaultAsync(cancellationToken)
@@ -67,11 +83,11 @@ public sealed class MarketSnapshotStore
             return null;
         }
 
-        var memberIds = _db.IndexConstituents
+        var memberIds = db.IndexConstituents
             .Where(c => c.IndexId == xu100Id && c.EffectiveTo == null)
             .Select(c => c.InstrumentId);
 
-        return await _db.DailyPrices
+        return await db.DailyPrices
             .Where(p => memberIds.Contains(p.InstrumentId) && p.PriceDate <= onOrBefore)
             .MaxAsync(p => (DateOnly?)p.PriceDate, cancellationToken)
             .ConfigureAwait(false);

@@ -20,6 +20,20 @@ namespace Degerli.Ingestion.Metrics;
 /// (FR-MDF-015, NFR-MDF-002) and days other than the target one are never touched, so
 /// historical days stay immutable.
 /// </para>
+/// <para>
+/// <b>Target-day selection (<c>01</c> §10.9.13's stored-prices-as-truth rule, applied to this
+/// lane by TKT-foundation-089).</b> The day the formulas run over is the <b>latest trading day
+/// ≤ <c>request.Date</c> that has stored prices for the covered universe</b>, resolved through
+/// the one implementation of that rule
+/// (<see cref="MetricsEngine.ResolveComputeDayAsync"/>, delegating to
+/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(DegerliDbContext, DateOnly, System.Threading.CancellationToken)"/>)
+/// exactly as the snapshot lane does. The doctrine is not snapshot-specific — §10.9.13 governs
+/// every derived-fact write — and before this change a request for a day with no stored prices
+/// silently wrote <b>nothing</b> and reported a green <c>written: 0, unchanged: 0</c> (the
+/// 2026-10-26 live run's own reading) instead of recomputing the latest real session. With no
+/// stored price at or before the requested date the honest empty rule stands: the pass writes
+/// nothing and fabricates no day, because there genuinely is no session to describe.
+/// </para>
 /// </summary>
 public sealed class MetricsRecomputeJob : IIngestJob
 {
@@ -45,16 +59,30 @@ public sealed class MetricsRecomputeJob : IIngestJob
         IngestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var results = await _engine.ComputeAsync(request.Date, cancellationToken).ConfigureAwait(false);
+        // The day the formulas run over is the latest trading day at or before the requested
+        // date that actually has stored prices for the covered universe (01 §10.9.13) —
+        // stored prices are the truth, not request.Date and not a weekday assumption.
+        var target = await _engine
+            .ResolveComputeDayAsync(request.Date, cancellationToken)
+            .ConfigureAwait(false);
+        if (target is null)
+        {
+            // No covered-universe price ≤ the requested date: there is no session to
+            // describe, so nothing is recomputed and no day is fabricated.
+            return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+        }
+
+        var day = target.Value;
+        var results = await _engine.ComputeAsync(day, cancellationToken).ConfigureAwait(false);
 
         // The engine classifies the recompute against the stored same-day rows: identical
         // rows are not rewritten, changed rows are (01 §10.9.13; TKT-foundation-050).
         var plan = await _engine
-            .PlanWriteAsync(results, request.Date, cancellationToken)
+            .PlanWriteAsync(results, day, cancellationToken)
             .ConfigureAwait(false);
 
         var outcome = await _store
-            .UpsertAsync(plan.ToWrite, request.Date, _clock.GetUtcNow(), cancellationToken)
+            .UpsertAsync(plan.ToWrite, day, _clock.GetUtcNow(), cancellationToken)
             .ConfigureAwait(false);
 
         // A repair is a written row for this run too: the plan keeps the insert / repair /
