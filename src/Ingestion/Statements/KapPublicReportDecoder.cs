@@ -52,6 +52,22 @@ namespace Degerli.Ingestion.Statements;
 /// <c>FY</c>/<c>Q</c> code, so a half-year report can never be consumed as an annual.</item>
 /// </list>
 /// <para>
+/// <b>Cumulative vs discrete semantics (TKT-foundation-090, verified from the committed
+/// interim body).</b> A Turkish interim FR's main column is <b>cumulative — year-to-date</b>:
+/// the MİGROS 2026-06 capture declares its income-statement and cash-flow <c>Cari Dönem</c>
+/// column as <c>01.01.2026 - 30.06.2026</c> and carries the discrete quarter as a separate
+/// <c>3 Aylık 01.04.2026 - 30.06.2026</c> column. The decoder therefore decodes the column whose
+/// <b>declared duration</b> is the report's own (6 months here), skips the discrete quarter as
+/// <c>SUB_PERIOD_COLUMN</c>, and types the fact <c>Q</c> at the column's own period end — the
+/// figure is the year-to-date value <b>labelled as the interim it is</b>, never a discrete
+/// quarter and never an annual. Each decoded line carries the declared
+/// <c>PeriodStartDate</c>/<c>DurationMonths</c> it was decoded under, so no consumer has to
+/// infer the span. Because the store's vocabulary is only <c>FY</c>/<c>Q</c>, a period an
+/// annual declaration claims but no column attests is <b>undetermined</b>: it is counted
+/// <c>PERIOD_SEMANTICS_UNDETERMINED</c> and fails safe to <c>Q</c> (a twelve-month duration is
+/// the rule's only route to <c>FY</c>).
+/// </para>
+/// <para>
 /// <b>Honesty rules, mechanised.</b> Every decoded line carries table + label + column + row
 /// provenance; a value that cannot be attributed is dropped (honest-null) and counted — never
 /// zero-filled and never guessed; a duplicate label collapses when its values agree and
@@ -381,7 +397,26 @@ public static class KapPublicReportDecoder
                 + "(never FY on a contradicted declaration)."));
         }
 
-        var periodType = durationMismatch ? "Q" : StatementPeriodTypeFor(header.Period);
+        // The other half of the same guard (TKT-foundation-090): a report that declares a period
+        // its own columns do not attest has undetermined cumulative-vs-discrete semantics — no
+        // range anywhere means nothing in the body says what the figures cover. An annual
+        // declaration is then as unproven as any other, and FY is never emitted on it: a
+        // half-year's balance sheet typed FY would let its debt/cash into the DCF's annual basis.
+        var semanticsUndetermined = declaredMonths is not null && observedMonths.Count == 0;
+        if (semanticsUndetermined)
+        {
+            findings.Add(Finding(
+                KapPublicReportReasons.PeriodSemanticsUndetermined,
+                1,
+                $"Periyot '{header.Period?.ToString(CultureInfo.InvariantCulture) ?? "absent"}' declares "
+                + $"{declaredMonths} month(s), but no column header declares a readable date range — what the "
+                + "figures cover is undetermined, so the statement period type fails safe to Q (never FY on an "
+                + "unattested declaration)."));
+        }
+
+        var periodType = durationMismatch || semanticsUndetermined
+            ? "Q"
+            : StatementPeriodTypeFor(header.Period);
 
         // Phase 2 — decode the value cells of every table whose heading and columns resolved.
         foreach (var decode in decodes)
@@ -533,6 +568,8 @@ public static class KapPublicReportDecoder
                         displayed,
                         column.Verbatim,
                         periodEnd,
+                        column.PeriodStart,
+                        column.DurationMonths,
                         rowOrder));
 
                     statementLineCount++;
