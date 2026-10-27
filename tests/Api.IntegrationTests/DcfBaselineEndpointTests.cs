@@ -4,6 +4,7 @@ using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Fixtures;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Statements;
 using Degerli.Ingestion.Valuation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -29,6 +30,9 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
 {
     private static readonly FixtureSet L2 = FixtureUniverse.Build(FixtureAnchor.L2);
     private static DateOnly T => L2.Anchor.T;
+
+    /// <summary>TC-MDF-118's company: the one the committed public-site capture covers.</summary>
+    private const string Tuprs = "TUPRS";
 
     /// <summary>
     /// The canonical-fact as-of / baseline build date (FU §11.5: "asOf R−6d"). The job
@@ -410,8 +414,337 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
     }
 
     // ---------------------------------------------------------------------------
+    // TC-MDF-118 (a) — the per-share DCF completes on the decoded kap-public statements
+    // ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// TC-MDF-118 (a) — the ticket's headline, end to end on the <b>committed</b> public-site
+    /// capture: TÜPRAŞ's 2025 Yıllık report (`kap-public-report-1554106`, TKT-foundation-088's
+    /// bounded-trim double) is decoded by the production decoder and stored by the production
+    /// store, the <c>dcf-baselines</c> job builds the baseline from those statements, and
+    /// <c>GET /stocks/TUPRS/dcf</c> serves all four statement-derived facts with
+    /// <c>missingInputs</c> empty, so <c>POST …/dcf/compute</c> returns a
+    /// <c>fairValuePerShare</c>.
+    /// <para>
+    /// The facts asserted are the capture's own cells (088's stored goldens, converted by the
+    /// store's <c>thousands</c> scale): <c>debt = ST_DEBT 8.957.100 + LT_DEBT 28.428.775</c>
+    /// thousand TL and <c>cash = CASH 107.237.211</c> thousand TL. The current portion of
+    /// long-term borrowings is deliberately <b>not</b> part of that sum (088's routed DR-2
+    /// decision is still open: this ticket consumes the stored <c>ST_DEBT</c>/<c>LT_DEBT</c>
+    /// exactly as stored and never widens the debt definition).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_118_the_per_share_dcf_completes_on_the_decoded_public_site_statements()
+    {
+        await SeedAsync();
+        await SeedPublicSiteCompanyAsync(includeIncomeAndBalanceSheets: true);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        await RunBaselineJobAsync(factory, T);
+        using var client = CreateClient(factory);
+
+        Dictionary<string, object?> servedParams = new(StringComparer.Ordinal);
+        decimal servedDebt;
+        decimal servedCash;
+        using (var response = await GetDcfAsync(client, Tuprs))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+
+            // The state leaves `missing_inputs`: every statement-derived fact was supplied.
+            Assert.False(
+                root.TryGetProperty("state", out var state) && state.GetString() == "missing_inputs",
+                "the baseline must not stay in missing_inputs once the debt/cash facts are decoded");
+
+            var baseline = root.GetProperty("baseline");
+            var parameters = baseline.GetProperty("params");
+
+            // The confirmed eight-parameter set (OQ-UX-001), complete.
+            Assert.Equal(8, parameters.EnumerateObject().Count());
+
+            // debt = ST_DEBT + LT_DEBT of the stored FY2025 balance sheet, cash = its CASH.
+            servedDebt = parameters.GetProperty("debt").GetDecimal();
+            servedCash = parameters.GetProperty("cash").GetDecimal();
+            Assert.Equal(37_385_875_000m, servedDebt);
+            Assert.Equal(107_237_211_000m, servedCash);
+
+            // The divisor is the price lane's own count (the statement is silent on shares —
+            // 086's pinned precedence), so the per-share value is computable at all.
+            Assert.Equal(2_500_000_000m, parameters.GetProperty("share_count").GetDecimal());
+
+            // base_fcf is the cash-flow statement's own OCF less |CAPEX| (the pinned
+            // definition); the golden is derived from the stored CF lines, never from the
+            // job's output.
+            var (ocf, capex) = await StoredCashFlowAsync(Tuprs);
+            Assert.Equal(ocf - Math.Abs(capex), parameters.GetProperty("base_fcf").GetDecimal());
+
+            // The provenance refs: the three statement facts name the statement lane and the
+            // baseline's as-of; the count names the price lane and its own price date.
+            var refs = baseline.GetProperty("canonicalFactRefs");
+            foreach (var fact in new[] { "base_fcf", "debt", "cash" })
+            {
+                var reference = refs.GetProperty(fact);
+                Assert.Equal("statement", reference.GetProperty("source").GetString());
+                Assert.False(reference.GetProperty("restated").GetBoolean());
+                Assert.Equal(T.ToString("yyyy-MM-dd"), reference.GetProperty("asOf").GetString());
+            }
+
+            var countRef = refs.GetProperty("share_count");
+            Assert.Equal("price-derived", countRef.GetProperty("source").GetString());
+            Assert.Equal(T.ToString("yyyy-MM-dd"), countRef.GetProperty("asOf").GetString());
+
+            foreach (var property in parameters.EnumerateObject())
+            {
+                servedParams[property.Name] = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString()
+                    : property.Value.GetDecimal();
+            }
+        }
+
+        // The facts really are the public-site statements' own lines: the company holds no
+        // other provenance, and the served debt/cash equal that balance sheet's rows — so the
+        // refs point at the `kap-public` statements in substance, not merely by label.
+        await using (var db = _postgres.CreateContext())
+        {
+            var instrumentId = await db.Instruments
+                .Where(instrument => instrument.Symbol == Tuprs)
+                .Select(instrument => instrument.Id)
+                .SingleAsync();
+            var statements = await db.FinancialStatements
+                .Where(statement => statement.InstrumentId == instrumentId)
+                .ToListAsync();
+            Assert.NotEmpty(statements);
+            Assert.All(statements, statement => Assert.Equal("kap-public", statement.SourceRef));
+
+            var balanceSheet = Assert.Single(
+                statements,
+                statement => statement.StatementType == "BS" && statement.PeriodEndDate == new DateOnly(2025, 12, 31));
+            var lines = await db.FinLineItems
+                .Where(line => line.StatementId == balanceSheet.Id)
+                .ToDictionaryAsync(line => line.ItemCode, line => line.Value);
+
+            Assert.Equal(servedDebt, lines["ST_DEBT"] + lines["LT_DEBT"]);
+            Assert.Equal(servedCash, lines["CASH"]);
+        }
+
+        // …and the per-share value is served by the compute path over exactly that divisor.
+        using (var computed = await PostComputeAsync(client, Tuprs, servedParams))
+        {
+            Assert.Equal(HttpStatusCode.OK, computed.StatusCode);
+            using var document = JsonDocument.Parse(await computed.Content.ReadAsStringAsync());
+            var fairValuePerShare = document.RootElement.GetProperty("fairValuePerShare").GetDecimal();
+            Assert.True(
+                fairValuePerShare > 0m,
+                $"expected a real fair value per share over the stored divisor; got {fairValuePerShare}");
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-118 (a), the pre-088 control — <b>the ticket's recorded red, reproduced exactly.</b>
+    /// The first live <c>kap-public</c> walk stored the cash-flow statements only (60 CF / 2 IS
+    /// / 0 BS), and on that world <c>GET /stocks/TUPRS/dcf</c> answered
+    /// <c>state: "missing_inputs"</c> with <c>missingInputs: ['debt','cash']</c> while revenue on
+    /// the public-site financials period was null. This case pins that shape as the control the
+    /// case above is measured against: the same committed capture, the same store, the same
+    /// job — only the IS/BS rows withheld — must leave both facts missing. Without it the
+    /// assertion "the state leaves missing_inputs" would be unfalsifiable.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_118_the_cash_flow_only_world_leaves_debt_cash_and_revenue_missing()
+    {
+        await SeedAsync();
+        await SeedPublicSiteCompanyAsync(includeIncomeAndBalanceSheets: false);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        await RunBaselineJobAsync(factory, T);
+        using var client = CreateClient(factory);
+
+        using (var response = await GetDcfAsync(client, Tuprs))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+
+            Assert.Equal("missing_inputs", root.GetProperty("state").GetString());
+            var missing = root.GetProperty("missingInputs").EnumerateArray()
+                .Select(entry => entry.GetString()!)
+                .OrderBy(entry => entry, StringComparer.Ordinal)
+                .ToArray();
+
+            // The live reading, verbatim: the two balance-sheet facts are what is missing. The
+            // cash-flow-derived base FCF and the price-derived count are not.
+            Assert.Equal(["cash", "debt"], missing);
+
+            var parameters = root.GetProperty("baseline").GetProperty("params");
+            Assert.False(parameters.TryGetProperty("debt", out _));
+            Assert.False(parameters.TryGetProperty("cash", out _));
+            Assert.True(parameters.TryGetProperty("base_fcf", out _));
+            Assert.False(root.TryGetProperty("fairValuePerShare", out _));
+
+            // The calculator refuses the incomplete set naming the missing input.
+            var servedParams = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var property in parameters.EnumerateObject())
+            {
+                servedParams[property.Name] = property.Value.GetDecimal();
+            }
+
+            using var computed = await PostComputeAsync(client, Tuprs, servedParams);
+            Assert.Equal(HttpStatusCode.BadRequest, computed.StatusCode);
+            Assert.Contains("debt", await computed.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        // …and revenue on the public-site period is honestly null, exactly as the live run
+        // recorded it (the IS row never existed).
+        using (var response = await client.GetAsync(new Uri($"/api/v1/stocks/{Tuprs}/financials", UriKind.Relative)))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var current = Assert.Single(
+                document.RootElement.GetProperty("periods").EnumerateArray(),
+                period => period.GetProperty("periodEndDate").GetString() == "2025-12-31");
+            Assert.Equal(JsonValueKind.Null, current.GetProperty("revenue").GetProperty("value").ValueKind);
+            Assert.Equal(JsonValueKind.Null, current.GetProperty("netIncome").GetProperty("value").ValueKind);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// The ticket's covered company: an active XU100 constituent carrying the <b>committed</b>
+    /// TÜPRAŞ 2025 Yıllık public-site capture, decoded through the production decoder and
+    /// written through the production store as <c>kap-public</c> — exactly the rows a live
+    /// paced walk writes. A stored price (the DCF's and the endpoints' canonical price) and the
+    /// price-lane derived count (086's fallback divisor) complete the world. With
+    /// <paramref name="includeIncomeAndBalanceSheets"/> false only the cash-flow rows are
+    /// stored — the live pre-088 shape.
+    /// <para>
+    /// Both cases share one class-fixture database, so the world is built idempotently: the
+    /// company is reused when a sibling case already created it, and its statements are
+    /// cleared before this case's payload is written (the CF-only case must not inherit the
+    /// IS/BS rows of the full case). Execution order therefore never changes what a case sees.
+    /// </para>
+    /// </summary>
+    private async Task SeedPublicSiteCompanyAsync(bool includeIncomeAndBalanceSheets)
+    {
+        await using var db = _postgres.CreateContext();
+
+        var alfa = await db.Instruments.AsNoTracking().SingleAsync(instrument => instrument.Symbol == "ALFA");
+        var xu100 = await db.Indices.SingleAsync(index => index.Code == "XU100");
+        var recordedAt = new DateTimeOffset(T.ToDateTime(new TimeOnly(18, 30)), TimeSpan.Zero);
+
+        var instrument = await db.Instruments.SingleOrDefaultAsync(candidate => candidate.Symbol == Tuprs);
+        if (instrument is null)
+        {
+            instrument = new Instrument
+            {
+                Symbol = Tuprs,
+                Name = "Tüpraş",
+                SectorId = alfa.SectorId,
+                AccountingProfile = alfa.AccountingProfile,
+                ListingDate = new DateOnly(1991, 5, 6),
+                Status = "active",
+                SourceRef = "fixture:universe",
+                RecordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            };
+            db.Instruments.Add(instrument);
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            // This case states the company's whole statement world; a sibling case's rows
+            // are not part of it (line items cascade with their statement).
+            await db.FinancialStatements
+                .Where(statement => statement.InstrumentId == instrument.Id)
+                .ExecuteDeleteAsync();
+        }
+
+        if (!await db.IndexConstituents.AnyAsync(
+                constituent => constituent.IndexId == xu100.Id && constituent.InstrumentId == instrument.Id
+                    && constituent.EffectiveTo == null))
+        {
+            db.IndexConstituents.Add(new IndexConstituent
+            {
+                IndexId = xu100.Id,
+                InstrumentId = instrument.Id,
+                EffectiveFrom = instrument.ListingDate!.Value,
+                EffectiveTo = null,
+                SourceRef = "fixture:universe",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        if (!await db.DailyPrices.AnyAsync(
+                price => price.InstrumentId == instrument.Id && price.PriceDate == T))
+        {
+            db.DailyPrices.Add(new DailyPrice
+            {
+                InstrumentId = instrument.Id,
+                PriceDate = T,
+                CloseRaw = 150m,
+                CloseAdjusted = 150m,
+                Volume = 1_000_000,
+                SourceRef = "fixture:universe",
+                RecordedAt = recordedAt,
+            });
+        }
+
+        db.PriceDerivedShareCounts.Add(new PriceDerivedShareCount
+        {
+            InstrumentId = instrument.Id,
+            SharesOutstanding = 2_500_000_000L,
+            MarketCapRaw = 375_000_000_000m,
+            CloseRaw = 150m,
+            PriceDate = T,
+            RecordedAt = recordedAt,
+            SourceRef = "isyatirim",
+        });
+        await db.SaveChangesAsync();
+
+        var report = KapPublicReportDecoder.Decode(
+            RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportTuprs).Body,
+            Tuprs);
+        var payload = includeIncomeAndBalanceSheets
+            ? report.Payload
+            : report.Payload with
+            {
+                Statements = report.Payload.Statements
+                    .Where(statement => statement.StatementType == "CF")
+                    .ToList(),
+            };
+
+        var write = await new FinancialStatementStore(db).UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 2, 6, 18, 34, 29, TimeSpan.Zero),
+            payload);
+
+        Assert.Equal(includeIncomeAndBalanceSheets ? 6 : 2, write.Inserted);
+        Assert.Empty(write.RejectedReasonCodes);
+    }
+
+    /// <summary>The stored FY2025 cash-flow statement's own OCF and CAPEX (the raw goldens).</summary>
+    private async Task<(decimal Ocf, decimal Capex)> StoredCashFlowAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        var statementId = await (
+            from statement in db.FinancialStatements
+            join instrument in db.Instruments on statement.InstrumentId equals instrument.Id
+            where instrument.Symbol == symbol
+                  && statement.StatementType == "CF"
+                  && statement.PeriodType == "FY"
+                  && statement.PeriodEndDate == new DateOnly(2025, 12, 31)
+            select statement.Id)
+            .SingleAsync();
+
+        var lines = await db.FinLineItems
+            .Where(line => line.StatementId == statementId)
+            .ToDictionaryAsync(line => line.ItemCode, line => line.Value);
+
+        return (lines["OCF"], lines["CAPEX"]);
+    }
 
     /// <summary>Removes the statement-reported diluted count, leaving the derived lane alone.</summary>
     private async Task DeleteSharesDilutedAsync(string symbol)

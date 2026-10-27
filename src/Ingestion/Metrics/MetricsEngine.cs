@@ -85,6 +85,19 @@ public sealed class MetricsEngine
     public MetricsEngine(DegerliDbContext db) => _db = db;
 
     /// <summary>
+    /// Resolves the day this lane computes over: the latest stored trading day at or before
+    /// <paramref name="onOrBefore"/> in the covered universe, via the one implementation of
+    /// that rule (<see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(DegerliDbContext, DateOnly, CancellationToken)"/>,
+    /// <c>01</c> §10.9.13) — TKT-foundation-089. Stored prices are the truth: a request for a
+    /// day with no stored prices (a weekend, a cold start, a missed run) recomputes the latest
+    /// real session rather than writing nothing and reporting a green <c>0/0</c>.
+    /// </summary>
+    public Task<DateOnly?> ResolveComputeDayAsync(
+        DateOnly onOrBefore,
+        CancellationToken cancellationToken = default) =>
+        MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(_db, onOrBefore, cancellationToken);
+
+    /// <summary>
     /// Computes the metric set for every instrument with a price on
     /// <paramref name="asOfDate"/> — the covered current universe at that date.
     /// </summary>

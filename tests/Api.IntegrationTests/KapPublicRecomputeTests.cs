@@ -619,6 +619,82 @@ public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
         }
     }
 
+    /// <summary>
+    /// TC-MDF-118 (b) — <b>the derived lanes describe the latest stored session, never a date
+    /// that owns no prices</b> (<c>01</c> §10.9.13's stored-prices-as-truth rule; the gap that
+    /// kept 083's open live criterion open). The 2026-10-26 live run asked
+    /// <c>metrics-recompute</c> for a day whose universe had no stored prices and the job wrote
+    /// <b>nothing</b>, reporting a green <c>written: 0, unchanged: 0</c> — indistinguishable
+    /// from "everything was already current". The repair resolves the day through the one
+    /// implementation of the rule (the snapshot lane's own
+    /// <c>MarketSnapshotStore.ResolveLatestStoredTradingDayAsync</c>), so both
+    /// <c>metrics-recompute</c> and <c>medians</c> asked for a priceless date compute the
+    /// latest <b>real</b> session — and stamp their rows with that day, not the request's.
+    /// <para>
+    /// The world is the plain L2 fixture (no mixed-source statements), so the written count is
+    /// the fixture contract's <see cref="MetricRows"/>; the requested date is a Saturday well
+    /// after the last stored price, so a weekday-backing rule would have fabricated a day the
+    /// market never traded and a blind <c>request.Date</c> would have written nothing.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_118_the_derived_lanes_describe_the_latest_stored_session_not_a_priceless_date()
+    {
+        await ResetAsync();
+
+        DateOnly latestStored;
+        await using (var db = _postgres.CreateContext())
+        {
+            latestStored = await db.DailyPrices.MaxAsync(price => price.PriceDate);
+        }
+
+        // A Saturday with no stored price anywhere in the universe — the cold-start / missed-run
+        // shape the live run hit.
+        var requested = new DateOnly(2027, 1, 2);
+        Assert.Equal(DayOfWeek.Saturday, requested.DayOfWeek);
+        Assert.True(requested > latestStored);
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.False(await db.DailyPrices.AnyAsync(price => price.PriceDate == requested));
+        }
+
+        var metrics = await ComputeDerivedMetricsAsync(requested);
+        Assert.Equal("succeeded", metrics.Status);
+
+        // The run is not a silent zero: it recomputed the latest real session in full.
+        Assert.Equal(MetricRows, metrics.Written);
+        Assert.Equal(0, metrics.Unchanged);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            // Every written row describes the resolved session; the requested date owns none.
+            Assert.Equal(0, await db.DerivedMetrics.CountAsync(metric => metric.AsOfDate == requested));
+            Assert.Equal(
+                MetricRows,
+                await db.DerivedMetrics.CountAsync(metric => metric.AsOfDate == latestStored));
+            Assert.All(
+                await db.DerivedMetrics
+                    .Where(metric => metric.AsOfDate == latestStored)
+                    .Select(metric => metric.FormulaVersion)
+                    .ToListAsync(),
+                version => Assert.Equal(CanonicalMetrics.Version, version));
+        }
+
+        // The medians lane rides the same rule: it describes the same session.
+        var medians = await RunMediansAsync(requested);
+        Assert.Equal("succeeded", medians.Status);
+        Assert.True(medians.Written > 0);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(
+                0,
+                await db.SectorMetricMedians.CountAsync(median => median.AsOfDate == requested));
+            Assert.True(
+                await db.SectorMetricMedians.AnyAsync(median => median.AsOfDate == latestStored));
+        }
+    }
+
     // =============================================================================================
     // Harness — the world
     // =============================================================================================

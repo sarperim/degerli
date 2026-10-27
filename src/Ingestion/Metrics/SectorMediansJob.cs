@@ -17,6 +17,17 @@ namespace Degerli.Ingestion.Metrics;
 /// row per <c>(sector, metric, as_of_date)</c> is preserved and days other than the target
 /// one are never touched.
 /// </para>
+/// <para>
+/// <b>Target-day selection (<c>01</c> §10.9.13, applied to this lane by TKT-foundation-089).</b>
+/// The medians describe the same day the metrics describe, so the day is resolved by the same
+/// stored-prices-as-truth rule the <c>metrics-recompute</c> and <c>market-snapshot</c> lanes
+/// use (<see cref="SectorMedianEngine.ResolveComputeDayAsync"/>, delegating to
+/// <see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(MarketSnapshotStore, DateOnly, System.Threading.CancellationToken)"/>):
+/// the latest trading day ≤ <c>request.Date</c> with stored prices for the covered universe.
+/// A request for a day with no stored prices therefore describes the latest real session
+/// instead of silently reporting a green zero; with no stored price at all there is no day to
+/// describe and the pass honestly writes nothing.
+/// </para>
 /// </summary>
 public sealed class SectorMediansJob : IIngestJob
 {
@@ -42,16 +53,27 @@ public sealed class SectorMediansJob : IIngestJob
         IngestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var results = await _engine.ComputeAsync(request.Date, cancellationToken).ConfigureAwait(false);
+        // The same day the metrics lane describes (01 §10.9.13): stored prices are the truth.
+        var target = await _engine
+            .ResolveComputeDayAsync(request.Date, cancellationToken)
+            .ConfigureAwait(false);
+        if (target is null)
+        {
+            // No covered-universe price ≤ the requested date: no session to describe.
+            return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
+        }
+
+        var day = target.Value;
+        var results = await _engine.ComputeAsync(day, cancellationToken).ConfigureAwait(false);
 
         // The engine classifies the recompute against the stored same-day rows: identical
         // rows are not rewritten, changed rows are (01 §10.9.13; TKT-foundation-050).
         var plan = await _engine
-            .PlanWriteAsync(results, request.Date, cancellationToken)
+            .PlanWriteAsync(results, day, cancellationToken)
             .ConfigureAwait(false);
 
         var outcome = await _store
-            .UpsertAsync(plan.ToWrite, request.Date, _clock.GetUtcNow(), cancellationToken)
+            .UpsertAsync(plan.ToWrite, day, _clock.GetUtcNow(), cancellationToken)
             .ConfigureAwait(false);
 
         // A repair is a written row for this run too; the plan keeps the insert / repair /

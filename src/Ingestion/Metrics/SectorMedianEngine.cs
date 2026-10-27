@@ -74,6 +74,19 @@ public sealed class SectorMedianEngine
     public SectorMedianEngine(DegerliDbContext db) => _db = db;
 
     /// <summary>
+    /// Resolves the day the medians describe: the same rule the <c>metrics-recompute</c> and
+    /// <c>market-snapshot</c> lanes use — the latest stored trading day at or before
+    /// <paramref name="onOrBefore"/> in the covered universe
+    /// (<see cref="MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(DegerliDbContext, DateOnly, CancellationToken)"/>,
+    /// <c>01</c> §10.9.13; TKT-foundation-089). One implementation of the rule, never a
+    /// per-lane derivation.
+    /// </summary>
+    public Task<DateOnly?> ResolveComputeDayAsync(
+        DateOnly onOrBefore,
+        CancellationToken cancellationToken = default) =>
+        MarketSnapshotStore.ResolveLatestStoredTradingDayAsync(_db, onOrBefore, cancellationToken);
+
+    /// <summary>
     /// Computes the sector medians at <paramref name="asOfDate"/> from the canonical
     /// metrics of that date across the current-universe constituents (classified peers only).
     /// </summary>
