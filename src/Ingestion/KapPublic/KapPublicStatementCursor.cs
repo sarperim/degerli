@@ -27,8 +27,35 @@ namespace Degerli.Ingestion.KapPublic;
 /// </summary>
 /// <param name="Watermark">The first date the next pass lists from (inclusive).</param>
 /// <param name="Seen">Public indices already completed inside the window starting at <paramref name="Watermark"/>.</param>
+/// <remarks>
+/// <b>The quarantine replay's persisted state (01 v1.5.67 §10.9.19, TKT-foundation-092).</b> A
+/// report whose <i>detail</i> the source failed to deliver in transport is quarantined
+/// (<c>DISCLOSURE_DETAIL_UNFETCHABLE</c>) <b>and</b> marked completed — it enters
+/// <see cref="Seen"/>, so the watermark advances past it and an ordinary pass can never list it
+/// again. That is why the once-only replay needs its own persisted state, and why it lives here
+/// rather than in a new table (<see cref="Quarantined"/> and <see cref="Retried"/>): the cursor row
+/// is already the lane's own, already instrument-scoped, and a migration is not needed to make a
+/// bounded repair possible. A shape verdict (<c>UNPARSEABLE_PAYLOAD</c>) is <b>never</b> recorded
+/// here — it is a verdict about the body, not a transport outage, and replaying it would re-fetch
+/// a report only to re-learn the same answer.
+/// </remarks>
 public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<long> Seen)
 {
+    /// <summary>
+    /// The <b>transport-failure backlog</b>: public indices whose detail the source failed to
+    /// deliver, each owing at most <b>one</b> replay (the 063 stale-cursor-reset doctrine, one level
+    /// down — recovery is bounded, recorded, never infinite).
+    /// </summary>
+    public IReadOnlyList<long> Quarantined { get; init; } = [];
+
+    /// <summary>
+    /// The <b>once-only tombstone</b>: indices whose single replay has been <b>spent</b>, whether it
+    /// recovered the report or failed again. An index in this set is never replayed a third time —
+    /// the "never retried forever" half of the 063 doctrine, persisted so a later process (or a
+    /// later pass, days later) cannot forget it. Only an explicit cursor reset clears it.
+    /// </summary>
+    public IReadOnlyList<long> Retried { get; init; } = [];
+
     /// <summary>An empty cursor starting at <paramref name="from"/> (a bootstrap pass).</summary>
     public static KapPublicStatementCursor Start(DateOnly from) => new(from, []);
 
@@ -38,6 +65,35 @@ public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<
     /// <summary>The same cursor with one more completed report (idempotent: no duplicate).</summary>
     public KapPublicStatementCursor With(long disclosureIndex) =>
         Contains(disclosureIndex) ? this : this with { Seen = [.. Seen, disclosureIndex] };
+
+    /// <summary>The indices this pass may still replay, oldest first.</summary>
+    public IReadOnlyList<long> PendingReplay() =>
+        Quarantined.Where(index => !Retried.Contains(index)).Order().ToList();
+
+    /// <summary>
+    /// Records a <b>transport-failure</b> quarantine: the index becomes replay-eligible exactly once
+    /// (and stays in the seen set — it was walked, and its window must not be re-listed for it).
+    /// An index whose replay is already spent is added to the seen set only: an index gets one
+    /// automatic replay in its lifetime, never one per quarantine.
+    /// </summary>
+    public KapPublicStatementCursor WithQuarantine(long disclosureIndex)
+    {
+        var seen = With(disclosureIndex);
+        return Retried.Contains(disclosureIndex)
+            ? seen
+            : seen with { Quarantined = Quarantined.Contains(disclosureIndex) ? Quarantined : [.. Quarantined, disclosureIndex] };
+    }
+
+    /// <summary>
+    /// Spends the one replay of <paramref name="disclosureIndex"/>: it leaves the backlog and enters
+    /// the tombstone, whatever the outcome was. Called for a recovery <b>and</b> for a replay that
+    /// failed again — that is what makes the second failure terminal rather than a retry ladder.
+    /// </summary>
+    public KapPublicStatementCursor WithReplaySpent(long disclosureIndex) => this with
+    {
+        Quarantined = Quarantined.Where(candidate => candidate != disclosureIndex).ToList(),
+        Retried = Retried.Contains(disclosureIndex) ? Retried : [.. Retried, disclosureIndex],
+    };
 
     /// <summary>
     /// The cursor for a <b>fully walked</b> window: the watermark is the window's last covered day
@@ -57,9 +113,14 @@ public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<
     /// away (review round 1, D11): pruning it safely needs index→window attribution the cursor does not
     /// record, so pruning is a schema change in its own right.
     /// </para>
+    /// <para>
+    /// The retry markers travel with the cursor through every window close: advancing the watermark
+    /// is a position change, never a reason to forget which quarantined reports still owe their one
+    /// replay (TKT-foundation-092).
+    /// </para>
     /// </summary>
-    public static KapPublicStatementCursor AfterWindow(DateOnly windowLastDay, IEnumerable<long> completedSince) =>
-        new(windowLastDay, completedSince.Distinct().Order().ToList());
+    public KapPublicStatementCursor CloseWindow(DateOnly windowLastDay) =>
+        this with { Watermark = windowLastDay, Seen = Seen.Distinct().Order().ToList() };
 
     /// <summary>Serializes the cursor for <c>coverage_metadata.notes</c> (stable, non-lossy).</summary>
     public string ToJson()
@@ -72,6 +133,24 @@ public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<
             writer.WriteString("watermark", Watermark.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             writer.WriteStartArray("seen");
             foreach (var index in Seen.Order())
+            {
+                writer.WriteNumberValue(index);
+            }
+
+            writer.WriteEndArray();
+
+            // The quarantine replay's bounded state (TKT-foundation-092): what still owes its one
+            // replay, and what has already spent it. Written always (even empty) so a reader never
+            // has to infer "absent" from "not written by this version".
+            writer.WriteStartArray("quarantined");
+            foreach (var index in Quarantined.Distinct().Order())
+            {
+                writer.WriteNumberValue(index);
+            }
+
+            writer.WriteEndArray();
+            writer.WriteStartArray("retried");
+            foreach (var index in Retried.Distinct().Order())
             {
                 writer.WriteNumberValue(index);
             }
@@ -125,12 +204,39 @@ public sealed record KapPublicStatementCursor(DateOnly Watermark, IReadOnlyList<
                 }
             }
 
-            return new KapPublicStatementCursor(parsed, seen.Select(index => index).Distinct().ToList());
+            // A cursor written before TKT-foundation-092 carries neither marker array: an absent
+            // array is an empty one, so an existing row keeps its position and simply has no replay
+            // backlog to work through. It is never reinterpreted as "everything was retried".
+            return new KapPublicStatementCursor(parsed, seen.Distinct().ToList())
+            {
+                Quarantined = ReadIndexes(root, "quarantined"),
+                Retried = ReadIndexes(root, "retried"),
+            };
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    /// <summary>Reads one of the cursor's index arrays, ignoring anything that is not a positive integer.</summary>
+    private static IReadOnlyList<long> ReadIndexes(JsonElement root, string property)
+    {
+        var indexes = new List<long>();
+        if (!root.TryGetProperty(property, out var element) || element.ValueKind != JsonValueKind.Array)
+        {
+            return indexes;
+        }
+
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var index) && index > 0)
+            {
+                indexes.Add(index);
+            }
+        }
+
+        return indexes.Distinct().ToList();
     }
 }
 

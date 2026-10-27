@@ -129,7 +129,30 @@ public sealed record KapPublicStatementWalkResult(
     IReadOnlyList<KapPublicStatementSkip> Skips,
     bool Truncated,
     string? TruncationReason,
-    KapPublicStatementFailure? Failure = null);
+    KapPublicStatementFailure? Failure = null)
+{
+    /// <summary>
+    /// How many quarantined reports this pass tried to replay (TKT-foundation-092). Each replay is
+    /// an ordinary detail fetch admitted by the pass budget, so this is also what it cost.
+    /// </summary>
+    public int ReplaysAttempted { get; init; }
+
+    /// <summary>
+    /// How many replayed reports <b>left the quarantine</b> — the source delivered a decodable
+    /// report this time and the facts went through the store (written, or legitimately withheld as
+    /// a named overlap). Counted separately from <see cref="Inserted"/> because a recovery is a
+    /// repair of a hole, not an ordinary ingest.
+    /// </summary>
+    public int Recovered { get; init; }
+
+    /// <summary>
+    /// How many replays failed again and were re-quarantined <b>terminally</b> — the index keeps its
+    /// evidence, its one replay is spent, and no third attempt will ever fire. Named beside
+    /// <see cref="Recovered"/> so the ledger has no silent hole in either direction: every attempt
+    /// is in exactly one of the two.
+    /// </summary>
+    public int StillQuarantined { get; init; }
+}
 
 /// <summary>
 /// The public-site statements <b>walk</b> (01 v1.5.56 §10.9.19, TKT-foundation-082;
@@ -158,6 +181,21 @@ public sealed record KapPublicStatementWalkResult(
 /// <see cref="KapPublicStatementFailure"/> and lets the job fail the company — <b>without</b>
 /// discarding the counts of the windows it already completed (a mid-walk source-down reports the
 /// rows it wrote, never a false zero).
+/// </para>
+/// <para>
+/// <b>The quarantine replay, once per index (TKT-foundation-092).</b> A <b>transport-failure</b>
+/// detail is quarantined <i>and</i> completed, so its window is closed and the watermark moves past
+/// it: without a replay, a transient outage would silently bound a company's history forever (the
+/// 2026-10-26 live runs: ~180 such quarantines, AKBNK alone 102). Each such index therefore owes
+/// <b>exactly one</b> replay, recorded in the lane's own cursor (<see
+/// cref="KapPublicStatementCursor.Quarantined"/> / <see cref="KapPublicStatementCursor.Retried"/>),
+/// run as an ordinary detail fetch at the start of a later pass and admitted by the same pass
+/// budget. A replay that succeeds writes the report's facts and is counted
+/// <see cref="KapPublicStatementWalkResult.Recovered"/>; one that fails again is re-quarantined
+/// <b>terminally</b>, counted <see cref="KapPublicStatementWalkResult.StillQuarantined"/> — never a
+/// retry ladder, and never a silent hole in either direction. A <c>UNPARSEABLE_PAYLOAD</c> verdict
+/// is <b>not</b> replayable: the source answered, and re-fetching a ~900 KB body to re-learn the
+/// same answer is not a recovery.
 /// </para>
 /// </summary>
 public sealed class KapPublicStatementsWalker
@@ -252,11 +290,127 @@ public sealed class KapPublicStatementsWalker
         var truncated = false;
         string? truncationReason = null;
         KapPublicStatementFailure? failure = null;
+        var replaysAttempted = 0;
+        var recovered = 0;
+        var stillQuarantined = 0;
 
         try
         {
+            // ---------------------------------------------------------------------------------
+            // The quarantine replay (TKT-foundation-092) — the 063 stale-cursor-reset doctrine,
+            // one level down. A report whose detail failed in *transport* was quarantined AND
+            // marked completed, so an ordinary pass can never list it again: without this, a
+            // transient outage silently bounds a company's history forever (the 2026-10-26 live
+            // runs: ~180 quarantines, AKBNK alone 102, cursor-locked windows).
+            //
+            // It rides this pass, with this pass's rules: an ordinary detail fetch through the
+            // same paced client, admitted by the same per-pass budget (a replay costs a detail
+            // fetch like any other — 01 v1.5.67 §10.9.19 pins that, and a replay needs no list
+            // page at all, so the page ceiling is untouched by it), and each index is attempted
+            // **at most once in its lifetime** — the tombstone is persisted, so a later process
+            // cannot forget it. A shape verdict (`UNPARSEABLE_PAYLOAD`) is never registered here:
+            // replaying it would re-fetch a ~900 KB body to re-learn the same answer.
+            //
+            // It runs *before* the windows because the backlog is finite and strictly shrinking
+            // (every attempt spends a tombstone), while new coverage resumes exactly at the
+            // watermark. The honest cost, stated rather than hidden: while a large backlog is
+            // being drained, replayed indices consume the pass's detail ceiling like any other
+            // fetch, so coverage can be deferred for as many passes as the backlog needs. That is
+            // bounded by a finite number of indices, never an unbounded ladder — and every pass's
+            // counts say what it spent (replays attempted / recovered / still quarantined).
+            // ---------------------------------------------------------------------------------
+            foreach (var quarantinedIndex in state.PendingReplay())
+            {
+                if (!_budget.TryBeginDetail())
+                {
+                    // Bounded: the position is unchanged and the backlog is intact, so the next
+                    // pass resumes the replay exactly here (nothing is silently dropped).
+                    truncated = true;
+                    truncationReason = _budget.TruncationReason;
+                    break;
+                }
+
+                replaysAttempted++;
+                var replay = await _reader.ReadReportAsync(quarantinedIndex, cancellationToken).ConfigureAwait(false);
+                if (!replay.IsOk)
+                {
+                    // Failed again: re-quarantined **terminally**. The index keeps its evidence (the
+                    // skip below carries the source's own answer), its one replay is spent, and no
+                    // third attempt will ever fire.
+                    skips.Add(new KapPublicStatementSkip(
+                        symbol,
+                        quarantinedIndex,
+                        replay.ReasonCode ?? KapPublicReasonCodes.SourceFetchFailed,
+                        replay.Detail,
+                        Evidence(symbol, quarantinedIndex, replay)));
+                    state = state.WithReplaySpent(quarantinedIndex);
+                    stillQuarantined++;
+                    _budget.Complete(Unit(quarantinedIndex));
+                    await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
+                    _logger?.LogWarning(
+                        "kap-public statements: quarantined report {DisclosureIndex} for {Symbol} failed again on its one replay ({ReasonCode}: {Detail}) — quarantined → still quarantined, replay spent, no further attempt",
+                        quarantinedIndex,
+                        symbol,
+                        replay.ReasonCode,
+                        replay.Detail);
+                    continue;
+                }
+
+                reportsFetched++;
+
+                KapPublicReport replayedReport;
+                try
+                {
+                    replayedReport = KapPublicReportDecoder.Decode(replay.Payload!.Html, symbol);
+                }
+                catch (SourcePayloadException exception)
+                {
+                    // The source answered, but not with a report: a verdict about the body, and the
+                    // one replay is spent. Terminal on its own reason — never a silent success.
+                    skips.Add(new KapPublicStatementSkip(
+                        symbol,
+                        quarantinedIndex,
+                        KapPublicReasonCodes.UnparseablePayload,
+                        exception.Message,
+                        exception.RawJson));
+                    state = state.WithReplaySpent(quarantinedIndex);
+                    stillQuarantined++;
+                    _budget.Complete(Unit(quarantinedIndex));
+                    await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
+                    _logger?.LogWarning(
+                        "kap-public statements: quarantined report {DisclosureIndex} for {Symbol} answered a non-report body on its one replay ({ReasonCode}: {Detail}) — quarantined → still quarantined (shape verdict), replay spent",
+                        quarantinedIndex,
+                        symbol,
+                        KapPublicReasonCodes.UnparseablePayload,
+                        exception.Message);
+                    continue;
+                }
+
+                var replayWrite = await sink(replayedReport, quarantinedIndex, cancellationToken).ConfigureAwait(false);
+                inserted += replayWrite.Inserted;
+                unchanged += replayWrite.Unchanged;
+                overlapRetained += replayWrite.OverlapRetained;
+
+                // The report leaves the quarantine: it is a completed report like any other, so it
+                // keeps its place in the seen set and its tombstone, and the backlog no longer owes
+                // it anything.
+                state = state.With(quarantinedIndex).WithReplaySpent(quarantinedIndex);
+                recovered++;
+                _budget.Complete(Unit(quarantinedIndex));
+                await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
+                _logger?.LogInformation(
+                    "kap-public statements: quarantined report {DisclosureIndex} for {Symbol} recovered on its one replay — quarantined → recovered ({Inserted} inserted, {Unchanged} unchanged, {OverlapRetained} overlap-retained); replay spent",
+                    quarantinedIndex,
+                    symbol,
+                    replayWrite.Inserted,
+                    replayWrite.Unchanged,
+                    replayWrite.OverlapRetained);
+            }
+
             // The windows start at the watermark the store holds, not at the plan's bootstrap
-            // start: a resumed pass must cover exactly what was not walked, and nothing else.
+            // start: a resumed pass must cover exactly what was not walked, and nothing else. A
+            // bounded replay leaves `truncated` set, so the loop below stops at its first check and
+            // the position (and the backlog) is exactly where it was.
             var windows = (plan with { From = state.Watermark }).Windows();
             foreach (var window in windows)
             {
@@ -312,7 +466,7 @@ public sealed class KapPublicStatementsWalker
                 if (listed.IsHonestEmpty)
                 {
                     honestEmpty++;
-                    state = KapPublicStatementCursor.AfterWindow(window.To, state.Seen);
+                    state = state.CloseWindow(window.To);
                     achievedFrom ??= window.From;
                     achievedTo = window.To;
                     windowsWalked++;
@@ -354,14 +508,22 @@ public sealed class KapPublicStatementsWalker
                         // Per-detail isolation (the 063 doctrine applied to this source): the rest of
                         // the company's reports are still walked, and the failure travels with its
                         // evidence.
+                        //
+                        // A **transport-failure** detail (no body reached us) also leaves this index
+                        // owing its one replay — the outage was not a statement about the report
+                        // (TKT-foundation-092). A **shape** verdict does not: the source answered,
+                        // and the answer is terminal.
                         skips.Add(new KapPublicStatementSkip(
                             symbol,
                             candidate.DisclosureIndex,
                             read.ReasonCode ?? KapPublicReasonCodes.SourceFetchFailed,
                             read.Detail,
                             Evidence(symbol, candidate.DisclosureIndex, read)));
-                        state = state.With(candidate.DisclosureIndex);
-                        _budget.Complete(candidate.DisclosureIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        state = IsTransportFailure(read)
+                            ? state.WithQuarantine(candidate.DisclosureIndex)
+                            : state.With(candidate.DisclosureIndex);
+                        _budget.Complete(Unit(candidate.DisclosureIndex));
+                        await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
@@ -381,7 +543,8 @@ public sealed class KapPublicStatementsWalker
                             exception.Message,
                             exception.RawJson));
                         state = state.With(candidate.DisclosureIndex);
-                        _budget.Complete(candidate.DisclosureIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        _budget.Complete(Unit(candidate.DisclosureIndex));
+                        await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
@@ -391,7 +554,7 @@ public sealed class KapPublicStatementsWalker
                     overlapRetained += write.OverlapRetained;
 
                     state = state.With(candidate.DisclosureIndex);
-                    _budget.Complete(candidate.DisclosureIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    _budget.Complete(Unit(candidate.DisclosureIndex));
                     await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
                 }
 
@@ -404,7 +567,7 @@ public sealed class KapPublicStatementsWalker
                     break;
                 }
 
-                state = KapPublicStatementCursor.AfterWindow(window.To, state.Seen);
+                state = state.CloseWindow(window.To);
                 achievedFrom ??= window.From;
                 achievedTo = window.To;
                 windowsWalked++;
@@ -432,7 +595,7 @@ public sealed class KapPublicStatementsWalker
         }
 
         _logger?.LogInformation(
-            "kap-public statements: {Symbol} walked {WindowsWalked}/{WindowsListed} window(s) {RequestedFrom}..{RequestedTo} — reports listed {ReportsListed}, fetched {ReportsFetched}, written {Inserted}, unchanged {Unchanged}, overlap-retained {OverlapRetained}, skipped {Skips}, truncated {Truncated} ({TruncationReason}), list-failure {Failure}",
+            "kap-public statements: {Symbol} walked {WindowsWalked}/{WindowsListed} window(s) {RequestedFrom}..{RequestedTo} — reports listed {ReportsListed}, fetched {ReportsFetched}, written {Inserted}, unchanged {Unchanged}, overlap-retained {OverlapRetained}, skipped {Skips}, quarantined-replays {ReplaysAttempted} (recovered {Recovered}, still-quarantined {StillQuarantined}), backlog {Backlog}, truncated {Truncated} ({TruncationReason}), list-failure {Failure}",
             symbol,
             windowsWalked,
             windowsListed,
@@ -444,6 +607,10 @@ public sealed class KapPublicStatementsWalker
             unchanged,
             overlapRetained,
             skips.Count,
+            replaysAttempted,
+            recovered,
+            stillQuarantined,
+            state.PendingReplay().Count,
             truncated,
             truncationReason,
             failure is null ? "none" : $"{failure.ReasonCode} over {failure.WindowFrom:yyyy-MM-dd}..{failure.WindowTo:yyyy-MM-dd}");
@@ -467,8 +634,34 @@ public sealed class KapPublicStatementsWalker
             skips,
             truncated,
             truncationReason,
-            failure);
+            failure)
+        {
+            ReplaysAttempted = replaysAttempted,
+            Recovered = recovered,
+            StillQuarantined = stillQuarantined,
+        };
     }
+
+    /// <summary>The budget's unit name for one report, so the resume position is one shape everywhere.</summary>
+    private static string Unit(long disclosureIndex) =>
+        disclosureIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// True when a failed report read is a <b>transport</b> failure — the source never answered, so
+    /// no body reached the lane (the client's own words: "failed in transport"; the live runs
+    /// recorded the same signature as <c>bodyReceived: false</c>). Only these leave the report owing
+    /// its one replay (TKT-foundation-092).
+    /// <para>
+    /// A <b>non-success status</b> is different even though it lands under the same quarantine word:
+    /// the source <i>did</i> answer, about <i>this</i> index, and the excerpt it answered with is
+    /// carried on the record. Replaying that is a retry ladder against a source that already spoke —
+    /// so it stays terminal, exactly like a shape verdict. The distinction is drawn from what the
+    /// read actually carried (<see cref="KapPublicFetchResult{T}.RawBody"/>: absent only when no
+    /// response body was ever read), never from a guess about the status code.
+    /// </para>
+    /// </summary>
+    private static bool IsTransportFailure(KapPublicFetchResult<KapPublicReportBody> read) =>
+        read.IsSourceDown && string.IsNullOrEmpty(read.RawBody);
 
     /// <summary>
     /// The evidence a quarantine row keeps for a report that did not become facts: the source's
