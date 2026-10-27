@@ -14,6 +14,7 @@ scope:
 # TKT-foundation-089: The per-share DCF completes on KAP data — `debt`/`cash` facts from the public-site balance sheets flow into the baseline with FCF-grade provenance, and the financials table serves revenue/NI (EBITDA when evidenced) for kap-public periods
 
 - Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/151 (base `dev`)
 - Size: M
 - **Priority: P1 — follow-up slice 1b of the 2026-10-27 live-run wave: the user's headline. With FCF (081/082 live) + share counts (086 live: 20 exact price-derived counts) + debt/cash (088's decode), `state` goes from `missing_inputs` to computable and `fairValuePerShare` is served on real KAP data.**
 - **USER REQUIREMENT (recorded verbatim in intent, 2026-10-27):** the DCF's `debt` (borç — financial debt lines from the balance sheet) and `cash` (nakit ve benzerleri) inputs **must come from the KAP reports, with the same honest-data provenance as FCF** — canonicalFactRefs pointing at the statements that supplied them, as-of and restated flags per fact. This ticket verifies and, where broken, repairs exactly that chain end-to-end.
