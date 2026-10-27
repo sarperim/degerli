@@ -72,6 +72,42 @@ public static class KapPublicReportDecoder
     /// </summary>
     public const string CaptureName = "kap-public-report-1643141";
 
+    /// <summary>
+    /// The TÜPRAŞ 2025 annual capture (<c>RealSourceCatalog.KapPublicReportTuprs</c>, public
+    /// disclosure index <b>1554106</b>, filed 06.02.2026 18:34:29, bounded trim) — the
+    /// balance sheet the debt/cash core is evidenced from (TKT-foundation-088).
+    /// </summary>
+    public const string TuprsAnnualCaptureName = "kap-public-report-1554106";
+
+    /// <summary>
+    /// The ASELSAN 2025 annual capture (<c>RealSourceCatalog.KapPublicReportAselsAnnual</c>,
+    /// public disclosure index <b>1561039</b>, filed 24.02.2026 18:27:36, bounded trim) — the
+    /// annual income statement the EBIT/NI/pretax/tax core is evidenced from
+    /// (TKT-foundation-088; the body TKT-foundation-081 recorded as still owed).
+    /// </summary>
+    public const string AselsAnnualCaptureName = "kap-public-report-1561039";
+
+    /// <summary>
+    /// The MİGROS 2026-06 interim capture (<c>RealSourceCatalog.KapPublicReportMgros</c>,
+    /// public disclosure index <b>1648240</b>, filed 11.08.2026 21:43:53, bounded trim) — the
+    /// second filer whose IS/BS the live walk stored nothing for (the diagnosis input).
+    /// </summary>
+    public const string MgrosInterimCaptureName = "kap-public-report-1648240";
+
+    /// <summary>
+    /// Every committed capture this decoder's label map may cite as provenance
+    /// (<see cref="KapPublicLabelRule.Provenance"/>). A spelling outside this set is
+    /// un-evidenced by construction, and the acceptance suite checks each entry against the
+    /// body it names.
+    /// </summary>
+    public static IReadOnlyList<string> CaptureNames { get; } =
+    [
+        CaptureName,
+        TuprsAnnualCaptureName,
+        AselsAnnualCaptureName,
+        MgrosInterimCaptureName,
+    ];
+
     /// <summary>The report period type of a full fiscal year.</summary>
     public const string AnnualPeriodType = "Yıllık";
 
@@ -101,9 +137,23 @@ public static class KapPublicReportDecoder
 
     /// <summary>
     /// The HTML label → canonical chart-of-accounts map (<c>02</c> §6.1 extended to this
-    /// source's label space). <b>Every entry is proven by the committed capture</b> — the
-    /// spelling is in <see cref="CaptureName"/>, and the entry records that fact — and every
+    /// source's label space). <b>Every entry is proven by a committed capture</b> — the
+    /// spelling is in the capture the entry names in <see cref="KapPublicLabelRule.Provenance"/>
+    /// (one of <see cref="CaptureNames"/>), and the entry records that fact — and every
     /// target is a canonical item code from <see cref="StatementMapper.CanonicalCodes"/>.
+    /// <para>
+    /// <b>The recorded gap this map deliberately leaves (TKT-foundation-088, routed).</b> The
+    /// balance sheet's current portion of long-term borrowings
+    /// (<c>Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları</c>, 6.916.519 thousand TL in the
+    /// TÜPRAŞ FY2025 capture) is a <b>separate presentation line</b> from the taxonomy's own
+    /// <c>Kısa Vadeli Borçlanmalar</c> (4.934.360). A 1:1 concept map cannot merge two lines
+    /// into one canonical code — doing so would either overwrite one value with the other or
+    /// manufacture an unreported sum — so the current portion stays an
+    /// <c>OTHER_BS_…</c> companion and the DCF's <c>debt</c> (= <c>ST_DEBT</c> +
+    /// <c>LT_DEBT</c>) is the two borrowings lines only. Aggregating presentation lines into
+    /// a canonical code is a modelling decision, not a decode: it is recorded on the ticket
+    /// and routed to the planner/user, never guessed here.
+    /// </para>
     /// <para>
     /// The cash-flow <c>OCF</c> basis is the statement's own operating total
     /// <c>İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI</c> — the figure <b>after</b> tax paid and
@@ -128,8 +178,38 @@ public static class KapPublicReportDecoder
         new("IS", "Satışların Maliyeti", "COGS", CaptureName),
         new("IS", "TİCARİ FAALİYETLERDEN BRÜT KAR (ZARAR)", "GROSS_PROFIT", CaptureName),
 
+        // The annual income statement's own subtotal ladder (evidenced by the ASELSAN 2025
+        // Yıllık capture, disclosure 1561039). Each target is the canonical code the VYK
+        // concept map already assigns to the equivalent IFRS element
+        // (`ProfitLossFromOperatingActivities` → EBIT, `AdministrativeExpense` → SGA,
+        // `FinanceCosts` → FIN_EXP, `ProfitLossBeforeTax` → PRETAX_INC,
+        // `IncomeTaxExpenseContinuingOperations` → TAX_EXP, `ProfitLoss` → NI), so the one
+        // chart-of-accounts definition (`02` §6.1) is not forked by this source.
+        new("IS", "ESAS FAALİYET KARI (ZARARI)", "EBIT", AselsAnnualCaptureName),
+        new("IS", "Genel Yönetim Giderleri", "SGA", AselsAnnualCaptureName),
+        new("IS", "Finansman Giderleri", "FIN_EXP", AselsAnnualCaptureName),
+        new("IS", "SÜRDÜRÜLEN FAALİYETLER VERGİ ÖNCESİ KARI (ZARARI)", "PRETAX_INC", AselsAnnualCaptureName),
+        new("IS", "Sürdürülen Faaliyetler Vergi (Gideri) Geliri", "TAX_EXP", AselsAnnualCaptureName),
+        // The statement's own bottom line, verbatim and in its reported case (the cash-flow
+        // statement carries the mixed-case `Dönem Karı (Zararı)` spelling — two entries, two
+        // statements, never one spelling standing in for the other).
+        new("IS", "DÖNEM KARI (ZARARI)", "NI", AselsAnnualCaptureName),
+
         // ---- Balance sheet ---------------------------------------------------------
         new("BS", "Nakit ve Nakit Benzerleri", "CASH", CaptureName),
+
+        // The debt/cash core the DCF baseline's `debt` and `cash` inputs need
+        // (FR-VAL-001, TKT-foundation-088), evidenced by the TÜPRAŞ 2025 Yıllık capture
+        // (disclosure 1554106). Financial borrowings only: the taxonomy's own
+        // short-term and long-term borrowings lines. Trade payables (`Ticari Borçlar`) and
+        // every operating liability are deliberately NOT mapped to debt, and the current
+        // portion line `Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları` stays an OTHER_*
+        // companion — see the class doc comment's recorded gap.
+        new("BS", "Kısa Vadeli Borçlanmalar", "ST_DEBT", TuprsAnnualCaptureName),
+        new("BS", "Uzun Vadeli Borçlanmalar", "LT_DEBT", TuprsAnnualCaptureName),
+        new("BS", "TOPLAM ÖZKAYNAKLAR", "TOTAL_EQUITY", TuprsAnnualCaptureName),
+        new("BS", "TOPLAM DÖNEN VARLIKLAR", "CUR_ASSETS", TuprsAnnualCaptureName),
+        new("BS", "TOPLAM KISA VADELİ YÜKÜMLÜLÜKLER", "CUR_LIAB", TuprsAnnualCaptureName),
 
         // ---- Cash-flow statement (the 051 deliverable) -----------------------------
         // The statement's own operating total, after tax paid and other operating payments
@@ -434,7 +514,7 @@ public static class KapPublicReportDecoder
                         groups.Add(group);
                     }
 
-                    if (group.Add(itemCode, value, label, findings) == GroupOutcome.Collapsed)
+                    if (group.Add(itemCode, value, label, findings, out var storedCode) == GroupOutcome.Collapsed)
                     {
                         // An equal duplicate is one line, not two: the provenance record follows
                         // the payload, so a collapsed value is not counted twice here either.
@@ -446,7 +526,7 @@ public static class KapPublicReportDecoder
                         section,
                         heading,
                         label,
-                        itemCode,
+                        storedCode,
                         value,
                         fromAttribute,
                         raw,
@@ -456,7 +536,7 @@ public static class KapPublicReportDecoder
                         rowOrder));
 
                     statementLineCount++;
-                    if (StatementMapper.CanonicalCodes.Contains(itemCode))
+                    if (StatementMapper.CanonicalCodes.Contains(storedCode))
                     {
                         canonicalLineCount++;
                     }
@@ -1231,8 +1311,11 @@ public static class KapPublicReportDecoder
 
     /// <summary>
     /// One statement row under (statement type, period end): accumulates the mapped lines with
-    /// the duplicate-label rule — equal values collapse, unequal values conflict (both retained,
-    /// the row quarantined by the store as <c>CONFLICTING_VALUE</c>; 02 §1, DR-05 overturned).
+    /// the duplicate-label rule — equal values collapse, unequal values on a <b>canonical</b>
+    /// code conflict (both retained, the row quarantined by the store as
+    /// <c>CONFLICTING_VALUE</c>; 02 §1, DR-05 overturned), while unequal values on an
+    /// <c>OTHER_*</c> <b>passthrough</b> code are two real presentation lines and are kept
+    /// side by side under a counted, disambiguated code (TKT-foundation-088).
     /// </summary>
     /// <summary>What one <see cref="Group.Add"/> did to its statement row.</summary>
     private enum GroupOutcome
@@ -1245,10 +1328,16 @@ public static class KapPublicReportDecoder
 
         /// <summary>An unequal value for an existing code — retained with the first value and counted.</summary>
         Conflicted,
+
+        /// <summary>An unequal value for a repeatable <c>OTHER_*</c> passthrough code — kept as
+        /// its own disambiguated line, counted, and <b>not</b> a conflict.</summary>
+        Disambiguated,
     }
 
     private sealed class Group
     {
+        private const string PassthroughPrefix = "OTHER_";
+
         private readonly DateOnly? _publishedAt;
         private readonly Dictionary<string, string> _labels = new(StringComparer.Ordinal);
         private readonly List<string> _conflicts = [];
@@ -1269,13 +1358,50 @@ public static class KapPublicReportDecoder
 
         public Dictionary<string, decimal> Lines { get; } = new(StringComparer.Ordinal);
 
-        public GroupOutcome Add(string itemCode, decimal value, string label, List<KapPublicFinding> findings)
+        public GroupOutcome Add(
+            string itemCode,
+            decimal value,
+            string label,
+            List<KapPublicFinding> findings,
+            out string storedCode)
         {
+            storedCode = itemCode;
+
             if (Lines.TryGetValue(itemCode, out var existing))
             {
                 if (existing == value)
                 {
                     return GroupOutcome.Collapsed; // an equal duplicate collapses idempotently
+                }
+
+                // A passthrough code is a synthesised display code, not a canonical concept:
+                // the balance sheet legitimately repeats `Ticari Alacaklar`, `Peşin Ödenmiş
+                // Giderler`, `Finansal Yatırımlar` and `ARA TOPLAM` in its current and
+                // non-current blocks, and the income statement repeats `Ana Ortaklık Payları`
+                // in its profit-allocation and comprehensive-income sections. Those are two
+                // real lines. Quarantining the whole statement row for them is what made the
+                // first live walk store 0 balance sheets and ~0 income statements
+                // (TKT-foundation-088's diagnosis), so the second line is kept under a
+                // counted, documented suffix instead — both values retained, nothing guessed
+                // and nothing overwritten. Metrics ignore OTHER_* lines either way.
+                if (itemCode.StartsWith(PassthroughPrefix, StringComparison.Ordinal))
+                {
+                    storedCode = Disambiguate(itemCode);
+                    Lines[storedCode] = value;
+                    _labels[storedCode] = label;
+
+                    findings.Add(Finding(
+                        KapPublicReportReasons.DuplicateLabelDisambiguated,
+                        1,
+                        $"{StatementType} {PeriodEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}: "
+                        + $"'{label}' appears again as {FormatTurkish(value)} where '{itemCode}' already carried "
+                        + $"{FormatTurkish(existing)} — a repeated presentation label inside one statement is two "
+                        + $"real lines, so the second is kept as '{storedCode}' (counted, never overwritten, and "
+                        + "never a conflict: the OTHER_* passthrough is ignored by metrics).",
+                        StatementType,
+                        label));
+
+                    return GroupOutcome.Disambiguated;
                 }
 
                 if (!_conflicts.Contains(itemCode, StringComparer.Ordinal))
@@ -1298,6 +1424,22 @@ public static class KapPublicReportDecoder
             Lines[itemCode] = value;
             _labels[itemCode] = label;
             return GroupOutcome.Added;
+        }
+
+        /// <summary>
+        /// The next free <c>{code}_{n}</c> for a repeated passthrough label — deterministic,
+        /// so the same report always produces the same codes.
+        /// </summary>
+        private string Disambiguate(string itemCode)
+        {
+            for (var ordinal = 2; ; ordinal++)
+            {
+                var candidate = itemCode + "_" + ordinal.ToString(CultureInfo.InvariantCulture);
+                if (!Lines.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
         }
 
         public StatementFact ToFact() => new(
