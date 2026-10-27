@@ -335,4 +335,14 @@ public static class KapPublicReportReasons
     /// only <c>OTHER_*</c> passthroughs. A label-spelling drift must be named, not left as a
     /// clean ledger with no metric input.</summary>
     public const string NoCanonicalLines = "NO_CANONICAL_LINES";
+
+    /// <summary>A presentation label repeated inside one statement with a <b>different</b>
+    /// value on an <c>OTHER_*</c> passthrough code (the balance sheet's current and
+    /// non-current <c>Ticari Alacaklar</c>, <c>ARA TOPLAM</c>, …; the income statement's
+    /// profit-allocation and comprehensive-income <c>Ana Ortaklık Payları</c>). Both values are
+    /// kept — the second under a documented <c>{code}_n</c> suffix — because these are two
+    /// real lines, not one ambiguous concept. The counted finding records each one; the
+    /// <c>DUPLICATE_LABEL_CONFLICT</c> quarantine stays reserved for <b>canonical</b> codes
+    /// (TKT-foundation-088).</summary>
+    public const string DuplicateLabelDisambiguated = "DUPLICATE_LABEL_DISAMBIGUATED";
 }

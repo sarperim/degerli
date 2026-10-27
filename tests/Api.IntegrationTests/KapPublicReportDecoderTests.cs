@@ -22,6 +22,15 @@ namespace Degerli.Api.IntegrationTests;
 /// inventing a body.
 /// </para>
 /// <para>
+/// <b>The capture set since TKT-foundation-088.</b> Three further bodies were captured and
+/// committed as bounded-trim doubles — TÜPRAŞ 2025 Yıllık (<c>kap-public-report-1554106</c>),
+/// ASELSAN 2025 Yıllık (<c>kap-public-report-1561039</c>) and MİGROS 2026-06
+/// (<c>kap-public-report-1648240</c>) — because the interim above carries no annual columns and
+/// no debt split, and because the first live walk's IS/BS gap had to be reproduced from the very
+/// bodies it stored nothing for. TC-MDF-117 (§28) is the acceptance contract for that set; every
+/// body is still the <b>whole</b> input, and no case calls <c>kap.org.tr</c>.
+/// </para>
+/// <para>
 /// <b>What the capture proves, and how it is pinned.</b> The export carries the raw integer of
 /// every value in the cell's <c>title=""</c> attribute beside the displayed Turkish-formatted
 /// text (<c>title="39468926"</c> beside <c>39.468.926</c>), so the number-formatting risk is
@@ -53,6 +62,45 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     private readonly PostgresFixture _postgres;
 
     public KapPublicReportDecoderTests(PostgresFixture postgres) => _postgres = postgres;
+
+    /// <summary>
+    /// Every committed excel-HTML report body, keyed by the catalog name the label map cites as
+    /// provenance. The bodies are the only evidence a map entry may stand on (TC-MDF-107 (i) /
+    /// TC-MDF-117 (f)): a spelling outside this set is un-evidenced by construction.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> CaptureBodies =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [RealSourceCatalog.KapPublicReport] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body,
+            [RealSourceCatalog.KapPublicReportTuprs] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportTuprs).Body,
+            [RealSourceCatalog.KapPublicReportAselsAnnual] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportAselsAnnual).Body,
+            [RealSourceCatalog.KapPublicReportMgros] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportMgros).Body,
+        };
+
+    /// <summary>
+    /// The live reports TKT-foundation-088 committed (bounded trims): the filer, the filing
+    /// coordinates its own header declares, and the period ends its columns carry.
+    /// </summary>
+    private static readonly LiveCapture[] LiveCaptures =
+    [
+        new(RealSourceCatalog.KapPublicReportTuprs, "TUPRS", 2025, 4, "Yıllık",
+            new DateOnly(2025, 12, 31), new DateOnly(2024, 12, 31), new DateOnly(2025, 12, 31), new DateOnly(2024, 12, 31)),
+        new(RealSourceCatalog.KapPublicReportAselsAnnual, "ASELS", 2025, 4, "Yıllık",
+            new DateOnly(2025, 12, 31), new DateOnly(2024, 12, 31), new DateOnly(2025, 12, 31), new DateOnly(2024, 12, 31)),
+        new(RealSourceCatalog.KapPublicReportMgros, "MGROS", 2026, 2, "6 Aylık",
+            new DateOnly(2026, 6, 30), new DateOnly(2025, 12, 31), new DateOnly(2026, 6, 30), new DateOnly(2025, 6, 30)),
+    ];
+
+    private sealed record LiveCapture(
+        string Name,
+        string Symbol,
+        int Year,
+        int Period,
+        string PeriodType,
+        DateOnly CurrentBalanceSheet,
+        DateOnly PriorBalanceSheet,
+        DateOnly CurrentFlow,
+        DateOnly PriorFlow);
 
     // =================================================================================
     // TC-MDF-106 — header/metadata decode, statement typing, period coordinates
@@ -348,9 +396,19 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     // =================================================================================
 
     /// <summary>
-    /// TC-MDF-107 (i) — the label→canonical map is built <b>only</b> from labels the committed
+    /// TC-MDF-107 (i) — the label→canonical map is built <b>only</b> from labels a committed
     /// capture actually carries, each entry naming the capture that supplied the spelling, and
     /// every target is a canonical chart-of-accounts code (<c>StatementMapper</c> untouched).
+    /// <para>
+    /// <b>Amended by TKT-foundation-088 (user-approved 2026-10-27), never weakened.</b> The
+    /// assertion was a single-capture equality (<c>rule.Provenance == CaptureName</c>, the label
+    /// in <c>kap-public-report-1643141</c>) while that was the only committed body. The ticket's
+    /// clause 3 requires every entry to name <b>its</b> capture, and three further bodies landed,
+    /// so the same invariant is now asserted against the capture set: the provenance is one of
+    /// <see cref="KapPublicReportDecoder.CaptureNames"/> <b>and</b> the label is present in the
+    /// body that provenance names. Nothing that was pinned before is unpinned — an entry citing
+    /// an uncommitted body, or a label absent from the body it cites, still fails.
+    /// </para>
     /// </summary>
     [Fact]
     public void TC_MDF_107_label_map_is_built_only_from_captured_labels_with_provenance()
@@ -360,8 +418,11 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.NotEmpty(map);
         foreach (var rule in map)
         {
-            Assert.Equal(KapPublicReportDecoder.CaptureName, rule.Provenance);
-            Assert.Contains(rule.Label, Capture, StringComparison.Ordinal);
+            Assert.Contains(rule.Provenance, KapPublicReportDecoder.CaptureNames);
+            Assert.True(
+                CaptureBodies.TryGetValue(rule.Provenance, out var provenanceBody),
+                $"label map cites '{rule.Provenance}', which is not a committed capture body");
+            Assert.Contains(rule.Label, provenanceBody!, StringComparison.Ordinal);
             Assert.Contains(rule.ItemCode, StatementMapper.CanonicalCodes);
             Assert.Contains(rule.StatementType, new[] { "IS", "BS", "CF" });
         }
@@ -1007,22 +1068,387 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     }
 
     // =================================================================================
+    // TC-MDF-117 — the live captures' IS/BS rows store, and the map is proven by them
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-117 (a) — <b>the red case.</b> The first live <c>kap-public</c> walk stored 62
+    /// statements across 7 companies: 60 CF / 2 IS / 0 BS — the income statements and balance
+    /// sheets the reports plainly contain produced no statement rows. Each committed live body
+    /// now decodes to its full payload (BS/IS/CF × current + comparative, six rows) with no
+    /// conflicting group and no <c>DUPLICATE_LABEL_CONFLICT</c>, and the production store writes
+    /// <b>all six</b> — the row that used to be quarantined whole is stored, for all three
+    /// filers, on the same bodies.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_117_every_captured_live_report_decodes_and_stores_its_is_and_bs_rows()
+    {
+        foreach (var capture in LiveCaptures)
+        {
+            var report = KapPublicReportDecoder.Decode(CaptureBodies[capture.Name], capture.Symbol);
+
+            // The report identity is the capture's own, not the caller's argument.
+            Assert.Equal(capture.Symbol, report.Symbol);
+            Assert.Equal(capture.Year, report.Header.Year);
+            Assert.Equal(capture.Period, report.Header.Period);
+            Assert.Equal(capture.PeriodType, report.Header.PeriodType);
+            Assert.Equal("1.000 TL", report.Header.PresentationUnit);
+
+            // Six rows: BS/IS/CF × (current, comparative) — the equity matrix still drops whole
+            // (`NO_COLUMN_HEADERS`, pinned by TC-MDF-106 (ii)) and contributes no row.
+            Assert.Equal(6, report.Payload.Statements.Count);
+            Assert.Equal(
+                new[] { "BS", "BS", "CF", "CF", "IS", "IS" },
+                report.Payload.Statements.Select(s => s.StatementType).OrderBy(t => t, StringComparer.Ordinal).ToArray());
+            Assert.Contains(report.Payload.Statements, s => s.StatementType == "BS" && s.PeriodEndDate == capture.CurrentBalanceSheet);
+            Assert.Contains(report.Payload.Statements, s => s.StatementType == "BS" && s.PeriodEndDate == capture.PriorBalanceSheet);
+            Assert.Contains(report.Payload.Statements, s => s.StatementType == "IS" && s.PeriodEndDate == capture.CurrentFlow);
+            Assert.Contains(report.Payload.Statements, s => s.StatementType == "IS" && s.PeriodEndDate == capture.PriorFlow);
+
+            // Nothing is quarantined — the live symptom, asserted away.
+            Assert.All(report.Payload.Statements, fact => Assert.Null(fact.ConflictingItemCodes));
+            Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+
+            // …and every row carries canonical coverage, which is what the metrics consume.
+            foreach (var fact in report.Payload.Statements)
+            {
+                Assert.Contains(fact.Lines.Keys, code => StatementMapper.CanonicalCodes.Contains(code));
+            }
+
+            var (store, instrumentId) = await StoreAsync(capture.Symbol);
+            var result = await store.UpsertAsync(
+                "kap-public",
+                new DateTimeOffset(capture.Year, 8, 4, 18, 0, 0, TimeSpan.Zero),
+                report.Payload);
+
+            Assert.Equal(6, result.Inserted);
+            Assert.Equal(0, result.Unchanged);
+            Assert.Empty(result.RejectedReasonCodes);
+
+            await using var db = _postgres.CreateContext();
+            var stored = await db.FinancialStatements
+                .Where(s => s.InstrumentId == instrumentId && s.SourceRef == "kap-public")
+                .Select(s => s.StatementType)
+                .ToListAsync();
+            Assert.Equal(2, stored.Count(t => t == "BS"));
+            Assert.Equal(2, stored.Count(t => t == "IS"));
+            Assert.Equal(2, stored.Count(t => t == "CF"));
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-117 (b) — the ticket's headline consumer: the DCF's <c>debt</c> and <c>cash</c>
+    /// inputs come from the balance sheet, with the same honest provenance as FCF. TÜPRAŞ's
+    /// FY2025 balance sheet stores the financial borrowings split (<c>ST_DEBT</c>/<c>LT_DEBT</c>)
+    /// and cash, so <c>debt = ST_DEBT + LT_DEBT</c> and <c>cash = CASH</c> exist as stored facts.
+    /// Trade payables and every operating liability stay <c>OTHER_BS_*</c>; the current portion
+    /// of long-term borrowings is a separate presentation line and stays a labelled companion —
+    /// a combined/aggregated debt figure is never manufactured here.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_117_tuprs_fy2025_balance_sheet_stores_the_debt_and_cash_core()
+    {
+        var capture = LiveCaptures[0];
+        var report = KapPublicReportDecoder.Decode(CaptureBodies[capture.Name], capture.Symbol);
+        var (store, instrumentId) = await StoreAsync(capture.Symbol);
+
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 2, 6, 18, 34, 29, TimeSpan.Zero),
+            report.Payload);
+        Assert.Equal(6, result.Inserted);
+        Assert.Empty(result.RejectedReasonCodes);
+
+        await using var db = _postgres.CreateContext();
+        var balanceSheet = await db.FinancialStatements.SingleAsync(
+            s => s.InstrumentId == instrumentId
+                 && s.StatementType == "BS"
+                 && s.PeriodEndDate == capture.CurrentBalanceSheet);
+        Assert.Equal("FY", balanceSheet.PeriodType);
+        Assert.Equal("thousands", balanceSheet.SourceUnitScale);
+        Assert.Equal("TRY", balanceSheet.SourceCurrency);
+
+        var lines = await db.FinLineItems
+            .Where(l => l.StatementId == balanceSheet.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
+
+        // Normalized to single TL by the store's own scale (02 §3.1): thousand TL × 1.000.
+        Assert.Equal(8_957_100_000m, lines["ST_DEBT"]);      // Kısa Vadeli Borçlanmalar
+        Assert.Equal(28_428_775_000m, lines["LT_DEBT"]);     // Uzun Vadeli Borçlanmalar
+        Assert.Equal(107_237_211_000m, lines["CASH"]);       // Nakit ve Nakit Benzerleri
+        Assert.Equal(369_827_994_000m, lines["TOTAL_EQUITY"]);
+        Assert.Equal(236_931_136_000m, lines["CUR_ASSETS"]);
+        Assert.Equal(169_748_201_000m, lines["CUR_LIAB"]);
+
+        // The consumer's own arithmetic (`DcfBaselineGenerationJob`: debt = ST_DEBT + LT_DEBT).
+        Assert.Equal(37_385_875_000m, lines["ST_DEBT"] + lines["LT_DEBT"]);
+
+        // Financial borrowings only: the canonical surfaces of this balance sheet are exactly
+        // the six mapped codes — trade payables and operating liabilities never became debt.
+        Assert.Equal(
+            new[] { "CASH", "CUR_ASSETS", "CUR_LIAB", "LT_DEBT", "ST_DEBT", "TOTAL_EQUITY" },
+            lines.Keys
+                .Where(code => StatementMapper.CanonicalCodes.Contains(code))
+                .OrderBy(code => code, StringComparer.Ordinal)
+                .ToArray());
+        Assert.Equal(105_513_256_000m, lines["OTHER_BS_Ticari_Borçlar"]);
+
+        // The current portion of long-term borrowings is a presentation line of its own: kept
+        // and labelled, never merged into ST_DEBT (the recorded, routed gap — a split or an
+        // aggregate would be a modelling decision, not a decode).
+        Assert.Equal(
+            12_863_610_000m,
+            lines["OTHER_BS_Uzun_Vadeli_Borçlanmaların_Kısa_Vadeli_Kısımları"]);
+        Assert.DoesNotContain(
+            "OTHER_BS_Uzun_Vadeli_Borçlanmaların_Kısa_Vadeli_Kısımları",
+            StatementMapper.CanonicalCodes);
+    }
+
+    /// <summary>
+    /// TC-MDF-117 (c) — the income statement's canonical ladder, evidenced by the ASELSAN 2025
+    /// Yıllık capture and stored end-to-end: revenue/COGS/gross profit beside the operating
+    /// subtotal, SGA, finance expense, pre-tax profit, tax and the bottom line. The statement's
+    /// own passthrough companions stay beside them (the same profit under the taxonomy's
+    /// differently-spelled subtotal label is a separate line, never a second <c>NI</c>).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_117_annual_income_statement_stores_the_canonical_ladder()
+    {
+        var capture = LiveCaptures[1];
+        var report = KapPublicReportDecoder.Decode(CaptureBodies[capture.Name], capture.Symbol);
+
+        var income = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == capture.CurrentFlow);
+        Assert.Equal("FY", income.PeriodType);
+        Assert.Null(income.ConflictingItemCodes);
+
+        // Thousand TL, raw-attribute integers (TC-MDF-107 (ii) pins the read path).
+        Assert.Equal(180_444_938m, income.Lines["REV"]);              // Satış Gelirleri
+        Assert.Equal(-123_017_908m, income.Lines["COGS"]);            // Satışların Maliyeti
+        Assert.Equal(57_427_030m, income.Lines["GROSS_PROFIT"]);
+        Assert.Equal(-6_236_808m, income.Lines["SGA"]);               // Genel Yönetim Giderleri
+        Assert.Equal(49_145_855m, income.Lines["EBIT"]);              // ESAS FAALİYET KARI (ZARARI)
+        Assert.Equal(-13_369_696m, income.Lines["FIN_EXP"]);          // Finansman Giderleri
+        Assert.Equal(26_390_612m, income.Lines["PRETAX_INC"]);
+        Assert.Equal(3_527_115m, income.Lines["TAX_EXP"]);
+        Assert.Equal(29_917_727m, income.Lines["NI"]);                // DÖNEM KARI (ZARARI)
+
+        // The same profit under the statement's other sub-total label is its own line, so the
+        // ladder neither double-counts NI nor loses the filer's own presentation.
+        Assert.Equal(29_917_727m, income.Lines["OTHER_IS_SÜRDÜRÜLEN_FAALİYETLER_DÖNEM_KARI_ZARARI"]);
+        Assert.Equal(57_427_030m, income.Lines["OTHER_IS_BRÜT_KAR_ZARAR"]);
+
+        var (store, instrumentId) = await StoreAsync(capture.Symbol);
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 2, 24, 18, 27, 36, TimeSpan.Zero),
+            report.Payload);
+        Assert.Equal(6, result.Inserted);
+
+        await using var db = _postgres.CreateContext();
+        var statement = await db.FinancialStatements.SingleAsync(
+            s => s.InstrumentId == instrumentId
+                 && s.StatementType == "IS"
+                 && s.PeriodEndDate == capture.CurrentFlow);
+        var stored = await db.FinLineItems
+            .Where(l => l.StatementId == statement.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
+
+        Assert.Equal(49_145_855_000m, stored["EBIT"]);
+        Assert.Equal(29_917_727_000m, stored["NI"]);
+        Assert.Equal(180_444_938_000m, stored["REV"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-117 (d) — a repeated <c>OTHER_*</c> passthrough label inside one statement is what
+    /// quarantined every live balance sheet. Two real presentation lines keep <b>both</b> values
+    /// under a counted, deterministic <c>{code}_n</c>: no conflict, no overwrite, the row stores,
+    /// and the finding names the label and the kept code verbatim. Metrics ignore passthrough
+    /// codes either way, so no canonical figure is invented by the suffix.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_117_repeated_passthrough_label_keeps_both_values_and_is_not_a_conflict()
+    {
+        var capture = LiveCaptures[0];
+        var report = KapPublicReportDecoder.Decode(CaptureBodies[capture.Name], capture.Symbol);
+        var balanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == capture.CurrentBalanceSheet);
+
+        Assert.Null(balanceSheet.ConflictingItemCodes);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+
+        // 7 repeated balance-sheet labels + 4 repeated income-statement labels, each in the
+        // current and the comparative column (the fourth `Türev Araçlar` worth two).
+        Assert.Equal(22, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
+
+        // `ARA TOPLAM` is the current-block subtotal and the liabilities-block subtotal: two
+        // real lines with different values, both kept.
+        Assert.Equal(236_931_136m, balanceSheet.Lines["OTHER_BS_ARA_TOPLAM"]);
+        Assert.Equal(169_748_201m, balanceSheet.Lines["OTHER_BS_ARA_TOPLAM_2"]);
+
+        // Four `Türev Araçlar` rows across the two blocks → `_2`, `_3`, `_4`, in capture order.
+        Assert.Equal(1_398_352m, balanceSheet.Lines["OTHER_BS_Türev_Araçlar"]);
+        Assert.Equal(13_735m, balanceSheet.Lines["OTHER_BS_Türev_Araçlar_2"]);
+        Assert.Equal(712_032m, balanceSheet.Lines["OTHER_BS_Türev_Araçlar_3"]);
+        Assert.Equal(431_098m, balanceSheet.Lines["OTHER_BS_Türev_Araçlar_4"]);
+
+        // The counts are honest and the finding is verbatim: nothing is silently dropped.
+        var findings = report.Findings
+            .Where(f => f.ReasonCode == KapPublicReportReasons.DuplicateLabelDisambiguated)
+            .ToList();
+        Assert.Contains(findings, f => f.Label == "ARA TOPLAM"
+            && f.Detail.Contains("OTHER_BS_ARA_TOPLAM_2", StringComparison.Ordinal));
+        Assert.All(findings, f => Assert.Equal(1, f.Count));
+        Assert.Equal(22, findings.Count);
+
+        // A disambiguated code is never a canonical code, and the same body always produces
+        // the same codes.
+        var suffixed = balanceSheet.Lines.Keys
+            .Where(code => code.Length > 2 && code[^2] == '_' && char.IsAsciiDigit(code[^1]))
+            .ToList();
+        Assert.Contains("OTHER_BS_ARA_TOPLAM_2", suffixed);
+        Assert.All(suffixed, code => Assert.DoesNotContain(code, StatementMapper.CanonicalCodes));
+        var again = KapPublicReportDecoder.Decode(CaptureBodies[capture.Name], capture.Symbol);
+        Assert.Equal(
+            balanceSheet.Lines.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key}={kv.Value}"),
+            again.Payload.Statements
+                .Single(s => s.StatementType == "BS" && s.PeriodEndDate == capture.CurrentBalanceSheet)
+                .Lines.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key}={kv.Value}"));
+    }
+
+    /// <summary>
+    /// TC-MDF-117 (e) — the duplicate rule is not weakened for canonical codes. The same
+    /// unequal-duplicate condition on a mapped code is still a counted conflict (both values
+    /// retained in the finding, the first value kept in the line) and the store still
+    /// quarantines that statement row as <c>CONFLICTING_VALUE</c> — derived from the annual
+    /// capture by renaming one real income-statement row onto the bottom-line label.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_117_canonical_code_duplicate_still_conflicts_and_quarantines()
+    {
+        var capture = LiveCaptures[1];
+        var mutated = Mutate(
+            CaptureBodies[capture.Name],
+            "Kontrol Gücü Olmayan Paylar",
+            "DÖNEM KARI (ZARARI)",
+            occurrence: 1); // the income statement's own row (occurrence 0 is the balance sheet's)
+        var report = KapPublicReportDecoder.Decode(mutated, capture.Symbol);
+
+        // One conflict per column (current and comparative), each retaining both values.
+        Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.Equal(42, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
+
+        var income = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == capture.CurrentFlow);
+        Assert.Equal(new[] { "NI" }, income.ConflictingItemCodes!);
+        Assert.Equal(29_917_727m, income.Lines["NI"]); // the first value is retained, never the later one
+
+        var conflict = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.DuplicateLabelConflict
+                && f.StatementType == "IS"
+                && f.Detail.Contains("2025-12-31", StringComparison.Ordinal));
+        Assert.Contains("NI", conflict.Detail, StringComparison.Ordinal);
+        Assert.Contains("29.917.727", conflict.Detail, StringComparison.Ordinal); // retained
+        Assert.Contains("-31.790", conflict.Detail, StringComparison.Ordinal);    // retained, not dropped
+
+        var (store, instrumentId) = await StoreAsync(capture.Symbol);
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 2, 24, 18, 27, 36, TimeSpan.Zero),
+            report.Payload);
+
+        // Both income-statement rows conflict (the renamed row carries a value in both
+        // columns); the other four rows still land — a partial batch, never a lost report.
+        Assert.Equal(4, result.Inserted);
+        Assert.Contains("CONFLICTING_VALUE", result.RejectedReasonCodes);
+
+        await using var db = _postgres.CreateContext();
+        Assert.False(await db.FinancialStatements.AnyAsync(
+            s => s.InstrumentId == instrumentId && s.StatementType == "IS"));
+    }
+
+    /// <summary>
+    /// TC-MDF-117 (f) — the map extension's own evidence rule: every entry names a capture that
+    /// is actually committed, and the spelling it claims is present in that capture's body. The
+    /// debt/cash core and the income-tax ladder are cited from the filer that carried them, and
+    /// the map is still a function of (statement, label).
+    /// </summary>
+    [Fact]
+    public void TC_MDF_117_every_label_map_entry_names_the_capture_that_carries_it()
+    {
+        Assert.Equal(
+            new[]
+            {
+                RealSourceCatalog.KapPublicReport,
+                RealSourceCatalog.KapPublicReportTuprs,
+                RealSourceCatalog.KapPublicReportAselsAnnual,
+                RealSourceCatalog.KapPublicReportMgros,
+            }.OrderBy(name => name, StringComparer.Ordinal),
+            KapPublicReportDecoder.CaptureNames.OrderBy(name => name, StringComparer.Ordinal));
+
+        var map = KapPublicReportDecoder.LabelMap;
+        foreach (var rule in map)
+        {
+            Assert.Contains(rule.Provenance, KapPublicReportDecoder.CaptureNames);
+            Assert.True(
+                CaptureBodies.TryGetValue(rule.Provenance, out var body),
+                $"label map cites '{rule.Provenance}', which is not a committed capture body");
+            Assert.Contains(rule.Label, body!, StringComparison.Ordinal);
+        }
+
+        // The debt/cash core is cited from the TÜPRAŞ annual body that carries the split …
+        Assert.Contains(map, r => r is
+        {
+            StatementType: "BS",
+            Label: "Kısa Vadeli Borçlanmalar",
+            ItemCode: "ST_DEBT",
+            Provenance: RealSourceCatalog.KapPublicReportTuprs,
+        });
+        Assert.Contains(map, r => r is
+        {
+            StatementType: "BS",
+            Label: "Uzun Vadeli Borçlanmalar",
+            ItemCode: "LT_DEBT",
+            Provenance: RealSourceCatalog.KapPublicReportTuprs,
+        });
+
+        // … and the annual income statement's ladder from the ASELSAN annual body.
+        foreach (var code in new[] { "EBIT", "SGA", "FIN_EXP", "PRETAX_INC", "TAX_EXP", "NI" })
+        {
+            Assert.Contains(map, r => r.StatementType == "IS"
+                && r.ItemCode == code
+                && r.Provenance == RealSourceCatalog.KapPublicReportAselsAnnual);
+        }
+
+        // Never a spelling a committed body does not carry (the trap: a trade payable is not
+        // debt, an operating liability is not debt).
+        Assert.DoesNotContain(map, r => r.ItemCode is "ST_DEBT" or "LT_DEBT"
+            && (r.Label.Contains("Ticari", StringComparison.Ordinal)
+                || r.Label.Contains("Kiralama", StringComparison.Ordinal)
+                || r.Label.Contains("Kısa Vadeli Kısımları", StringComparison.Ordinal)));
+
+        // Still a function: one entry per (statement, label).
+        Assert.Equal(map.Count, map.Select(r => (r.StatementType, r.Label)).Distinct().Count());
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
     /// <summary>
-    /// A store bound to the migrated test container with the ASELS instrument present — the
+    /// A store bound to the migrated test container with the given instrument present — the
     /// decode→store→metric path is the production one, nothing is re-implemented for the test.
     /// </summary>
-    private async Task<(FinancialStatementStore Store, long InstrumentId)> StoreAsync()
+    private async Task<(FinancialStatementStore Store, long InstrumentId)> StoreAsync(string symbol = "ASELS")
     {
         var db = _postgres.CreateContext();
-        if (!await db.Instruments.AnyAsync(i => i.Symbol == "ASELS"))
+        if (!await db.Instruments.AnyAsync(i => i.Symbol == symbol))
         {
             db.Instruments.Add(new Instrument
             {
-                Symbol = "ASELS",
-                Name = "ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.",
+                Symbol = symbol,
+                Name = symbol,
                 Status = "active",
                 SourceRef = "test:kap-public-report",
                 RecordedAt = new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.Zero),
@@ -1033,7 +1459,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         await db.Database.ExecuteSqlRawAsync("DELETE FROM fin_line_items");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM financial_statements");
 
-        var instrumentId = await db.Instruments.Where(i => i.Symbol == "ASELS").Select(i => i.Id).SingleAsync();
+        var instrumentId = await db.Instruments.Where(i => i.Symbol == symbol).Select(i => i.Id).SingleAsync();
         return (new FinancialStatementStore(db), instrumentId);
     }
 
