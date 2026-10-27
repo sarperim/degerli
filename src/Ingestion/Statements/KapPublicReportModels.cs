@@ -188,9 +188,12 @@ public sealed record KapPublicColumn(
 /// <param name="PeriodStartDate">The range start the column header declared (null on an instant
 /// column such as a balance sheet's) — the <b>true declared duration</b> of the figure
 /// (TKT-foundation-090). A cumulative interim figure therefore states the span it covers
-/// (<c>01.01.2026 – 30.06.2026</c>) and cannot be read as a discrete quarter.</param>
+/// (<c>01.01.2026 – 30.06.2026</c>) on the decode result. This is decode-result provenance: it
+/// is available to the decode's own consumers and tests, and is <b>not</b> carried into
+/// <c>StatementFact</c>/<c>FinancialStatement</c> or the served financials payload.</param>
 /// <param name="DurationMonths">The declared range length in months (null for an instant
-/// column) — the same duration the column was selected on.</param>
+/// column, and always null together with <paramref name="PeriodStartDate"/>) — the same duration
+/// the column was selected on.</param>
 /// <param name="RowOrder">The row's ordinal within its table (0-based) — the last leg of the trace.</param>
 public sealed record KapPublicLine(
     string StatementType,

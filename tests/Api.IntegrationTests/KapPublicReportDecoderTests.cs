@@ -1440,15 +1440,18 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     /// TC-MDF-119 (i) — <b>the determination, taken from the committed interim body's own
     /// column headers and cells.</b> The MİGROS 2026-06 filing (public index <c>1648240</c>,
     /// <c>Periyot 2</c> → <c>6 Aylık</c>) declares its main income-statement and cash-flow
-    /// column as <c>Cari Dönem 01.01.2026 - 30.06.2026</c> — a <b>six-month cumulative
-    /// (year-to-date) range</b> — and carries the discrete quarter as a <b>separate</b>
-    /// <c>Cari Dönem 3 Aylık 01.04.2026 - 30.06.2026</c> column. So the decoder's column
-    /// selection is <b>not</b> storing a year-to-date figure under a discrete-quarter label:
-    /// it decodes the column whose declared duration is the report's own, and names + skips the
-    /// quarter columns. The arithmetic is the body's own and is decisive — the decoded
-    /// <c>NI</c> is the six-month cell (<c>1.078.256</c>), while the three-month column's
-    /// <c>DÖNEM KARI (ZARARI)</c> cell is <c>-644.936</c>; the decoded <c>REV</c> is the
-    /// six-month <c>Hasılat</c> (<c>241.298.039</c>), not the three-month <c>124.399.203</c>.
+    /// columns as <c>Cari Dönem 01.01.2026 - 30.06.2026</c> — a <b>six-month cumulative
+    /// (year-to-date) range</b>. The income-statement tables carry the discrete quarter as a
+    /// <b>separate</b> <c>Cari Dönem 3 Aylık 01.04.2026 - 30.06.2026</c> column; the
+    /// cash-flow table carries <b>only</b> the two declared-range columns (current and prior),
+    /// so the CF figure's span is attested by its own declared range alone. The decoder's
+    /// column selection is therefore <b>not</b> storing a year-to-date figure under a
+    /// discrete-quarter label: it decodes the column whose declared duration is the report's
+    /// own, and names + skips the quarter columns where they exist. The arithmetic is the
+    /// body's own and is decisive — the decoded <c>NI</c> is the six-month cell
+    /// (<c>1.078.256</c>), while the three-month column's <c>DÖNEM KARI (ZARARI)</c> cell is
+    /// <c>-644.936</c>; the decoded <c>REV</c> is the six-month <c>Hasılat</c>
+    /// (<c>241.298.039</c>), not the three-month <c>124.399.203</c>.
     /// </summary>
     [Fact]
     public void TC_MDF_119_the_interim_column_is_the_declared_cumulative_range_never_a_quarter()
@@ -1470,6 +1473,16 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal(6, currentFlow.DurationMonths);
         Assert.True(currentFlow.Decoded);
         Assert.Null(currentFlow.SkipReason);
+
+        // The cash-flow table has exactly two columns — current and prior, both declared
+        // ranges. Unlike the income-statement tables it has no discrete `3 Aylık` sibling
+        // (TKT-foundation-090), so the CF span rests on its own declaration.
+        Assert.Equal(2, cashFlow.Columns.Count);
+        Assert.All(cashFlow.Columns, column =>
+        {
+            Assert.Equal(6, column.DurationMonths);
+            Assert.True(column.Decoded);
+        });
 
         // The discrete quarter is its own column, named and skipped — never merged, never
         // stored under the same period end.
@@ -1509,7 +1522,8 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal(11_539_997m, CanonicalMetrics.FreeCashFlow(cash.Lines["OCF"], cash.Lines["CAPEX"]));
 
         // Every decoded flow value states the span it was decoded under: six months from
-        // 1 January. A consumer cannot read it as a discrete quarter (TC-MDF-119 (iii)).
+        // 1 January — the decode result's own provenance, which the decode's consumers and
+        // tests can read (TC-MDF-119 (iii)). The store and the served payload carry no span.
         var flowLines = report.LinesFor("CF", new DateOnly(2026, 6, 30));
         Assert.NotEmpty(flowLines);
         Assert.All(flowLines, line =>
@@ -1572,12 +1586,14 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
     /// <summary>
     /// TC-MDF-119 (iii) — <b>a cumulative interim can never be consumed as an annual, proved
-    /// through the store and the consumer's own filter.</b> Decoded and written, the MİGROS
+    /// through the store and the consumer's own predicate.</b> Decoded and written, the MİGROS
     /// 2026-06 report stores its six-month cumulative cash flow as <c>Q</c> at
-    /// <c>2026-06-30</c> with the body's cumulative <c>OCF</c>; the DCF baseline's FY selection
-    /// (<c>DcfBaselineGenerationJob</c>: <c>s.PeriodType == "FY"</c>) therefore selects
-    /// <b>nothing</b> from it — a half-year can only be served as a labelled interim, never as
-    /// the annual basis.
+    /// <c>2026-06-30</c> with the body's cumulative <c>OCF</c>; an FY-equality filter — the
+    /// predicate every FY-only consumer applies (<c>DcfBaselineGenerationJob</c>:
+    /// <c>s.PeriodType == "FY"</c>) — therefore matches <b>nothing</b> in what this report
+    /// stored. The test re-applies that predicate over the stored rows; it does not run the job.
+    /// A half-year can therefore never enter the annual basis — what the display *labels* that
+    /// `Q` row is 057's surface, not this case's claim.
     /// </summary>
     [Fact]
     public async Task TC_MDF_119_a_cumulative_interim_is_stored_as_q_and_the_fy_filter_cannot_reach_it()
@@ -1608,8 +1624,9 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         var lines = await db.FinLineItems
             .Where(l => l.StatementId == cashFlow.Id)
             .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
-        // The six-month cumulative, scaled by the store (thousands → TL) — the report's own
-        // declared duration, never a discrete quarter and never annualized.
+        // The six-month cumulative cell, scaled by the store (thousands → TL) — never the
+        // three-month cell and never annualized. The store has no span field; the declared
+        // span lives on the decode result (asserted in (i)).
         Assert.Equal(17_837_860_000m, lines["OCF"]);
         Assert.Equal(-6_297_863_000m, lines["CAPEX"]);
     }

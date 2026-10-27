@@ -55,15 +55,23 @@ namespace Degerli.Ingestion.Statements;
 /// <b>Cumulative vs discrete semantics (TKT-foundation-090, verified from the committed
 /// interim body).</b> A Turkish interim FR's main column is <b>cumulative — year-to-date</b>:
 /// the MİGROS 2026-06 capture declares its income-statement and cash-flow <c>Cari Dönem</c>
-/// column as <c>01.01.2026 - 30.06.2026</c> and carries the discrete quarter as a separate
-/// <c>3 Aylık 01.04.2026 - 30.06.2026</c> column. The decoder therefore decodes the column whose
-/// <b>declared duration</b> is the report's own (6 months here), skips the discrete quarter as
+/// columns as <c>01.01.2026 - 30.06.2026</c>. The income-statement (and other-comprehensive-
+/// income) table additionally carries the discrete quarter as a separate
+/// <c>3 Aylık 01.04.2026 - 30.06.2026</c> column; the cash-flow table in that filing carries
+/// <b>only</b> the two declared-range columns (current and prior) — no quarterly sibling. The
+/// decoder therefore decodes the column whose <b>declared duration</b> is the report's own
+/// (6 months here), skips the discrete quarter wherever a table has one as
 /// <c>SUB_PERIOD_COLUMN</c>, and types the fact <c>Q</c> at the column's own period end — the
-/// figure is the year-to-date value <b>labelled as the interim it is</b>, never a discrete
-/// quarter and never an annual. Each decoded line carries the declared
-/// <c>PeriodStartDate</c>/<c>DurationMonths</c> it was decoded under, so no consumer has to
-/// infer the span. Because the store's vocabulary is only <c>FY</c>/<c>Q</c>, a period an
-/// annual declaration claims but no column attests is <b>undetermined</b>: it is counted
+/// figure is the year-to-date value <b>labelled as the interim it is</b> at decode time, never a
+/// discrete quarter's cell and never an annual. Each decoded line carries the declared
+/// <c>PeriodStartDate</c>/<c>DurationMonths</c> it was decoded under — the filing's own span,
+/// preserved <b>on the decode result</b> and available to the decode's own consumers and tests;
+/// <c>null</c> on an instant (balance-sheet) line means the filing declared no range. That span
+/// is <b>not</b> stored or served: <c>StatementFact</c> and the <c>FinancialStatement</c> entity
+/// carry no span field, so a served interim is still identified by the store's
+/// <c>FY</c>/<c>Q</c> vocabulary (the served-label gap is routed to a display/consumer ticket).
+/// Because the store's vocabulary is only <c>FY</c>/<c>Q</c>, a period an annual declaration
+/// claims but no column attests is <b>undetermined</b>: it is counted
 /// <c>PERIOD_SEMANTICS_UNDETERMINED</c> and fails safe to <c>Q</c> (a twelve-month duration is
 /// the rule's only route to <c>FY</c>).
 /// </para>
