@@ -428,6 +428,9 @@ public sealed class StatementsJob : IIngestJob
         var identityIsolated = 0;
         var notWalked = 0;
         var truncatedCompanies = 0;
+        var replaysAttempted = 0;
+        var recovered = 0;
+        var stillQuarantined = 0;
         var failedSymbols = new List<string>();
         var symbolStats = new List<SymbolRunStat>(constituents.Count);
 
@@ -636,6 +639,23 @@ public sealed class StatementsJob : IIngestJob
                     walk.ReportsFetched);
             }
 
+            // The quarantine replay's two outcomes, named per company (TKT-foundation-092): a hole
+            // that was repaired and a hole that is now terminal are different facts, and neither is
+            // allowed to disappear into the aggregate counts.
+            replaysAttempted += walk.ReplaysAttempted;
+            recovered += walk.Recovered;
+            stillQuarantined += walk.StillQuarantined;
+            if (walk.ReplaysAttempted > 0)
+            {
+                _logger.LogInformation(
+                    "statements: {Symbol} replayed {ReplaysAttempted} quarantined report(s) — recovered {Recovered}, still-quarantined (terminal, replay spent) {StillQuarantined}, backlog remaining {Backlog}",
+                    symbol,
+                    walk.ReplaysAttempted,
+                    walk.Recovered,
+                    walk.StillQuarantined,
+                    walk.Cursor.PendingReplay().Count);
+            }
+
             symbolStats.Add(new SymbolRunStat(
                 symbol,
                 walk.Inserted,
@@ -659,7 +679,10 @@ public sealed class StatementsJob : IIngestJob
             cancellationToken,
             truncatedWalk: truncatedCompanies > 0 || notWalked > 0,
             notWalked,
-            overlapRetained).ConfigureAwait(false);
+            overlapRetained,
+            replaysAttempted,
+            recovered,
+            stillQuarantined).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -817,7 +840,10 @@ public sealed class StatementsJob : IIngestJob
         CancellationToken cancellationToken,
         bool truncatedWalk = false,
         int notWalked = 0,
-        int overlapRetained = 0)
+        int overlapRetained = 0,
+        int replaysAttempted = 0,
+        int recovered = 0,
+        int stillQuarantined = 0)
     {
         if (failedSymbols.Count > 0)
         {
@@ -851,7 +877,7 @@ public sealed class StatementsJob : IIngestJob
                     : IngestResult.Succeeded;
 
         _logger.LogInformation(
-            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, identity-isolated {IdentityIsolated}, cursor-resets {CursorResets}, overlap-retained {OverlapRetained}, not-walked {NotWalked}, truncated {Truncated} ({Status})",
+            "statements: run for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, quarantined {Quarantined}, failed {Failed}, identity-isolated {IdentityIsolated}, cursor-resets {CursorResets}, overlap-retained {OverlapRetained}, not-walked {NotWalked}, quarantine-replays {ReplaysAttempted} (recovered {Recovered}, still-quarantined {StillQuarantined}), truncated {Truncated} ({Status})",
             request.Date,
             constituentCount,
             written,
@@ -862,6 +888,9 @@ public sealed class StatementsJob : IIngestJob
             cursorResets,
             overlapRetained,
             notWalked,
+            replaysAttempted,
+            recovered,
+            stillQuarantined,
             truncatedWalk,
             status);
 

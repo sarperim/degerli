@@ -9,12 +9,15 @@ using Degerli.Ingestion.Kap;
 using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Statements;
+using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using WireMock;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using Xunit;
@@ -1172,6 +1175,336 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
     }
 
     // =============================================================================================
+    // TC-MDF-121 — the quarantined-cursor recovery: a transport-failure quarantine owes exactly one
+    // replay, and a verdict the source already delivered is terminal
+    // =============================================================================================
+
+    /// <summary>
+    /// TC-MDF-121 (i) — a <b>transport-failure</b> detail quarantine (the live runs' own signature:
+    /// <c>failed in transport</c>, <c>bodyReceived: false</c>) is replayed <b>once</b> by a later
+    /// pass and the recovered report's facts are written; a replay that fails again is re-quarantined
+    /// <b>terminally</b>; and no third attempt ever fires.
+    /// <para>
+    /// The red this case carries is the live runs' own observed state (2026-10-26): the failed
+    /// detail was quarantined <b>and</b> marked completed, so its window closed, the watermark moved
+    /// past it and the report could never be listed again — a transient outage silently bounded the
+    /// company's history. With the replay disabled, the second pass issues <b>zero</b> report
+    /// requests for a now-healthy source (<c>Expected: 1, Actual: 0</c>), which is exactly the
+    /// cursor-locked world the live walk produced.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_121_a_transport_failure_quarantine_is_replayed_once_and_the_recovered_report_is_written()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // --- pass 1: every report fetch dies in transport (the burst shape) -------------------
+        StubDoubles(serveInterimBody: false);
+        StubTransportFailure(InterimIndex, Q1Index, AnnualIndex);
+        await using (var host = BuildTransportIngestion())
+        {
+            var first = await RunAsync(host);
+            Assert.Equal(IngestResult.Partial, first.Status);
+            Assert.Equal(0, first.Written);
+            Assert.Equal(3, first.Quarantined);
+        }
+
+        // Every failed index owes its one replay; none has spent it yet.
+        var afterFirst = await ReadCursorAsync("ASELS");
+        Assert.NotNull(afterFirst);
+        Assert.Equal(
+            new[] { AnnualIndex, Q1Index, InterimIndex }.Order(),
+            afterFirst!.Quarantined.Order());
+        Assert.Empty(afterFirst.Retried);
+        // The failures are completed reports for the walk's purposes: the window closed and the
+        // watermark moved past them (that is exactly why the replay has to be remembered).
+        Assert.All([AnnualIndex, Q1Index, InterimIndex], index => Assert.Contains(index, afterFirst.Seen));
+
+        // --- pass 2: the source is healthy again for the interim; the other two still die ------
+        ResetDoubles();
+        StubDoubles();
+        StubTransportFailure(Q1Index, AnnualIndex);
+        var log = new LogSink();
+        await using (var host = BuildTransportIngestion(logSink: log))
+        {
+            var second = await RunAsync(host);
+
+            // The recovered index was fetched exactly <b>once</b> on this pass — and this one is
+            // countable, because its double answers immediately: an aborting stub (no body ever
+            // arrives) is never entered into the request journal at all, so a per-index count is
+            // only evidence where the answer actually came back. The two still-failing replays are
+            // witnessed below instead, by the pass's own ledger and by the tombstones they spent.
+            Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+
+            // The recovery is a write: the interim's facts land under this lane's provenance.
+            Assert.True(second.Written > 0, $"the recovered report's facts must be written ({second.Status})");
+            // The two that failed again are still counted (a hole is never silent) and are still
+            // quarantined — the run is honest `partial`, never green, never `failed`.
+            Assert.Equal(IngestResult.Partial, second.Status);
+            Assert.Equal(2, second.Quarantined);
+
+            // The run's own stats name all three outcomes verbatim (NFR-MDF-001): three pending
+            // replays, three attempts — exactly one each — one recovered, two now terminal.
+            Assert.Contains(
+                log.Messages,
+                message => message.Contains(
+                    "quarantine-replays 3 (recovered 1, still-quarantined 2)",
+                    StringComparison.Ordinal));
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var asels = await db.Instruments.SingleAsync(instrument => instrument.Symbol == "ASELS");
+            var stored = await db.FinancialStatements
+                .Where(statement => statement.InstrumentId == asels.Id
+                    && statement.SourceRef == KapPublicSourceOptions.SourceName)
+                .ToListAsync();
+            Assert.NotEmpty(stored);
+            Assert.Contains(stored, row => row.PeriodEndDate == InterimPeriodEnd);
+
+            // Every attempt keeps its evidence, and the evidence says what actually happened: no
+            // body was ever received. Three rows from pass 1, two more from pass 2's re-quarantine
+            // (the interim's recovery adds none).
+            var unfetchable = await db.QuarantinedFacts
+                .Where(quarantine => quarantine.ReasonCode == VykDisclosureWalker.DisclosureDetailUnfetchable)
+                .ToListAsync();
+            Assert.Equal(5, unfetchable.Count);
+            Assert.All(unfetchable, row => Assert.Contains(
+                "\"bodyReceived\": false",
+                row.PayloadJson!,
+                StringComparison.Ordinal));
+        }
+
+        // The recovery is persisted and the two terminal failures spent their one replay.
+        var afterSecond = await ReadCursorAsync("ASELS");
+        Assert.NotNull(afterSecond);
+        Assert.Empty(afterSecond!.PendingReplay());
+        Assert.Equal(
+            new[] { AnnualIndex, Q1Index, InterimIndex }.Order(),
+            afterSecond.Retried.Order());
+
+        // --- pass 3: no third attempt, for any index -----------------------------------------
+        // Healthy doubles on this pass, deliberately: a route that answers at once is entered into
+        // the journal the moment it is asked, so `0 requests` here means the lane never asked —
+        // not that the journal could not see the ask. (The spent replay is a tombstone, so even a
+        // now-healthy source is never re-fetched.)
+        ResetDoubles();
+        StubDoubles();
+        await using (var host = BuildTransportIngestion())
+        {
+            await RunAsync(host);
+        }
+
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, AnnualIndex)));
+    }
+
+    /// <summary>
+    /// TC-MDF-121 (ii) — a <b>shape</b> verdict is terminal and never replayed: a body the source
+    /// delivered in a non-report shape (<c>UNPARSEABLE_PAYLOAD</c>) is not a transport outage, and
+    /// re-fetching it would spend ~900 KB to re-learn the same answer. Only the transport failure
+    /// beside it is registered for replay, and it is replayed once.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_121_a_shape_verdict_is_terminal_and_only_the_transport_failure_is_replayed()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // Pass 1: the interim decodes, one report answers a 200 that is not a report (a shape
+        // verdict), one dies in transport (a replayable outage).
+        StubDoubles();
+        _wireMock.StubJson(
+            string.Format(ReportRoute, Q1Index),
+            """{"error":"this is not a report body"}""",
+            200);
+        StubTransportFailure(AnnualIndex);
+        await using (var host = BuildTransportIngestion())
+        {
+            var first = await RunAsync(host);
+            Assert.Equal(IngestResult.Partial, first.Status);
+            Assert.Equal(2, first.Quarantined);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(
+                1,
+                await db.QuarantinedFacts.CountAsync(row => row.ReasonCode == QuarantineReason.UnparseablePayload));
+            Assert.Equal(
+                1,
+                await db.QuarantinedFacts.CountAsync(row => row.ReasonCode == VykDisclosureWalker.DisclosureDetailUnfetchable));
+        }
+
+        // Only the transport failure owes a replay; the shape verdict is terminal (and is recorded
+        // as neither pending nor spent — the cursor never re-tries it).
+        var afterFirst = await ReadCursorAsync("ASELS");
+        Assert.NotNull(afterFirst);
+        Assert.Equal([AnnualIndex], afterFirst!.Quarantined);
+        Assert.DoesNotContain(Q1Index, afterFirst.Retried);
+        Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+
+        // Pass 2: replay the one transport failure; the shape-quarantined report is never fetched
+        // again, on this pass or any other.
+        ResetDoubles();
+        StubDoubles();
+        StubTransportFailure(AnnualIndex);
+
+        var log = new LogSink();
+        await using (var host = BuildTransportIngestion(logSink: log))
+        {
+            await RunAsync(host);
+        }
+
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+        // The transport failure's own attempt is not journalable (no body ever came back); the
+        // pass's ledger and the tombstone below are what witness it — one pending replay, one
+        // attempt, one spent tombstone.
+        Assert.Contains(
+            log.Messages,
+            message => message.Contains("quarantine-replays 1 (recovered 0, still-quarantined 1)", StringComparison.Ordinal));
+
+        var afterSecond = await ReadCursorAsync("ASELS");
+        Assert.Equal([AnnualIndex], afterSecond!.Retried);
+        Assert.Empty(afterSecond.PendingReplay());
+
+        // Pass 3 proves the tombstone: the spent replay is never re-attempted, now that the source
+        // would answer at once (so an attempt would show up in the journal immediately).
+        ResetDoubles();
+        StubDoubles();
+        await using (var host = BuildTransportIngestion())
+        {
+            await RunAsync(host);
+        }
+
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, AnnualIndex)));
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+    }
+
+    /// <summary>
+    /// TC-MDF-121 (iii) — a source that <b>answered</b> is not a transport outage, even though its
+    /// answer lands under the same quarantine word: a non-success status carrying the gateway's own
+    /// body is terminal (replaying it would be a retry ladder against a source that already spoke),
+    /// and the transport failure beside it is the only replayable one. This is also the case the
+    /// 082 suite's own unfetchable-report worlds pin, which is why the class is drawn from what the
+    /// read carried, never from the status code alone.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_121_a_non_success_status_with_a_body_is_terminal_while_the_transport_failure_replays()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // The interim decodes normally (so the company has a real report beside the two failed
+        // ones); Q1 answers a 500 carrying the gateway's own body; the annual dies in transport.
+        StubDoubles(failingReports: [Q1Index]);
+        StubTransportFailure(AnnualIndex);
+        await using (var host = BuildTransportIngestion())
+        {
+            var first = await RunAsync(host);
+            Assert.Equal(IngestResult.Partial, first.Status);
+            Assert.Equal(2, first.Quarantined);
+        }
+
+        var afterFirst = await ReadCursorAsync("ASELS");
+        Assert.Equal([AnnualIndex], afterFirst!.Quarantined);
+        Assert.DoesNotContain(Q1Index, afterFirst.Quarantined);
+
+        // The status answer is never re-fetched (its double answers at once, so its absence from
+        // the journal is real evidence); the transport failure is replayed once — witnessed by the
+        // pass's ledger and the tombstone, since a body that never arrived is never journaled.
+        ResetDoubles();
+        StubDoubles(failingReports: [Q1Index]);
+        StubTransportFailure(AnnualIndex);
+        var log = new LogSink();
+        await using (var host = BuildTransportIngestion(logSink: log))
+        {
+            await RunAsync(host);
+        }
+
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, Q1Index)));
+        Assert.Contains(
+            log.Messages,
+            message => message.Contains("quarantine-replays 1 (recovered 0, still-quarantined 1)", StringComparison.Ordinal));
+
+        var afterSecond = await ReadCursorAsync("ASELS");
+        Assert.Equal([AnnualIndex], afterSecond!.Retried);
+        Assert.Empty(afterSecond.PendingReplay());
+    }
+
+    /// <summary>
+    /// TC-MDF-121 (iv) — the replay rides the ordinary pass with the pass's own bounds: a replayed
+    /// index costs a <b>detail fetch</b>, so the detail ceiling bounds it exactly like any other
+    /// fetch. A bounded pass spends what it may, keeps the unspent backlog in the cursor, records
+    /// the named truncation and resumes the backlog on the next pass.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_121_the_replay_counts_against_the_pass_detail_ceiling_and_the_backlog_resumes()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // Seed the backlog: three transport-failure quarantines, no window content written.
+        StubDoubles(serveInterimBody: false);
+        StubTransportFailure(InterimIndex, Q1Index, AnnualIndex);
+        await using (var host = BuildTransportIngestion())
+        {
+            await RunAsync(host);
+        }
+
+        Assert.Equal(3, (await ReadCursorAsync("ASELS"))!.PendingReplay().Count);
+
+        // Pass 2 with a one-detail ceiling: exactly one replay, the rest of the backlog stays owed.
+        ResetDoubles();
+        StubDoubles();
+        StubTransportFailure(Q1Index, AnnualIndex);
+        var log = new LogSink();
+        await using (var host = BuildTransportIngestion(
+            new Dictionary<string, string?>
+            {
+                ["Ingestion:KapPublic:MaxDetailFetches"] = "1",
+            },
+            logSink: log))
+        {
+            var bounded = await RunAsync(host);
+            Assert.Equal(KapPublicReasonCodes.DetailCap, Assert.Single(bounded.SymbolStats).Reason);
+            Assert.Equal(IngestResult.Partial, bounded.Status);
+        }
+
+        // The one admitted replay is the backlog's oldest index (the annual, which fails again —
+        // not journalable, no body ever arrived), and the ceiling stops before the recoverable
+        // interim: its double answers at once, so `0` here is real evidence of the bound.
+        Assert.Equal(0, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+        Assert.Contains(
+            log.Messages,
+            message => message.Contains("quarantine-replays 1 (recovered 0, still-quarantined 1)", StringComparison.Ordinal));
+
+        var afterBounded = await ReadCursorAsync("ASELS");
+        Assert.Equal([AnnualIndex], afterBounded!.Retried);
+        Assert.Equal(2, afterBounded.PendingReplay().Count);
+
+        // Pass 3 (default ceiling) drains the backlog: the recoverable report is written and the
+        // other one is spent terminally.
+        ResetDoubles();
+        StubDoubles();
+        StubTransportFailure(Q1Index, AnnualIndex);
+        await using (var host = BuildTransportIngestion())
+        {
+            var resumed = await RunAsync(host);
+            Assert.True(resumed.Written > 0, "the backlog's recoverable report must be written on the resumed pass");
+        }
+
+        // The interim was replayed on this pass — its answered report shows in the journal.
+        Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+
+        var afterResumed = await ReadCursorAsync("ASELS");
+        Assert.Empty(afterResumed!.PendingReplay());
+        Assert.Equal(3, afterResumed.Retried.Count);
+    }
+
+    // =============================================================================================
     // Harness
     // =============================================================================================
 
@@ -1183,7 +1516,8 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
     private IngestionHost BuildIngestion(
         IReadOnlyDictionary<string, string?>? extraSettings = null,
         TimeProvider? clock = null,
-        KapPublicDelay? publicDelay = null)
+        KapPublicDelay? publicDelay = null,
+        LogSink? logSink = null)
     {
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -1214,6 +1548,12 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
 
         var services = new ServiceCollection();
         services.AddLogging();
+        if (logSink is not null)
+        {
+            // The lane's own log lines are part of its honesty contract (the recovered /
+            // still-quarantined counts), so a case that asserts them reads them from here.
+            services.AddSingleton<ILoggerProvider>(new SinkLoggerProvider(logSink));
+        }
         services.AddSingleton<TimeProvider>(clock ?? new FakeTimeProvider(RecordedAt));
         services.AddMarketDataIngestion(configuration);
 
@@ -1226,6 +1566,33 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         }
 
         return new IngestionHost(services.BuildServiceProvider());
+    }
+
+    /// <summary>
+    /// The host a <b>transport-failure</b> case needs: a real clock (the per-item timeout is a real
+    /// timer — the harness's fake clock never advances on its own, so a delayed answer would hang
+    /// rather than fail) and a 150 ms detail bound, so a report route that answers after seconds is
+    /// a genuine transport failure and not a shape verdict. Only the failure class uses this; every
+    /// other case keeps the deterministic fake clock.
+    /// </summary>
+    private IngestionHost BuildTransportIngestion(
+        IReadOnlyDictionary<string, string?>? extraSettings = null,
+        LogSink? logSink = null)
+    {
+        var settings = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["Ingestion:KapPublic:DetailFetchTimeoutMs"] = "150",
+        };
+
+        if (extraSettings is not null)
+        {
+            foreach (var (key, value) in extraSettings)
+            {
+                settings[key] = value;
+            }
+        }
+
+        return BuildIngestion(settings, clock: TimeProvider.System, logSink: logSink);
     }
 
     private static async Task<IngestResult> RunAsync(IngestionHost host)
@@ -1261,6 +1628,35 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
                     .WithStatusCode(500)
                     .WithHeader("Content-Type", "application/json")
                     .WithBody("""{"error":"report unavailable"}"""));
+        }
+    }
+
+    /// <summary>
+    /// Stubs report indices to fail <b>in transport</b>: the answer arrives far too late to be read
+    /// inside the lane's per-item bound, so <b>no body ever reaches the lane</b> — the live runs'
+    /// recorded signature (<c>failed in transport</c>, <c>bodyReceived: false</c>), and the class
+    /// TKT-foundation-092 replays once. This is a real connection that never delivers, which is what
+    /// a shape verdict and a non-success status are not.
+    /// <para>
+    /// The delay is deliberately far longer than any one case runs (and than the 150 ms bound): an
+    /// aborted answer is entered into the request journal only when it eventually completes, so a
+    /// short delay would let a stray entry land in a <i>later</i> pass's journal and make a request
+    /// count flaky. With a delay no test can outlive, an aborted request is never journaled at all —
+    /// deterministic, at the price that these indices' own attempts are witnessed by the pass's
+    /// ledger and the cursor's tombstones rather than by a request count.
+    /// </para>
+    /// </summary>
+    private void StubTransportFailure(params long[] indexes)
+    {
+        foreach (var index in indexes)
+        {
+            _wireMock.Server
+                .Given(Request.Create().WithPath(string.Format(ReportRoute, index)).UsingGet())
+                .RespondWith(Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/html; charset=utf-8")
+                    .WithBody("<html><table></table></html>")
+                    .WithDelay(TimeSpan.FromSeconds(30)));
         }
     }
 
@@ -1530,5 +1926,53 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         public ServiceProvider Provider { get; }
 
         public ValueTask DisposeAsync() => Provider.DisposeAsync();
+    }
+
+    /// <summary>
+    /// The run's log lines, collected so a case can assert what the run <b>said</b> as well as what
+    /// it stored — the recovered / still-quarantined counts are the honesty half of TC-MDF-121 and
+    /// have no other observable surface (the per-symbol ledger stat type is shared with other
+    /// lanes and is not this ticket's to widen).
+    /// </summary>
+    private sealed class LogSink
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _messages = new();
+
+        public IReadOnlyList<string> Messages => _messages.ToArray();
+
+        public void Add(string message) => _messages.Enqueue(message);
+    }
+
+    private sealed class SinkLoggerProvider : ILoggerProvider
+    {
+        private readonly LogSink _sink;
+
+        public SinkLoggerProvider(LogSink sink) => _sink = sink;
+
+        public ILogger CreateLogger(string categoryName) => new SinkLogger(_sink);
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class SinkLogger : ILogger
+    {
+        private readonly LogSink _sink;
+
+        public SinkLogger(LogSink sink) => _sink = sink;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            _sink.Add(formatter(state, exception));
     }
 }
