@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-089: The per-share DCF completes on KAP data — `debt`/`cash` facts from the public-site balance sheets flow into the baseline with FCF-grade provenance, and the financials table serves revenue/NI (EBITDA when evidenced) for kap-public periods
 
-- Status: in-review
+- Status: done
 - PR: https://github.com/sarperim/degerli/pull/151 (base `dev`)
 - Size: M
 - **Priority: P1 — follow-up slice 1b of the 2026-10-27 live-run wave: the user's headline. With FCF (081/082 live) + share counts (086 live: 20 exact price-derived counts) + debt/cash (088's decode), `state` goes from `missing_inputs` to computable and `fairValuePerShare` is served on real KAP data.**
@@ -129,3 +129,11 @@ production `dcf-baselines` job:
   kap-public refs, `fairValuePerShare` served; (ii) the financials payload's revenue/NI for
   `kap-public` periods; (iii) `metrics-recompute`/`medians`/`market-snapshot` writing
   current-period rows stamped with `formula_version` — closing 083's open criterion.
+
+## Merge record — 2026-10-27 (orchestrator)
+
+- **PR #151 squash-merged to `dev` as `aa1d138`** after 3 review rounds (2 fixer dispatches, 0 escalations; final MERGEABLE). Round artifacts: `.pipeline/plan/reviews/TKT-foundation-089-round-{1,2,3}.md`.
+- Verified in review: the DCF consumer chain completes on the committed TÜPRAŞ capture (`missingInputs: []`, `fairValuePerShare` served, debt = ST_DEBT+LT_DEBT narrow definition pinned by test); the substantive repair is `metrics-recompute`/`medians` day resolution via §10.9.13 (083's open criterion's root cause — a priceless request wrote nothing, green 0/0).
+- DR-1/DR-2 stayed fenced (no diff entry into Valuation, no OTHER_BS_* summed into debt, no NCI filter). Both remain open on the user's desk.
+- Non-blocking residues carried: R5 (metrics/medians concurrent-day seam — follow-up ticket candidate), N1 (dangling cref, cosmetic), N2 (§29 doc drift, safe direction). Review-lead's gate-tooling note (missing_tc heuristic flags pre-existing-suite non-regression pins permanently — planner/tooling decision) recorded here for the morning report.
+- Post-merge live criteria (orchestrator-owned, owed): paced `kap-public` statements pass + `metrics-recompute`/`medians`/`dcf-baselines` on the live stack; `GET /stocks/TUPRS/dcf` leaving `missing_inputs` with debt/cash from KAP. **Status: done** (code+review; live criteria recorded when run).
