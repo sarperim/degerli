@@ -226,6 +226,15 @@ public sealed class KapPublicCompanyIdentityResolver
     /// until a disambiguation rule is evidenced — never smuggled in as a first-wins, a last-wins or a
     /// "closest title".
     /// </para>
+    /// <para>
+    /// <b>Recorded residue, not fixed here (TKT-foundation-091's DR-3):</b> a malformed
+    /// <c>memberOrFundOid</c> is rejected as <c>COMPANY_IDENTITY_UNRESOLVED</c> before ambiguity is
+    /// counted, so an answer carrying two company candidates where one oid is malformed reports
+    /// <i>unresolved</i> rather than <c>COMPANY_IDENTITY_AMBIGUOUS</c>. Nothing is guessed and
+    /// nothing is stored either way — only the reason code is imperfect in that edge — and the
+    /// widened candidate set made a pre-existing branch reachable, so changing it is a
+    /// classification rule this lane does not smuggle in; it is routed to the user.
+    /// </para>
     /// </summary>
     private static Classification Classify(string symbol, IReadOnlyList<KapPublicCompanyHit> hits)
     {

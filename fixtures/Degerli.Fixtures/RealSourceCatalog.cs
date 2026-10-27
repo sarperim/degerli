@@ -140,13 +140,15 @@ public static class RealSourceCatalog
 
     // TKT-foundation-091's comma-coded identity answers. Run 301 (TKT-foundation-087's live pass)
     // observed that `/tr/api/search/combined` answers several XU030 companies with a COMMA-JOINED
-    // `cmpOrFundCode` (GARAN → "garan,tgb") and that the exact-equality rule could never match
-    // them. These two entries are the committed doubles the comma-token rule is authored against.
+    // `cmpOrFundCode` and that the exact-equality rule could never match them; the only per-symbol
+    // fact 087's record carries is GARAN's "garan,tgb" with several candidate rows. These two
+    // entries are the committed doubles the comma-token rule is authored against.
     // HONESTY, stated on the entry itself: they are CONSTRUCTED, not captured — this ticket issued
     // ZERO live requests (the lane's politeness directive), so no verbatim answer for these symbols
-    // exists in the repository. The comma-joined-code shape, the multi-candidate answer and the
-    // GARANTİ-vs-GARANTİ ambiguity are the run-301 observations; the oids, the second token of each
-    // code and the row order are derived, not observed.
+    // exists in the repository. Recorded run-301 facts: the comma-joined code and that several
+    // candidate rows exist, for GARAN only. Everything else — the oids, GARAN's second candidate
+    // and the token it shares, ISCTR's whole answer, the row order — is constructed for the branch
+    // shape, on the committed ASELS answer's exact frame.
     public const string KapPublicIdentityGaranCommaCoded = "kap-public-identity-garan-comma-coded";
     public const string KapPublicIdentityIsctrCommaCoded = "kap-public-identity-isctr-comma-coded";
 
@@ -484,25 +486,27 @@ public static class RealSourceCatalog
     // exist so the comma-token rule and its honest-ambiguity branch are authored against committed
     // bytes, exactly as 080's rules were authored against the committed ASELS answer.
     private const string KapPublicIdentityGaranCommaCodedLabel =
-        "CONSTRUCTED, not captured: the comma-coded identity answer the run-301 live pass " +
-        "(TKT-foundation-087, 2026-10-27) observed for a GARAN keyword — POST " +
-        "/tr/api/search/combined answering several company candidates whose cmpOrFundCode is " +
-        "comma-JOINED ('garan,tgb' on the bank, and a second GARANTİ company sharing the 'garan' " +
-        "token), which is the shape TKT-foundation-046 fixed for the VYK directory. Constructed " +
-        "here because TKT-foundation-091 issued ZERO live requests (the lane's politeness " +
-        "directive), so no verbatim GARAN answer exists in this repository: the observed facts " +
-        "are the comma-joined code, the multiple candidates and the GARANTİ-vs-GARANTİ sharing " +
-        "of one token; the oids, the second token of each code ('tgb' is the observed one) and " +
-        "the row order are derived. The frame is the committed ASELS answer's exact shape.";
+        "CONSTRUCTED, not captured: a comma-coded identity answer of the shape the run-301 live " +
+        "pass (TKT-foundation-087, 2026-10-27) recorded for a GARAN keyword — POST " +
+        "/tr/api/search/combined answering companies whose cmpOrFundCode is comma-JOINED with " +
+        "several candidate rows, the recorded code being 'garan,tgb', which the exact-equality " +
+        "rule could never match (the convention TKT-foundation-046 fixed for the VYK directory). " +
+        "Constructed because TKT-foundation-091 issued ZERO live requests (the lane's politeness " +
+        "directive): no verbatim GARAN answer exists in this repository, and 087's record carries " +
+        "only the comma-joined code and the multiple candidate rows. Constructed for the branch " +
+        "shape: the oids, the second candidate ('garan,gryo', GARANTİ YATIRIM ORTAKLIĞI) and the " +
+        "fact that it shares the 'garan' token — 087's record does not say that — the row order, " +
+        "and the frame (the committed ASELS answer's exact shape).";
 
     private const string KapPublicIdentityIsctrCommaCodedLabel =
         "CONSTRUCTED, not captured: a comma-coded identity answer with exactly ONE distinct " +
-        "company candidate — POST /tr/api/search/combined answering a company whose " +
-        "cmpOrFundCode is comma-joined ('isctr,isatr', the two share groups of one bank) beside " +
-        "a FUND hit that carries the bare 'isctr' token. The comma-joined convention and the " +
-        "mixed company/fund answer are the run-301 observations (TKT-foundation-087); the oids, " +
-        "the second token and the row order are derived, and TKT-foundation-091 issued ZERO live " +
-        "requests, so this is not a capture. The frame is the committed ASELS answer's exact " +
+        "company candidate — a company whose cmpOrFundCode is comma-joined ('isctr,isatr', the " +
+        "two share groups of one bank) beside a FUND hit that carries the bare 'isctr' token. " +
+        "087's run-301 record lists ISCTR among the eight symbols the comma-coding root cause " +
+        "covers but carries nothing per-symbol for it, and TKT-foundation-091 issued ZERO live " +
+        "requests (the lane's politeness directive), so this is not a capture: the comma-joined " +
+        "code, its second token, the mixed company/fund shape, the oids and the row order are " +
+        "all constructed for the branch shape. The frame is the committed ASELS answer's exact " +
         "shape.";
 
     // ---- TKT-foundation-088's IS/BS coverage captures -------------------------------------
