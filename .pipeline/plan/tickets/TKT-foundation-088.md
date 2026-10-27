@@ -31,7 +31,7 @@ scope:
 
 ## Implementation record (2026-10-27)
 
-- PR: (filled at push) — branch `tkt-foundation-088`, base `dev`.
+- PR: https://github.com/sarperim/degerli/pull/150 — branch `tkt-foundation-088`, base `dev`.
 - Size M, one lane, no parallel group. Scope touched exactly: `src/Ingestion/Statements/KapPublicReportDecoder.cs`, `src/Ingestion/Statements/KapPublicReportModels.cs`, `fixtures/Degerli.Fixtures/RealSourceCatalog.cs`, `tests/Api.IntegrationTests/KapPublicReportDecoderTests.cs`, `.pipeline/testing/market-data-foundation.md`, `.pipeline/architecture/01-system-architecture.md`. `tests/Api.IntegrationTests/KapPublicStatementsIngestTests.cs` was **not** touched (its 16 cases re-run green unchanged).
 
 ### The diagnosis (investigation-first, recorded before the fix)
