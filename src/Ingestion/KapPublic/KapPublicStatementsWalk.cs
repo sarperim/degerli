@@ -399,7 +399,7 @@ public sealed class KapPublicStatementsWalker
                 _budget.Complete(Unit(quarantinedIndex));
                 await _cursors.SetAsync(symbol, state, cancellationToken).ConfigureAwait(false);
                 _logger?.LogInformation(
-                    "kap-public statements: quarantined report {DisclosureIndex} for {Symbol} recovered on its one replay — quarantined → written ({Inserted} inserted, {Unchanged} unchanged, {OverlapRetained} overlap-retained); replay spent",
+                    "kap-public statements: quarantined report {DisclosureIndex} for {Symbol} recovered on its one replay — quarantined → recovered ({Inserted} inserted, {Unchanged} unchanged, {OverlapRetained} overlap-retained); replay spent",
                     quarantinedIndex,
                     symbol,
                     replayWrite.Inserted,

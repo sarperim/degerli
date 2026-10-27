@@ -1505,6 +1505,43 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
     }
 
     // =============================================================================================
+    // Cursor schema evolution — a row written before TKT-foundation-092 keeps its position
+    // =============================================================================================
+
+    /// <summary>
+    /// The back-compatibility claim behind the <b>additive</b> cursor arrays: a
+    /// <c>kap-public-statements-cursor</c> notes document written by a <b>pre-092</b> pass carries
+    /// only <c>watermark</c>/<c>seen</c>, and must read back as the <b>same</b> position and the
+    /// <b>same</b> seen set with an <b>empty</b> replay backlog and an <b>empty</b> tombstone — never
+    /// as "everything was retried" and never as a re-bootstrap. Without this, the one migration-risk
+    /// claim protecting the live lane's existing cursor rows would rest on reading alone.
+    /// <para>
+    /// Unit-level by construction: the legacy document is a literal, so no container and no double is
+    /// involved. It is deliberately <b>untagged</b>: test plan §32 (TC-MDF-121) pins the replay
+    /// behaviour, not the cursor's schema evolution, so tagging it `TC_MDF_121` would claim coverage
+    /// the plan does not define.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Cursor_written_before_092_keeps_its_position_and_has_no_replay_state()
+    {
+        // Exactly the shape v1.5.56/v1.5.67's reader shipped before this ticket added `quarantined`
+        // and `retried`: no markers, no version field.
+        const string legacyNotes = """
+            {"source":"kap-public","watermark":"2024-02-29","seen":[1561039,1643141]}
+            """;
+
+        var cursor = KapPublicStatementCursor.TryParse(legacyNotes);
+
+        Assert.NotNull(cursor);
+        Assert.Equal(new DateOnly(2024, 2, 29), cursor!.Watermark);
+        Assert.Equal(new long[] { 1561039L, 1643141L }, cursor.Seen.Order().ToArray());
+        Assert.Empty(cursor.Quarantined);
+        Assert.Empty(cursor.Retried);
+        Assert.Empty(cursor.PendingReplay());
+    }
+
+    // =============================================================================================
     // Harness
     // =============================================================================================
 

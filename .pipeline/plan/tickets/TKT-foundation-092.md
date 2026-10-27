@@ -15,14 +15,14 @@ scope:
 - **Priority: P2 — follow-up slice 3b of the 2026-10-27 live-run wave: coverage repair, not new capability. AKBNK, TTKOM and TUPRS's Q2-2023/H1-2024 windows are locked out of their own history by quarantines that were transient transport failures.**
 - **The verified live root cause (runs 302/303, recorded on 082):** after ~30 successful excel exports, report fetches failed in transport bursts (~180 `DISCLOSURE_DETAIL_UNFETCHABLE`, `failed in transport`, `bodyReceived: false` — AKBNK 102 in pass 1); the same exports fetch fine from the host moments later (886 KB in 2.7 s — suspected per-connection throttling or container-network MTU, **undetermined**). Per the 063/046 doctrine these quarantines are terminal: the walk marks the failed index completed (`state.With(index)` — it enters the seen set) and the cursor advances past it, so **the affected windows can never be re-walked by an ordinary pass**. The companies' history is silently bounded by a transient outage.
 - **What to implement (the 063 stale-cursor-reset doctrine, applied one level down — recovery is bounded, recorded, never infinite):**
-  1. **Quarantine replay, once per index, persisted:** a quarantined **transport-failure** detail index (`DISCLOSURE_DETAIL_UNFETCHABLE`) is replayed by a later pass **at most once** — the retry state persisted in the lane's own cursor row (`kap-public-statements-cursor`'s JSON notes carry a bounded `retried` marker set; no new table, no migration). A replay that succeeds writes the statements and records the recovery verbatim (symbol, index, from-quarantine → written). A replay that fails again re-quarantines **terminally** — the index keeps its evidence, the marker keeps its terminal state, and no third attempt ever fires (the 063 "never retried forever" rule).
+  1. **Quarantine replay, once per index, persisted:** a quarantined **transport-failure** detail index (`DISCLOSURE_DETAIL_UNFETCHABLE`) is replayed by a later pass **at most once** — the retry state persisted in the lane's own cursor row (`kap-public-statements-cursor`'s JSON notes carry a bounded `retried` marker set; no new table, no migration). A replay that succeeds writes the statements and records the recovery verbatim (symbol, index, `quarantined → recovered` with the write outcome — inserted / unchanged / overlap-retained, so a recovery that is entirely withheld under 083's coexistence rule is never logged as "written"). A replay that fails again re-quarantines **terminally** — the index keeps its evidence, the marker keeps its terminal state, and no third attempt ever fires (the 063 "never retried forever" rule).
   2. **Shape verdicts stay terminal (recorded rule, not a silent drop):** `UNPARSEABLE_PAYLOAD` quarantines are **not** replayed — a body the source delivered in a non-report shape is a verdict about the body, not a transport outage; replaying it would re-fetch ~900 KB to re-learn it. If the user later wants shape-quarantine replay, that is its own decision/ticket.
-  3. **The replay is a walk, with the walk's own rules:** it rides the ordinary pass (no new job, no new request path — 079's client, ≥3 s pacing, single-flight, per-pass budget; replayed indices count against the detail ceiling like any fetch), ordered with the pass's existing fair ordering, and the run's stats name **recovered** and **still-quarantined** counts honestly (never a silent hole in either direction — NFR-MDF-001).
+  3. **The replay is a walk, with the walk's own rules:** it rides the ordinary pass (no new job, no new request path — 079's client, ≥3 s pacing, single-flight, per-pass budget; replayed indices count against the detail ceiling like any fetch), ordered with the pass's existing fair ordering, and the run's own log lines name **recovered** and **still-quarantined** counts honestly (never a silent hole in either direction — NFR-MDF-001; a log line, **not** a new ledger/stats field).
   4. **The explicit reset stays the escape hatch:** the v1.5.56-recorded condition — an explicit cursor reset makes any withheld/terminal index re-ingestable — is unchanged and remains the recorded route for anything beyond the one automatic replay (090's data-repair note and the future overlap-supersession slice both rely on it).
 - **Pinned non-goals:** no change to the quarantine evidence itself (the verbatim bodies stand); no retry ladder/scheduler change; no VYK lane change; no root-causing of the transport bursts themselves (a separate ops finding, recorded on 082 — this ticket recovers from them, it does not diagnose the network).
 - Traces to: FR-MDF-002 (statements ingest), FR-MDF-010/011 (achieved depth honesty — a recovered window updates the depth row), FR-MDF-012 (isolation — recovery is named+counted), FR-MDF-016/NFR-MDF-001 (pipeline health — no silent ledger hole), TKT-foundation-063 heritage (the stale-cursor-reset precedent this follows), TKT-foundation-082 heritage (the live finding this closes).
-- Acceptance: **TC-MDF-121** (test plan §32, v1.40 reservation — planner-authored, test-planner confirmation pending) — L2 doubles only (the committed byCriteria/report captures; the transport-failure and recovery states derived by WireMock sequencing); red→green recorded (red = a seeded seen-set holding a quarantined index with a now-healthy source never re-fetches it on the current head — the live runs' own observed state). Non-regression: `KapPublicStatementsIngestTests` (the 082 suite's resume/idempotency cases green, unchanged), `StatementsAndEventsIngestionTests`, `EodChainTests`, `MorningChainTests` re-run green. **Live criteria (orchestrator-owned, recorded verbatim):** one paced `Source = kap-public` pass over the affected companies (AKBNK, TTKOM, TUPRS at minimum) — replayed/recovered/still-quarantined counts verbatim, the recovered windows' statements visible in the store, and a second pass making no further replay attempts on the same indices.
-- Architecture refs: `01-system-architecture.md` §10.9.19 (walk/cursor subsections — the quarantine-recovery subsection) + §13.1 **v1.5.67** (re-pinned at implementation: v1.5.66 is taken by 091's UA record); test plan §32 (TC-MDF-121).
+- Acceptance: **TC-MDF-121** (test plan §32, **v1.43** record — authored with the implementation lane; test-planner confirmation pending) — L2 doubles only (the committed byCriteria/report captures; the transport-failure and recovery states derived by WireMock sequencing); red→green recorded (red = a seeded seen-set holding a quarantined index with a now-healthy source never re-fetches it on the current head — the live runs' own observed state). Non-regression: `KapPublicStatementsIngestTests` (the 082 suite's resume/idempotency cases green, unchanged), `StatementsAndEventsIngestionTests`, `EodChainTests`, `MorningChainTests` re-run green. **Live criteria (orchestrator-owned, recorded verbatim):** one paced `Source = kap-public` pass over the affected companies (AKBNK, TTKOM, TUPRS at minimum) — replayed/recovered/still-quarantined counts verbatim, the recovered windows' statements visible in the store, and a second pass making no further replay attempts on the same indices.
+- Architecture refs: `01-system-architecture.md` §10.9.19 (walk/cursor subsections — the quarantine-recovery subsection) + §13.1 **v1.5.67** (re-pinned at implementation: v1.5.66 is taken by 091's UA record; review round 1 adds **v1.5.68**, the record reconciliation); test plan §32 (TC-MDF-121, v1.43; review round 1 adds **v1.44**).
 - UX refs: none (ingest lane).
 - Dependencies: none hard (082/087 merged). Shares `KapPublicStatementsIngestTests.cs` with 088 (if 088 adds cases there) and the two permanent docs with the whole wave — serial by last-lander rebase. **Recommended dispatch: after 088/089/090/091** (it re-walks windows 090 may have re-semantics'd, so its recovery pass writes corrected-decoder output; dispatching it earlier is safe but its live criterion is cleaner last).
 - Parallel group: none.
@@ -59,13 +59,36 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
   check, so a bounded replay issues no list request at all.
 - **Named outcomes** (`KapPublicStatementWalkResult` + `StatementsJob`): `ReplaysAttempted`, `Recovered`
   (facts written — a repair of a hole, counted apart from ordinary `Inserted`), `StillQuarantined`
-  (re-quarantined terminally, replay spent). The job logs a per-company line (with the remaining backlog)
-  and the run summary names `quarantine-replays N (recovered R, still-quarantined S)`. No third attempt
-  ever fires, in this process or a later one.
+  (re-quarantined terminally, replay spent). The job surfaces them in **two log lines only** — a
+  per-company line (with the remaining backlog) and the run's **completion log line**, which names
+  `quarantine-replays N (recovered R, still-quarantined S)`. They are **not** a stored ledger/stats
+  field: `IngestResult` and `SymbolRunStat` are untouched by this ticket, so the counts are observable in
+  the log and nowhere else. No third attempt ever fires, in this process or a later one.
+
+### Recorded deliberate behaviours (dispatcher R4 — rules a reader would otherwise infer from a count)
+
+- **One quarantine row per attempt; rows are neither deduped nor superseded.** A replay that fails again
+  writes a **second** `DISCLOSURE_DETAIL_UNFETCHABLE` row for the *same* disclosure index. Verified in
+  the shipped write path, not inferred from the test: `QuarantineWriter.WriteAsync`
+  (`src/Ingestion/Quarantine/Quarantine.cs:35-50`) only ever `Add`s a new `QuarantinedFact` — it never
+  updates, deletes or supersedes — and `StatementsJob.QuarantineSkipsAsync`
+  (`src/Ingestion/Statements/StatementsJob.cs:693-727`) calls it once per skip, including the replay's
+  own skip (`KapPublicStatementsWalk.cs:337-352`). TC-MDF-121 (i)'s "5 unfetchable rows for 3 indices"
+  is therefore five **intended** rows — three first-pass quarantines and two spent replays — not a
+  double-write bug. The dedupe instrument is the cursor's `retried` tombstone (it bounds *attempts*);
+  evidence is never deleted (BR-MDF-007). Recorded as a rule in `01` v1.5.68 §10.9.19.
+- **A recovered index leaves its original quarantine row standing.** The recovery path
+  (`KapPublicStatementsWalk.cs:389-405`) writes the facts, marks the cursor
+  (`state.With(index).WithReplaySpent(index)`) and logs — it never touches `quarantined_facts`: nothing
+  deletes the earlier row and nothing annotates it with a recovery status. The quarantine evidence stays
+  exactly as recorded (the pinned "no change to the quarantine evidence itself" non-goal); the recovery
+  is read from the run's completion log line and from the stored facts. Recorded in `01` v1.5.68
+  §10.9.19.
 
 ### Test evidence (executed locally — Docker/Testcontainers available)
 
 - `dotnet test … --filter "FullyQualifiedName~TC_MDF_121"` → **4 passed / 0 failed / 0 skipped**.
+- **Review round 1 (2026-10-28):** `dotnet test … --filter "FullyQualifiedName~Cursor_written_before_092|FullyQualifiedName~TC_MDF_121"` → **5 passed / 0 failed / 0 skipped** — the four TC-MDF-121 cases plus the new **untagged** cursor back-compatibility case (DR-2). Run targeted only; CI is the authority for the full suite.
 - **Red evidence:** with the replay loop disabled (`foreach (var quarantinedIndex in
   Enumerable.Empty<long>())`) → **4 failed / 0 passed**: (i) `Expected: 1, Actual: 0` on the recovered
   report's request (the live cursor-locked world), (ii)/(iii) the `quarantine-replays …` run line missing,
@@ -89,14 +112,28 @@ ticket's `scope:` list; no contract file was amended beyond the two permanent do
 
 ### Docs
 
-- `.pipeline/testing/market-data-foundation.md` — **§32** (TC-MDF-121 (i)–(iv)) + change record **v1.43**.
+- `.pipeline/testing/market-data-foundation.md` — **§32** (TC-MDF-121 (i)–(iv)) + change record **v1.43**;
+  review round 1 adds **v1.44** (the §32 block moved ahead of the change record, its lettering unified to
+  (i)–(iv) with the shipped method names mapped, the "stats" wording corrected to the completion log line,
+  and the one-row-per-attempt rule stated in case (i)).
 - `.pipeline/architecture/01-system-architecture.md` — §10.9.19 quarantine-recovery subsection; §13.1
-  **v1.5.67** (re-pinned: the ticket's soft v1.5.66 reservation was taken by 091's UA record).
+  **v1.5.67** (re-pinned: the ticket's soft v1.5.66 reservation was taken by 091's UA record);
+  review round 1 adds **v1.5.68** (DR-1's recorded zero-length-body edge, DR-4's log-line-not-ledger
+  wording, DR-5's one-row-per-attempt rule, DR-6's standing original quarantine row) — v1.5.67 is left
+  intact as the landed record.
 
 ### Not done here, as pinned
 
 Decoder, identity resolver (088/090/091, merged), the quarantine evidence format, the transport-burst root
-cause (an ops finding), DR-1/DR-2 (fenced user decisions) — and the **live recovery run** itself, which is
+cause (an ops finding) — and the **live recovery run** itself, which is
 the orchestrator's post-merge criterion: one paced `Source = kap-public` pass over at least AKBNK, TTKOM and
 TUPRS, replayed/recovered/still-quarantined counts verbatim, the recovered windows' statements visible in the
 store, and a second pass making no further replay attempts on the same indices.
+
+Review round 1 (2026-10-28) closed the two gaps that rested on reading alone: **DR-1** is now recorded as a
+deliberate edge in `01` v1.5.68 §10.9.19 rather than a defect to re-open (the predicate's behaviour is
+unchanged — tightening it is a semantics change this ticket is not authorised to make), and **DR-2** is
+covered by a plain unit assertion over a literal pre-092 cursor notes document in
+`KapPublicStatementsIngestTests.Cursor_written_before_092_keeps_its_position_and_has_no_replay_state`
+(same watermark and seen set, empty backlog/tombstone), deliberately **untagged** because §32 defines no
+back-compatibility sub-case.
