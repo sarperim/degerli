@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-093: Statements-view label-map expansion — the full industrial IS/BS/CF row set mapped capture-first to new canonical codes, and the Konsolide/Solo filing flag the metadata bar needs
 
-- Status: blocked (PR #155 open; review round 1 escalated — facet-gate missing-tc false positive + mechanical findings; artifact `.pipeline/plan/reviews/TKT-foundation-093-round-1.md`; awaiting user arbitration)
+- Status: in-review
 - Size: M
 - **Priority: P1 — slice 1 of the 2026-10-28 financial-statements view wave (the user's v0 spec, recorded verbatim on TKT-foundation-095; this ticket is its decode half, 094 the serving half, 095 the surface).**
 - **The wave's premise (live-verified 2026-10-27/28, the 088 record):** every row the user's statements view needs is already in the KAP reports and already lands as `OTHER_*` passthrough with values (GARAN Q2-2026 IS: 80 lines, 78 `OTHER_*`; TÜPRAŞ BS decodes 146–174 lines) — the gap is canonical label mapping, not data. 088 mapped the debt/cash core and the income ladder (9 IS / 6 BS codes); the user's view needs the remaining families (A/R, inventories, PP&E, right-of-use, goodwill+intangibles, A/P, leases, retained earnings, NCI equity lines, paid-in capital, total assets, CF detail lines, parent NI, TMS 29 monetary lines).
