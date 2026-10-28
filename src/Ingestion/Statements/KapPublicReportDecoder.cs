@@ -374,6 +374,20 @@ public static class KapPublicReportDecoder
                     r => r.ItemCode),
                 StringComparer.Ordinal);
 
+    /// <summary>
+    /// The captions each statement carries a scope-qualified entry for, precomputed once from
+    /// <see cref="ScopedRules"/> (TKT-foundation-098, DR-9): the per-row fail-safe asks
+    /// "could a qualified entry have placed this caption?" on every row, and a set lookup keeps
+    /// that question O(1) instead of scanning the rule keys per row.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ScopedLabelsByStatement =
+        ScopedRules
+            .GroupBy(r => r.StatementType, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlySet<string>)g.Select(r => r.Label).ToHashSet(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+
     /// <summary>The label → canonical map, built only from committed-capture labels.</summary>
     public static IReadOnlyList<KapPublicLabelRule> LabelMap => Rules;
 
@@ -614,15 +628,16 @@ public static class KapPublicReportDecoder
             var canonicalLineCount = 0;
 
             // The row-scope state (TKT-foundation-093): resolved from the capture's own block
-            // anchors <b>before</b> the label map, exactly as the cash-flow section is. A
-            // separate income-statement table headed `Diğer Kapsamlı Gelir Tablosu` starts in
-            // the OCI part; a combined statement starts in profit-or-loss and flips at its own
-            // `Kar veya Zararda Yeniden Sınıflandırılmayacaklar` anchor.
+            // anchors <b>before</b> the label map, exactly as the cash-flow section is. The
+            // income statement's starting part is read from the table's <b>heading content</b>,
+            // the same discipline `StatementTypeForHeading` classifies by: a standalone
+            // other-comprehensive-income table starts in OCI, a table whose heading names the
+            // profit-or-loss part (a combined statement included) starts there and flips at its
+            // own `Kar veya Zararda Yeniden Sınıflandırılmayacaklar` anchor, and a heading that
+            // attests <b>neither</b> part leaves it undetermined — never a silent default
+            // (TKT-foundation-098, DR-5).
             string? block = null;
-            string? incomeScope = statementType == "IS"
-                && string.Equals(heading, "Diğer Kapsamlı Gelir Tablosu", StringComparison.Ordinal)
-                    ? KapPublicScopes.OtherComprehensiveIncome
-                    : statementType == "IS" ? KapPublicScopes.ProfitOrLoss : null;
+            string? incomeScope = statementType == "IS" ? IncomeScopeForHeading(heading) : null;
 
             foreach (var row in rows)
             {
@@ -659,7 +674,17 @@ public static class KapPublicReportDecoder
                     "CF" => section,
                     _ => null,
                 };
-                var blockUndetermined = false;
+
+                // The scope fail-safe is a property of the <b>row</b>, not of a decoded cell
+                // (TKT-foundation-098, DR-8): a caption the map can only place through a
+                // scope-qualified entry, on a row whose scope is undetermined and which carries
+                // at least one value on <b>any</b> column — decoded, skipped or unreadable —
+                // is named once below, whether or not a cell happened to produce a line.
+                var scopeUndetermined = scope is null
+                    && !string.IsNullOrWhiteSpace(label)
+                    && HasScopedRule(statementType, label)
+                    && valueCells.Any(IsValued);
+                var stalePart = false;
 
                 foreach (var cell in valueCells)
                 {
@@ -718,12 +743,6 @@ public static class KapPublicReportDecoder
                     }
 
                     var (value, fromAttribute, raw, displayed) = cellValue.Value;
-                    var itemCode = MapCode(statementType, section, scope, label);
-
-                    // The row is one a block-qualified entry could have placed, but its block is
-                    // undetermined: no qualified entry matched and the value stays an honest
-                    // passthrough. Counted once for the row below, never guessed into a block.
-                    blockUndetermined |= scope is null && HasScopedRule(statementType, label);
                     // Decoded is only true when the column's header resolved a period end; the
                     // null-forgiving access records that invariant in one place (DR-8).
                     var periodEnd = column.PeriodEnd!.Value;
@@ -738,6 +757,27 @@ public static class KapPublicReportDecoder
                         group = new Group(statementType, periodEnd, periodType, header.SubmittedAt);
                         groupsByKey[key] = group;
                         groups.Add(group);
+                    }
+
+                    var itemCode = MapCode(statementType, section, scope, label);
+
+                    // The part state is a forward-filled one, so it can be <b>stale</b> rather
+                    // than absent: on a combined income statement whose OCI anchor the capture
+                    // does not declare, the other-comprehensive-income occurrence of a
+                    // part-qualified caption would collide with its profit-or-loss code and
+                    // quarantine the whole statement row (the v1.5.62 failure mode through the
+                    // front door). The map's own evidence already disambiguates — a caption with
+                    // a part-qualified entry belongs to more than one part, so a second unequal
+                    // occurrence cannot be the same line. It falls back to its section-scoped
+                    // passthrough and is named, per row, instead (TKT-foundation-098, DR-5).
+                    if (statementType == "IS"
+                        && scope is not null
+                        && HasScopedRule(statementType, label)
+                        && group.Lines.TryGetValue(itemCode, out var taken)
+                        && taken != value)
+                    {
+                        itemCode = MapCode(statementType, section, null, label);
+                        stalePart = true;
                     }
 
                     if (group.Add(itemCode, value, label, findings, out var storedCode) == GroupOutcome.Collapsed)
@@ -770,15 +810,39 @@ public static class KapPublicReportDecoder
                     }
                 }
 
-                if (blockUndetermined)
+                if (scopeUndetermined)
+                {
+                    var detail = statementType == "IS"
+                        ? $"{tableClass} '{heading}' row {rowOrder.ToString(CultureInfo.InvariantCulture)} '{label}': "
+                            + "the income statement carries a part-qualified entry for this caption but the row's "
+                            + "profit-or-loss / other-comprehensive-income part could not be determined from the "
+                            + "capture's own heading and anchors — the value stays a section-scoped OTHER_* "
+                            + "passthrough, never guessed into a part."
+                        : $"{tableClass} '{heading}' row {rowOrder.ToString(CultureInfo.InvariantCulture)} '{label}': "
+                            + "the balance sheet carries a block-qualified entry for this caption but the row's "
+                            + "current/non-current block could not be determined from the capture's own anchors — the "
+                            + "value stays a section-scoped OTHER_* passthrough, never guessed into a block.";
+
+                    findings.Add(Finding(
+                        statementType == "IS"
+                            ? KapPublicReportReasons.PartUndetermined
+                            : KapPublicReportReasons.BlockUndetermined,
+                        1,
+                        detail,
+                        statementType,
+                        label));
+                }
+
+                if (stalePart)
                 {
                     findings.Add(Finding(
-                        KapPublicReportReasons.BlockUndetermined,
+                        KapPublicReportReasons.PartUndetermined,
                         1,
                         $"{tableClass} '{heading}' row {rowOrder.ToString(CultureInfo.InvariantCulture)} '{label}': "
-                        + "the balance sheet carries a block-qualified entry for this caption but the row's "
-                        + "current/non-current block could not be determined from the capture's own anchors — the "
-                        + "value stays a section-scoped OTHER_* passthrough, never guessed into a block.",
+                        + "the caption carries a part-qualified entry that this statement already holds with a "
+                        + "different value, and the capture declares no anchor for the other part — the row's part "
+                        + "is undetermined, so it stays a section-scoped OTHER_* passthrough and the statement row "
+                        + "is not quarantined for it.",
                         statementType,
                         label));
                 }
@@ -1279,12 +1343,30 @@ public static class KapPublicReportDecoder
     /// equity block (<c>ÖZKAYNAKLAR</c>) has no current/non-current split, so it — and every row
     /// before the first anchor — resolves to <c>null</c>: a block-qualified entry never matches
     /// that, and the miss is counted, never guessed (TKT-foundation-093).
+    /// <para>
+    /// <b>A total row closes the block state (TKT-foundation-098, DR-4).</b> The block is a
+    /// forward-filled state, so without a boundary a body that omits or renames its liabilities
+    /// anchors would let every liabilities row inherit the <b>assets</b> block's scope and take
+    /// the wrong canonical code (<c>LT_TRADE_PAY</c> for a current trade payable) with no
+    /// finding — a fail-safe that guards <c>null</c> but never <c>stale</c>. Every balance-sheet
+    /// total row (a label beginning <c>TOPLAM</c>: <c>TOPLAM DÖNEN VARLIKLAR</c>, <c>TOPLAM
+    /// DURAN VARLIKLAR</c>, <c>TOPLAM VARLIKLAR</c>, <c>TOPLAM KISA VADELİ YÜKÜMLÜLÜKLER</c>, …)
+    /// therefore drops the state, so the side that follows must re-declare its block; a scoped
+    /// caption in between resolves to <c>null</c> and is counted <c>BLOCK_UNDETERMINED</c> —
+    /// never a silently inherited stale block. (<c>ARA TOPLAM</c> subtotals sit <i>inside</i> a
+    /// block and are deliberately not boundary rows.)
+    /// </para>
     /// </summary>
     private static string? BalanceSheetBlockFor(string? label, string? current)
     {
         if (string.IsNullOrWhiteSpace(label))
         {
             return current;
+        }
+
+        if (label.StartsWith("TOPLAM", StringComparison.Ordinal))
+        {
+            return null;
         }
 
         if (string.Equals(label, "DÖNEN VARLIKLAR", StringComparison.Ordinal)
@@ -1308,10 +1390,36 @@ public static class KapPublicReportDecoder
     }
 
     /// <summary>
+    /// The income statement's starting part, read from the table's <b>heading content</b> — the
+    /// same containment discipline <see cref="StatementTypeForHeading"/> classifies by, never one
+    /// exact string (TKT-foundation-098, DR-5). A heading naming the profit-or-loss part
+    /// (including a combined <c>Kar veya Zarar ve Diğer Kapsamlı Gelir Tablosu</c>, which starts
+    /// there and flips at its own anchor) selects <c>PL</c>; a heading carrying the
+    /// comprehensive-income part without the profit-or-loss one selects <c>OCI</c> — so a
+    /// suffixed or otherwise re-worded <c>Diğer Kapsamlı Gelir Tablosu</c> still starts in OCI
+    /// instead of silently defaulting to profit-or-loss. A heading that attests <b>neither</b>
+    /// part (a bare <c>Gelir Tablosu</c>) leaves the part <b>undetermined</b>: a part-qualified
+    /// caption there is counted <c>PART_UNDETERMINED</c> and stays a passthrough, never a
+    /// defaulted part.
+    /// </summary>
+    private static string? IncomeScopeForHeading(string heading)
+    {
+        if (heading.Contains("Kar veya Zarar", StringComparison.Ordinal))
+        {
+            return KapPublicScopes.ProfitOrLoss;
+        }
+
+        return heading.Contains("Kapsamlı Gelir", StringComparison.Ordinal)
+            ? KapPublicScopes.OtherComprehensiveIncome
+            : null;
+    }
+
+    /// <summary>
     /// Resolves the income-statement part a row belongs to: profit-or-loss until the capture's
     /// own <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c> anchor, other-comprehensive-
-    /// income from there on (a standalone <c>Diğer Kapsamlı Gelir Tablosu</c> starts there
-    /// already). TKT-foundation-093.
+    /// income from there on (a standalone <c>Diğer Kapsamlı Gelir Tablosu</c> — matched by
+    /// content, not by one exact string — starts there already). TKT-foundation-093;
+    /// TKT-foundation-098, DR-5.
     /// </summary>
     private static string? IncomeStatementScopeFor(string? label, string? current)
     {
@@ -1327,8 +1435,7 @@ public static class KapPublicReportDecoder
 
     /// <summary>True when the map carries a scope-qualified entry for this statement+label.</summary>
     private static bool HasScopedRule(string statementType, string label) =>
-        ScopedRulesByStatement.TryGetValue(statementType, out var rules)
-        && rules.Keys.Any(key => string.Equals(key.Label, label, StringComparison.Ordinal));
+        ScopedLabelsByStatement.TryGetValue(statementType, out var labels) && labels.Contains(label);
 
     /// <summary>
     /// Maps a label to its canonical code inside its statement and row scope, or to its

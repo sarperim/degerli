@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-098: Decoder fail-safe hardening — the BS block boundary, the IS part fail-safe, and the BLOCK_UNDETERMINED emission (093 review round 1, DR-4/DR-5/DR-8/DR-9 + the DR-6/DR-7 assertion strengthenings)
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P1 follow-up to the merged TKT-foundation-093 (PR #155) — the review round 1 fail-safe gaps the user routed to a ticket (2026-10-28 arbitration, binding). The code scope is disjoint from in-flight 094 (verified against its frontmatter: store/models/entities/endpoints — no decoder file), so this may dispatch alongside it; the three permanent docs serialize by last-lander rebase.**
 - **Where the findings come from:** `.pipeline/plan/reviews/TKT-foundation-093-round-1.md` + `-diff-reviewer.md` (verdict: escalated, merged by user arbitration; findings DR-4, DR-5, DR-8, DR-9 below, plus the assertion strengthenings DR-6/DR-7 folded here by planner judgment — one ticket, one test file, one lane). **None of the gaps is reachable on any of the five committed bodies** (verified twice: zero conflicts, zero `BLOCK_UNDETERMINED` on all five) — this ticket hardens the fail-safes against malformed or future-shaped bodies, and its tests must therefore **construct** the malformed cases as in-memory mutations of committed captures (never live requests, never invented bodies).

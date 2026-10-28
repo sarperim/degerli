@@ -310,13 +310,20 @@ public static class KapPublicSections
 /// <list type="bullet">
 /// <item><b>balance sheet</b> — the current / non-current block, read from the capture's own
 /// <c>DÖNEN VARLIKLAR</c> / <c>DURAN VARLIKLAR</c> / <c>KISA VADELİ YÜKÜMLÜLÜKLER</c> /
-/// <c>UZUN VADELİ YÜKÜMLÜLÜKLER</c> anchor rows. A row whose block is undetermined (before any
-/// anchor, or inside the equity block, which has no current/non-current split) carries
-/// <c>null</c>: a scope-qualified entry <b>never</b> matches it and the miss is a counted
-/// <c>BLOCK_UNDETERMINED</c> finding — never a guessed block;</item>
+/// <c>UZUN VADELİ YÜKÜMLÜLÜKLER</c> anchor rows. A total row closes the block state, so the side
+/// that follows must re-declare its block and a liabilities row can never inherit the assets
+/// block. A row whose block is undetermined (before any anchor, after a block-closing total
+/// without a re-declaration, or inside the equity block, which has no current/non-current split)
+/// carries <c>null</c>: a scope-qualified entry <b>never</b> matches it and the miss is a counted
+/// <c>BLOCK_UNDETERMINED</c> finding — never a guessed block and never a stale one;</item>
 /// <item><b>income statement</b> — the profit-or-loss part and the other-comprehensive-income
-/// part, split at the capture's own <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c>
-/// anchor;</item>
+/// part. The starting part is read from the table's <b>heading content</b> (a heading naming the
+/// profit-or-loss part, a combined statement included, starts there; a heading carrying the
+/// comprehensive-income part without it starts in OCI), the split from the capture's own
+/// <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c> anchor. A heading that attests
+/// neither part leaves it undetermined, and a part-qualified caption there — or one the statement
+/// already holds with a different value while no anchor declares the other part — is a counted
+/// <c>PART_UNDETERMINED</c> passthrough, never a defaulted part;</item>
 /// <item><b>cash-flow statement</b> — the same operating/investing/financing/summary block the
 /// section carries (<see cref="KapPublicSections"/>), so a caption repeated across cash-flow
 /// blocks stays attributable.</item>
@@ -427,11 +434,26 @@ public static class KapPublicReportReasons
     /// <summary>
     /// A valued balance-sheet row's <b>block could not be determined</b> (it sits before any
     /// <c>DÖNEN VARLIKLAR</c>/<c>DURAN VARLIKLAR</c>/<c>KISA VADELİ YÜKÜMLÜLÜKLER</c>/<c>UZUN
-    /// VADELİ YÜKÜMLÜLÜKLER</c> anchor, or inside the equity block, which has no current/non-current
-    /// split) while the map carries a scope-qualified entry for its caption. No qualified entry
-    /// matched it, so the row is left as its section-scoped <c>OTHER_*</c> passthrough —
-    /// <b>never</b> guessed into a block. Counted once per such row, naming the row order and
-    /// the caption (TKT-foundation-093).
+    /// VADELİ YÜKÜMLÜLÜKLER</c> anchor, inside the equity block — which has no current/non-current
+    /// split — or after a block-closing total row without a re-declaring anchor) while the map
+    /// carries a scope-qualified entry for its caption. No qualified entry matched it, so the row
+    /// is left as its section-scoped <c>OTHER_*</c> passthrough — <b>never</b> guessed into a
+    /// block, and never an inherited stale block across the assets→liabilities boundary.
+    /// Counted once per such row, naming the row order and the caption (TKT-foundation-093;
+    /// the boundary rule TKT-foundation-098, DR-4).
     /// </summary>
     public const string BlockUndetermined = "BLOCK_UNDETERMINED";
+
+    /// <summary>
+    /// The income-statement analogue of <see cref="BlockUndetermined"/> (TKT-foundation-098,
+    /// DR-5): a valued row carries a caption the map places only through a part-qualified
+    /// entry, while the row's <b>profit-or-loss / other-comprehensive-income part</b> is not
+    /// determined — the table's own heading attests neither part, or (the <b>stale</b> case) the
+    /// statement already holds that caption's part-qualified code with a different value and the
+    /// capture declares no anchor for the other part. The row keeps its section-scoped
+    /// <c>OTHER_*</c> passthrough and is named once, counted per row — never a silently defaulted
+    /// part, and never a whole-row <c>DUPLICATE_LABEL_CONFLICT</c> quarantine where the scope
+    /// dimension already disambiguates the two occurrences.
+    /// </summary>
+    public const string PartUndetermined = "PART_UNDETERMINED";
 }
