@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-098: Decoder fail-safe hardening — the BS block boundary, the IS part fail-safe, and the BLOCK_UNDETERMINED emission (093 review round 1, DR-4/DR-5/DR-8/DR-9 + the DR-6/DR-7 assertion strengthenings)
 
-- Status: in-progress
+- Status: in-review
 - Size: M
 - **Priority: P1 follow-up to the merged TKT-foundation-093 (PR #155) — the review round 1 fail-safe gaps the user routed to a ticket (2026-10-28 arbitration, binding). The code scope is disjoint from in-flight 094 (verified against its frontmatter: store/models/entities/endpoints — no decoder file), so this may dispatch alongside it; the three permanent docs serialize by last-lander rebase.**
 - **Where the findings come from:** `.pipeline/plan/reviews/TKT-foundation-093-round-1.md` + `-diff-reviewer.md` (verdict: escalated, merged by user arbitration; findings DR-4, DR-5, DR-8, DR-9 below, plus the assertion strengthenings DR-6/DR-7 folded here by planner judgment — one ticket, one test file, one lane). **None of the gaps is reachable on any of the five committed bodies** (verified twice: zero conflicts, zero `BLOCK_UNDETERMINED` on all five) — this ticket hardens the fail-safes against malformed or future-shaped bodies, and its tests must therefore **construct** the malformed cases as in-memory mutations of committed captures (never live requests, never invented bodies).
@@ -27,3 +27,41 @@ scope:
 - UX refs: none (decoder lane).
 - Dependencies: TKT-foundation-093 (merged, PR #155). **No code-scope overlap with in-flight 094** (verified against its frontmatter) — dispatchable alongside it; the three permanent docs serialize by last-lander rebase.
 - Parallel group: none (doc serialization with the whole wave).
+
+## Implementation record (2026-10-28, implementation lane)
+
+**PR:** https://github.com/sarperim/degerli/pull/156 (branch `tkt-foundation-098`, base `dev`).
+
+### What landed
+
+1. **DR-4 — the BS block boundary.** `BalanceSheetBlockFor` returns `null` for **any label beginning `TOPLAM`**, so every balance-sheet total row closes the block state and the side that follows must re-declare its block; a scoped caption in between resolves to `null` and is counted. **`ARA TOPLAM` subtotals are deliberately not boundary rows** (they sit inside a block; making them boundaries would starve the captured non-current blocks and turn well-formed bodies red). The boundary outcome is the **existing `BLOCK_UNDETERMINED`**, not a new `BLOCK_BOUNDARY_UNDECLARED`: the condition and the outcome are the ones the reason already documents, and a second reason for one condition would split one ledger fact in two (the reviewer's own alternative, pinned in `01` v1.5.74 §10.9.19).
+2. **DR-5 (i) — the IS starting part from content.** New `IncomeScopeForHeading(heading)`: `Contains("Kar veya Zarar")` → `PL`, else `Contains("Kapsamlı Gelir")` → `OCI`, else `null` (undetermined). The new closed reason **`PART_UNDETERMINED`** (`KapPublicReportModels.cs`, `02` §6.1) names a part-qualified caption on an undetermined part.
+3. **DR-5 (ii) — the stale part.** A part-qualified caption the statement already holds with a **different value** while no anchor declares the other part falls back to its section-scoped passthrough and is named `PART_UNDETERMINED` (stale wording, distinct from the undetermined-heading wording), instead of colliding and quarantining the whole row. **The conflict quarantine itself is not weakened** — two genuinely mapped unequal duplicates still `DUPLICATE_LABEL_CONFLICT`.
+4. **DR-8 — the finding is a property of the row.** `scopeUndetermined = scope is null && !IsNullOrWhiteSpace(label) && HasScopedRule(...) && valueCells.Any(IsValued)`, computed once per row before the cell loop and emitted once after it (IS → `PART_UNDETERMINED`, BS → `BLOCK_UNDETERMINED`).
+5. **DR-9 — precomputed membership.** `ScopedLabelsByStatement` (`IReadOnlyDictionary<string, IReadOnlySet<string>>`) built once from `ScopedRules`; `HasScopedRule` is now a set `Contains`.
+6. **DR-6 / DR-7 — the assertion strengthenings** in `KapPublicReportDecoderTests.cs`: TC-MDF-122 (h) adds `Assert.Equal("Bireysel", other.Header.ConsolidationType)`; TC-MDF-122 (a) runs the provenance/spelling/registry loop over the **unqualified** projection too (`Assert.NotEmpty` + the four invariants per entry). Nothing removed or weakened.
+
+**Pinned non-goals honoured:** no map entry added/renamed/removed, no canonical code added (`StatementMapper.CanonicalCodes` stays **64**), no DR-1/DR-2 fence change (`ST_DEBT`/`LT_DEBT` the two borrowings lines, `TOTAL_EQUITY` NCI-inclusive as stored), no new capture, no new dependency, no serving/store/metric/UI work.
+
+### Docs landed in this ticket's scope
+
+- `.pipeline/testing/market-data-foundation.md` — **§36** (TC-MDF-125 (a)–(g), steps/expected/dependencies plus the case-lettering map to the shipped method names) and change record **v1.48**.
+- `.pipeline/architecture/01-system-architecture.md` — §10.9.19 **fail-safe-hardening subsection** (six bullets: boundary, part content, stale part, per-row emission, precomputed set, non-regression gate), the closed reason-set list extended with `PART_UNDETERMINED` (eighteen codes), and §13.1 row **v1.5.74**.
+- `.pipeline/architecture/02-data-model.md` — §6.1 bullet recording the hardening and the new reason name; **no chart change**.
+
+### Test evidence
+
+- `dotnet test tests/Api.IntegrationTests --filter "FullyQualifiedName~TC_MDF_125"` → **7 passed / 0 failed**.
+- `--filter "FullyQualifiedName~KapPublicReportDecoderTests"` → **46 passed / 0 failed** (the 39 pre-existing 106/107/108/117/119/122 cases + the seven new).
+- `--filter "FullyQualifiedName~KapPublicStatementsIngestTests|FullyQualifiedName~RealSourceStatementsTests|FullyQualifiedName~StatementNormalizationTests|FullyQualifiedName~StatementVersioningTests"` → **31 passed / 0 failed**.
+- `dotnet build` (src/Ingestion, tests/Api.IntegrationTests) → **0 warnings / 0 errors**.
+
+**Red (measured, re-run not remembered):** with only `KapPublicReportDecoder.cs` reverted to the pre-ticket file (models kept so the new reason compiles — the red is behaviour, never a compile or environment failure), the `TC_MDF_125` filter reads **5 failed / 2 passed**: (a) `Expected: 0, Actual: 4` on `DUPLICATE_LABEL_CONFLICT`; (c)/(e) `Expected: 0, Actual: 2` with `conflict=NI_PARENT`; (d) missing `PART_UNDETERMINED` plus the collision; (f) `Assert.Single()` finding nothing — the DR-8 gap itself. (b) passes by construction on that red (the committed MİGROS OCI table also declares its anchor before the repeated caption, so only (c)'s anchor rewording exposes the heading-content fix — stated, not manufactured); (g) passes on both heads because it pins the unchanged goldens.
+
+**Byte-identical non-regression, proved not inferred:** a full decode dump (every line, every finding with its detail, every statement line and conflicting code) of all five committed bodies on the pre-ticket head and on this branch `diff`s **empty** — THYAO 497 lines / 40 disambiguated, TUPRS 346 / 18, ASELSAN 383 / 34, MİGROS 314 / 16, ASELS 116 / 0, zero conflicts and zero `BLOCK_UNDETERMINED`/`PART_UNDETERMINED` on all five.
+
+### Flagged items
+
+1. **TC-MDF-125 was reserved by the planner (test plan §36, v1.48) but not authored** — §36 and the case bodies are written by this lane under the ticket's explicit instruction; **test-planner confirmation pending** (the v1.2/v1.3/v1.45 precedent). §36 sits after §33; the §34/§35 reservations belong to in-flight 094/096 and insert above it (last-lander rebase on the three permanent docs).
+2. **TC-MDF-125 (b) is not red on its own** on the committed bodies (documented in the test's XML doc and above); (c) is its red counterpart. No assertion was weakened to accommodate this.
+3. **CI job coverage not inspected by this lane** — if the repo's PR checks lack lint/typecheck/secrets-scan/dependency-audit, that is foundation-ticket territory; no workflow file was touched.
