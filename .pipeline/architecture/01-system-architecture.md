@@ -2845,6 +2845,33 @@ the same convention TKT-foundation-046 fixed for the VYK directory's `stockCode`
   token) is unchanged by it. The stale dev-stack config override is now redundant; its removal
   is an orchestrator ops step, not a code change here.
 
+**Planner-authored design ruling — the BS block dimension on the label-rule key (2026-10-28,
+recorded here ahead of the lane's landing; rides the statements-view wave's §13.1 v1.5.69 soft
+reservation — TKT-foundation-093, whose amendment round raised the gap; the lane subsumes this
+note into its subsection when it lands).** The FR-report label map's rule key is
+`(StatementType, Label)` only, and BS/IS rows resolve to `DefaultSection` — only the cash-flow
+statement has section resolution. But the balance sheet legitimately repeats labels across its
+current/non-current blocks with different values (coder-verified per committed body:
+`Ticari Alacaklar` ×2, `Ticari Borçlar` ×2, `Kiralama İşlemlerinden Borçlar` ×6,
+`Ertelenmiş Gelirler (…Dışında Kalanlar)` ×2, `Finansal Yatırımlar` ×2, `Ana Ortaklık Payları`
+×2), so a plain 1:1 label→canonical-code map raises `DUPLICATE_LABEL_CONFLICT` and quarantines
+the whole BS row — the honest-quarantine doctrine doing the wrong work. **The ruled design:**
+the label-rule key gains a **BS block dimension** (current/non-current), resolved from the
+capture's own block structure (`DÖNEN VARLIKLAR`/`DURAN VARLIKLAR`/`KISA VADELİ
+YÜKÜMLÜLÜKLER`/`UZUN VADELİ YÜKÜMLÜLÜKLER` anchors) **before label mapping, exactly as CF
+sections are resolved today**, with an **honest fail-safe** when a row's block cannot be
+determined (a named, counted finding; a block-qualified rule never matches an undetermined row;
+never a guessed block). The mechanism is **additive**: a rule without the block qualifier
+matches any block, so every existing single-block rule is unchanged and all landed goldens
+hold. The dimension materializes as **distinct canonical codes** (e.g. `ST_LEASE_LIAB` vs
+`LT_LEASE_LIAB`; the chart extension in `02` §6.1 is the vehicle for the ~40 new codes) —
+serving keeps a flat code→figure map with no block logic of its own. **The rejected
+alternative, recorded with its consequence:** routing repeated families to `OTHER_*` would
+leave the served canonical block mostly empty (the BS is organized in current/non-current
+blocks and the user's statements-view spec structurally requires the ST/LT dimension) —
+rejected. The `TC-MDF-107(b)` invariant (every rule target ∈
+`StatementMapper.CanonicalCodes`) is unaffected: it asserts membership, not registry size.
+
 ## 11. Architecture decision log (summary)
 
 
