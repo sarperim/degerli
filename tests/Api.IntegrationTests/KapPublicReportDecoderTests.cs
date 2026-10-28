@@ -498,13 +498,17 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         var currentBalanceSheet = report.Payload.Statements.Single(
             s => s.StatementType == "BS" && s.PeriodEndDate == CurrentBalanceSheet).Lines;
-        Assert.Equal(47_167_326m, currentBalanceSheet["OTHER_BS_Ticari_Alacaklar"]);
+        // Amended by TKT-foundation-093 (user-approved 2026-10-28): `Ticari Alacaklar` is now
+        // mapped — the map's current-block trade-receivables family — so the same captured
+        // value is asserted under its canonical code. The passthrough proof below uses the
+        // still-unmapped related-party receivable, which keeps the case's meaning intact.
+        Assert.Equal(47_167_326m, currentBalanceSheet["ST_TRADE_RECV"]);
         Assert.Equal(21_831_106m, currentBalanceSheet["OTHER_BS_İlişkili_Taraflardan_Ticari_Alacaklar"]);
 
         // The unmapped passthrough survives the shared mapper unchanged (it is not re-prefixed).
         Assert.Equal(
-            currentBalanceSheet["OTHER_BS_Ticari_Alacaklar"],
-            StatementMapper.Map(currentBalanceSheet)["OTHER_BS_Ticari_Alacaklar"]);
+            currentBalanceSheet["OTHER_BS_İlişkili_Taraflardan_Ticari_Alacaklar"],
+            StatementMapper.Map(currentBalanceSheet)["OTHER_BS_İlişkili_Taraflardan_Ticari_Alacaklar"]);
 
         // The cash-flow statement's non-canonical companions are present and section-scoped.
         var currentCashFlow = report.Payload.Statements.Single(
@@ -515,8 +519,11 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Contains(
             "OTHER_CF_INVESTING_Maddi_Duran_Varlık_Alımından_Kaynaklanan_Nakit_Çıkışları",
             currentCashFlow.Keys);
+        // Amended by TKT-foundation-093 (the same approved re-pin round): the borrowings-inflow
+        // caption is now the canonical `DEBT_ISSUED`, so the financing section's scoped
+        // passthrough proof uses its own total, which stays an OTHER_* companion.
         Assert.Contains(
-            "OTHER_CF_FINANCING_Borçlanmadan_Kaynaklanan_Nakit_Girişleri",
+            "OTHER_CF_FINANCING_FİNANSMAN_FAALİYETLERİNDEN_NAKİT_AKIŞLARI",
             currentCashFlow.Keys);
         Assert.Contains(
             "OTHER_CF_SUMMARY_DÖNEM_BAŞI_NAKİT_VE_NAKİT_BENZERLERİ",
@@ -978,27 +985,21 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     [Fact]
     public void TC_MDF_108_canonical_empty_statement_is_named()
     {
-        var mutated = Mutate(Capture, "Dönem Karı (Zararı)", "Dönem Sonucu (Yeniden Adlandırıldı)");
-        mutated = Mutate(
-            mutated,
-            "İŞLETME FAALİYETLERİNDEN NAKİT AKIŞLARI",
-            "İşletme Faaliyetleri (Yeniden Adlandırıldı)");
-        mutated = Mutate(
-            mutated,
-            "Maddi ve Maddi Olmayan Duran Varlıkların Alımından Kaynaklanan Nakit Çıkışları",
-            "Duran Varlık Alım Çıkışları (Yeniden Adlandırıldı)");
-        mutated = Mutate(
-            mutated,
-            "İşletme Sermayesinde Gerçekleşen Değişimler",
-            "İşletme Sermayesi Değişimi (Yeniden Adlandırıldı)");
-        mutated = Mutate(
-            mutated,
-            "Amortisman ve İtfa Gideri İle İlgili Düzeltmeler",
-            "Amortisman Düzeltmesi (Yeniden Adlandırıldı)");
-        mutated = Mutate(
-            mutated,
-            "DÖNEM SONU NAKİT VE NAKİT BENZERLERİ",
-            "DÖNEM SONU NAKİT (Yeniden Adlandırıldı)");
+        // Rewrite every cash-flow label the map knows (both projections) — the set grows with
+        // the map by construction, so a newly mapped CF caption can never leave a canonical
+        // line behind (amended by TKT-foundation-093, user-approved 2026-10-28).
+        var mutated = Capture;
+
+        foreach (var rule in KapPublicReportDecoder.LabelMap
+                     .Concat(KapPublicReportDecoder.ScopedLabelMap)
+                     .Where(rule => rule.StatementType == "CF")
+                     .OrderBy(rule => rule.Label, StringComparer.Ordinal))
+        {
+            if (mutated.Contains(rule.Label, StringComparison.Ordinal))
+            {
+                mutated = Mutate(mutated, rule.Label, rule.Label + " (Yeniden Adlandırıldı)");
+            }
+        }
 
         var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
 
@@ -1184,15 +1185,27 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         // The consumer's own arithmetic (`DcfBaselineGenerationJob`: debt = ST_DEBT + LT_DEBT).
         Assert.Equal(37_385_875_000m, lines["ST_DEBT"] + lines["LT_DEBT"]);
 
-        // Financial borrowings only: the canonical surfaces of this balance sheet are exactly
-        // the six mapped codes — trade payables and operating liabilities never became debt.
+        // Financial borrowings only: `ST_DEBT`/`LT_DEBT` remain exactly the two borrowings
+        // lines — trade payables and operating liabilities are their own canonical families
+        // (TKT-foundation-093), never debt. The canonical surface list is amended accordingly
+        // (user-approved 2026-10-28).
         Assert.Equal(
-            new[] { "CASH", "CUR_ASSETS", "CUR_LIAB", "LT_DEBT", "ST_DEBT", "TOTAL_EQUITY" },
+            new[]
+            {
+                "CASH", "CUR_ASSETS", "CUR_ASSETS_OTHER", "CUR_LIAB", "CUR_LIAB_OTHER",
+                "EQUITY_PARENT", "GOODWILL", "INTANGIBLES_NET", "INVENTORY", "LT_DEBT",
+                "LT_DEFERRED_REV", "MINORITY_INT", "NONCUR_ASSETS_OTHER", "NONCUR_LIAB_OTHER",
+                "PAID_IN_CAPITAL", "PPE_NET", "RETAINED_EARNINGS", "ROU_ASSET", "ST_DEBT",
+                "ST_DEFERRED_REV", "ST_TRADE_PAY", "ST_TRADE_RECV", "TOTAL_ASSETS",
+                "TOTAL_EQUITY", "TOTAL_LIAB",
+            },
             lines.Keys
                 .Where(code => StatementMapper.CanonicalCodes.Contains(code))
                 .OrderBy(code => code, StringComparer.Ordinal)
                 .ToArray());
-        Assert.Equal(105_513_256_000m, lines["OTHER_BS_Ticari_Borçlar"]);
+        // Amended by TKT-foundation-093: trade payables are now their own canonical family,
+        // not an OTHER_* companion.
+        Assert.Equal(105_513_256_000m, lines["ST_TRADE_PAY"]);
 
         // The current portion of long-term borrowings is a presentation line of its own: kept
         // and labelled, never merged into ST_DEBT (the recorded, routed gap — a split or an
@@ -1278,9 +1291,11 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Null(balanceSheet.ConflictingItemCodes);
         Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
 
-        // 7 repeated balance-sheet labels + 4 repeated income-statement labels, each in the
-        // current and the comparative column (the fourth `Türev Araçlar` worth two).
-        Assert.Equal(22, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
+        // Amended by TKT-foundation-093 (user-approved 2026-10-28): the block dimension now
+        // places the repeated trade payables/deferred revenue/equity families on their own
+        // canonical codes instead of disambiguating them as `OTHER_*` — the surviving
+        // repetitions are the still-unmapped families, so the count is 18.
+        Assert.Equal(18, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
 
         // `ARA TOPLAM` is the current-block subtotal and the liabilities-block subtotal: two
         // real lines with different values, both kept.
@@ -1300,7 +1315,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Contains(findings, f => f.Label == "ARA TOPLAM"
             && f.Detail.Contains("OTHER_BS_ARA_TOPLAM_2", StringComparison.Ordinal));
         Assert.All(findings, f => Assert.Equal(1, f.Count));
-        Assert.Equal(22, findings.Count);
+        Assert.Equal(18, findings.Count);
 
         // A disambiguated code is never a canonical code, and the same body always produces
         // the same codes.
@@ -1337,7 +1352,10 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         // One conflict per column (current and comparative), each retaining both values.
         Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
-        Assert.Equal(42, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
+        // Amended by TKT-foundation-093 (collateral of the same approved re-pin round): the
+        // mapped repeated families no longer disambiguate as `OTHER_*`, leaving 34 — the
+        // conflict this case pins is untouched.
+        Assert.Equal(34, report.Count(KapPublicReportReasons.DuplicateLabelDisambiguated));
 
         var income = report.Payload.Statements.Single(
             s => s.StatementType == "IS" && s.PeriodEndDate == capture.CurrentFlow);
@@ -1434,6 +1452,438 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
 
         // Still a function: one entry per (statement, label).
         Assert.Equal(map.Count, map.Select(r => (r.StatementType, r.Label)).Distinct().Count());
+    }
+
+    // =================================================================================
+    // TC-MDF-122 — the statements-view label map: the industrial row set, the row scope
+    // dimension (balance-sheet block, income-statement part, cash-flow block) and the
+    // Konsolide/Solo filing flag (TKT-foundation-093, test plan §33)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-122 (a) — the map is evidence-bound in <b>both</b> projections and stays a
+    /// function. Every unqualified entry is still one per <c>(statement, label)</c>; every
+    /// scope-qualified entry names one of the closed <see cref="KapPublicScopes"/> /
+    /// <see cref="KapPublicSections"/> scopes, one per <c>(statement, label, scope)</c>, and
+    /// every entry — qualified or not — names a committed capture whose body carries the exact
+    /// spelling and targets a code in <see cref="StatementMapper.CanonicalCodes"/>.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_the_map_is_evidence_bound_in_both_projections_and_stays_a_function()
+    {
+        var unqualified = KapPublicReportDecoder.LabelMap;
+        var scoped = KapPublicReportDecoder.ScopedLabelMap;
+
+        var scopeVocabulary = new[]
+        {
+            KapPublicScopes.Current,
+            KapPublicScopes.NonCurrent,
+            KapPublicScopes.ProfitOrLoss,
+            KapPublicScopes.OtherComprehensiveIncome,
+            KapPublicSections.CashFlowOperating,
+            KapPublicSections.CashFlowInvesting,
+            KapPublicSections.CashFlowFinancing,
+            KapPublicSections.CashFlowSummary,
+        };
+
+        Assert.NotEmpty(scoped);
+        foreach (var rule in scoped)
+        {
+            Assert.NotNull(rule.Scope);
+            Assert.Contains(rule.Scope!, scopeVocabulary);
+            Assert.Contains(rule.Provenance, KapPublicReportDecoder.CaptureNames);
+            Assert.True(
+                CaptureBodies.TryGetValue(rule.Provenance, out var body),
+                $"scoped rule cites '{rule.Provenance}', which is not a committed capture body");
+            Assert.Contains(rule.Label, body!, StringComparison.Ordinal);
+            Assert.Contains(rule.ItemCode, StatementMapper.CanonicalCodes);
+        }
+
+        foreach (var rule in unqualified)
+        {
+            Assert.Null(rule.Scope);
+        }
+
+        // Both projections are functions on their own keys, and their union has no duplicate.
+        Assert.Equal(unqualified.Count, unqualified.Select(r => (r.StatementType, r.Label)).Distinct().Count());
+        Assert.Equal(scoped.Count, scoped.Select(r => (r.StatementType, r.Label, r.Scope)).Distinct().Count());
+        Assert.Equal(
+            unqualified.Count + scoped.Count,
+            unqualified.Concat(scoped).Select(r => (r.StatementType, r.Label, r.Scope)).Distinct().Count());
+
+        // The view's row families are all present — the red case is their absence, so this is
+        // the green surface: every target code the statements view needs is in the map, and
+        // every one of them is a canonical code (never rewritten to OTHER_* on write).
+        var mappedCodes = unqualified.Concat(scoped).Select(r => r.ItemCode).ToHashSet(StringComparer.Ordinal);
+        foreach (var code in new[]
+                 {
+                     "INVENTORY", "PPE_NET", "ROU_ASSET", "INTANGIBLES_NET", "GOODWILL",
+                     "ST_TRADE_RECV", "LT_TRADE_RECV", "ST_TRADE_PAY", "LT_TRADE_PAY",
+                     "ST_LEASE_LIAB", "LT_LEASE_LIAB", "ST_DEFERRED_REV", "LT_DEFERRED_REV",
+                     "RETAINED_EARNINGS", "MINORITY_INT", "PAID_IN_CAPITAL", "TOTAL_ASSETS",
+                     "TOTAL_LIAB", "EQUITY_PARENT", "CUR_ASSETS_OTHER", "CUR_LIAB_OTHER",
+                     "NONCUR_ASSETS_OTHER", "NONCUR_LIAB_OTHER",
+                     "RND", "OP_INCOME_OTHER", "OP_EXPENSE_OTHER", "INVEST_INCOME",
+                     "INVEST_EXPENSE", "FIN_INCOME", "NET_MONETARY_GL", "NI_PARENT",
+                     "IMPAIRMENT", "PROVISIONS", "MONETARY_ADJ", "ASSET_SALE_PROCEEDS",
+                     "ACQUISITION_CASH", "EQUITY_ISSUE_CASH", "BUYBACK", "DIVIDENDS_PAID",
+                     "INTEREST_PAID", "DEBT_ISSUED", "DEBT_REPAID",
+                 })
+        {
+            Assert.Contains(code, mappedCodes);
+            Assert.Contains(code, StatementMapper.CanonicalCodes);
+        }
+
+        // The block dimension is what the repeated balance-sheet families are keyed by.
+        Assert.Contains(scoped, r => r is
+        {
+            StatementType: "BS", Label: "Kiralama İşlemlerinden Borçlar", ItemCode: "ST_LEASE_LIAB",
+            Scope: KapPublicScopes.Current,
+        });
+        Assert.Contains(scoped, r => r is
+        {
+            StatementType: "BS", Label: "Kiralama İşlemlerinden Borçlar", ItemCode: "LT_LEASE_LIAB",
+            Scope: KapPublicScopes.NonCurrent,
+        });
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (b) — the THYAO 2025 Yıllık balance sheet decodes the statements view's
+    /// industrial row set onto canonical codes with the report's own values. The body is the
+    /// committed bounded-trim capture (<c>kap-public-report-1565996</c>, <c>1.000.000 TL</c>),
+    /// and the figures are the capture's raw integers in millions.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_thyao_balance_sheet_maps_the_industrial_row_set()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao], "THYAO");
+
+        Assert.Equal(2025, report.Header.Year);
+        Assert.Equal(4, report.Header.Period);
+        Assert.Equal("Yıllık", report.Header.PeriodType);
+        Assert.Equal("1.000.000 TL", report.Header.PresentationUnit);
+        Assert.Equal(6, report.Payload.Statements.Count);
+
+        var balanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Equal("FY", balanceSheet.PeriodType);
+        Assert.Null(balanceSheet.ConflictingItemCodes);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+
+        // Current-period figures, million TL, as the capture's own raw attributes carry them.
+        Assert.Equal(45_791m, balanceSheet.Lines["ST_TRADE_RECV"]);   // Ticari Alacaklar
+        Assert.Equal(41_472m, balanceSheet.Lines["INVENTORY"]);       // Stoklar
+        Assert.Equal(362_618m, balanceSheet.Lines["PPE_NET"]);        // Maddi Duran Varlıklar
+        Assert.Equal(847_758m, balanceSheet.Lines["ROU_ASSET"]);      // Kullanım Hakkı Varlıkları
+        Assert.Equal(8_867m, balanceSheet.Lines["INTANGIBLES_NET"]);  // Maddi Olmayan Duran Varlıklar
+        Assert.Equal(1_145m, balanceSheet.Lines["GOODWILL"]);         // Şerefiye
+        Assert.Equal(86_152m, balanceSheet.Lines["ST_LEASE_LIAB"]);   // Kiralama İşlemlerinden Borçlar
+        Assert.Equal(552_824m, balanceSheet.Lines["LT_LEASE_LIAB"]);
+        Assert.Equal(78_640m, balanceSheet.Lines["ST_TRADE_PAY"]);    // Ticari Borçlar
+        Assert.Equal(151_257m, balanceSheet.Lines["ST_DEFERRED_REV"]); // Ertelenmiş Gelirler (…)
+        Assert.Equal(3_240m, balanceSheet.Lines["LT_DEFERRED_REV"]);
+        Assert.Equal(332_426m, balanceSheet.Lines["RETAINED_EARNINGS"]); // Geçmiş Yıllar Karları veya Zararları
+        Assert.Equal(1_380m, balanceSheet.Lines["PAID_IN_CAPITAL"]);  // Ödenmiş Sermaye
+        Assert.Equal(34m, balanceSheet.Lines["MINORITY_INT"]);        // Kontrol Gücü Olmayan Paylar
+        Assert.Equal(1_996_745m, balanceSheet.Lines["TOTAL_ASSETS"]);
+        Assert.Equal(1_085_489m, balanceSheet.Lines["TOTAL_LIAB"]);
+        Assert.Equal(911_222m, balanceSheet.Lines["EQUITY_PARENT"]);
+        Assert.Equal(12_378m, balanceSheet.Lines["CUR_ASSETS_OTHER"]);   // Diğer Dönen Varlıklar
+        Assert.Equal(4_746m, balanceSheet.Lines["CUR_LIAB_OTHER"]);      // Diğer Kısa Vadeli Yükümlülükler
+        Assert.Equal(13_528m, balanceSheet.Lines["NONCUR_LIAB_OTHER"]);  // Diğer Uzun Vadeli Yükümlülükler
+
+        // The 088 core is unchanged by the expansion.
+        Assert.Equal(86_035m, balanceSheet.Lines["CASH"]);
+        Assert.Equal(70_069m, balanceSheet.Lines["ST_DEBT"]);
+        Assert.Equal(601_817m, balanceSheet.Lines["LT_DEBT"]);
+        Assert.Equal(436_412m, balanceSheet.Lines["CUR_ASSETS"]);
+        Assert.Equal(442_076m, balanceSheet.Lines["CUR_LIAB"]);
+        Assert.Equal(911_256m, balanceSheet.Lines["TOTAL_EQUITY"]);
+
+        // Every decoded canonical code is a registry code — nothing is rewritten on write.
+        Assert.All(
+            balanceSheet.Lines.Keys.Where(code => !code.StartsWith("OTHER_", StringComparison.Ordinal)),
+            code => Assert.Contains(code, StatementMapper.CanonicalCodes));
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (c) — the block dimension is load-bearing: a caption the balance sheet
+    /// repeats across its current and non-current blocks maps to <b>distinct</b> canonical
+    /// codes per block, with no <c>DUPLICATE_LABEL_CONFLICT</c> and nothing quarantined. The
+    /// ASELSAN 2025 Yıllık body carries both blocks of trade receivables (38.859.628 current /
+    /// 87.944.574 non-current) and trade payables (37.964.626 / 24.432, thousand TL).
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_the_block_dimension_maps_repeated_balance_sheet_labels_per_block()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportAselsAnnual], "ASELS");
+
+        var balanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        Assert.Null(balanceSheet.ConflictingItemCodes);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+
+        Assert.Equal(38_859_628m, balanceSheet.Lines["ST_TRADE_RECV"]);
+        Assert.Equal(87_944_574m, balanceSheet.Lines["LT_TRADE_RECV"]);
+        Assert.Equal(37_964_626m, balanceSheet.Lines["ST_TRADE_PAY"]);
+        Assert.Equal(24_432m, balanceSheet.Lines["LT_TRADE_PAY"]);
+
+        // The pair really is two blocks of one caption, not two spellings.
+        Assert.DoesNotContain("OTHER_BS_Ticari_Alacaklar", balanceSheet.Lines.Keys);
+        Assert.DoesNotContain("OTHER_BS_Ticari_Borçlar", balanceSheet.Lines.Keys);
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (d) — the honest fail-safe: when a valued row's balance-sheet block cannot be
+    /// determined from the capture's own anchors, a block-qualified entry never matches it. The
+    /// value stays a section-scoped <c>OTHER_*</c> passthrough and the miss is a named, counted
+    /// <c>BLOCK_UNDETERMINED</c> finding — never a guessed block. Derived from the committed
+    /// ASELS 2026-06 capture by renaming its only block anchor.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_an_undetermined_block_is_named_and_never_guessed()
+    {
+        var mutated = Mutate(Capture, "DÖNEN VARLIKLAR", "DÖNEN KISIM (Yeniden Adlandırıldı)");
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        var currentBalanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == CurrentBalanceSheet);
+
+        // No block-qualified code is guessed into the row …
+        Assert.DoesNotContain("ST_TRADE_RECV", currentBalanceSheet.Lines.Keys);
+        Assert.Equal(47_167_326m, currentBalanceSheet.Lines["OTHER_BS_Ticari_Alacaklar"]);
+
+        // … the unqualified entries still match (the fail-safe only touches block-qualified
+        // rows), so the statement keeps its canonical coverage …
+        Assert.Equal(39_468_926m, currentBalanceSheet.Lines["CASH"]);
+
+        // … and the miss is counted once for the row, naming it.
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.BlockUndetermined);
+        Assert.Equal(1, finding.Count);
+        Assert.Equal("BS", finding.StatementType);
+        Assert.Equal("Ticari Alacaklar", finding.Label);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (e) — the additive design's backward compatibility: a qualifier-free rule
+    /// still matches in either block, and the 088/090/091/092 goldens hold. The ASELS 2026-06
+    /// capture keeps its exact line counts and its unmapped passthroughs, and the TÜPRAŞ
+    /// debt/cash core is unchanged — only the newly mapped families changed code.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_qualifier_free_rules_match_every_block_and_the_goldens_hold()
+    {
+        var report = KapPublicReportDecoder.Decode(Capture, "ASELS");
+
+        Assert.Equal(116, report.Lines.Count);
+        Assert.Equal(4, report.LinesFor("BS", CurrentBalanceSheet).Count);
+        Assert.Equal(4, report.LinesFor("BS", PriorBalanceSheet).Count);
+        Assert.Equal(3, report.LinesFor("IS", CurrentYearToDate).Count);
+        Assert.Equal(3, report.LinesFor("IS", PriorYearToDate).Count);
+        Assert.Equal(51, report.LinesFor("CF", CurrentYearToDate).Count);
+        Assert.Equal(51, report.LinesFor("CF", PriorYearToDate).Count);
+
+        var currentBalanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == CurrentBalanceSheet).Lines;
+
+        // `CASH` is an unqualified rule: it maps in the current block here …
+        Assert.Equal(39_468_926m, currentBalanceSheet["CASH"]);
+        // … and the still-unmapped related-party receivable stays a labelled passthrough.
+        Assert.Equal(21_831_106m, currentBalanceSheet["OTHER_BS_İlişkili_Taraflardan_Ticari_Alacaklar"]);
+
+        var tuprs = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportTuprs], "TUPRS");
+        Assert.Equal(346, tuprs.Lines.Count);
+        var tuprsBalanceSheet = tuprs.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31)).Lines;
+        Assert.Equal(107_237_211m, tuprsBalanceSheet["CASH"]);
+        Assert.Equal(8_957_100m, tuprsBalanceSheet["ST_DEBT"]);
+        Assert.Equal(28_428_775m, tuprsBalanceSheet["LT_DEBT"]);
+        Assert.Equal(369_827_994m, tuprsBalanceSheet["TOTAL_EQUITY"]);
+        Assert.Equal(236_931_136m, tuprsBalanceSheet["CUR_ASSETS"]);
+        Assert.Equal(169_748_201m, tuprsBalanceSheet["CUR_LIAB"]);
+        Assert.Equal(0, tuprs.Count(KapPublicReportReasons.DuplicateLabelConflict));
+
+        var mgros = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportMgros], "MGROS");
+        Assert.Equal(314, mgros.Lines.Count);
+        Assert.Equal(0, mgros.Count(KapPublicReportReasons.DuplicateLabelConflict));
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (f) — the income-statement part dimension: THYAO 2025 repeats
+    /// <c>Ana Ortaklık Payları</c> in its profit-or-loss (118.208) and other-comprehensive-
+    /// income (241.065) parts. Only the profit-or-loss occurrence is the parent's net income
+    /// (<c>NI_PARENT</c>); the OCI occurrence stays a labelled passthrough, and the statement's
+    /// own <c>NI</c> keeps its total meaning.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_the_income_statement_part_dimension_keeps_the_parent_net_income_distinct()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao], "THYAO");
+
+        var income = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Null(income.ConflictingItemCodes);
+
+        Assert.Equal(118_117m, income.Lines["NI"]);        // total period profit
+        Assert.Equal(118_208m, income.Lines["NI_PARENT"]); // profit attributable to the parent
+        Assert.Equal(241_065m, income.Lines["OTHER_IS_Ana_Ortaklık_Payları"]); // the OCI occurrence
+
+        // The other income-statement families the view needs.
+        Assert.Equal(30_134m, income.Lines["OP_INCOME_OTHER"]);
+        Assert.Equal(-3_540m, income.Lines["OP_EXPENSE_OTHER"]);
+        Assert.Equal(57_072m, income.Lines["INVEST_INCOME"]);
+        Assert.Equal(-2_639m, income.Lines["INVEST_EXPENSE"]);
+        Assert.Equal(30_150m, income.Lines["FIN_INCOME"]);
+        Assert.Equal(-41_809m, income.Lines["FIN_EXP"]);
+        Assert.Equal(79m, income.Lines["NET_MONETARY_GL"]);
+
+        // R&D is evidenced by the ASELSAN annual body.
+        var asels = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportAselsAnnual], "ASELS");
+        var aselsIncome = asels.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Equal(-6_252_189m, aselsIncome.Lines["RND"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (g) — the cash-flow detail lines the view needs, block-scoped: THYAO 2025's
+    /// operating adjustments, asset-sale proceeds, equity issuance/buyback, dividends, cash
+    /// interest and borrowings movement all land on their own canonical codes.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_cash_flow_detail_lines_map_to_canonical_codes()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao], "THYAO");
+
+        var cashFlow = report.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Null(cashFlow.ConflictingItemCodes);
+
+        Assert.Equal(185_813m, cashFlow.Lines["OCF"]);
+        Assert.Equal(118_117m, cashFlow.Lines["NI"]);
+        Assert.Equal(94_682m, cashFlow.Lines["DEPR_AMORT"]);
+        Assert.Equal(0m, cashFlow.Lines["IMPAIRMENT"]);
+        Assert.Equal(7_605m, cashFlow.Lines["PROVISIONS"]);
+        Assert.Equal(-7_523m, cashFlow.Lines["ΔWC"]);
+        Assert.Equal(3_301m, cashFlow.Lines["ASSET_SALE_PROCEEDS"]);
+        Assert.Equal(-80_117m, cashFlow.Lines["CAPEX"]);
+        Assert.Equal(0m, cashFlow.Lines["EQUITY_ISSUE_CASH"]);
+        Assert.Equal(-273m, cashFlow.Lines["BUYBACK"]);
+        Assert.Equal(183_574m, cashFlow.Lines["DEBT_ISSUED"]);
+        Assert.Equal(-147_173m, cashFlow.Lines["DEBT_REPAID"]);
+        Assert.Equal(-8_951m, cashFlow.Lines["DIVIDENDS_PAID"]);
+        Assert.Equal(-12_129m, cashFlow.Lines["INTEREST_PAID"]);
+        Assert.Equal(83_183m, cashFlow.Lines["CASH"]);
+
+        // The monetary-adjustment line is evidenced by the TÜPRAŞ annual body.
+        var tuprs = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportTuprs], "TUPRS");
+        var tuprsCashFlow = tuprs.Payload.Statements.Single(
+            s => s.StatementType == "CF" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Equal(11_449_200m, tuprsCashFlow.Lines["MONETARY_ADJ"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (h) — the filing flag: <c>KapPublicReport.Consolidated</c> derives from the
+    /// header-table field <c>Finansal Tablo Niteliği</c> — <c>Konsolide</c> → true,
+    /// <c>Solo</c> → false, absent or any other value → honest null (never inferred from the
+    /// company heading or from minority interests).
+    /// </summary>
+    [Fact]
+    public void TC_MDF_122_the_filing_flag_decodes_konsolide_solo_and_absent_to_null()
+    {
+        var consolidated = KapPublicReportDecoder.Decode(Capture, "ASELS");
+        Assert.Equal("Konsolide", consolidated.Header.ConsolidationType);
+        Assert.True(consolidated.Consolidated);
+
+        var thyao = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao], "THYAO");
+        Assert.True(thyao.Consolidated);
+
+        var solo = KapPublicReportDecoder.Decode(Mutate(Capture, "Konsolide", "Solo"), "ASELS");
+        Assert.Equal("Solo", solo.Header.ConsolidationType);
+        Assert.False(solo.Consolidated);
+
+        var other = KapPublicReportDecoder.Decode(Mutate(Capture, "Konsolide", "Bireysel"), "ASELS");
+        Assert.Null(other.Consolidated);
+
+        var absent = KapPublicReportDecoder.Decode(
+            Mutate(Capture, "Finansal Tablo Niteliği", "Finansal Tablo Türü"), "ASELS");
+        Assert.Null(absent.Header.ConsolidationType);
+        Assert.Null(absent.Consolidated);
+    }
+
+    /// <summary>
+    /// TC-MDF-122 (i) — every new canonical code survives <see cref="StatementMapper.Map"/> and
+    /// reaches <c>fin_line_items</c> under its own name (not rewritten to <c>OTHER_*</c>),
+    /// normalized to single TL by the store's own scale (the THYAO capture declares
+    /// <c>1.000.000 TL</c>). The decode→store path is the production one.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_122_the_expanded_canonical_rows_store_end_to_end()
+    {
+        var capture = "THYAO";
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao], capture);
+
+        // The mapper keeps the canonical codes verbatim.
+        var decodedBalanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31)).Lines;
+        var mapped = StatementMapper.Map(decodedBalanceSheet);
+        Assert.Equal(decodedBalanceSheet["ST_LEASE_LIAB"], mapped["ST_LEASE_LIAB"]);
+        Assert.Equal(decodedBalanceSheet["INVENTORY"], mapped["INVENTORY"]);
+
+        var (store, instrumentId) = await StoreAsync(capture);
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 3, 4, 18, 55, 17, TimeSpan.Zero),
+            report.Payload);
+        Assert.Equal(6, result.Inserted);
+        Assert.Equal(0, result.Unchanged);
+        Assert.Empty(result.RejectedReasonCodes);
+
+        await using var db = _postgres.CreateContext();
+        var balanceSheet = await db.FinancialStatements.SingleAsync(
+            s => s.InstrumentId == instrumentId
+                 && s.StatementType == "BS"
+                 && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Equal("FY", balanceSheet.PeriodType);
+        Assert.Equal("millions", balanceSheet.SourceUnitScale);
+
+        var lines = await db.FinLineItems
+            .Where(l => l.StatementId == balanceSheet.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
+
+        // Million TL × 1.000.000 (the store's single-TL normalization, 02 §3.1).
+        Assert.Equal(86_152_000_000m, lines["ST_LEASE_LIAB"]);
+        Assert.Equal(552_824_000_000m, lines["LT_LEASE_LIAB"]);
+        Assert.Equal(45_791_000_000m, lines["ST_TRADE_RECV"]);
+        Assert.Equal(41_472_000_000m, lines["INVENTORY"]);
+        Assert.Equal(362_618_000_000m, lines["PPE_NET"]);
+        Assert.Equal(847_758_000_000m, lines["ROU_ASSET"]);
+        Assert.Equal(1_145_000_000m, lines["GOODWILL"]);
+        Assert.Equal(1_996_745_000_000m, lines["TOTAL_ASSETS"]);
+        Assert.Equal(34_000_000m, lines["MINORITY_INT"]);
+
+        var income = await db.FinancialStatements.SingleAsync(
+            s => s.InstrumentId == instrumentId
+                 && s.StatementType == "IS"
+                 && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        var incomeLines = await db.FinLineItems
+            .Where(l => l.StatementId == income.Id)
+            .ToDictionaryAsync(l => l.ItemCode, l => l.Value);
+        Assert.Equal(118_208_000_000m, incomeLines["NI_PARENT"]);
+        Assert.Equal(118_117_000_000m, incomeLines["NI"]);
     }
 
     // =================================================================================
