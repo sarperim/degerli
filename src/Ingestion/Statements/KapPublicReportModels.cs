@@ -448,12 +448,15 @@ public static class KapPublicReportReasons
     /// The income-statement analogue of <see cref="BlockUndetermined"/> (TKT-foundation-098,
     /// DR-5): a valued row carries a caption the map places only through a part-qualified
     /// entry, while the row's <b>profit-or-loss / other-comprehensive-income part</b> is not
-    /// determined — the table's own heading attests neither part, or (the <b>stale</b> case) the
-    /// statement already holds that caption's part-qualified code with a different value and the
-    /// capture declares no anchor for the other part. The row keeps its section-scoped
-    /// <c>OTHER_*</c> passthrough and is named once, counted per row — never a silently defaulted
-    /// part, and never a whole-row <c>DUPLICATE_LABEL_CONFLICT</c> quarantine where the scope
-    /// dimension already disambiguates the two occurrences.
+    /// determined — either the table's own heading attests neither part, or (the <b>stale</b>
+    /// case) the statement already holds that caption's part-qualified code with a different
+    /// value while a row between the two occurrences attests the other part, so the part moved
+    /// without a readable anchor. The row keeps its section-scoped <c>OTHER_*</c> passthrough and
+    /// is named once, counted per row — never a silently defaulted part, and never a whole-row
+    /// <c>DUPLICATE_LABEL_CONFLICT</c> quarantine where the scope dimension already disambiguates
+    /// the two occurrences. A caption repeated with an unequal value <b>inside</b> its own part
+    /// (no such attesting row between the occurrences) is <b>not</b> this case: it still
+    /// quarantines the statement row (review round 1, DR-01).
     /// </summary>
     public const string PartUndetermined = "PART_UNDETERMINED";
 }

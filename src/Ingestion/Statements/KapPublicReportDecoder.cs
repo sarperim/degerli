@@ -587,6 +587,15 @@ public static class KapPublicReportDecoder
             ? "Q"
             : StatementPeriodTypeFor(header.Period);
 
+        // Stale-part evidence for the income statement's part fallback (TKT-foundation-098,
+        // DR-5 (ii); tightened in review round 1, DR-01). `rowSequence` counts every row of
+        // every table in this report, so "the capture attested the other part between these two
+        // occurrences" is an ordering question with one monotonic counter; `firstStoredAt`
+        // records, per statement row and item code, where that code first appeared.
+        var firstStoredAt = new Dictionary<Group, Dictionary<string, long>>();
+        var rowSequence = 0L;
+        var otherPartAttestedAt = -1L;
+
         // Phase 2 — decode the value cells of every table whose heading and columns resolved.
         foreach (var decode in decodes)
         {
@@ -645,6 +654,16 @@ public static class KapPublicReportDecoder
                 // scopes are read from — so the label is read before the value-cell guard.
                 var labelCell = row.QuerySelector(TitleCellSelector);
                 var rowLabel = labelCell is null ? null : LabelOf(labelCell);
+
+                rowSequence++;
+                if (statementType == "IS" && AttestsOtherComprehensiveIncomePart(rowLabel))
+                {
+                    // A row that names comprehensive income or a reclassification is the
+                    // capture's own evidence that the statement moves into the other part —
+                    // even when the anchor's wording is one this decoder cannot read, which is
+                    // exactly the case the stale-part fallback exists for (DR-01).
+                    otherPartAttestedAt = rowSequence;
+                }
 
                 switch (statementType)
                 {
@@ -766,25 +785,53 @@ public static class KapPublicReportDecoder
                     // does not declare, the other-comprehensive-income occurrence of a
                     // part-qualified caption would collide with its profit-or-loss code and
                     // quarantine the whole statement row (the v1.5.62 failure mode through the
-                    // front door). The map's own evidence already disambiguates — a caption with
-                    // a part-qualified entry belongs to more than one part, so a second unequal
-                    // occurrence cannot be the same line. It falls back to its section-scoped
-                    // passthrough and is named, per row, instead (TKT-foundation-098, DR-5).
+                    // front door). It falls back to its section-scoped passthrough and is named,
+                    // per row, instead (TKT-foundation-098, DR-5).
+                    //
+                    // That tolerance is only for a genuinely stale part, never for a duplicate
+                    // inside the part the row is already in (review round 1, DR-01). The scope
+                    // state alone cannot tell the two apart — it is a forward-filled value, so a
+                    // stale OCI row and a second profit-or-loss row both report <c>PL</c> — so
+                    // the capture's own rows are asked instead: the fallback fires only when a
+                    // row that attests the <b>other</b> part sits between the occurrence already
+                    // stored and this one, i.e. the statement announced the part boundary and
+                    // only the anchor's wording was unreadable. A caption repeated with an
+                    // unequal value inside its own part has no such row between the two, so it
+                    // still reaches <see cref="Group.Add"/> and still quarantines the statement
+                    // row as CONFLICTING_VALUE.
                     if (statementType == "IS"
                         && scope is not null
                         && HasScopedRule(statementType, label)
+                        && StatementMapper.CanonicalCodes.Contains(itemCode)
                         && group.Lines.TryGetValue(itemCode, out var taken)
-                        && taken != value)
+                        && taken != value
+                        && firstStoredAt.TryGetValue(group, out var storedInGroup)
+                        && storedInGroup.TryGetValue(itemCode, out var firstSeenAt)
+                        && otherPartAttestedAt > firstSeenAt)
                     {
                         itemCode = MapCode(statementType, section, null, label);
                         stalePart = true;
                     }
 
-                    if (group.Add(itemCode, value, label, findings, out var storedCode) == GroupOutcome.Collapsed)
+                    var outcome = group.Add(itemCode, value, label, findings, out var storedCode);
+                    if (outcome == GroupOutcome.Collapsed)
                     {
                         // An equal duplicate is one line, not two: the provenance record follows
                         // the payload, so a collapsed value is not counted twice here either.
                         continue;
+                    }
+
+                    if (outcome != GroupOutcome.Conflicted)
+                    {
+                        // Where each stored code first appeared, in row order — the other half of
+                        // the stale-part discriminator above (DR-01). A conflicted code is never
+                        // stored, so it has no first occurrence to record.
+                        if (!firstStoredAt.TryGetValue(group, out var seenInGroup))
+                        {
+                            firstStoredAt[group] = seenInGroup = new Dictionary<string, long>(StringComparer.Ordinal);
+                        }
+
+                        seenInGroup.TryAdd(storedCode, rowSequence);
                     }
 
                     lines.Add(new KapPublicLine(
@@ -840,9 +887,10 @@ public static class KapPublicReportDecoder
                         1,
                         $"{tableClass} '{heading}' row {rowOrder.ToString(CultureInfo.InvariantCulture)} '{label}': "
                         + "the caption carries a part-qualified entry that this statement already holds with a "
-                        + "different value, and the capture declares no anchor for the other part — the row's part "
-                        + "is undetermined, so it stays a section-scoped OTHER_* passthrough and the statement row "
-                        + "is not quarantined for it.",
+                        + "different value, and the capture attests the other part between the two occurrences "
+                        + "without an anchor this decoder can read — the second occurrence's part is undetermined, "
+                        + "so it stays a section-scoped OTHER_* passthrough and the statement row is not "
+                        + "quarantined for it.",
                         statementType,
                         label));
                 }
@@ -1436,6 +1484,20 @@ public static class KapPublicReportDecoder
     /// <summary>True when the map carries a scope-qualified entry for this statement+label.</summary>
     private static bool HasScopedRule(string statementType, string label) =>
         ScopedLabelsByStatement.TryGetValue(statementType, out var labels) && labels.Contains(label);
+
+    /// <summary>
+    /// True when a row label is the capture's own evidence that the income statement has moved on
+    /// to its <b>other-comprehensive-income</b> part: KAP's OCI anchors and OCI captions both name
+    /// comprehensive income or a reclassification (<c>Kar veya Zararda Yeniden
+    /// Sınıflandırılmayacaklar</c>, <c>DİĞER KAPSAMLI GELİR (GİDER)</c>, …). Used only as the
+    /// discriminator of the stale-part fallback (TKT-foundation-098, DR-5 (ii), tightened in
+    /// review round 1, DR-01): a re-worded anchor still attests the part by its content even
+    /// though <see cref="IncomeStatementScopeFor"/> matches one exact spelling.
+    /// </summary>
+    private static bool AttestsOtherComprehensiveIncomePart(string? label) =>
+        !string.IsNullOrWhiteSpace(label)
+        && (label.Contains("Kapsamlı Gelir", StringComparison.Ordinal)
+            || label.Contains("Yeniden Sınıflandırıl", StringComparison.Ordinal));
 
     /// <summary>
     /// Maps a label to its canonical code inside its statement and row scope, or to its

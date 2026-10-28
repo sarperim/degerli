@@ -2524,6 +2524,48 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         }
     }
 
+    /// <summary>
+    /// TC-MDF-125 (h) — <b>DR-01: the stale-part tolerance is not a softening of the duplicate
+    /// rule.</b> The ASELSAN annual body is the combined statement TC-MDF-125 (e) mutates. Here the
+    /// profit-or-loss <c>Kontrol Gücü Olmayan Paylar</c> row is re-labelled <c>Ana Ortaklık
+    /// Payları</c>, so the part-qualified caption occurs twice <b>inside its own part</b> with
+    /// unequal values and no row naming the comprehensive-income part between them.
+    /// <para>
+    /// The contract is the ticket's pinned non-goal: the stale-part fallback is only for a part
+    /// that genuinely moved, distinguished by the capture's own rows — so this is a genuine
+    /// unequal duplicate, <c>DUPLICATE_LABEL_CONFLICT</c> stands, <c>ConflictingItemCodes</c> names
+    /// <c>NI_PARENT</c> and the statement row is quarantined. On the pre-fix accepting head the
+    /// collision alone triggered the fallback: both periods' statements were stored with
+    /// <c>ConflictingItemCodes</c> null and two <c>PART_UNDETERMINED</c> findings stood in place of
+    /// the conflict.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_h_an_unequal_same_part_duplicate_still_conflicts_and_quarantines()
+    {
+        var body = Mutate(
+            CaptureBodies[RealSourceCatalog.KapPublicReportAselsAnnual],
+            "Kontrol Gücü Olmayan Paylar",
+            "Ana Ortaklık Payları",
+            occurrence: 1);
+
+        var report = KapPublicReportDecoder.Decode(body, "ASELS");
+
+        // The stale-part tolerance does not fire: the capture attests no other part between the
+        // two occurrences, so this is a repeat inside the part the row already belongs to.
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PartUndetermined));
+
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        // Both values retained, the first kept, and the code named as the conflict: the row is
+        // quarantined, never silently stored beside an OTHER_* passthrough.
+        Assert.Equal(-31_790m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.NotNull(incomeStatement.ConflictingItemCodes);
+        Assert.Contains("NI_PARENT", incomeStatement.ConflictingItemCodes!);
+        Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+    }
+
     // =================================================================================
     // Harness
     // =================================================================================
