@@ -158,7 +158,7 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
         Assert.Equal(T.ToString("yyyy-MM-dd"), ev.GetProperty("marketCap").GetProperty("asOf").GetString());
         Assert.Equal(37_385_875_000m, ev.GetProperty("grossDebt").GetProperty("value").GetDecimal());
         Assert.Equal("2025-12-31", ev.GetProperty("grossDebt").GetProperty("asOf").GetString());
-        Assert.Equal(107_237_211_000m, ev.GetProperty("cashAndShortTermInvestments").GetProperty("value").GetDecimal());
+        Assert.Equal(107_237_211_000m, ev.GetProperty("cash").GetProperty("value").GetDecimal());
         Assert.Equal(5_728_736_000m, ev.GetProperty("minorityInterest").GetProperty("value").GetDecimal());
     }
 
@@ -380,27 +380,48 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
             Assert.NotEmpty(Period(root, "FY", "2025-12-31").GetProperty("lines").GetProperty("BS").EnumerateObject().ToList());
         }
 
-        // A bank profile serves the explicit notice: not applicable, never an error and never a
-        // half-filled industrial table claim.
+        // A bank profile serves the explicit notice *instead of* a row set: not applicable, never
+        // an error, and never a half-filled industrial table — the row-set blocks keep their shape
+        // with every map empty while the compat five figures stay served.
         foreach (var profile in new[] { "bank", "insurance" })
         {
             await SetProfileAsync(instrumentId, profile);
             using var response = await client.GetAsync($"/api/v1/stocks/{Tuprs}/financials");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            var notice = document.RootElement.GetProperty("layoutNotice");
+            var root = document.RootElement;
+            var notice = root.GetProperty("layoutNotice");
             Assert.Equal(profile, notice.GetProperty("accountingProfile").GetString());
             Assert.True(notice.GetProperty("applies").GetBoolean());
             Assert.Equal("not-applicable", notice.GetProperty("state").GetString());
             Assert.Contains("industrial", notice.GetProperty("message").GetString(), StringComparison.Ordinal);
+
+            // No row set is served for the profile: `lines`/`otherLines` are the IS/BS/CF block with
+            // every map empty and `derived` carries no row at all.
+            var period = Period(root, "FY", "2025-12-31");
+            foreach (var statementType in new[] { "IS", "BS", "CF" })
+            {
+                Assert.Empty(period.GetProperty("lines").GetProperty(statementType).EnumerateObject().ToList());
+                Assert.Empty(period.GetProperty("otherLines").GetProperty(statementType).EnumerateObject().ToList());
+            }
+
+            Assert.Empty(period.GetProperty("derived").EnumerateObject().ToList());
+
+            // The compat five figures are untouched by the layout verdict — the payload stays
+            // additive and the five compat figures the pre-ticket client reads remain served.
+            Assert.Equal(830_356_131_000m, period.GetProperty("revenue").GetProperty("value").GetDecimal());
         }
 
-        // A REIT is not a financial-sector profile: it keeps the natural row set.
+        // A REIT is not a financial-sector profile: it keeps the natural row set and no notice.
         await SetProfileAsync(instrumentId, "reit");
         using (var response = await client.GetAsync($"/api/v1/stocks/{Tuprs}/financials"))
         using (var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
-            Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("layoutNotice").ValueKind);
+            var root = document.RootElement;
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("layoutNotice").ValueKind);
+            var reitPeriod = Period(root, "FY", "2025-12-31");
+            Assert.NotEmpty(reitPeriod.GetProperty("lines").GetProperty("BS").EnumerateObject().ToList());
+            Assert.NotEmpty(reitPeriod.GetProperty("derived").EnumerateObject().ToList());
         }
     }
 
@@ -473,12 +494,25 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
         Assert.Equal(stDebt + ltDebt, grossDebt);
         Assert.NotEqual(stDebt + ltDebt + stLease + ltLease, grossDebt);
 
-        Assert.Equal(
-            671_886_000_000m - 86_035_000_000m,
-            fy2025.GetProperty("derived").GetProperty("netDebt").GetProperty("value").GetDecimal());
-        Assert.Equal(
-            911_256_000_000m - 1_145_000_000m - 8_867_000_000m,
-            fy2025.GetProperty("derived").GetProperty("tangibleBookValue").GetProperty("value").GetDecimal());
+        // The net-debt and TBV components are read from the served lines (never hand-written
+        // literals), then cross-checked against the capture's own figures and the [C] rows'
+        // arithmetic — the TC-MDF-118 (a) posture the rest of this file follows.
+        var cash = lines.GetProperty("CASH").GetProperty("value").GetDecimal();
+        var equity = lines.GetProperty("TOTAL_EQUITY").GetProperty("value").GetDecimal();
+        var goodwill = lines.GetProperty("GOODWILL").GetProperty("value").GetDecimal();
+        var intangibles = lines.GetProperty("INTANGIBLES_NET").GetProperty("value").GetDecimal();
+
+        Assert.Equal(86_035_000_000m, cash);
+        Assert.Equal(911_256_000_000m, equity);
+        Assert.Equal(1_145_000_000m, goodwill);
+        Assert.Equal(8_867_000_000m, intangibles);
+
+        var netDebt = fy2025.GetProperty("derived").GetProperty("netDebt").GetProperty("value").GetDecimal();
+        var tbv = fy2025.GetProperty("derived").GetProperty("tangibleBookValue").GetProperty("value").GetDecimal();
+        Assert.Equal(585_851_000_000m, netDebt);
+        Assert.Equal(901_244_000_000m, tbv);
+        Assert.Equal(grossDebt - cash, netDebt);
+        Assert.Equal(equity - goodwill - intangibles, tbv);
     }
 
     // ── Harness ───────────────────────────────────────────────────────────────

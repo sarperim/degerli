@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
+using Degerli.Core.Valuation;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Statements;
@@ -78,13 +79,10 @@ public static class StockFundamentalsEndpoints
         new(StringComparer.Ordinal) { "kap-public", "kap" };
 
     /// <summary>
-    /// The accounting profiles whose statements are not the industrial row set
-    /// (<c>02</c> §6.2 posture): the payload carries the layout notice, never a
-    /// half-filled industrial table. <c>reit</c> and <c>industrial</c> keep the natural rows.
+    /// The layout notice served for a financial-sector accounting profile (<c>02</c> §6.2
+    /// posture). The profile set itself is the shared predicate
+    /// <see cref="DcfSectorApplicability.IsFinancialSector"/> — one definition, not a third copy.
     /// </summary>
-    private static readonly HashSet<string> FinancialSectorProfiles =
-        new(StringComparer.Ordinal) { "bank", "insurance" };
-
     private const string FinancialSectorLayoutNotice =
         "This company reports under a financial-sector accounting profile (bank/insurance): the "
         + "industrial statements layout does not apply. Bank-format statement labels are a later "
@@ -136,6 +134,14 @@ public static class StockFundamentalsEndpoints
     /// transition, KAP Kaynak from the served <c>source_ref</c>), the display-only EV header
     /// facts, and the financial-sector layout notice.
     /// <para>
+    /// <b>A financial-sector profile serves no industrial row set.</b> For
+    /// <c>accounting_profile ∈ {bank, insurance}</c> the period keeps its compat five figures,
+    /// its <c>span</c> and its <c>consolidated</c> flag, but <c>lines</c>/<c>otherLines</c> serve
+    /// the IS/BS/CF block with every map empty and <c>derived</c> serves empty — the layout
+    /// notice is the signal, and no half-filled industrial table is handed to a client
+    /// (<c>reit</c>/<c>industrial</c> keep the natural row set).
+    /// </para>
+    /// <para>
     /// <b>Every [C] row is honest-null on a missing operand</b> (the <c>Line()</c>/<c>Sum()</c>
     /// seam's discipline): a ratio whose denominator is absent or zero, a sum with one absent
     /// addend and a per-share row without a share count serve <c>null</c> + the explicit
@@ -156,6 +162,10 @@ public static class StockFundamentalsEndpoints
         {
             return NotFound(symbol);
         }
+
+        // The financial-sector layout verdict (`02` §6.2), from the one shared predicate the DCF
+        // and the metrics gate already use: no industrial row set is served for these profiles.
+        var financialSectorLayout = DcfSectorApplicability.IsFinancialSector(instrument.AccountingProfile);
 
         var statements = await db.FinancialStatements
             .Where(statement => statement.InstrumentId == instrument.Id)
@@ -270,9 +280,13 @@ public static class StockFundamentalsEndpoints
                 ["fcf"] = Figure(fcf, fcfRestated),
                 ["span"] = SpanOf(is0, cf0),
                 ["consolidated"] = ConsolidatedOf(entry),
-                ["lines"] = StatementLines(is0, bs0, cf0, lines),
-                ["otherLines"] = StatementOtherLines(is0, bs0, cf0, lines),
-                ["derived"] = derived,
+                // A financial-sector profile serves the notice, never a half-filled industrial
+                // table: the row-set keys keep their shape with every map empty.
+                ["lines"] = financialSectorLayout ? EmptyRowSet() : StatementLines(is0, bs0, cf0, lines),
+                ["otherLines"] = financialSectorLayout ? EmptyRowSet() : StatementOtherLines(is0, bs0, cf0, lines),
+                ["derived"] = financialSectorLayout
+                    ? new Dictionary<string, object?>(StringComparer.Ordinal)
+                    : derived,
             });
         }
 
@@ -299,7 +313,9 @@ public static class StockFundamentalsEndpoints
             ["grossDebt"] = Fact(
                 Sum(Line(latestSheet, StDebt, lines), Line(latestSheet, LtDebt, lines)),
                 latestSheet?.PeriodEndDate),
-            ["cashAndShortTermInvestments"] = Fact(Line(latestSheet, Cash, lines), latestSheet?.PeriodEndDate),
+            // The stored `CASH` line only: the chart carries no short-term-investments code, so
+            // the fact is named for exactly what it serves and never promises a sum.
+            ["cash"] = Fact(Line(latestSheet, Cash, lines), latestSheet?.PeriodEndDate),
             ["minorityInterest"] = Fact(Line(latestSheet, MinorityInt, lines), latestSheet?.PeriodEndDate),
         };
 
@@ -325,7 +341,7 @@ public static class StockFundamentalsEndpoints
             };
         }
 
-        object? layoutNotice = FinancialSectorProfiles.Contains(instrument.AccountingProfile)
+        object? layoutNotice = financialSectorLayout
             ? new
             {
                 accountingProfile = instrument.AccountingProfile,
@@ -913,6 +929,19 @@ public static class StockFundamentalsEndpoints
         FinancialStatement? cashFlow,
         IReadOnlyDictionary<long, Dictionary<string, decimal>> lines) =>
         Split(incomeStatement, balanceSheet, cashFlow, lines, other: true);
+
+    /// <summary>
+    /// The row-set block served when the period's layout is not applicable (a financial-sector
+    /// profile, `02` §6.2): the same IS/BS/CF shape with every map empty. The layout notice is
+    /// the signal; no industrial row is served, not even a half-filled one.
+    /// </summary>
+    private static Dictionary<string, object?> EmptyRowSet() =>
+        new(StringComparer.Ordinal)
+        {
+            ["IS"] = new Dictionary<string, object?>(StringComparer.Ordinal),
+            ["BS"] = new Dictionary<string, object?>(StringComparer.Ordinal),
+            ["CF"] = new Dictionary<string, object?>(StringComparer.Ordinal),
+        };
 
     private static Dictionary<string, object?> Split(
         FinancialStatement? incomeStatement,
