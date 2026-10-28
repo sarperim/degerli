@@ -137,3 +137,8 @@ production `dcf-baselines` job:
 - DR-1/DR-2 stayed fenced (no diff entry into Valuation, no OTHER_BS_* summed into debt, no NCI filter). Both remain open on the user's desk.
 - Non-blocking residues carried: R5 (metrics/medians concurrent-day seam — follow-up ticket candidate), N1 (dangling cref, cosmetic), N2 (§29 doc drift, safe direction). Review-lead's gate-tooling note (missing_tc heuristic flags pre-existing-suite non-regression pins permanently — planner/tooling decision) recorded here for the morning report.
 - Post-merge live criteria (orchestrator-owned, owed): paced `kap-public` statements pass + `metrics-recompute`/`medians`/`dcf-baselines` on the live stack; `GET /stocks/TUPRS/dcf` leaving `missing_inputs` with debt/cash from KAP. **Status: done** (code+review; live criteria recorded when run).
+
+## Live criteria — 2026-10-27/28 (orchestrator, dev stack, recorded verbatim)
+
+- **The metrics-recompute repair is live-proven:** run 364 `succeeded, written 0, unchanged 1118` — the job now resolves the latest stored trading day and processes 1118 rows (the pre-repair behavior was the fake-green `0/0` on a priceless request). Medians run 365: `succeeded, 110 unchanged`. dcf-baselines run 366: `succeeded, written 630`.
+- `/stocks/{symbol}/dcf` live states: TUPRS/TAVHL `missing_inputs ['debt','cash']` (their FY2025 reports were decoded under pre-088 code — re-walk follow-up, see 088's live note); AEFES/KCHOL/SASA additionally `share_count` (non-integral price-derived rule); MGROS/TCELL additionally `base_fcf`; GARAN `sector_not_applicable` (bank — correct by design). **The per-share DCF completing end-to-end on live data awaits the re-walk follow-up; the consumer chain itself is verified (089's fixture evidence + tonight's runs).**

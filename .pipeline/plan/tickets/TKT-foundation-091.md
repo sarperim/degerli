@@ -63,3 +63,9 @@ scope:
 - UA code-default fix landed: byte-exact probe-verified honest string in options + appsettings; the two `DegerliBot` pins updated to pin the corrected default (not relaxed); no shipped config carries the blocked string anywhere.
 - **DR-3 residue routed (low):** malformed `memberOrFundOid` among several candidates reports `UNRESOLVED` rather than `AMBIGUOUS` (classification-rule decision, no behavior change).
 - Live criteria (orchestrator-owned, owed): (i) which of the eight symbols resolve vs. land `AMBIGUOUS` on the live source; (ii) statements walk covering newly resolved companies. **Status: done** (code+review; live criteria recorded when run).
+
+## Live criteria — 2026-10-27/28 (orchestrator, dev stack, recorded verbatim)
+
+- **API restart was required before any live criterion could run:** dotnet watch flagged `ENC0021: Adding enum value requires restarting` (088's decoder enums) and never restarted — a pre-restart identity run (361) executed the OLD resolver (8 × COMPANY_IDENTITY_UNRESOLVED, identical to run 301). After `docker restart`, run 362: **written 4 (GARAN, KRDMD, VAKBN, YKBNK), 22 unchanged → 26/30 XU30 mapped.**
+- **Remaining 4 (BIMAS, ENKAI, ISCTR, SISE) → COMPANY_IDENTITY_UNRESOLVED, root cause verified live: Turkish dotless-ı.** KAP returns BIMAS's code as `'bımas'` and SISE's as `'sıse'` — `OrdinalIgnoreCase` folds case but not `ı`↔`i` (distinct Unicode letters). **Follow-up (small): Turkish-aware token normalization (ı→i, İ→i fold) in `CarriesToken`.** The AMBIGUOUS path was not exercised live (no multi-candidate token hit).
+- GARAN's live search answer: `'garan,tgb'` C (TÜRKİYE GARANTİ BANKASI A.Ş.) — resolved by the comma-token rule exactly as designed.

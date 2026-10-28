@@ -153,3 +153,9 @@ back-compatibility sub-case.
 - Open non-blocking: R-1/X-1/X-2 docs nits (log-site count undercounted as "two" vs three; v1.43 corrected in place without annotation) — recorded residue, one docs commit when convenient.
 - 088's DR-1/DR-2 restored as pinned non-goals, still fenced to the user.
 - Live recovery pass (AKBNK/TTKOM/TUPRS) is the orchestrator's post-merge criterion — running with the wave's live chain. **Status: done** (code+review; live criteria recorded when run).
+
+## Live criteria — 2026-10-27/28 (orchestrator, dev stack, recorded verbatim)
+
+- **Replay mechanism live-proven:** the walk's per-symbol summary now carries `quarantined-replays {n} (recovered {n}, still-quarantined {n}), backlog {n}` — tonight's pass registered new transport-failure quarantines into cursors (KRDMD backlog 8, VAKBN backlog 16, GARAN backlog 6) for next-pass replay.
+- **Transport-failure throttling recurred on the newly-resolved companies** (KRDMD/VAKBN/YKBNK; 50 new quarantines in run 363) — same pattern as the first night (bursts after a stretch of successful fetches). The honest quarantine + backlog registration handled it as designed.
+- **Legacy pre-092 quarantines (AKBNK's 102, TTKOM, TUPRS windows) are NOT in any cursor** — they predate the mechanism, so the replay cannot reach them. **Follow-up: legacy-backlog backfill (quarantined_facts → cursor) or 063-class reset.**
