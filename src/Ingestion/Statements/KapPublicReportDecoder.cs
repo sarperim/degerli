@@ -773,7 +773,14 @@ public static class KapPublicReportDecoder
 
                     if (!groupsByKey.TryGetValue(key, out var group))
                     {
-                        group = new Group(statementType, periodEnd, periodType, header.SubmittedAt);
+                        group = new Group(
+                            statementType,
+                            periodEnd,
+                            periodType,
+                            header.SubmittedAt,
+                            column.PeriodStart,
+                            column.DurationMonths,
+                            ConsolidatedFor(header.ConsolidationType));
                         groupsByKey[key] = group;
                         groups.Add(group);
                     }
@@ -1821,12 +1828,22 @@ public static class KapPublicReportDecoder
         private readonly Dictionary<string, string> _labels = new(StringComparer.Ordinal);
         private readonly List<string> _conflicts = [];
 
-        public Group(string statementType, DateOnly periodEndDate, string periodType, DateOnly? publishedAt)
+        public Group(
+            string statementType,
+            DateOnly periodEndDate,
+            string periodType,
+            DateOnly? publishedAt,
+            DateOnly? periodStartDate,
+            int? durationMonths,
+            bool? consolidated)
         {
             StatementType = statementType;
             PeriodEndDate = periodEndDate;
             PeriodType = periodType;
             _publishedAt = publishedAt;
+            PeriodStartDate = periodStartDate;
+            DurationMonths = durationMonths;
+            Consolidated = consolidated;
         }
 
         public string StatementType { get; }
@@ -1834,6 +1851,19 @@ public static class KapPublicReportDecoder
         public DateOnly PeriodEndDate { get; }
 
         public string PeriodType { get; }
+
+        /// <summary>The column header's declared range start (null on an instant statement
+        /// such as a balance sheet) — carried to the store so the serving surface can label an
+        /// interim by its cumulative range (TKT-foundation-090's R-1, 094).</summary>
+        public DateOnly? PeriodStartDate { get; }
+
+        /// <summary>The declared range length in months, null together with
+        /// <see cref="PeriodStartDate"/>.</summary>
+        public int? DurationMonths { get; }
+
+        /// <summary>The filing's <c>Finansal Tablo Niteliği</c> flag (Konsolide true / Solo
+        /// false / absent null), carried verbatim to the store.</summary>
+        public bool? Consolidated { get; }
 
         public Dictionary<string, decimal> Lines { get; } = new(StringComparer.Ordinal);
 
@@ -1930,6 +1960,9 @@ public static class KapPublicReportDecoder
             null,
             _publishedAt,
             StatementMapper.Map(Lines),
-            _conflicts.Count == 0 ? null : _conflicts.ToList());
+            _conflicts.Count == 0 ? null : _conflicts.ToList(),
+            PeriodStartDate,
+            DurationMonths,
+            Consolidated);
     }
 }

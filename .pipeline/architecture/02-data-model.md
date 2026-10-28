@@ -108,12 +108,17 @@ Also `index_levels` (`index_id`, `level_date`, `close`, `source_ref`) — same g
 | version | int NOT NULL | `0` = as-reported; `1, 2, …` = restatement sequence in publication order (v1.3 — a period may be restated repeatedly, e.g. successive TMS 29 re-basings) |
 | restatement_date | date NULL | publication date of this restating report (NULL for version 0) |
 | published_at | date | KAP publish date |
+| period_start_date | date NULL | the filing's own declared period start (v1.5.70, TKT-foundation-094) — carried from the decode result (090's `KapPublicLine.PeriodStartDate`); NULL for a balance sheet (an instant) and for every pre-migration row |
+| duration_months | int NULL | the filing's own declared duration in months (v1.5.70) — served together with `period_start_date`; NULL where the filing declared no attributable column and for every pre-migration row |
+| consolidated | bool NULL | the filing's declared `Finansal Tablo Niteliği` (v1.5.70): `Konsolide` → true, `Solo` → false, absent **or any other declared value** → NULL (honest absence, never a guess); NULL for every pre-migration row |
 | source_unit_scale | text NOT NULL | the source's declared scale: `units` / `thousands` / `millions` — audit provenance for the §3.1 normalization (v1.3) |
 | source_currency | text NOT NULL | the statement's reporting currency: `TRY` / `USD` / `EUR` (v1.3) |
 | source_ref, recorded_at | | provenance |
 | | UNIQUE | (instrument_id, period_type, period_end_date, statement_type, version) — serving selects max `version` per (instrument, period_type, period_end_date, statement_type) |
 
 One instrument → * statements; each statement → * line items. **Serving rule (v1.3):** current metrics/display use `ORDER BY version DESC LIMIT 1` per natural key (highest version); `is_rested` = `version > 0`; all earlier versions retained (§1.1).
+
+**The declared period span and the consolidation flag (v1.5.70, TKT-foundation-094):** the three columns above are **additive and forward-only** — the migration writes no row, no existing row is rewritten (FR-MDF-015), and a NULL is honest absence, never a default. `period_start_date`/`duration_months` carry the filing's **own** declared range (090's decode result, populated from the column the decoder resolved), so a `Q`-typed interim can be labelled by what it actually covers — a six-month cumulative period reads as one, instead of being rendered as a discrete quarter — and an instant (balance-sheet) row carries `NULL`/`NULL` because it has no duration. They are served **together or not at all**: a period with one field and not the other is not a span, and a `Q` period with no stored span degrades to the label vocabulary the store already has. `consolidated` records what the filer **declared** (`Konsolide`/`Solo`, §6.2's flag rule); it is never inferred from the company heading or from the presence of minority interests, and a filing declaring anything else is stored NULL with the declared string retained on the decode result.
 
 **`fin_line_items`** — statement lines mapped to the canonical chart of accounts (§6.1): `statement_id` FK, `item_code` text (canonical), `value` numeric **in raw single-unit TRY**. UNIQUE (statement_id, item_code). Canonical mapping from the source taxonomy happens in ETL (C3a) — this is where KAP/XBRL tags collapse to one internal vocabulary.
 

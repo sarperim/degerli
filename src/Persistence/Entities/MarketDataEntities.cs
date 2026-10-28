@@ -140,6 +140,21 @@ public class FinancialStatement
     public DateOnly PeriodEndDate { get; set; }
     public int? FiscalYear { get; set; }
 
+    /// <summary>The filing's own declared range start (a KAP public-site column header's first
+    /// date), NULL for an instant statement (a balance sheet), for a pre-094 row and for any
+    /// source that declares no span — never inferred (02 §3.1, TKT-foundation-094).</summary>
+    public DateOnly? PeriodStartDate { get; set; }
+
+    /// <summary>The declared range length in months, NULL together with
+    /// <see cref="PeriodStartDate"/>; the serving surface labels an interim by this cumulative
+    /// range instead of calling it a discrete quarter (02 §3.1, TKT-foundation-090's R-1).</summary>
+    public int? DurationMonths { get; set; }
+
+    /// <summary>The filing's <c>Finansal Tablo Niteliği</c> flag: true Konsolide, false Solo,
+    /// NULL when the filing declared neither (or on a pre-094 row) — honest absence, never
+    /// guessed; the serving badge is suppressed rather than defaulted (02 §3.1).</summary>
+    public bool? Consolidated { get; set; }
+
     /// <summary>IS / BS / CF.</summary>
     public string StatementType { get; set; } = null!;
 

@@ -55,6 +55,45 @@ public static class StockFundamentalsEndpoints
     private const string SharesDiluted = "SHARES_DILUTED";
     private const string SharesOut = "SHARES_OUT";
 
+    // ── The statements view's [C] row inputs (02 §6.1, TKT-foundation-094) ───
+    private const string GrossProfit = "GROSS_PROFIT";
+    private const string PretaxInc = "PRETAX_INC";
+    private const string TaxExp = "TAX_EXP";
+    private const string NiParent = "NI_PARENT";
+    private const string Goodwill = "GOODWILL";
+    private const string IntangiblesNet = "INTANGIBLES_NET";
+    private const string MinorityInt = "MINORITY_INT";
+
+    /// <summary>
+    /// The TMS 29 (inflation-accounting) regime transition the badge derives from
+    /// (<c>02</c> §6.2): a period ending on or after this date is served with
+    /// <c>tms29 = true</c>. It is a derivation from the served period end — never a claim
+    /// about the filing's content beyond that pinned transition.
+    /// </summary>
+    private static readonly DateOnly Tms29From = new(2023, 12, 31);
+
+    /// <summary>The evidence classes that make the served statement a KAP filing (`kap-public`
+    /// public-site read, `kap` the VYK gateway) — the KAP Kaynak badge input.</summary>
+    private static readonly HashSet<string> KapSourceRefs =
+        new(StringComparer.Ordinal) { "kap-public", "kap" };
+
+    /// <summary>
+    /// The accounting profiles whose statements are not the industrial row set
+    /// (<c>02</c> §6.2 posture): the payload carries the layout notice, never a
+    /// half-filled industrial table. <c>reit</c> and <c>industrial</c> keep the natural rows.
+    /// </summary>
+    private static readonly HashSet<string> FinancialSectorProfiles =
+        new(StringComparer.Ordinal) { "bank", "insurance" };
+
+    private const string FinancialSectorLayoutNotice =
+        "This company reports under a financial-sector accounting profile (bank/insurance): the "
+        + "industrial statements layout does not apply. Bank-format statement labels are a later "
+        + "slice, so no industrial row set is rendered for it.";
+
+    /// <summary>The layout notice's state word: explicitly <b>not applicable</b>, never an
+    /// error and never a no-data claim about the company's filings.</summary>
+    private const string LayoutNotApplicableState = "not-applicable";
+
     /// <summary>The four quality-metric codes the profitability section carries (02 §6.2).</summary>
     private static readonly string[] ProfitabilityMetricCodes =
     [
@@ -86,12 +125,25 @@ public static class StockFundamentalsEndpoints
     // ── Financials (FR-RES-008/014) ──────────────────────────────────────────
 
     /// <summary>
-    /// Per-period revenue → EBITDA → EBIT → NI → FCF (TC-RES-009). The latest statement
-    /// version serves per statement type — the restated row when one exists — and each
-    /// figure carries its own <c>restated</c> flag (FR-RES-014, BR-MDF-011). Derivations
-    /// use the canonical definitions (02 §6.1/§6.2): EBITDA = EBIT + D&amp;A when not
-    /// reported; FCF = OCF − |CAPEX| (the KAP-reported operating cash flow less the
-    /// absolute capital expenditure — the same definition the metrics engine serves).
+    /// The statements-view supply (FR-RES-008/014/015/016/027, TC-MDF-123): per period, the
+    /// compat five figures (revenue → EBITDA → EBIT → NI → FCF, each with its own
+    /// <c>restated</c> flag — unchanged) plus <c>lines</c> (the flat canonical-code →
+    /// <c>{value, restated}</c> map per statement type, with the <c>OTHER_*</c> passthrough
+    /// block beside it), <c>derived</c> (the server-computed [C] rows — margins, Y/Y growth,
+    /// NWC, gross/net debt, TBV, the per-share rows), <c>span</c> (the filing's own declared
+    /// cumulative range) and <c>consolidated</c>. The payload's filing envelope carries the
+    /// badge inputs (consolidated from the stored flag, TMS 29 from the pinned <c>02</c> §6.2
+    /// transition, KAP Kaynak from the served <c>source_ref</c>), the display-only EV header
+    /// facts, and the financial-sector layout notice.
+    /// <para>
+    /// <b>Every [C] row is honest-null on a missing operand</b> (the <c>Line()</c>/<c>Sum()</c>
+    /// seam's discipline): a ratio whose denominator is absent or zero, a sum with one absent
+    /// addend and a per-share row without a share count serve <c>null</c> + the explicit
+    /// <c>NO_DATA</c> state — never a guessed zero (BR-RES-008). The DR-2 gross-debt row
+    /// consumes exactly the stored <c>ST_DEBT</c> + <c>LT_DEBT</c> (the fenced narrow
+    /// definition, never widened to leases); TBV consumes the stored
+    /// <c>TOTAL_EQUITY</c> − <c>GOODWILL</c> − <c>INTANGIBLES_NET</c>.
+    /// </para>
     /// </summary>
     private static async Task<IResult> FinancialsAsync(
         string symbol,
@@ -110,17 +162,43 @@ public static class StockFundamentalsEndpoints
             .ToListAsync(cancellationToken);
         var lines = await LoadLinesAsync(db, statements, cancellationToken);
 
-        var periods = new List<Dictionary<string, object?>>();
-        foreach (var group in statements
+        // The share-count precedence's second tier (086): the price lane's own count, used only
+        // when the served statement declares no SHARES_DILUTED (USER DECISION D5 — a count, never
+        // the paid-in-capital money figure).
+        var derivedCount = await db.PriceDerivedShareCounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(row => row.InstrumentId == instrument.Id, cancellationToken);
+        var priceCount = derivedCount is { SharesOutstanding: > 0 } ? derivedCount.SharesOutstanding : (long?)null;
+
+        var entries = statements
             .GroupBy(statement => (statement.PeriodType, statement.PeriodEndDate))
             .OrderBy(group => group.Key.PeriodEndDate)
-            .ThenBy(group => group.Key.PeriodType, StringComparer.Ordinal))
+            .ThenBy(group => group.Key.PeriodType, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var rows = group.ToList();
+                return new PeriodEntry(
+                    group.Key.PeriodType,
+                    group.Key.PeriodEndDate,
+                    rows[0].FiscalYear,
+                    Pick(rows, "IS"),
+                    Pick(rows, "BS"),
+                    Pick(rows, "CF"));
+            })
+            .ToList();
+
+        var byPeriod = entries.ToDictionary(
+            entry => (entry.PeriodType, entry.PeriodEndDate));
+
+        var periods = new List<Dictionary<string, object?>>();
+        foreach (var entry in entries)
         {
-            var rows = group.ToList();
-            var is0 = Pick(rows, "IS");
-            var cf0 = Pick(rows, "CF");
+            var is0 = entry.IncomeStatement;
+            var bs0 = entry.BalanceSheet;
+            var cf0 = entry.CashFlow;
             var isRestated = IsRestated(is0);
             var fcfRestated = IsRestated(is0) || IsRestated(cf0);
+            var bsRestated = IsRestated(bs0);
 
             var ebit = Line(is0, Ebit, lines);
             var depr = Line(is0, DeprAmort, lines);
@@ -128,21 +206,136 @@ public static class StockFundamentalsEndpoints
             var ni = Line(is0, Ni, lines);
             var fcf = CanonicalMetrics.FreeCashFlow(Line(cf0, Ocf, lines), Line(cf0, Capex, lines));
 
+            // ── The [C] rows ────────────────────────────────────────────────
+            var revenue = Line(is0, Rev, lines);
+            var grossProfit = Line(is0, GrossProfit, lines);
+            var pretax = Line(is0, PretaxInc, lines);
+            var tax = Line(is0, TaxExp, lines);
+            var niParent = Line(is0, NiParent, lines);
+            var curAssets = Line(bs0, CurAssets, lines);
+            var curLiab = Line(bs0, CurLiab, lines);
+            var stDebt = Line(bs0, StDebt, lines);
+            var ltDebt = Line(bs0, LtDebt, lines);
+            var cash = Line(bs0, Cash, lines);
+            var equity = Line(bs0, TotalEquity, lines);
+
+            var grossDebt = Sum(stDebt, ltDebt);              // DR-2 fenced: exactly ST + LT
+            var netDebt = Subtract(grossDebt, cash);
+            var nwc = Subtract(curAssets, curLiab);
+            var tbv = Subtract(Subtract(equity, Line(bs0, Goodwill, lines)),
+                Line(bs0, IntangiblesNet, lines));
+
+            // Statement-reported diluted shares first, the price-derived count second; any other
+            // route (a paid-in-capital-derived guess) is the user's exclusion #4 and never taken.
+            var statementShares = Line(bs0, SharesDiluted, lines);
+            var shareCount = statementShares is > 0m
+                ? statementShares
+                : priceCount is > 0 ? priceCount : (decimal?)null;
+            var shareSourceRestated = statementShares is > 0m && bsRestated;
+
+            var prior = byPeriod.TryGetValue((entry.PeriodType, entry.PeriodEndDate.AddYears(-1)), out var priorEntry)
+                ? priorEntry
+                : null;
+
+            var derived = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["revenueGrowthYoy"] = Figure(
+                    Subtract(
+                        Ratio(Line(is0, Rev, lines), prior is null ? null : Line(prior.IncomeStatement, Rev, lines)),
+                        1m),
+                    isRestated || IsRestated(prior?.IncomeStatement)),
+                ["grossMargin"] = Figure(Ratio(grossProfit, revenue), isRestated),
+                ["operatingMargin"] = Figure(Ratio(ebit, revenue), isRestated),
+                ["ebitdaMargin"] = Figure(Ratio(ebitda, revenue), isRestated),
+                ["effectiveTaxRate"] = Figure(Ratio(tax, pretax), isRestated),
+                ["netMarginParent"] = Figure(Ratio(niParent, revenue), isRestated),
+                ["netWorkingCapital"] = Figure(nwc, bsRestated),
+                ["grossDebt"] = Figure(grossDebt, bsRestated),
+                ["netDebt"] = Figure(netDebt, bsRestated),
+                ["tangibleBookValue"] = Figure(tbv, bsRestated),
+                ["bvps"] = Figure(PerShare(equity, shareCount), bsRestated || shareSourceRestated),
+                ["tbvPerShare"] = Figure(PerShare(tbv, shareCount), bsRestated || shareSourceRestated),
+                ["fcfPerShare"] = Figure(PerShare(fcf, shareCount), fcfRestated || shareSourceRestated),
+            };
+
             periods.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["periodType"] = group.Key.PeriodType,
-                ["fiscalYear"] = rows[0].FiscalYear,
-                ["periodEndDate"] = group.Key.PeriodEndDate,
-                ["revenue"] = Figure(Line(is0, Rev, lines), isRestated),
+                ["periodType"] = entry.PeriodType,
+                ["fiscalYear"] = entry.FiscalYear,
+                ["periodEndDate"] = entry.PeriodEndDate,
+                ["revenue"] = Figure(revenue, isRestated),
                 ["ebitda"] = Figure(ebitda, isRestated),
                 ["ebit"] = Figure(ebit, isRestated),
                 ["netIncome"] = Figure(ni, isRestated),
                 ["fcf"] = Figure(fcf, fcfRestated),
+                ["span"] = SpanOf(is0, cf0),
+                ["consolidated"] = ConsolidatedOf(entry),
+                ["lines"] = StatementLines(is0, bs0, cf0, lines),
+                ["otherLines"] = StatementOtherLines(is0, bs0, cf0, lines),
+                ["derived"] = derived,
             });
         }
 
         var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
-        return Results.Ok(new { asOf, stale, periods });
+
+        // The EV header inputs are served as their own facts with their own as-of, display-only:
+        // the DCF's own debt/cash/share-count inputs are untouched (02 §6.2, FR-RES-008).
+        var latestPrice = await db.DailyPrices
+            .AsNoTracking()
+            .Where(price => price.InstrumentId == instrument.Id)
+            .OrderByDescending(price => price.PriceDate)
+            .Select(price => new { price.PriceDate, price.CloseAdjusted })
+            .FirstOrDefaultAsync(cancellationToken);
+        var latestSheet = entries
+            .Where(entry => entry.BalanceSheet is not null)
+            .OrderByDescending(entry => entry.PeriodEndDate)
+            .Select(entry => entry.BalanceSheet)
+            .FirstOrDefault();
+
+        var evHeader = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["sharePrice"] = Fact(latestPrice?.CloseAdjusted, latestPrice?.PriceDate),
+            ["marketCap"] = Fact(derivedCount?.MarketCapRaw, derivedCount?.PriceDate),
+            ["grossDebt"] = Fact(
+                Sum(Line(latestSheet, StDebt, lines), Line(latestSheet, LtDebt, lines)),
+                latestSheet?.PeriodEndDate),
+            ["cashAndShortTermInvestments"] = Fact(Line(latestSheet, Cash, lines), latestSheet?.PeriodEndDate),
+            ["minorityInterest"] = Fact(Line(latestSheet, MinorityInt, lines), latestSheet?.PeriodEndDate),
+        };
+
+        // The filing the controls bar describes: the latest served period's own evidence. Every
+        // badge is derived from a served fact — an absent flag suppresses the badge, never a
+        // guessed value (095 renders only what is served).
+        var latest = entries.LastOrDefault();
+        object? filing = null;
+        if (latest is not null)
+        {
+            var latestStatements = new[] { latest.IncomeStatement, latest.BalanceSheet, latest.CashFlow }
+                .Where(statement => statement is not null)
+                .Select(statement => statement!)
+                .ToList();
+            var consolidated = ConsolidatedOf(latest);
+            filing = new
+            {
+                periodEndDate = latest.PeriodEndDate.ToString("yyyy-MM-dd"),
+                sourceRef = (latest.IncomeStatement ?? latest.BalanceSheet ?? latest.CashFlow)?.SourceRef,
+                consolidated,
+                tms29 = latest.PeriodEndDate >= Tms29From,
+                kapSource = latestStatements.Any(statement => KapSourceRefs.Contains(statement.SourceRef)),
+            };
+        }
+
+        object? layoutNotice = FinancialSectorProfiles.Contains(instrument.AccountingProfile)
+            ? new
+            {
+                accountingProfile = instrument.AccountingProfile,
+                applies = true,
+                state = LayoutNotApplicableState,
+                message = FinancialSectorLayoutNotice,
+            }
+            : null;
+
+        return Results.Ok(new { asOf, stale, filing, layoutNotice, evHeader, periods });
     }
 
     // ── Profitability (FR-RES-009) ───────────────────────────────────────────
@@ -554,7 +747,23 @@ public static class StockFundamentalsEndpoints
     // ── Shared helpers ───────────────────────────────────────────────────────
 
     /// <summary>The projection the section endpoints need from the covered universe.</summary>
-    private sealed record CoveredInstrument(long Id, string Symbol, DateOnly? ListingDate);
+    private sealed record CoveredInstrument(
+        long Id,
+        string Symbol,
+        DateOnly? ListingDate,
+        string AccountingProfile);
+
+    /// <summary>
+    /// One served period: its key and the statement version serving each type (<c>null</c> when
+    /// the period carries no statement of that type) — the statements view's unit of work.
+    /// </summary>
+    private sealed record PeriodEntry(
+        string PeriodType,
+        DateOnly PeriodEndDate,
+        int? FiscalYear,
+        FinancialStatement? IncomeStatement,
+        FinancialStatement? BalanceSheet,
+        FinancialStatement? CashFlow);
 
     /// <summary>Resolves a symbol to its current-universe instrument, or <c>null</c> when unknown/delisted.</summary>
     private static async Task<CoveredInstrument?> ResolveInstrumentAsync(
@@ -563,7 +772,11 @@ public static class StockFundamentalsEndpoints
         CancellationToken cancellationToken)
         => await Universe(db)
             .Where(instrument => instrument.Symbol == symbol.ToUpperInvariant())
-            .Select(instrument => new CoveredInstrument(instrument.Id, instrument.Symbol, instrument.ListingDate))
+            .Select(instrument => new CoveredInstrument(
+                instrument.Id,
+                instrument.Symbol,
+                instrument.ListingDate,
+                instrument.AccountingProfile))
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>Instruments with a current XU100 membership — the covered universe.</summary>
@@ -615,6 +828,128 @@ public static class StockFundamentalsEndpoints
 
     private static decimal? Sum(decimal? left, decimal? right) =>
         left is null || right is null ? null : left.Value + right.Value;
+
+    /// <summary>A difference whose absent operand makes the whole row null — the honest-null
+    /// discipline the [C] rows share (never a difference from an assumed zero).</summary>
+    private static decimal? Subtract(decimal? left, decimal? right) =>
+        left is null || right is null ? null : left.Value - right.Value;
+
+    /// <summary>A ratio, null when either side is absent or the denominator is zero — a
+    /// division by a stored zero is not a meaningful row, it is no data.</summary>
+    private static decimal? Ratio(decimal? numerator, decimal? denominator) =>
+        numerator is null || denominator is null || denominator.Value == 0m
+            ? null
+            : numerator.Value / denominator.Value;
+
+    /// <summary>A per-share row: null without a positive share count (the user's exclusion #4 —
+    /// no paid-in-capital-derived guess), never zero.</summary>
+    private static decimal? PerShare(decimal? numerator, decimal? shareCount) =>
+        numerator is null || shareCount is null || shareCount.Value <= 0m
+            ? null
+            : numerator.Value / shareCount.Value;
+
+    /// <summary>One served fact with its own as-of, or null when the fact is absent.</summary>
+    private static object? Fact(decimal? value, DateOnly? asOf) =>
+        value is null || asOf is null
+            ? null
+            : new { value = value.Value, asOf = asOf.Value.ToString("yyyy-MM-dd") };
+
+    /// <summary>
+    /// The period's declared span (TKT-foundation-094, closing 090's R-1 on the surface): the
+    /// range-bearing statement's own header span, IS first then CF (a balance sheet is an
+    /// instant and carries none). Both fields are served together or the span is null — a
+    /// pre-migration row degrades to today's <c>Q</c> label, never a fabricated range.
+    /// </summary>
+    private static object? SpanOf(FinancialStatement? incomeStatement, FinancialStatement? cashFlow)
+    {
+        foreach (var statement in new[] { incomeStatement, cashFlow })
+        {
+            if (statement?.PeriodStartDate is DateOnly start && statement.DurationMonths is int months)
+            {
+                return new
+                {
+                    periodStartDate = start.ToString("yyyy-MM-dd"),
+                    durationMonths = months,
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The period's consolidation flag from the served statements: a single declared value
+    /// serves, no declaration is null, and a disagreement between sources is null too — the
+    /// badge is suppressed rather than chosen between two filings' claims.
+    /// </summary>
+    private static bool? ConsolidatedOf(PeriodEntry entry)
+    {
+        var flags = new[] { entry.IncomeStatement, entry.BalanceSheet, entry.CashFlow }
+            .Where(statement => statement?.Consolidated is not null)
+            .Select(statement => statement!.Consolidated!.Value)
+            .Distinct()
+            .ToList();
+        return flags.Count == 1 ? flags[0] : null;
+    }
+
+    /// <summary>
+    /// The served canonical line map per statement type (IS/BS/CF), each entry a figure with its
+    /// statement's restated flag. An unserved type is an empty map — the <c>OTHER_*</c>
+    /// passthroughs stay reachable in <see cref="StatementOtherLines"/> so an uncovered family
+    /// is never silently dropped.
+    /// </summary>
+    private static Dictionary<string, object?> StatementLines(
+        FinancialStatement? incomeStatement,
+        FinancialStatement? balanceSheet,
+        FinancialStatement? cashFlow,
+        IReadOnlyDictionary<long, Dictionary<string, decimal>> lines) =>
+        Split(incomeStatement, balanceSheet, cashFlow, lines, other: false);
+
+    /// <summary>The <c>OTHER_*</c> passthrough block per statement type, same shape as
+    /// <see cref="StatementLines"/>.</summary>
+    private static Dictionary<string, object?> StatementOtherLines(
+        FinancialStatement? incomeStatement,
+        FinancialStatement? balanceSheet,
+        FinancialStatement? cashFlow,
+        IReadOnlyDictionary<long, Dictionary<string, decimal>> lines) =>
+        Split(incomeStatement, balanceSheet, cashFlow, lines, other: true);
+
+    private static Dictionary<string, object?> Split(
+        FinancialStatement? incomeStatement,
+        FinancialStatement? balanceSheet,
+        FinancialStatement? cashFlow,
+        IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
+        bool other) =>
+        new(StringComparer.Ordinal)
+        {
+            ["IS"] = CodeMap(incomeStatement, lines, other),
+            ["BS"] = CodeMap(balanceSheet, lines, other),
+            ["CF"] = CodeMap(cashFlow, lines, other),
+        };
+
+    private static Dictionary<string, object?> CodeMap(
+        FinancialStatement? statement,
+        IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
+        bool other)
+    {
+        var map = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (statement is null || !lines.TryGetValue(statement.Id, out var stored))
+        {
+            return map;
+        }
+
+        var restated = IsRestated(statement);
+        foreach (var (code, value) in stored)
+        {
+            var passthrough = code.StartsWith("OTHER_", StringComparison.Ordinal);
+            if (passthrough == other)
+            {
+                map[code] = Figure(value, restated);
+            }
+        }
+
+        return map;
+    }
 
     /// <summary>A figure with its restatement marker; a NULL carries an explicit no-data state.</summary>
     private static object Figure(decimal? value, bool restated) =>
