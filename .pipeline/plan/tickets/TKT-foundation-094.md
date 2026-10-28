@@ -16,7 +16,7 @@ scope:
 
 # TKT-foundation-094: The statements-view serving surface — `GET /stocks/{symbol}/financials` serves the full line-item set with server-computed derived rows, honest cumulative period labels, filing badges, and the financial-sector layout notice
 
-- Status: in-progress
+- Status: in-review (PR #157 — https://github.com/sarperim/degerli/pull/157)
 - Size: M
 - **Priority: P1 — slice 2 of the 2026-10-28 financial-statements view wave (093's decode half consumed here; 095 renders this payload on SCR-005).**
 - **Where the computation lives (pinned from the architecture, verified on the current head):** `GET /stocks/{symbol}/financials` already computes per-period figures server-side from stored lines (`Line(EBITDA) ?? Sum(EBIT, DEPR_AMORT)`, `CanonicalMetrics.FreeCashFlow` — `StockFundamentalsEndpoints.cs:125-141`) and the web client computes nothing (BR-RES-004, SCR-005 §6). The statements view follows the same seam: **statement-period-scoped [C] rows (margins, Y/Y growth, NWC, net/gross debt, TBV, per-share rows, EV header inputs) compute serving-side from stored lines in this endpoint** — they are period facts, not the daily canonical metrics. Point-in-time canonical metrics (ROIC, ROA, medians, CAGRs) stay in `derived_metrics` via the Metrics Engine — that half is TKT-foundation-096, never duplicated here.
