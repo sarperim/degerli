@@ -371,13 +371,15 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
         await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
         using var client = CreateClient(factory);
 
-        // The industrial filing keeps the natural row set and carries no notice.
+        // The industrial filing keeps the natural row set, carries no notice, and serves the
+        // display-only EV header.
         using (var response = await client.GetAsync($"/api/v1/stocks/{Tuprs}/financials"))
         using (var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
             var root = document.RootElement;
             Assert.Equal(JsonValueKind.Null, root.GetProperty("layoutNotice").ValueKind);
             Assert.NotEmpty(Period(root, "FY", "2025-12-31").GetProperty("lines").GetProperty("BS").EnumerateObject().ToList());
+            Assert.NotEqual(JsonValueKind.Null, root.GetProperty("evHeader").ValueKind);
         }
 
         // A bank profile serves the explicit notice *instead of* a row set: not applicable, never
@@ -410,15 +412,28 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
             // The compat five figures are untouched by the layout verdict — the payload stays
             // additive and the five compat figures the pre-ticket client reads remain served.
             Assert.Equal(830_356_131_000m, period.GetProperty("revenue").GetProperty("value").GetDecimal());
+
+            // `span` and `consolidated` are period facts about the filing, not industrial rows, so
+            // they keep serving for the financial-sector layout (the docs promise exactly this).
+            Assert.Equal("2025-01-01", period.GetProperty("span").GetProperty("periodStartDate").GetString());
+            Assert.Equal(12, period.GetProperty("span").GetProperty("durationMonths").GetInt32());
+            Assert.True(period.GetProperty("consolidated").GetBoolean());
+
+            // The EV header is *not* served for the layout: its inputs are the same
+            // industrial-mapped stored lines the row set suppresses, so serving it here would be
+            // the asymmetry the suppression exists to remove.
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("evHeader").ValueKind);
         }
 
-        // A REIT is not a financial-sector profile: it keeps the natural row set and no notice.
+        // A REIT is not a financial-sector profile: it keeps the natural row set, no notice, and
+        // the EV header.
         await SetProfileAsync(instrumentId, "reit");
         using (var response = await client.GetAsync($"/api/v1/stocks/{Tuprs}/financials"))
         using (var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
             var root = document.RootElement;
             Assert.Equal(JsonValueKind.Null, root.GetProperty("layoutNotice").ValueKind);
+            Assert.NotEqual(JsonValueKind.Null, root.GetProperty("evHeader").ValueKind);
             var reitPeriod = Period(root, "FY", "2025-12-31");
             Assert.NotEmpty(reitPeriod.GetProperty("lines").GetProperty("BS").EnumerateObject().ToList());
             Assert.NotEmpty(reitPeriod.GetProperty("derived").EnumerateObject().ToList());

@@ -137,9 +137,10 @@ public static class StockFundamentalsEndpoints
     /// <b>A financial-sector profile serves no industrial row set.</b> For
     /// <c>accounting_profile ∈ {bank, insurance}</c> the period keeps its compat five figures,
     /// its <c>span</c> and its <c>consolidated</c> flag, but <c>lines</c>/<c>otherLines</c> serve
-    /// the IS/BS/CF block with every map empty and <c>derived</c> serves empty — the layout
-    /// notice is the signal, and no half-filled industrial table is handed to a client
-    /// (<c>reit</c>/<c>industrial</c> keep the natural row set).
+    /// the IS/BS/CF block with every map empty, <c>derived</c> serves empty and <c>evHeader</c>
+    /// is served <c>null</c> — the layout notice is the signal, and no half-filled industrial
+    /// table (nor an EV header read from the same industrial-mapped stored lines) is handed to a
+    /// client (<c>reit</c>/<c>industrial</c> keep the natural row set).
     /// </para>
     /// <para>
     /// <b>Every [C] row is honest-null on a missing operand</b> (the <c>Line()</c>/<c>Sum()</c>
@@ -294,6 +295,9 @@ public static class StockFundamentalsEndpoints
 
         // The EV header inputs are served as their own facts with their own as-of, display-only:
         // the DCF's own debt/cash/share-count inputs are untouched (02 §6.2, FR-RES-008).
+        // A financial-sector layout is served no EV header at all: its inputs are the same
+        // industrial-mapped stored lines the row set suppresses (the notice verdict is the signal,
+        // and an EV reading beside an empty `derived` would be the asymmetry it exists to avoid).
         var latestPrice = await db.DailyPrices
             .AsNoTracking()
             .Where(price => price.InstrumentId == instrument.Id)
@@ -306,18 +310,20 @@ public static class StockFundamentalsEndpoints
             .Select(entry => entry.BalanceSheet)
             .FirstOrDefault();
 
-        var evHeader = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["sharePrice"] = Fact(latestPrice?.CloseAdjusted, latestPrice?.PriceDate),
-            ["marketCap"] = Fact(derivedCount?.MarketCapRaw, derivedCount?.PriceDate),
-            ["grossDebt"] = Fact(
-                Sum(Line(latestSheet, StDebt, lines), Line(latestSheet, LtDebt, lines)),
-                latestSheet?.PeriodEndDate),
-            // The stored `CASH` line only: the chart carries no short-term-investments code, so
-            // the fact is named for exactly what it serves and never promises a sum.
-            ["cash"] = Fact(Line(latestSheet, Cash, lines), latestSheet?.PeriodEndDate),
-            ["minorityInterest"] = Fact(Line(latestSheet, MinorityInt, lines), latestSheet?.PeriodEndDate),
-        };
+        object? evHeader = financialSectorLayout
+            ? null
+            : new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["sharePrice"] = Fact(latestPrice?.CloseAdjusted, latestPrice?.PriceDate),
+                ["marketCap"] = Fact(derivedCount?.MarketCapRaw, derivedCount?.PriceDate),
+                ["grossDebt"] = Fact(
+                    Sum(Line(latestSheet, StDebt, lines), Line(latestSheet, LtDebt, lines)),
+                    latestSheet?.PeriodEndDate),
+                // The stored `CASH` line only: the chart carries no short-term-investments code, so
+                // the fact is named for exactly what it serves and never promises a sum.
+                ["cash"] = Fact(Line(latestSheet, Cash, lines), latestSheet?.PeriodEndDate),
+                ["minorityInterest"] = Fact(Line(latestSheet, MinorityInt, lines), latestSheet?.PeriodEndDate),
+            };
 
         // The filing the controls bar describes: the latest served period's own evidence. Every
         // badge is derived from a served fact — an absent flag suppresses the badge, never a
