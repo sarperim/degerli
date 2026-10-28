@@ -11,7 +11,7 @@ scope:
   - .pipeline/architecture/02-data-model.md
 ---
 # TKT-foundation-093: Statements-view label-map expansion — the full industrial IS/BS/CF row set mapped capture-first to new canonical codes, and the Konsolide/Solo filing flag the metadata bar needs
-- Status: in-review
+- Status: done (PR #155 squash-merged; user waived the facet-gate missing-tc false positive 2026-10-28; DR-1/2/3/6/7 + ticket-text contradiction routed to planner amendment; DR-4/5 routed as follow-up fail-safe ticket)
 - PR: https://github.com/sarperim/degerli/pull/155
 - Size: M
 - **Priority: P1 — slice 1 of the 2026-10-28 financial-statements view wave (the user's v0 spec, recorded verbatim on TKT-foundation-095; this ticket is its decode half, 094 the serving half, 095 the surface).**
