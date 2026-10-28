@@ -10,9 +10,7 @@ scope:
   - .pipeline/architecture/01-system-architecture.md
   - .pipeline/architecture/02-data-model.md
 ---
-
 # TKT-foundation-093: Statements-view label-map expansion — the full industrial IS/BS/CF row set mapped capture-first to new canonical codes, and the Konsolide/Solo filing flag the metadata bar needs
-
 - Status: in-review
 - PR: https://github.com/sarperim/degerli/pull/155
 - Size: M
@@ -31,41 +29,30 @@ scope:
 - UX refs: none (decoder lane; the served presentation is 094/095's).
 - Dependencies: none hard (088–092 merged). **Serializes with 094 on the statements store/models** and shares the three permanent docs with the whole wave (last-lander rebase, the lane doctrine).
 - Parallel group: none.
-
 ## Amendment record — 2026-10-28 (planner, orchestrator-authorized blocker round; the 093 coder stopped pre-code with a well-evidenced blocker — no code, no branch, worktree clean at `c5957ff`)
-
 Four findings, all coder-verified from committed bodies and `/tmp/opencode/captures/`, amended here before dispatch:
-
 1. **Scope gap (mechanical):** `src/Ingestion/Statements/StatementMapper.cs` holds `CanonicalCodes` (23 codes today) and was omitted from the planner's `scope:` — but every new map entry's target must join that registry or `StatementMapper.Map` rewrites it to `OTHER_{code}` on write (`FinancialStatementStore.cs:227` maps again), silently defeating the ticket. **`StatementMapper.cs` is added to scope** (the 091 v1.40 precedent — a planner omission, not a widened ticket; TKT-mdf-017 `1cb6abd` is the registry-growth precedent). **`02` §6.1's chart extension is confirmed as the vehicle for the ~40 new codes**, and the §13.1 reservation needs **no adjustment**: v1.5.69 covers the lane's doc amendments regardless of the added file — the scope frontmatter is the boundary that was wrong, not the allocation.
 2. **Design gap (ruled, clause 4 above):** the `(StatementType, Label)`-only rule key cannot express the BS's legitimate cross-block label repetition; the ruled design is the additive BS block dimension (CF-section-resolution precedent, honest fail-safe, distinct codes per block, goldens hold). The rejected alternative — routing repeated families to `OTHER_*` — would leave 094's canonical block mostly empty; consequence recorded, rejected. Recorded in `01` §10.9.19 and `02` §6.1 (both dated, riding this ticket's v1.5.69 reservation; the lane subsumes them into its subsection when it lands).
 3. **Capture-premise correction (clause 2 above):** the lease-liability spelling premise was wrong (`Finansal Kiralama` → `Kiralama İşlemlerinden Borçlar`, evidenced in all four committed bodies); the THYAO `1565996` body is already fetched and is committed as a bounded-trim double as the ticket's first step; every v0 family is now expected evidenced (honest-absent list expected empty).
 4. **Flag wording correction (clause 5 above):** the Konsolide/Solo declaration comes from the header-table field `Finansal Tablo Niteliği` (`KapPublicReportHeader.ConsolidationType`, already read), not the `<h1>` title.
-
 **Ripple check across the wave (verified this round):** 094 gains an amendment note (the ST/LT distinction survives serving as distinct canonical codes materialized at decode — its `lines` block stays a flat code→figure map, no serving-side block logic); 095/096/097 need **no** amendment (095 renders served codes; 096 consumes `fin_line_items` codes — the block dimension is decode-side only). The five exclusions and all guardrails are unchanged by this round.
-
 ## Implementation record — 2026-10-28 (implementation lane)
-
 **Branch** `tkt-foundation-093` (from `dev@7f7e88d`). **Commits:** `4b8cdda` — the THYAO `1565996`
 bounded-trim capture, its provenance and its catalog registration, `ThyaoAnnualCaptureName`,
 `CaptureNames` (now five) and the TC-MDF-117 (f) capture-set extension; this commit — the map
 expansion, the row-scope dimension, the chart extension, the filing flag, the nine TC-MDF-122
 cases, the six approved re-pins and the three permanent-document amendments.
-
 ### Diagnosis, taken before any map entry was written (the 088 precedent)
-
 Every row family the statements view needs **already decoded as a valued `OTHER_*` passthrough** on
 the four then-committed bodies — the gap was the canonical mapping, never the data. Two structural
 facts made it non-trivial:
-
 1. The balance sheet repeats captions across its current/non-current blocks (`Ticari Alacaklar` ×2,
    `Ticari Borçlar` ×2, `Kiralama İşlemlerinden Borçlar` per block pair, `Ertelenmiş Gelirler (…)`
    ×2) and the income statement repeats `Ana Ortaklık Payları` across its profit-or-loss/OCI parts —
    a 1:1 `(statement, label)` map would overwrite a value or re-raise 088's `DUPLICATE_LABEL_CONFLICT`
    quarantine.
 2. The consolidation declaration is the header field `Finansal Tablo Niteliği`, not the `<h1>`.
-
 Post-change decode diagnostics (throwaway dumper, committed bodies only, **zero live requests**):
-
 | body | lines | statements | `DUPLICATE_LABEL_CONFLICT` | `BLOCK_UNDETERMINED` | disambiguated |
 |---|---|---|---|---|---|
 | THYAO `1565996` 2025 Yıllık | 497 | 6 | 0 | 0 | 0 |
@@ -73,12 +60,9 @@ Post-change decode diagnostics (throwaway dumper, committed bodies only, **zero 
 | ASELS `1561039` 2025 Yıllık | 383 | 6 | 0 | 0 | 34 |
 | MGROS `1648240` 2026-06 | 314 | 6 | 0 | 0 | 16 |
 | ASELS `1643141` 2026-06 | 116 | 6 | 0 | 0 | 0 |
-
 Every committed body resolves all four block anchors from its own rows, so the fail-safe's incidence
 on captured filings is **unmeasured** — its case is a mutation, stated rather than hidden.
-
 ### What landed
-
 - **`KapPublicReportModels.cs`** — `KapPublicLabelRule.Scope` (additive, default `null`); the closed
   `KapPublicScopes` vocabulary (`CURRENT`/`NONCURRENT`/`PL`/`OCI`) beside `KapPublicSections`;
   `KapPublicReportReasons.BlockUndetermined` (the closed reason set now 17 codes); and
@@ -97,9 +81,7 @@ on captured filings is **unmeasured** — its case is a mutation, stated rather 
   `BLOCK_UNDETERMINED`); `02` §6.1's chart extension rewritten to the landed names, including the
   recorded choice that non-current trade receivables/payables get `LT_TRADE_RECV`/`LT_TRADE_PAY`
   rather than joining the `NONCUR_*_OTHER` families.
-
 ### Test evidence
-
 - **Red (measured, not remembered):** with the 41 new map entries stripped (models, scope machinery
   and assertions kept) the `TC_MDF_122` filter reads **7 failed / 2 passed** — (a) `Assert.NotEmpty()
   Failure: Collection was empty` on `ScopedLabelMap`; (b) and (c) `KeyNotFoundException:
@@ -110,9 +92,7 @@ on captured filings is **unmeasured** — its case is a mutation, stated rather 
 - **Green:** `KapPublicReportDecoderTests` **39/39** (30 pre-existing + 9 new). Non-regression
   `KapPublicStatementsIngestTests | RealSourceStatementsTests | StatementNormalizationTests |
   StatementVersioningTests` **31/31**. `dotnet build` 0 warnings.
-
 ### Amendment executed (user-approved 2026-10-28)
-
 Six assertions unavoidably invalidated by the expansion were re-pinned, **every TC id kept, no intent
 weakened** — recorded in test plan v1.45, `01` v1.5.69 and here: TC-MDF-107 (iii) (the trade
 receivable's code, its passthrough proof moved to the still-unmapped related-party caption, and its
@@ -121,9 +101,7 @@ financing companion moved one row over because that caption is now `DEBT_ISSUED`
 therefore stronger); TC-MDF-117 (b) (exhaustive canonical surface 6 → 25 codes, same claim, same
 `ST_DEBT`+`LT_DEBT` narrowness); TC-MDF-117 (d)/(e) (disambiguation totals 22 → 18 and 42 → 34
 because the repeated families are now placed per block; both cases' conflict claims untouched).
-
 ### Flagged items
-
 1. **Konsolide/Solo is decode-only here.** `KapPublicReport.Consolidated` is carried on the decode
    result; persisting and serving it is 094's (no schema change was made and none is needed now).
 2. **DR-1/DR-2 remain open and fenced, untouched.** `TOTAL_EQUITY` is still read NCI-inclusive;
