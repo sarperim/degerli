@@ -119,6 +119,16 @@ public static class KapPublicReportDecoder
     public const string MgrosInterimCaptureName = "kap-public-report-1648240";
 
     /// <summary>
+    /// The THYAO 2025 annual capture (<c>RealSourceCatalog.KapPublicReportThyao</c>, public
+    /// disclosure index <b>1565996</b>, filed 04.03.2026 18:55:17, bounded trim) — the
+    /// industrial FR whose report carries the <b>full</b> IS/BS/CF taxonomy row set (the
+    /// statements view's rows: trade receivables/payables, inventories, PP&amp;E, right-of-use
+    /// assets, goodwill, lease liabilities, deferred revenue, the equity block and the CF
+    /// detail lines) and the <c>1.000.000 TL</c> presentation unit (TKT-foundation-093).
+    /// </summary>
+    public const string ThyaoAnnualCaptureName = "kap-public-report-1565996";
+
+    /// <summary>
     /// Every committed capture this decoder's label map may cite as provenance
     /// (<see cref="KapPublicLabelRule.Provenance"/>). A spelling outside this set is
     /// un-evidenced by construction, and the acceptance suite checks each entry against the
@@ -130,6 +140,7 @@ public static class KapPublicReportDecoder
         TuprsAnnualCaptureName,
         AselsAnnualCaptureName,
         MgrosInterimCaptureName,
+        ThyaoAnnualCaptureName,
     ];
 
     /// <summary>The report period type of a full fiscal year.</summary>
@@ -219,6 +230,19 @@ public static class KapPublicReportDecoder
         // statements, never one spelling standing in for the other).
         new("IS", "DÖNEM KARI (ZARARI)", "NI", AselsAnnualCaptureName),
 
+        // The income statement's remaining families (TKT-foundation-093): R&D and the
+        // other-operating / investing / financing income-and-expense pairs, kept as distinct
+        // lines (a single "net" code would have to manufacture a sum the report never states),
+        // plus the TMS 29 net monetary position gain/loss. Evidenced by the THYAO 2025 Yıllık
+        // body; `Araştırma ve Geliştirme Giderleri` by the ASELSAN annual body.
+        new("IS", "Araştırma ve Geliştirme Giderleri", "RND", AselsAnnualCaptureName),
+        new("IS", "Esas Faaliyetlerden Diğer Gelirler", "OP_INCOME_OTHER", ThyaoAnnualCaptureName),
+        new("IS", "Esas Faaliyetlerden Diğer Giderler", "OP_EXPENSE_OTHER", ThyaoAnnualCaptureName),
+        new("IS", "Yatırım Faaliyetlerinden Gelirler", "INVEST_INCOME", ThyaoAnnualCaptureName),
+        new("IS", "Yatırım Faaliyetlerinden Giderler", "INVEST_EXPENSE", ThyaoAnnualCaptureName),
+        new("IS", "Finansman Gelirleri", "FIN_INCOME", ThyaoAnnualCaptureName),
+        new("IS", "Net Parasal Pozisyon Kazançları (Kayıpları)", "NET_MONETARY_GL", ThyaoAnnualCaptureName),
+
         // ---- Balance sheet ---------------------------------------------------------
         new("BS", "Nakit ve Nakit Benzerleri", "CASH", CaptureName),
 
@@ -234,6 +258,29 @@ public static class KapPublicReportDecoder
         new("BS", "TOPLAM ÖZKAYNAKLAR", "TOTAL_EQUITY", TuprsAnnualCaptureName),
         new("BS", "TOPLAM DÖNEN VARLIKLAR", "CUR_ASSETS", TuprsAnnualCaptureName),
         new("BS", "TOPLAM KISA VADELİ YÜKÜMLÜLÜKLER", "CUR_LIAB", TuprsAnnualCaptureName),
+
+        // The statements view's remaining balance-sheet families (TKT-foundation-093),
+        // evidenced by the THYAO 2025 Yıllık body — the industrial FR carrying the full
+        // taxonomy row set — except where another committed body is the one that carries the
+        // caption (noted per entry). Each caption means the same line in every block; the
+        // repeated current/non-current families live in `ScopedRules` instead.
+        new("BS", "Stoklar", "INVENTORY", ThyaoAnnualCaptureName),
+        new("BS", "Maddi Duran Varlıklar", "PPE_NET", ThyaoAnnualCaptureName),
+        new("BS", "Kullanım Hakkı Varlıkları", "ROU_ASSET", ThyaoAnnualCaptureName),
+        new("BS", "Maddi Olmayan Duran Varlıklar", "INTANGIBLES_NET", ThyaoAnnualCaptureName),
+        new("BS", "Şerefiye", "GOODWILL", ThyaoAnnualCaptureName),
+        new("BS", "Ödenmiş Sermaye", "PAID_IN_CAPITAL", ThyaoAnnualCaptureName),
+        new("BS", "Geçmiş Yıllar Karları veya Zararları", "RETAINED_EARNINGS", ThyaoAnnualCaptureName),
+        // The VYK concept map's existing `MINORITY_INT` code, now wired to its KAP spelling.
+        new("BS", "Kontrol Gücü Olmayan Paylar", "MINORITY_INT", ThyaoAnnualCaptureName),
+        new("BS", "Ana Ortaklığa Ait Özkaynaklar", "EQUITY_PARENT", ThyaoAnnualCaptureName),
+        new("BS", "TOPLAM VARLIKLAR", "TOTAL_ASSETS", ThyaoAnnualCaptureName),
+        new("BS", "TOPLAM YÜKÜMLÜLÜKLER", "TOTAL_LIAB", ThyaoAnnualCaptureName),
+        new("BS", "Diğer Dönen Varlıklar", "CUR_ASSETS_OTHER", ThyaoAnnualCaptureName),
+        new("BS", "Diğer Kısa Vadeli Yükümlülükler", "CUR_LIAB_OTHER", ThyaoAnnualCaptureName),
+        // `Diğer Duran Varlıklar` is carried by the TÜPRAŞ and ASELSAN annual bodies, not THYAO.
+        new("BS", "Diğer Duran Varlıklar", "NONCUR_ASSETS_OTHER", TuprsAnnualCaptureName),
+        new("BS", "Diğer Uzun Vadeli Yükümlülükler", "NONCUR_LIAB_OTHER", ThyaoAnnualCaptureName),
 
         // ---- Cash-flow statement (the 051 deliverable) -----------------------------
         // The statement's own operating total, after tax paid and other operating payments
@@ -266,8 +313,86 @@ public static class KapPublicReportDecoder
                     StringComparer.Ordinal),
                 StringComparer.Ordinal);
 
+    /// <summary>
+    /// The <b>scope-qualified</b> entries (TKT-foundation-093): captions the capture really
+    /// repeats across a statement's row scopes with different values, each entry naming the
+    /// scope it is qualified to. A row whose resolved scope is null (an undetermined
+    /// balance-sheet block) never matches one of these — it falls through to the section-scoped
+    /// <c>OTHER_*</c> passthrough and is counted <c>BLOCK_UNDETERMINED</c>, never guessed.
+    /// <para>
+    /// Every spelling and every provenance is capture-verified exactly as an unqualified entry
+    /// is (the TC-MDF-107 (i)/117 (f) invariant, generalized by TC-MDF-122): the THYAO 2025
+    /// Yıllık body carries both blocks of the lease/deferred-revenue/deferred-tax families, the
+    /// ASELSAN 2025 Yıllık body carries both blocks of trade receivables and payables, and the
+    /// cash-flow captions are cited from the filer that carries them.
+    /// </para>
+    /// </summary>
+    private static readonly IReadOnlyList<KapPublicLabelRule> ScopedRules =
+    [
+        // ---- Balance sheet: current / non-current blocks ----------------------------
+        // Evidenced in both blocks by the ASELSAN 2025 Yıllık capture: 38.859.628 current /
+        // 87.944.574 non-current trade receivables and 37.964.626 current / 24.432 non-current
+        // trade payables (thousand TL, current column).
+        new("BS", "Ticari Alacaklar", "ST_TRADE_RECV", AselsAnnualCaptureName, KapPublicScopes.Current),
+        new("BS", "Ticari Alacaklar", "LT_TRADE_RECV", AselsAnnualCaptureName, KapPublicScopes.NonCurrent),
+        new("BS", "Ticari Borçlar", "ST_TRADE_PAY", AselsAnnualCaptureName, KapPublicScopes.Current),
+        new("BS", "Ticari Borçlar", "LT_TRADE_PAY", AselsAnnualCaptureName, KapPublicScopes.NonCurrent),
+        // Evidenced in both blocks by THYAO 2025: 86.152 current / 552.824 non-current lease
+        // liabilities and 151.257 current / 3.240 non-current deferred revenue (million TL).
+        new("BS", "Kiralama İşlemlerinden Borçlar", "ST_LEASE_LIAB", ThyaoAnnualCaptureName, KapPublicScopes.Current),
+        new("BS", "Kiralama İşlemlerinden Borçlar", "LT_LEASE_LIAB", ThyaoAnnualCaptureName, KapPublicScopes.NonCurrent),
+        new("BS", "Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)", "ST_DEFERRED_REV", ThyaoAnnualCaptureName, KapPublicScopes.Current),
+        new("BS", "Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)", "LT_DEFERRED_REV", ThyaoAnnualCaptureName, KapPublicScopes.NonCurrent),
+
+        // ---- Income statement: profit-or-loss / other comprehensive income -----------
+        // THYAO 2025 repeats `Ana Ortaklık Payları`: 118.208 in the profit-or-loss part and
+        // 241.065 in the other-comprehensive-income part. Only the profit-or-loss occurrence is
+        // the parent's net income; the OCI occurrence stays a labelled `OTHER_*` line.
+        new("IS", "Ana Ortaklık Payları", "NI_PARENT", ThyaoAnnualCaptureName, KapPublicScopes.ProfitOrLoss),
+
+        // ---- Cash-flow statement: block-qualified detail lines -----------------------
+        new("CF", "Değer Düşüklüğü (İptali) İle İlgili Düzeltmeler", "IMPAIRMENT", ThyaoAnnualCaptureName, KapPublicSections.CashFlowOperating),
+        new("CF", "Karşılıklar İle İlgili Düzeltmeler", "PROVISIONS", ThyaoAnnualCaptureName, KapPublicSections.CashFlowOperating),
+        new("CF", "Parasal Pozisyon Kazanç ve Kayıplarıyla İlgili Düzeltmeler", "MONETARY_ADJ", TuprsAnnualCaptureName, KapPublicSections.CashFlowOperating),
+        new("CF", "Maddi ve Maddi Olmayan Duran Varlıkların Satışından Kaynaklanan Nakit Girişleri", "ASSET_SALE_PROCEEDS", ThyaoAnnualCaptureName, KapPublicSections.CashFlowInvesting),
+        new("CF", "Bağlı Ortaklıkların Kontrolünün Elde Edilmesine Yönelik Alışlara İlişkin Nakit Çıkışları", "ACQUISITION_CASH", TuprsAnnualCaptureName, KapPublicSections.CashFlowInvesting),
+        new("CF", "Pay ve Diğer Özkaynağa Dayalı Araçların İhracından Kaynaklanan Nakit Girişleri", "EQUITY_ISSUE_CASH", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+        new("CF", "İşletmenin Kendi Paylarını ve Diğer Özkaynağa Dayalı Araçlarını Almasıyla İlgili Nakit Çıkışları", "BUYBACK", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+        new("CF", "Ödenen Temettüler", "DIVIDENDS_PAID", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+        new("CF", "Ödenen Faiz", "INTEREST_PAID", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+        new("CF", "Borçlanmadan Kaynaklanan Nakit Girişleri", "DEBT_ISSUED", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+        new("CF", "Borç Ödemelerine İlişkin Nakit Çıkışları", "DEBT_REPAID", ThyaoAnnualCaptureName, KapPublicSections.CashFlowFinancing),
+    ];
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<(string Label, string Scope), string>> ScopedRulesByStatement =
+        ScopedRules
+            .GroupBy(r => r.StatementType, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyDictionary<(string, string), string>)g.ToDictionary(
+                    r => (r.Label, r.Scope!),
+                    r => r.ItemCode),
+                StringComparer.Ordinal);
+
     /// <summary>The label → canonical map, built only from committed-capture labels.</summary>
     public static IReadOnlyList<KapPublicLabelRule> LabelMap => Rules;
+
+    /// <summary>
+    /// The <b>scope-qualified</b> half of the map (TKT-foundation-093): every entry whose
+    /// <see cref="KapPublicLabelRule.Scope"/> names the row scope it is qualified to (the balance
+    /// sheet's current/non-current block, the income statement's profit-or-loss /
+    /// other-comprehensive-income part, a cash-flow block). <see cref="LabelMap"/> is the
+    /// unqualified half; together they are the whole map.
+    /// <para>
+    /// <b>Why two projections and not one list.</b> The map is a function of
+    /// <c>(statement, label)</c> for an unqualified caption — the invariant TC-MDF-107 (i)/
+    /// TC-MDF-117 (f) pin — while a caption that really is two lines must have one entry per
+    /// scope. Keeping the qualified entries in their own projection keeps both statements true:
+    /// the unqualified map stays a function, and every qualified entry is still evidence-bound
+    /// (provenance names one of <see cref="CaptureNames"/> and the body carries the spelling).
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<KapPublicLabelRule> ScopedLabelMap => ScopedRules;
 
     /// <summary>
     /// True when the body is this source's excel-HTML report shape. Detection is by <b>shape</b>,
@@ -298,6 +423,28 @@ public static class KapPublicReportDecoder
         4 => AnnualPeriodType,
         _ => null,
     };
+
+    /// <summary>
+    /// The filing's consolidation flag from the header-table field <c>Finansal Tablo Niteliği</c>
+    /// (TKT-foundation-093): <c>Konsolide</c> → <c>true</c>, <c>Solo</c> → <c>false</c>, and
+    /// anything else — including an absent field — <c>null</c>. The declaration is a header field,
+    /// never inferred from the company heading or from the presence of minority interests.
+    /// </summary>
+    public static bool? ConsolidatedFor(string? consolidationType)
+    {
+        if (string.IsNullOrWhiteSpace(consolidationType))
+        {
+            return null;
+        }
+
+        var declared = consolidationType.Trim();
+        if (string.Equals(declared, "Konsolide", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(declared, "Solo", StringComparison.OrdinalIgnoreCase) ? false : null;
+    }
 
     /// <summary>The period's month count, or null when the period type is unknown.</summary>
     public static int? PeriodMonthsFor(int? period) => period switch
@@ -466,8 +613,37 @@ public static class KapPublicReportDecoder
             var statementLineCount = 0;
             var canonicalLineCount = 0;
 
+            // The row-scope state (TKT-foundation-093): resolved from the capture's own block
+            // anchors <b>before</b> the label map, exactly as the cash-flow section is. A
+            // separate income-statement table headed `Diğer Kapsamlı Gelir Tablosu` starts in
+            // the OCI part; a combined statement starts in profit-or-loss and flips at its own
+            // `Kar veya Zararda Yeniden Sınıflandırılmayacaklar` anchor.
+            string? block = null;
+            string? incomeScope = statementType == "IS"
+                && string.Equals(heading, "Diğer Kapsamlı Gelir Tablosu", StringComparison.Ordinal)
+                    ? KapPublicScopes.OtherComprehensiveIncome
+                    : statementType == "IS" ? KapPublicScopes.ProfitOrLoss : null;
+
             foreach (var row in rows)
             {
+                // Anchors and section-heading rows carry no value cells but they are what the
+                // scopes are read from — so the label is read before the value-cell guard.
+                var labelCell = row.QuerySelector(TitleCellSelector);
+                var rowLabel = labelCell is null ? null : LabelOf(labelCell);
+
+                switch (statementType)
+                {
+                    case "BS":
+                        block = BalanceSheetBlockFor(rowLabel, block);
+                        break;
+                    case "IS":
+                        incomeScope = IncomeStatementScopeFor(rowLabel, incomeScope);
+                        break;
+                    case "CF":
+                        section = CashFlowSectionFor(rowLabel, section);
+                        break;
+                }
+
                 var valueCells = row.QuerySelectorAll(ValueCellSelector);
                 if (valueCells.Length == 0)
                 {
@@ -475,13 +651,15 @@ public static class KapPublicReportDecoder
                 }
 
                 rowOrder++;
-                var labelCell = row.QuerySelector(TitleCellSelector);
-                var label = labelCell is null ? null : LabelOf(labelCell);
-
-                if (statementType == "CF")
+                var label = rowLabel;
+                var scope = statementType switch
                 {
-                    section = CashFlowSectionFor(label, section);
-                }
+                    "BS" => block,
+                    "IS" => incomeScope,
+                    "CF" => section,
+                    _ => null,
+                };
+                var blockUndetermined = false;
 
                 foreach (var cell in valueCells)
                 {
@@ -540,7 +718,12 @@ public static class KapPublicReportDecoder
                     }
 
                     var (value, fromAttribute, raw, displayed) = cellValue.Value;
-                    var itemCode = MapCode(statementType, section, label);
+                    var itemCode = MapCode(statementType, section, scope, label);
+
+                    // The row is one a block-qualified entry could have placed, but its block is
+                    // undetermined: no qualified entry matched and the value stays an honest
+                    // passthrough. Counted once for the row below, never guessed into a block.
+                    blockUndetermined |= scope is null && HasScopedRule(statementType, label);
                     // Decoded is only true when the column's header resolved a period end; the
                     // null-forgiving access records that invariant in one place (DR-8).
                     var periodEnd = column.PeriodEnd!.Value;
@@ -585,6 +768,19 @@ public static class KapPublicReportDecoder
                     {
                         canonicalLineCount++;
                     }
+                }
+
+                if (blockUndetermined)
+                {
+                    findings.Add(Finding(
+                        KapPublicReportReasons.BlockUndetermined,
+                        1,
+                        $"{tableClass} '{heading}' row {rowOrder.ToString(CultureInfo.InvariantCulture)} '{label}': "
+                        + "the balance sheet carries a block-qualified entry for this caption but the row's "
+                        + "current/non-current block could not be determined from the capture's own anchors — the "
+                        + "value stays a section-scoped OTHER_* passthrough, never guessed into a block.",
+                        statementType,
+                        label));
                 }
             }
 
@@ -1077,13 +1273,82 @@ public static class KapPublicReportDecoder
     }
 
     /// <summary>
-    /// Maps a label to its canonical code inside its statement, or to its section-scoped
-    /// <c>OTHER_*</c> passthrough code — recorded and ignored by metrics (the honest gap).
+    /// Resolves the balance-sheet block a row belongs to from the capture's own anchors
+    /// (<c>DÖNEN VARLIKLAR</c> / <c>DURAN VARLIKLAR</c> / <c>KISA VADELİ YÜKÜMLÜLÜKLER</c> /
+    /// <c>UZUN VADELİ YÜKÜMLÜLÜKLER</c>), exactly as the cash-flow section is resolved. The
+    /// equity block (<c>ÖZKAYNAKLAR</c>) has no current/non-current split, so it — and every row
+    /// before the first anchor — resolves to <c>null</c>: a block-qualified entry never matches
+    /// that, and the miss is counted, never guessed (TKT-foundation-093).
     /// </summary>
-    private static string MapCode(string statementType, string section, string label) =>
-        RulesByStatement.TryGetValue(statementType, out var rules) && rules.TryGetValue(label, out var code)
+    private static string? BalanceSheetBlockFor(string? label, string? current)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return current;
+        }
+
+        if (string.Equals(label, "DÖNEN VARLIKLAR", StringComparison.Ordinal)
+            || string.Equals(label, "KISA VADELİ YÜKÜMLÜLÜKLER", StringComparison.Ordinal))
+        {
+            return KapPublicScopes.Current;
+        }
+
+        if (string.Equals(label, "DURAN VARLIKLAR", StringComparison.Ordinal)
+            || string.Equals(label, "UZUN VADELİ YÜKÜMLÜLÜKLER", StringComparison.Ordinal))
+        {
+            return KapPublicScopes.NonCurrent;
+        }
+
+        if (string.Equals(label, "ÖZKAYNAKLAR", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Resolves the income-statement part a row belongs to: profit-or-loss until the capture's
+    /// own <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c> anchor, other-comprehensive-
+    /// income from there on (a standalone <c>Diğer Kapsamlı Gelir Tablosu</c> starts there
+    /// already). TKT-foundation-093.
+    /// </summary>
+    private static string? IncomeStatementScopeFor(string? label, string? current)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return current;
+        }
+
+        return string.Equals(label, "Kar veya Zararda Yeniden Sınıflandırılmayacaklar", StringComparison.Ordinal)
+            ? KapPublicScopes.OtherComprehensiveIncome
+            : current;
+    }
+
+    /// <summary>True when the map carries a scope-qualified entry for this statement+label.</summary>
+    private static bool HasScopedRule(string statementType, string label) =>
+        ScopedRulesByStatement.TryGetValue(statementType, out var rules)
+        && rules.Keys.Any(key => string.Equals(key.Label, label, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Maps a label to its canonical code inside its statement and row scope, or to its
+    /// section-scoped <c>OTHER_*</c> passthrough code — recorded and ignored by metrics (the
+    /// honest gap). A scope-qualified entry wins only when the row's scope was resolved and
+    /// matches it; an unqualified entry matches every scope (TKT-foundation-093).
+    /// </summary>
+    private static string MapCode(string statementType, string section, string? scope, string label)
+    {
+        if (scope is not null
+            && ScopedRulesByStatement.TryGetValue(statementType, out var scoped)
+            && scoped.TryGetValue((label, scope), out var scopedCode))
+        {
+            return scopedCode;
+        }
+
+        return RulesByStatement.TryGetValue(statementType, out var rules) && rules.TryGetValue(label, out var code)
             ? code
             : $"OTHER_{section}_{Slug(label)}";
+    }
 
     /// <summary>Folds a verbatim label into an item-code-safe token (letters/digits, single underscores).</summary>
     private static string Slug(string label)

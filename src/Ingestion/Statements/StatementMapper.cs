@@ -35,6 +35,54 @@ public static class StatementMapper
         "CUR_LIAB",
         "SHARES_DILUTED",
         "SHARES_OUT",
+
+        // ---- TKT-foundation-093: the statements view's row set (02 §6.1) ----------------
+        // Balance-sheet families whose caption means the same line in every block.
+        "INVENTORY",
+        "PPE_NET",
+        "ROU_ASSET",
+        "INTANGIBLES_NET",
+        "GOODWILL",
+        "PAID_IN_CAPITAL",
+        "RETAINED_EARNINGS",
+        "EQUITY_PARENT",
+        "TOTAL_ASSETS",
+        "TOTAL_LIAB",
+        "CUR_ASSETS_OTHER",
+        "CUR_LIAB_OTHER",
+        "NONCUR_ASSETS_OTHER",
+        "NONCUR_LIAB_OTHER",
+        // Balance-sheet families the report repeats across the current/non-current blocks:
+        // the block dimension is what keeps them distinct (`KapPublicScopes`).
+        "ST_TRADE_RECV",
+        "LT_TRADE_RECV",
+        "ST_TRADE_PAY",
+        "LT_TRADE_PAY",
+        "ST_LEASE_LIAB",
+        "LT_LEASE_LIAB",
+        "ST_DEFERRED_REV",
+        "LT_DEFERRED_REV",
+        // Income-statement families.
+        "RND",
+        "OP_INCOME_OTHER",
+        "OP_EXPENSE_OTHER",
+        "INVEST_INCOME",
+        "INVEST_EXPENSE",
+        "FIN_INCOME",
+        "NET_MONETARY_GL",
+        "NI_PARENT",
+        // Cash-flow detail lines.
+        "IMPAIRMENT",
+        "PROVISIONS",
+        "MONETARY_ADJ",
+        "ASSET_SALE_PROCEEDS",
+        "ACQUISITION_CASH",
+        "EQUITY_ISSUE_CASH",
+        "BUYBACK",
+        "DIVIDENDS_PAID",
+        "INTEREST_PAID",
+        "DEBT_ISSUED",
+        "DEBT_REPAID",
     };
 
     /// <summary>

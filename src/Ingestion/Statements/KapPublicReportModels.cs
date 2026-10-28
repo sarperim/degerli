@@ -65,6 +65,15 @@ public sealed record KapPublicReport(
 
     /// <summary>True when the report's period is a full fiscal year (<c>Yıllık</c>).</summary>
     public bool IsAnnual => Header.IsAnnual;
+
+    /// <summary>
+    /// The filing's consolidation flag, derived from the header-table field
+    /// <c>Finansal Tablo Niteliği</c> (<see cref="KapPublicReportHeader.ConsolidationType"/>):
+    /// <c>Konsolide</c> → <c>true</c>, <c>Solo</c> → <c>false</c>, absent or any other value →
+    /// <c>null</c> (honest-null, never guessed). TKT-foundation-093 decodes it; persisting and
+    /// serving it is the statements lane's next slice.
+    /// </summary>
+    public bool? Consolidated => KapPublicReportDecoder.ConsolidatedFor(Header.ConsolidationType);
 }
 
 /// <summary>
@@ -230,22 +239,37 @@ public sealed record KapPublicFinding(
     string? StatementType = null,
     string? Label = null);
 
-/// <summary>
-/// One entry of the HTML label → canonical chart-of-accounts map (<c>02</c> §6.1 extended to
+/// <summary>One entry of the HTML label → canonical chart-of-accounts map (<c>02</c> §6.1 extended to
 /// this source's label space — the canonical <see cref="StatementMapper"/> is untouched).
 /// <b>Provenance is part of the entry</b> (TC-MDF-107 (i)): a spelling is only in this map
 /// because a committed capture carried it, and the entry names which capture.
+/// <para>
+/// <b>The scope dimension (TKT-foundation-093).</b> A caption alone is not always a line: the
+/// balance sheet repeats <c>Ticari Alacaklar</c>, <c>Ticari Borçlar</c>,
+/// <c>Kiralama İşlemlerinden Borçlar</c> and <c>Ertelenmiş Gelirler (…)</c> in its current and
+/// non-current blocks with different values, the income statement repeats
+/// <c>Ana Ortaklık Payları</c> in its profit-or-loss and other-comprehensive-income parts, and
+/// the cash-flow statement repeats captions across its operating/investing/financing blocks.
+/// <see cref="Scope"/> names the row scope such a caption belongs to, resolved <b>before</b> the
+/// map exactly as the cash-flow section is (<see cref="KapPublicScopes"/>); <c>null</c> is an
+/// <b>unqualified</b> entry, which matches in every scope — so every pre-093 entry is
+/// unchanged and the 088/090/091/092 goldens hold.
+/// </para>
 /// </summary>
 /// <param name="StatementType">The statement type the spelling belongs to — the same label in
 /// another statement is a different line and is never mapped by this entry.</param>
 /// <param name="Label">The source label, verbatim.</param>
 /// <param name="ItemCode">The canonical item code it collapses onto.</param>
 /// <param name="Provenance">The committed capture that supplied the spelling.</param>
+/// <param name="Scope">The row scope this entry is qualified to
+/// (<see cref="KapPublicScopes"/>), or null when the caption means the same line in every
+/// scope.</param>
 public sealed record KapPublicLabelRule(
     string StatementType,
     string Label,
     string ItemCode,
-    string Provenance);
+    string Provenance,
+    string? Scope = null);
 
 /// <summary>
 /// The section vocabulary the decoder assigns <b>before</b> label mapping. Sections are the
@@ -277,6 +301,40 @@ public static class KapPublicSections
 
     /// <summary>Statement of changes in equity.</summary>
     public const string Equity = "EQ";
+}
+
+/// <summary>
+/// The <b>row scope</b> vocabulary the decoder resolves <b>before</b> label mapping — the
+/// second half of the "section before label" rule (TKT-foundation-093, <c>01</c> §10.9.19 /
+/// <c>02</c> §6.1). A scope is what makes a repeated caption a different line:
+/// <list type="bullet">
+/// <item><b>balance sheet</b> — the current / non-current block, read from the capture's own
+/// <c>DÖNEN VARLIKLAR</c> / <c>DURAN VARLIKLAR</c> / <c>KISA VADELİ YÜKÜMLÜLÜKLER</c> /
+/// <c>UZUN VADELİ YÜKÜMLÜLÜKLER</c> anchor rows. A row whose block is undetermined (before any
+/// anchor, or inside the equity block, which has no current/non-current split) carries
+/// <c>null</c>: a scope-qualified entry <b>never</b> matches it and the miss is a counted
+/// <c>BLOCK_UNDETERMINED</c> finding — never a guessed block;</item>
+/// <item><b>income statement</b> — the profit-or-loss part and the other-comprehensive-income
+/// part, split at the capture's own <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c>
+/// anchor;</item>
+/// <item><b>cash-flow statement</b> — the same operating/investing/financing/summary block the
+/// section carries (<see cref="KapPublicSections"/>), so a caption repeated across cash-flow
+/// blocks stays attributable.</item>
+/// </list>
+/// </summary>
+public static class KapPublicScopes
+{
+    /// <summary>Balance sheet — the current block (<c>DÖNEN VARLIKLAR</c> / <c>KISA VADELİ YÜKÜMLÜLÜKLER</c>).</summary>
+    public const string Current = "CURRENT";
+
+    /// <summary>Balance sheet — the non-current block (<c>DURAN VARLIKLAR</c> / <c>UZUN VADELİ YÜKÜMLÜLÜKLER</c>).</summary>
+    public const string NonCurrent = "NONCURRENT";
+
+    /// <summary>Income statement — the profit-or-loss part.</summary>
+    public const string ProfitOrLoss = "PL";
+
+    /// <summary>Income statement — the other-comprehensive-income part.</summary>
+    public const string OtherComprehensiveIncome = "OCI";
 }
 
 /// <summary>
@@ -365,4 +423,15 @@ public static class KapPublicReportReasons
     /// <c>DUPLICATE_LABEL_CONFLICT</c> quarantine stays reserved for <b>canonical</b> codes
     /// (TKT-foundation-088).</summary>
     public const string DuplicateLabelDisambiguated = "DUPLICATE_LABEL_DISAMBIGUATED";
+
+    /// <summary>
+    /// A valued balance-sheet row's <b>block could not be determined</b> (it sits before any
+    /// <c>DÖNEN VARLIKLAR</c>/<c>DURAN VARLIKLAR</c>/<c>KISA VADELİ YÜKÜMLÜLÜKLER</c>/<c>UZUN
+    /// VADELİ YÜKÜMLÜLÜKLER</c> anchor, or inside the equity block, which has no current/non-current
+    /// split) while the map carries a scope-qualified entry for its caption. No qualified entry
+    /// matched it, so the row is left as its section-scoped <c>OTHER_*</c> passthrough —
+    /// <b>never</b> guessed into a block. Counted once per such row, naming the row order and
+    /// the caption (TKT-foundation-093).
+    /// </summary>
+    public const string BlockUndetermined = "BLOCK_UNDETERMINED";
 }
