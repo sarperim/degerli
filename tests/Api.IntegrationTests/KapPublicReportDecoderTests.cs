@@ -1499,9 +1499,16 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             Assert.Contains(rule.ItemCode, StatementMapper.CanonicalCodes);
         }
 
+        Assert.NotEmpty(unqualified);
         foreach (var rule in unqualified)
         {
             Assert.Null(rule.Scope);
+            Assert.Contains(rule.Provenance, KapPublicReportDecoder.CaptureNames);
+            Assert.True(
+                CaptureBodies.TryGetValue(rule.Provenance, out var body),
+                $"unqualified rule cites '{rule.Provenance}', which is not a committed capture body");
+            Assert.Contains(rule.Label, body!, StringComparison.Ordinal);
+            Assert.Contains(rule.ItemCode, StatementMapper.CanonicalCodes);
         }
 
         // Both projections are functions on their own keys, and their union has no duplicate.
@@ -1815,6 +1822,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.False(solo.Consolidated);
 
         var other = KapPublicReportDecoder.Decode(Mutate(Capture, "Konsolide", "Bireysel"), "ASELS");
+        Assert.Equal("Bireysel", other.Header.ConsolidationType);
         Assert.Null(other.Consolidated);
 
         var absent = KapPublicReportDecoder.Decode(
@@ -2146,6 +2154,419 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
     }
 
     // =================================================================================
+    // TC-MDF-125 — decoder fail-safe hardening: the balance-sheet block boundary, the
+    // income-statement part fail-safe, and the per-row scope finding (TKT-foundation-098,
+    // test plan §36). Every malformed case below is an in-memory mutation of a committed
+    // capture — no case calls kap.org.tr and no body is invented.
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-125 (a) — <b>DR-4, the balance-sheet block boundary.</b> The block is a
+    /// forward-filled state, so on the pre-ticket decoder a body that omits or renames its
+    /// liabilities anchors let every liabilities row inherit the <b>assets</b> block and take a
+    /// wrong-block canonical code (<c>LT_TRADE_PAY</c> for a current trade payable) with no
+    /// finding at all. Here the THYAO annual body — the only committed body that carries the
+    /// duplicated liability families — has <b>both</b> liabilities anchors renamed, so the
+    /// assets→liabilities boundary is never declared: the total rows close the assets side and
+    /// the liabilities side must re-declare, and it cannot.
+    /// <para>
+    /// The contract: liabilities rows decode as honest section-scoped passthroughs carrying the
+    /// capture's own values, the miss is a named, counted <see
+    /// cref="KapPublicReportReasons.BlockUndetermined"/> per row, the assets side is untouched,
+    /// and the statement is <b>not</b> quarantined — no <c>DUPLICATE_LABEL_CONFLICT</c>, no
+    /// conflicting codes, and never a stale block under a canonical code.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_a_balance_sheet_liabilities_without_their_anchors_never_inherit_the_assets_block()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportThyao];
+        var mutated = Mutate(body, "KISA VADELİ YÜKÜMLÜLÜKLER", "KISA VADELİ BORÇLAR");
+        mutated = Mutate(mutated, "UZUN VADELİ YÜKÜMLÜLÜKLER", "UZUN VADELİ BORÇLAR");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "THYAO");
+
+        // The hardening is a fail-safe, not a repair: the decode still yields every row.
+        Assert.Equal(497, report.Lines.Count);
+        Assert.Equal(6, report.Payload.Statements.Count);
+
+        // Never a quarantine for a scope the fail-safe already disambiguates.
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.All(report.Payload.Statements, s => Assert.Null(s.ConflictingItemCodes));
+
+        // The boundary is named, once per undetermined row, and it is the balance-sheet reason.
+        Assert.Equal(5, report.Count(KapPublicReportReasons.BlockUndetermined));
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PartUndetermined));
+        var undetermined = report.Findings
+            .Where(f => f.ReasonCode == KapPublicReportReasons.BlockUndetermined)
+            .ToList();
+        Assert.All(undetermined, f =>
+        {
+            Assert.Equal("BS", f.StatementType);
+            Assert.Equal(1, f.Count);
+            Assert.Contains("could not be determined", f.Detail, StringComparison.Ordinal);
+        });
+        Assert.Equal(
+            new[]
+            {
+                "Kiralama İşlemlerinden Borçlar",
+                "Ticari Borçlar",
+                "Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)",
+                "Kiralama İşlemlerinden Borçlar",
+                "Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)",
+            },
+            undetermined.Select(f => f.Label!).ToArray());
+
+        var balanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        // The wrong-block codes the pre-ticket decoder handed these very rows are gone.
+        foreach (var code in new[]
+                 {
+                     "ST_TRADE_PAY", "LT_TRADE_PAY",
+                     "ST_LEASE_LIAB", "LT_LEASE_LIAB",
+                     "ST_DEFERRED_REV", "LT_DEFERRED_REV",
+                 })
+        {
+            Assert.DoesNotContain(code, balanceSheet.Lines.Keys);
+        }
+
+        // Every liabilities-side occurrence keeps the capture's own value as a passthrough.
+        foreach (var (label, value) in new[]
+                 {
+                     ("Ticari Borçlar", 78_640m),                     // current block
+                     ("Kiralama İşlemlerinden Borçlar", 86_152m),     // current block
+                     ("Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)", 151_257m),
+                     ("Kiralama İşlemlerinden Borçlar", 552_824m),    // non-current block
+                     ("Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)", 3_240m),
+                 })
+        {
+            Assert.Contains(
+                report.Lines,
+                l => l.StatementType == "BS"
+                     && l.PeriodEndDate == new DateOnly(2025, 12, 31)
+                     && l.Label == label
+                     && l.Value == value
+                     && l.ItemCode.StartsWith("OTHER_BS_", StringComparison.Ordinal));
+        }
+
+        // The totals are unqualified entries, so they still map verbatim across the boundary.
+        Assert.Equal(442_076m, balanceSheet.Lines["CUR_LIAB"]);
+        Assert.Equal(1_085_489m, balanceSheet.Lines["TOTAL_LIAB"]);
+
+        // The assets side never sees the boundary: its own blocks and codes are untouched.
+        Assert.Equal(45_791m, balanceSheet.Lines["ST_TRADE_RECV"]);
+        Assert.Equal(41_472m, balanceSheet.Lines["INVENTORY"]);
+        Assert.Equal(362_618m, balanceSheet.Lines["PPE_NET"]);
+        Assert.Equal(1_996_745m, balanceSheet.Lines["TOTAL_ASSETS"]);
+        Assert.Equal(911_222m, balanceSheet.Lines["EQUITY_PARENT"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (b) — <b>DR-5 (i), the starting part read from content.</b> A standalone
+    /// other-comprehensive-income table was recognized on the pre-ticket decoder only by the
+    /// verbatim heading <c>Diğer Kapsamlı Gelir Tablosu</c> while the table was <i>classified</i>
+    /// by <c>Contains</c> — so a suffixed heading was typed <c>IS</c> but started in the
+    /// profit-or-loss part, silently mapping the OCI <c>Ana Ortaklık Payları</c> onto
+    /// <c>NI_PARENT</c> (a wrong value under a canonical code). Here the committed MİGROS body's
+    /// OCI heading gains a parenthetical suffix.
+    /// <para>
+    /// The contract: the statement still starts in the OCI part, the profit-or-loss
+    /// <c>Ana Ortaklık Payları</c> stays <c>NI_PARENT</c>, and the OCI occurrence — a different
+    /// value — never lands on <c>NI_PARENT</c>.
+    /// </para>
+    /// <para>
+    /// <b>Not a pre-fix red on its own, deliberately:</b> this body's OCI table also declares the
+    /// <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c> anchor before the repeated caption,
+    /// so the anchor attests the part even when the heading alone does not. This case pins the
+    /// invariant the acceptance names; TC-MDF-125 (c) is its red counterpart, where the anchor is
+    /// re-worded too and only the heading content can attest the part.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_b_a_suffixed_oci_heading_starts_the_statement_in_the_oci_part()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var mutated = Mutate(
+            body,
+            "Diğer Kapsamlı Gelir Tablosu",
+            "Diğer Kapsamlı Gelir Tablosu (Sürdürülen Faaliyetler)");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "MGROS");
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.Null(incomeStatement.ConflictingItemCodes);
+
+        // The profit-or-loss occurrence keeps the canonical code and its own value.
+        Assert.Equal(1_010_950m, incomeStatement.Lines["NI_PARENT"]);
+
+        // The OCI occurrence is a passthrough, and it is never NI_PARENT.
+        Assert.Contains(
+            incomeStatement.Lines,
+            l => l.Value == 704_436m && l.Key.StartsWith("OTHER_IS_", StringComparison.Ordinal));
+        Assert.DoesNotContain(incomeStatement.Lines, l => l.Value == 704_436m && l.Key == "NI_PARENT");
+
+        // The profit-or-loss identity still holds: NI = parent + non-controlling.
+        Assert.Equal(1_078_256m, incomeStatement.Lines["NI"]);
+        Assert.Equal(67_306m, incomeStatement.Lines["OTHER_IS_Kontrol_Gücü_Olmayan_Paylar"]);
+
+        // A recognized heading is determined, so nothing here is undetermined.
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PartUndetermined));
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (c) — <b>DR-5 (ii), the re-worded OCI anchor on a recognized OCI heading.</b>
+    /// The MİGROS body's OCI anchor <c>Kar veya Zararda Yeniden Sınıflandırılmayacaklar</c> is
+    /// re-worded, so the capture declares no anchor into the OCI part at all. On the pre-ticket
+    /// decoder the two <c>Ana Ortaklık Payları</c> occurrences collided on <c>NI_PARENT</c> and the
+    /// whole statement row was quarantined — the 088 failure mode through the front door.
+    /// <para>
+    /// The contract: the map's own evidence disambiguates, so the statement is not quarantined
+    /// and the OCI occurrence keeps its honest passthrough.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_c_a_rewritten_oci_anchor_never_quarantines_the_income_statement()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var mutated = Mutate(
+            body,
+            "Diğer Kapsamlı Gelir Tablosu",
+            "Diğer Kapsamlı Gelir Tablosu (Sürdürülen Faaliyetler)");
+        mutated = Mutate(
+            mutated,
+            "Kar veya Zararda Yeniden Sınıflandırılmayacaklar",
+            "Kar veya Zararda Yeniden Sınıflandırılmayan Kalemler");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "MGROS");
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.Null(incomeStatement.ConflictingItemCodes);
+        Assert.Equal(1_010_950m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.Contains(
+            incomeStatement.Lines,
+            l => l.Value == 704_436m && l.Key.StartsWith("OTHER_IS_", StringComparison.Ordinal));
+        Assert.DoesNotContain(incomeStatement.Lines, l => l.Value == 704_436m && l.Key == "NI_PARENT");
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (d) — <b>DR-5 (i), the undetermined part fail-safe.</b> The MİGROS OCI heading is
+    /// replaced by a bare <c>Diğer Gelir Tablosu</c>, which attests <b>neither</b> part, and its
+    /// anchor is re-worded. On the pre-ticket decoder the heading silently defaulted to
+    /// profit-or-loss and the OCI occurrence took <c>NI_PARENT</c> with a conflict; a defaulted
+    /// part is exactly what the fail-safe forbids.
+    /// <para>
+    /// The contract: the row's part is undetermined, which is a named, counted
+    /// <see cref="KapPublicReportReasons.PartUndetermined"/> finding — the income-statement
+    /// analogue of <c>BLOCK_UNDETERMINED</c> — and the occurrence stays a section-scoped
+    /// passthrough. Never a defaulted part, never a quarantine.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_d_an_undetermined_part_is_named_and_never_defaulted()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var mutated = Mutate(body, "Diğer Kapsamlı Gelir Tablosu", "Diğer Gelir Tablosu");
+        mutated = Mutate(
+            mutated,
+            "Kar veya Zararda Yeniden Sınıflandırılmayacaklar",
+            "Kar veya Zararda Yeniden Sınıflandırılmayan Kalemler");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "MGROS");
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.Null(incomeStatement.ConflictingItemCodes);
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PartUndetermined);
+        Assert.Equal(1, finding.Count);
+        Assert.Equal("IS", finding.StatementType);
+        Assert.Equal("Ana Ortaklık Payları", finding.Label);
+        Assert.Contains("could not be determined", finding.Detail, StringComparison.Ordinal);
+
+        Assert.Equal(1, report.Count(KapPublicReportReasons.PartUndetermined));
+
+        // The profit-or-loss occurrence is untouched; the OCI one is an honest passthrough.
+        Assert.Equal(1_010_950m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.Contains(
+            incomeStatement.Lines,
+            l => l.Value == 704_436m && l.Key.StartsWith("OTHER_IS_", StringComparison.Ordinal));
+        Assert.DoesNotContain(incomeStatement.Lines, l => l.Value == 704_436m && l.Key == "NI_PARENT");
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (e) — <b>DR-5 (ii), the stale part on a combined statement.</b> The ASELSAN
+    /// annual body is a combined <c>Kar veya Zarar ve Diğer Kapsamlı Gelir Tablosu</c> that starts
+    /// in profit-or-loss and flips at its own anchor; here the anchor is re-worded, so the OCI
+    /// occurrence of <c>Ana Ortaklık Payları</c> resolves into the stale profit-or-loss part and
+    /// collides with <c>NI_PARENT</c>. The pre-ticket decoder quarantined the row; the fix prefers
+    /// the honest per-row outcome where the scope dimension already disambiguates.
+    /// <para>
+    /// The contract: <c>NI_PARENT</c> keeps the profit-or-loss value, the OCI occurrence stays a
+    /// passthrough named by <see cref="KapPublicReportReasons.PartUndetermined"/> with the
+    /// <b>stale</b> wording (distinct from the undetermined-heading wording), and the conflict
+    /// quarantine itself is not weakened.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_e_a_stale_part_is_named_not_quarantined()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportAselsAnnual];
+        var mutated = Mutate(
+            body,
+            "Kar veya Zararda Yeniden Sınıflandırılmayacaklar",
+            "Kar veya Zararda Yeniden Sınıflandırılmayan Kalemler");
+
+        var report = KapPublicReportDecoder.Decode(mutated, "ASELS");
+
+        Assert.Equal(383, report.Lines.Count);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.All(report.Payload.Statements, s => Assert.Null(s.ConflictingItemCodes));
+
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+        Assert.Equal(47, incomeStatement.Lines.Count);
+        Assert.Equal(29_949_517m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.Contains(
+            incomeStatement.Lines,
+            l => l.Value == 67_860_266m && l.Key.StartsWith("OTHER_IS_", StringComparison.Ordinal));
+        Assert.DoesNotContain(incomeStatement.Lines, l => l.Value == 67_860_266m && l.Key == "NI_PARENT");
+
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PartUndetermined);
+        Assert.Equal(1, finding.Count);
+        Assert.Equal("IS", finding.StatementType);
+        Assert.Equal("Ana Ortaklık Payları", finding.Label);
+        Assert.Contains("different value", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("not quarantined", finding.Detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (f) — <b>DR-8, the scope finding is a property of the row.</b> The pre-ticket
+    /// decoder set the flag inside the cell loop after a cell decoded, so a scoped caption whose
+    /// only values sit in a skipped column produced <b>no</b> finding at all — the row fell out of
+    /// the ledger silently, contradicting the reason's own doc.
+    /// <para>
+    /// The MİGROS body's part is made undetermined (bare heading, re-worded anchor) and the OCI
+    /// occurrence's value cells are blanked, so the row produces no decoded line in either period
+    /// while still carrying values on the table's own (skipped) columns. The contract: the row is
+    /// still named, exactly once, and the line is honestly absent rather than guessed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_f_a_scoped_caption_valued_only_in_skipped_columns_is_still_named()
+    {
+        var body = CaptureBodies[RealSourceCatalog.KapPublicReportMgros];
+        var mutated = Mutate(body, "Diğer Kapsamlı Gelir Tablosu", "Diğer Gelir Tablosu");
+        mutated = Mutate(
+            mutated,
+            "Kar veya Zararda Yeniden Sınıflandırılmayacaklar",
+            "Kar veya Zararda Yeniden Sınıflandırılmayan Kalemler");
+        mutated = BlankFirstValueCells(mutated, "Ana Ortaklık Payları", 1, 2);
+
+        var report = KapPublicReportDecoder.Decode(mutated, "MGROS");
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 6, 30));
+
+        // The row decoded no line in either period: its only valued cells are in skipped columns.
+        Assert.Equal(312, report.Lines.Count);
+        Assert.Equal(32, incomeStatement.Lines.Count);
+        Assert.DoesNotContain(incomeStatement.Lines, l => l.Value == 704_436m);
+
+        // Yet the undetermined row is named — once per row, not once per decoded cell.
+        var finding = Assert.Single(
+            report.Findings,
+            f => f.ReasonCode == KapPublicReportReasons.PartUndetermined);
+        Assert.Equal(1, finding.Count);
+        Assert.Equal("Ana Ortaklık Payları", finding.Label);
+
+        // The rest of the statement — and the profit-or-loss identity — is unharmed.
+        Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        Assert.Equal(1_010_950m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.Equal(1_078_256m, incomeStatement.Lines["NI"]);
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (g) — <b>the hardening must be invisible on well-formed input.</b> None of the
+    /// five committed bodies is malformed (verified twice before this ticket: zero conflicts and
+    /// zero block-undetermined findings on every one), so every golden of the merged 093 head is
+    /// unchanged: the same line counts, six statements each, no conflict, and no scope finding of
+    /// either kind. The fail-safes only fire on input that cannot be attributed.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_g_the_hardening_is_invisible_on_all_five_committed_bodies()
+    {
+        foreach (var (capture, expectedLines) in new[]
+                 {
+                     (RealSourceCatalog.KapPublicReport, 116),          // ASELS 2026-06 FR
+                     (RealSourceCatalog.KapPublicReportTuprs, 346),     // TÜPRAŞ 2025 Yıllık
+                     (RealSourceCatalog.KapPublicReportAselsAnnual, 383), // ASELSAN 2025 Yıllık
+                     (RealSourceCatalog.KapPublicReportMgros, 314),     // MİGROS 2026-06
+                     (RealSourceCatalog.KapPublicReportThyao, 497),     // THYAO 2025 Yıllık
+                 })
+        {
+            var report = KapPublicReportDecoder.Decode(CaptureBodies[capture], "X");
+
+            Assert.Equal(expectedLines, report.Lines.Count);
+            Assert.Equal(6, report.Payload.Statements.Count);
+            Assert.Equal(0, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+            Assert.Equal(0, report.Count(KapPublicReportReasons.BlockUndetermined));
+            Assert.Equal(0, report.Count(KapPublicReportReasons.PartUndetermined));
+            Assert.All(report.Payload.Statements, s => Assert.Null(s.ConflictingItemCodes));
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-125 (h) — <b>DR-01: the stale-part tolerance is not a softening of the duplicate
+    /// rule.</b> The ASELSAN annual body is the combined statement TC-MDF-125 (e) mutates. Here the
+    /// profit-or-loss <c>Kontrol Gücü Olmayan Paylar</c> row is re-labelled <c>Ana Ortaklık
+    /// Payları</c>, so the part-qualified caption occurs twice <b>inside its own part</b> with
+    /// unequal values and no row naming the comprehensive-income part between them.
+    /// <para>
+    /// The contract is the ticket's pinned non-goal: the stale-part fallback is only for a part
+    /// that genuinely moved, distinguished by the capture's own rows — so this is a genuine
+    /// unequal duplicate, <c>DUPLICATE_LABEL_CONFLICT</c> stands, <c>ConflictingItemCodes</c> names
+    /// <c>NI_PARENT</c> and the statement row is quarantined. On the pre-fix accepting head the
+    /// collision alone triggered the fallback: both periods' statements were stored with
+    /// <c>ConflictingItemCodes</c> null and two <c>PART_UNDETERMINED</c> findings stood in place of
+    /// the conflict.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TC_MDF_125_h_an_unequal_same_part_duplicate_still_conflicts_and_quarantines()
+    {
+        var body = Mutate(
+            CaptureBodies[RealSourceCatalog.KapPublicReportAselsAnnual],
+            "Kontrol Gücü Olmayan Paylar",
+            "Ana Ortaklık Payları",
+            occurrence: 1);
+
+        var report = KapPublicReportDecoder.Decode(body, "ASELS");
+
+        // The stale-part tolerance does not fire: the capture attests no other part between the
+        // two occurrences, so this is a repeat inside the part the row already belongs to.
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PartUndetermined));
+
+        var incomeStatement = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        // Both values retained, the first kept, and the code named as the conflict: the row is
+        // quarantined, never silently stored beside an OTHER_* passthrough.
+        Assert.Equal(-31_790m, incomeStatement.Lines["NI_PARENT"]);
+        Assert.NotNull(incomeStatement.ConflictingItemCodes);
+        Assert.Contains("NI_PARENT", incomeStatement.ConflictingItemCodes!);
+        Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
@@ -2202,5 +2623,35 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         }
 
         return string.Concat(body.AsSpan(0, index), newValue, body.AsSpan(index + oldValue.Length));
+    }
+
+    /// <summary>
+    /// Blanks the raw <c>title=""</c> attribute of the first <paramref name="count"/> value cells
+    /// of the <paramref name="occurrence"/>-th row carrying <paramref name="label"/>, leaving the
+    /// displayed text in place. The cells stay <i>valued</i> (the displayed text is still evidence
+    /// the row carries a number) while the raw attribute that is the read path is gone — the
+    /// shape in which a row's only values sit outside the decoded columns (TC-MDF-125 (f)).
+    /// Derived from a committed capture; the needle must be found.
+    /// </summary>
+    private static string BlankFirstValueCells(string body, string label, int occurrence, int count)
+    {
+        var start = -1;
+        for (var i = 0; i <= occurrence; i++)
+        {
+            start = body.IndexOf(label, start + 1, StringComparison.Ordinal);
+            Assert.True(start >= 0, $"mutation needle not found (occurrence {occurrence}): {label}");
+        }
+
+        Assert.True(count > 0, "the mutation must blank at least one value cell");
+
+        var replaced = 0;
+        var mutated = System.Text.RegularExpressions.Regex.Replace(
+            body[start..],
+            "title=\"(-?[0-9]+)\"(\\s*>\\s*)(-?[0-9][0-9.,]*)",
+            m => replaced++ < count ? "title=\"\"" + m.Groups[2].Value : m.Value);
+
+        Assert.True(replaced >= count, $"only {replaced} value cell(s) found to blank after '{label}'");
+
+        return string.Concat(body.AsSpan(0, start), mutated);
     }
 }
