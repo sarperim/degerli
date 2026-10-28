@@ -119,6 +119,16 @@ public static class KapPublicReportDecoder
     public const string MgrosInterimCaptureName = "kap-public-report-1648240";
 
     /// <summary>
+    /// The THYAO 2025 annual capture (<c>RealSourceCatalog.KapPublicReportThyao</c>, public
+    /// disclosure index <b>1565996</b>, filed 04.03.2026 18:55:17, bounded trim) — the
+    /// industrial FR whose report carries the <b>full</b> IS/BS/CF taxonomy row set (the
+    /// statements view's rows: trade receivables/payables, inventories, PP&amp;E, right-of-use
+    /// assets, goodwill, lease liabilities, deferred revenue, the equity block and the CF
+    /// detail lines) and the <c>1.000.000 TL</c> presentation unit (TKT-foundation-093).
+    /// </summary>
+    public const string ThyaoAnnualCaptureName = "kap-public-report-1565996";
+
+    /// <summary>
     /// Every committed capture this decoder's label map may cite as provenance
     /// (<see cref="KapPublicLabelRule.Provenance"/>). A spelling outside this set is
     /// un-evidenced by construction, and the acceptance suite checks each entry against the
@@ -130,6 +140,7 @@ public static class KapPublicReportDecoder
         TuprsAnnualCaptureName,
         AselsAnnualCaptureName,
         MgrosInterimCaptureName,
+        ThyaoAnnualCaptureName,
     ];
 
     /// <summary>The report period type of a full fiscal year.</summary>

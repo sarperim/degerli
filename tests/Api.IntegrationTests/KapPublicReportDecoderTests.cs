@@ -75,6 +75,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             [RealSourceCatalog.KapPublicReportTuprs] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportTuprs).Body,
             [RealSourceCatalog.KapPublicReportAselsAnnual] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportAselsAnnual).Body,
             [RealSourceCatalog.KapPublicReportMgros] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportMgros).Body,
+            [RealSourceCatalog.KapPublicReportThyao] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportThyao).Body,
         };
 
     /// <summary>
@@ -1384,6 +1385,9 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
                 RealSourceCatalog.KapPublicReportTuprs,
                 RealSourceCatalog.KapPublicReportAselsAnnual,
                 RealSourceCatalog.KapPublicReportMgros,
+                // Amended by TKT-foundation-093 (user-approved 2026-10-28): the capture set
+                // grew by the THYAO 2025 Yıllık body the industrial row set is evidenced from.
+                RealSourceCatalog.KapPublicReportThyao,
             }.OrderBy(name => name, StringComparer.Ordinal),
             KapPublicReportDecoder.CaptureNames.OrderBy(name => name, StringComparer.Ordinal));
 
