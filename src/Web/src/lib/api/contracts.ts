@@ -524,7 +524,43 @@ export interface FinancialFigure {
   state?: DataState
 }
 
-/** One period of the Financials table (revenue → EBITDA → EBIT → NI → FCF). */
+/**
+ * One served statement line: the figure plus its statement's restatement mark.
+ * The statements view's `lines`/`otherLines` maps and its `derived` [C] rows share
+ * this shape (`03` §3, TKT-foundation-094).
+ */
+export interface StatementFigure {
+  value: number | null
+  restated: boolean
+  /** `no-data` when the server served an honest null (never a zero). */
+  state?: DataState
+}
+
+/** A served canonical-code → figure map for one statement type. */
+export type StatementLineMap = Record<string, StatementFigure>
+
+/**
+ * The three statement blocks a period serves: the canonical codes per type
+ * (`IS`/`BS`/`CF`). A type the period has no statement for is an empty map.
+ */
+export interface StatementLines {
+  IS: StatementLineMap
+  BS: StatementLineMap
+  CF: StatementLineMap
+}
+
+/**
+ * The filing's own declared reporting span (TKT-foundation-094, closing 090's R-1):
+ * a cumulative interim attests `01.01–30.06` here, so the Çeyreklik toggle can
+ * label it honestly. Both fields are served together or the span is `null` — a
+ * pre-migration row fabricates no range.
+ */
+export interface StatementSpan {
+  periodStartDate: string
+  durationMonths: number
+}
+
+/** One period of the Financials payload (the compat five figures + the full set). */
 export interface FinancialPeriod {
   periodType: string
   fiscalYear: number
@@ -534,11 +570,75 @@ export interface FinancialPeriod {
   ebit: FinancialFigure
   netIncome: FinancialFigure
   fcf: FinancialFigure
+  /**
+   * The full served line set for this period (TKT-foundation-094). **Optional**: a
+   * pre-094 payload carries only the five compat figures, and the section then
+   * renders the legacy summary rather than empty tables.
+   */
+  lines?: StatementLines | null
+  /** The `OTHER_*` passthrough block, same shape (an uncovered family stays reachable). */
+  otherLines?: StatementLines | null
+  /** The server-computed [C] rows, keyed by row code. The page computes none of them. */
+  derived?: Record<string, StatementFigure> | null
+  span?: StatementSpan | null
+  /** The filing's Konsolide (`true`) / Solo (`false`) flag; `null` is honest absence. */
+  consolidated?: boolean | null
+}
+
+/**
+ * The filing-metadata envelope the controls bar renders (TKT-foundation-094). Every
+ * badge input is a served fact: an absent/`null` field suppresses its badge rather
+ * than licensing a guess.
+ */
+export interface FilingMetadata {
+  periodEndDate: string
+  sourceRef: string | null
+  consolidated: boolean | null
+  /** The pinned `02` §6.2 transition derivation, never a claim about filing content. */
+  tms29: boolean
+  /** The served statement's evidence class is a KAP filing (`kap`/`kap-public`). */
+  kapSource: boolean
+}
+
+/** One EV-header operand: the served value with its own as-of date. */
+export interface EvFact {
+  value: number
+  asOf: string
+}
+
+/**
+ * The display-only market & enterprise value operands (TKT-foundation-094). Each
+ * operand keeps its own as-of, so a price dated after the statement period is
+ * visibly mismatched rather than smoothed over. `null` is an absent operand.
+ */
+export interface EvHeader {
+  sharePrice: EvFact | null
+  marketCap: EvFact | null
+  grossDebt: EvFact | null
+  /** The stored `CASH` line only — the chart carries no short-term-investments code. */
+  cash: EvFact | null
+  minorityInterest: EvFact | null
+}
+
+/**
+ * The financial-sector layout notice (TKT-foundation-094; the user's exclusion):
+ * the industrial row set does not apply to a bank/insurance filer. `state` is
+ * `not-applicable` — a verdict about the layout, never an error or a no-data claim.
+ */
+export interface LayoutNotice {
+  accountingProfile: string
+  applies: boolean
+  state: string
+  message: string
 }
 
 /** `GET /api/v1/stocks/{symbol}/financials` (`03` §3; FR-RES-008). */
 export interface StockFinancialsResponse extends HonestDataEnvelope {
   periods: FinancialPeriod[]
+  /** The latest served period's badge evidence (TKT-foundation-094); absent pre-094. */
+  filing?: FilingMetadata | null
+  evHeader?: EvHeader | null
+  layoutNotice?: LayoutNotice | null
 }
 
 /** A canonical metric value; `null` is explicitly not-meaningful (BR-RES-008). */

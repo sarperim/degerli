@@ -6,8 +6,9 @@ import { catalogValue, loadCatalog } from './helpers/catalog'
  * TC-SCR-021 (L4) — SCR-012 metric-visibility panel and its consequence-stating
  * confirmation (TKT-scr-005; UXR-MDF-023/024, FR-SCR-017, UC-SCR-004).
  *
- * Against the seeded compose.ci stack: the panel lists the 18 screenable metrics
- * with their state; toggling requires a confirmation stating both consequences;
+ * Against the seeded compose.ci stack: the panel lists the whole metric catalog — the
+ * 32 seeded rows (the 18 v1 rows plus TKT-foundation-096's 14 panel rows, 18 screenable
+ * in total) — with their state; toggling requires a confirmation stating both consequences;
  * cancel aborts with no change; confirming flips the state and SCR-003's criteria
  * builder reflects it on the next load without a manual refresh. The metric is
  * restored at the end so the shared stack is left as seeded.
@@ -65,8 +66,12 @@ test.describe('TC-SCR-021 — metric visibility panel', () => {
 
     try {
 
-      // The 18 screenable metrics with their state (UXR-MDF-023).
-      await expect(table.getByRole('row')).toHaveCount(19) // header + 18 metrics
+      // The 32 catalog metrics with their state (UXR-MDF-023): the panel lists the whole
+      // catalog, not only the screenable rows — a metric has to be listed to be toggled. The
+      // catalog is the 18 v1 rows plus TKT-foundation-096's 14 panel rows, seeded with
+      // `is_screenable = false` (the screener's offered set is unchanged until a builder flips
+      // them); the old constant was bound to the 18-row catalog.
+      await expect(table.getByRole('row')).toHaveCount(33) // header + 32 metrics
       let roeRow = table.getByRole('row', { name: new RegExp(ROE_LABEL) })
       await expect(roeRow).toContainText(TR('admin.metrics.screenable'))
 

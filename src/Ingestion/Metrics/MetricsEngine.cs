@@ -9,12 +9,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Degerli.Ingestion.Metrics;
 
 /// <summary>
-/// The computed metric set for one instrument at one date: the 26 canonical codes plus
+/// The computed metric set for one instrument at one date: the canonical codes plus
 /// the coverage boundary the honest no-data state needs (FR-MDF-011, UC-MDF-005 alt a).
 /// </summary>
 /// <param name="Symbol">Instrument ticker.</param>
 /// <param name="ListingDate">IPO date — the coverage boundary for a short history.</param>
-/// <param name="Metrics">All 26 canonical metric codes (NULL = not meaningful).</param>
+/// <param name="Metrics">All canonical metric codes (<see cref="MetricCodes.All"/>; NULL = not meaningful).</param>
 public sealed record InstrumentMetricResult(
     string Symbol,
     DateOnly? ListingDate,
@@ -79,6 +79,15 @@ public sealed class MetricsEngine
     private const string CurAssets = "CUR_ASSETS";
     private const string CurLiab = "CUR_LIAB";
     private const string SharesDiluted = "SHARES_DILUTED";
+
+    // ── the key-value & moat panel's inputs (02 §6.1/§6.2, v2; TKT-foundation-096) ──
+    // Every one is a canonical line 093 landed; nothing here widens a DR-1/DR-2 fence —
+    // ST_DEBT/LT_DEBT and TOTAL_EQUITY are consumed exactly as stored.
+    private const string TotalAssets = "TOTAL_ASSETS";
+    private const string Goodwill = "GOODWILL";
+    private const string IntangiblesNet = "INTANGIBLES_NET";
+    private const string NetMonetaryGl = "NET_MONETARY_GL";
+    private const string InterestPaid = "INTEREST_PAID";
 
     private readonly DegerliDbContext _db;
 
@@ -180,16 +189,27 @@ public sealed class MetricsEngine
             instrumentDividends ??= [];
             instrumentActions ??= [];
 
-            var (input, adjusted) = BuildInput(
+            var (input, epsAdjusted, panelAdjusted) = BuildInput(
                 price, instrument.AccountingProfile, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate);
 
             // The corporate-action basis marker is per metric (FR-MDF-018): only the
-            // per-share growth CAGRs computed from the adjusted EPS/DPS series carry it.
+            // per-share growth CAGRs computed from a genuinely adjusted per-share series
+            // carry it. The EPS/DPS families and the panel's BVPS/FCF-per-share families are
+            // marked from their own series' Π factors, so an instrument whose only adjusted
+            // series belongs to one family never re-stamps the other family's rows (the
+            // pre-v2 EPS/DPS rows stay byte-identical — TKT-foundation-096 non-regression).
             IReadOnlyList<ComputedMetric> metrics = CanonicalMetrics.Compute(input);
-            if (adjusted)
+            if (epsAdjusted)
             {
                 metrics = metrics
-                    .Select(m => IsPerShareGrowth(m.Code) ? AdjustedPerShareMetric(m) : m)
+                    .Select(m => IsEpsDividendGrowth(m.Code) ? AdjustedPerShareMetric(m) : m)
+                    .ToList();
+            }
+
+            if (panelAdjusted)
+            {
+                metrics = metrics
+                    .Select(m => IsPanelPerShareGrowth(m.Code) ? AdjustedPerShareMetric(m) : m)
                     .ToList();
             }
 
@@ -332,7 +352,7 @@ public sealed class MetricsEngine
             HashCode.Combine(obj.InstrumentId, StringComparer.Ordinal.GetHashCode(obj.MetricCode));
     }
 
-    private static (CanonicalMetricsInput Input, bool PerShareAdjusted) BuildInput(
+    private static (CanonicalMetricsInput Input, bool EpsDividendAdjusted, bool PanelPerShareAdjusted) BuildInput(
         decimal price,
         string accountingProfile,
         IReadOnlyList<FinancialStatement> statements,
@@ -399,13 +419,23 @@ public sealed class MetricsEngine
                 LtDebt: Line(bs0, LtDebt),
                 TotalEquity: Line(bs0, TotalEquity),
                 CurAssets: Line(bs0, CurAssets),
-                CurLiab: Line(bs0, CurLiab));
+                CurLiab: Line(bs0, CurLiab),
+                TotalAssets: Line(bs0, TotalAssets),
+                Goodwill: Line(bs0, Goodwill),
+                IntangiblesNet: Line(bs0, IntangiblesNet),
+                NetMonetaryGl: Line(is0, NetMonetaryGl),
+                CashInterest: Line(cf0, InterestPaid));
         }
 
         var revenue = new List<FiscalValue>();
+        var ebitSeries = new List<FiscalValue>();
+        var niSeries = new List<FiscalValue>();
         var eps = new List<FiscalValue>();
+        var bvps = new List<FiscalValue>();
         var fcf = new List<FiscalValue>();
-        var perShareAdjusted = false;
+        var fcfPerShare = new List<FiscalValue>();
+        var epsAdjusted = false;
+        var panelAdjusted = false;
         foreach (var period in periods)
         {
             var isY = Pick(period, "IS");
@@ -418,15 +448,38 @@ public sealed class MetricsEngine
                 revenue.Add(new FiscalValue(period.Year, rev, period));
             }
 
-            var ni = Line(isY, Ni);
+            var ebitY = Line(isY, Ebit);
+            if (ebitY is not null)
+            {
+                ebitSeries.Add(new FiscalValue(period.Year, ebitY, period));
+            }
+
+            var niY = Line(isY, Ni);
+            if (niY is not null)
+            {
+                niSeries.Add(new FiscalValue(period.Year, niY, period));
+            }
+
             var shares = Line(bsY, SharesDiluted);
-            if (ni is not null && shares is > 0m)
+            if (niY is not null && shares is > 0m)
             {
                 // Per-share CAGR basis (02 §6.2): the as-reported EPS is put on today's
                 // share basis by Π over the actions after its fiscal period end.
                 var factor = PriceAdjustment.FactorAfter(period, actions);
-                perShareAdjusted |= factor != AdjustmentFactors.None;
-                eps.Add(new FiscalValue(period.Year, ni.Value / shares.Value * factor, period));
+                epsAdjusted |= factor != AdjustmentFactors.None;
+                eps.Add(new FiscalValue(period.Year, niY.Value / shares.Value * factor, period));
+            }
+
+            // BVPS and FCF-per-share follow the same per-share basis doctrine (02 §6.2, v2):
+            // the identical Π factor, the identical share-count gate (no count → the year is
+            // absent from the series, never a fabricated per-share figure — the user's
+            // exclusion #4), and the identical adjusted-basis marker.
+            var equityY = Line(bsY, TotalEquity);
+            if (equityY is not null && shares is > 0m)
+            {
+                var factor = PriceAdjustment.FactorAfter(period, actions);
+                panelAdjusted |= factor != AdjustmentFactors.None;
+                bvps.Add(new FiscalValue(period.Year, equityY.Value / shares.Value * factor, period));
             }
 
             var freeCash = CanonicalMetrics.FreeCashFlow(
@@ -435,6 +488,12 @@ public sealed class MetricsEngine
             if (freeCash is not null)
             {
                 fcf.Add(new FiscalValue(period.Year, freeCash, period));
+                if (shares is > 0m)
+                {
+                    var factor = PriceAdjustment.FactorAfter(period, actions);
+                    panelAdjusted |= factor != AdjustmentFactors.None;
+                    fcfPerShare.Add(new FiscalValue(period.Year, freeCash.Value / shares.Value * factor, period));
+                }
             }
         }
 
@@ -449,7 +508,7 @@ public sealed class MetricsEngine
         foreach (var dividend in dividends.Where(d => d.ExDate.Year <= latestFiscalYear))
         {
             var factor = PriceAdjustment.FactorAfter(dividend.ExDate, actions);
-            perShareAdjusted |= factor != AdjustmentFactors.None;
+            epsAdjusted |= factor != AdjustmentFactors.None;
             byFiscalYear[dividend.ExDate.Year] =
                 byFiscalYear.GetValueOrDefault(dividend.ExDate.Year) + dividend.AmountPerShare * factor;
         }
@@ -482,14 +541,31 @@ public sealed class MetricsEngine
                 HasEverPaidDividend: dividends.Count > 0,
                 IsRested: isRested,
                 IsAdjusted: false,
-                AccountingProfile: accountingProfile),
-            perShareAdjusted);
+                AccountingProfile: accountingProfile,
+                EbitByFiscalYear: ebitSeries,
+                NiByFiscalYear: niSeries,
+                BvpsByFiscalYear: bvps,
+                FcfPsByFiscalYear: fcfPerShare),
+            epsAdjusted,
+            panelAdjusted);
     }
 
-    /// <summary>Whether a metric code is a per-share growth CAGR (EPS or DPS).</summary>
-    private static bool IsPerShareGrowth(string code) =>
+    /// <summary>
+    /// Whether a metric code is an EPS or DPS growth CAGR — the families whose series the
+    /// engine built before v2, marked from their own Π factors.
+    /// </summary>
+    private static bool IsEpsDividendGrowth(string code) =>
         code is MetricCodes.EpsCagr3y or MetricCodes.EpsCagr5y or MetricCodes.EpsCagr10y
             or MetricCodes.DivCagr3y or MetricCodes.DivCagr5y or MetricCodes.DivCagr10y;
+
+    /// <summary>
+    /// Whether a metric code is one of the panel's per-share growth CAGRs (BVPS or
+    /// FCF-per-share, <c>02</c> §6.2 v2) — added by TKT-foundation-096 and on the same
+    /// per-share basis doctrine as EPS/DPS.
+    /// </summary>
+    private static bool IsPanelPerShareGrowth(string code) =>
+        code is MetricCodes.BvpsCagr3y or MetricCodes.BvpsCagr5y
+            or MetricCodes.FcfPsCagr3y or MetricCodes.FcfPsCagr5y;
 
     /// <summary>
     /// Marks a per-share CAGR as computed on the corporate-action-adjusted basis. The

@@ -20,7 +20,8 @@ namespace Degerli.Api.IntegrationTests;
 
 /// <summary>
 /// L2 acceptance for the accounting-profile metric gating (TKT-mdf-020; TC-MDF-057,
-/// FR-MDF-013; <c>02</c> §6.2 v1.3). The on-demand <c>BANKA</c> (bank) and
+/// FR-MDF-013; <c>02</c> §6.2 v1.3 — extended to the twenty-six gated codes of v2 by
+/// TKT-foundation-096). The on-demand <c>BANKA</c> (bank) and
 /// <c>SIGORTA</c> (insurance) fixtures are ingested through the real <c>statements</c>
 /// job, priced, and run through <c>metrics-recompute</c> against a migrated Testcontainers
 /// PostgreSQL. For both, the ten industrial metric concepts are <b>NULL</b> — even though
@@ -43,11 +44,16 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
     /// </summary>
     private const string ControlSymbol = "INDCTL";
 
-    /// <summary>The FY ends of the injected stray statement (the canned BANKA FY, plus the prior FY).</summary>
+    /// <summary>The FY ends of the injected stray statement (the canned BANKA FY, plus two prior FYs).</summary>
     private static readonly DateOnly StrayFyEnd = new(2025, 12, 31);
     private static readonly DateOnly StrayPriorFyEnd = new(2024, 12, 31);
+    private static readonly DateOnly StrayOldestFyEnd = new(2023, 12, 31);
 
-    /// <summary>The twelve profile-gated codes (ten industrial concepts, fcf_cagr ×3).</summary>
+    /// <summary>
+    /// The twenty-six profile-gated codes: the twelve of v1 (ten industrial concepts,
+    /// <c>fcf_cagr</c> ×3) plus the fourteen the key-value &amp; moat panel added
+    /// (TKT-foundation-096; <c>02</c> §6.2 v2).
+    /// </summary>
     private static readonly string[] GatedCodes =
     [
         MetricCodes.EvEbitda,
@@ -62,6 +68,20 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
         MetricCodes.FcfCagr3y,
         MetricCodes.FcfCagr5y,
         MetricCodes.FcfCagr10y,
+        MetricCodes.Croic,
+        MetricCodes.EvEbit,
+        MetricCodes.PFcf,
+        MetricCodes.PTbv,
+        MetricCodes.FcfNi,
+        MetricCodes.FcfNi3y,
+        MetricCodes.CfoEbit,
+        MetricCodes.MonetaryGainPretax,
+        MetricCodes.CfoInterest,
+        MetricCodes.NetDebtFcf,
+        MetricCodes.EbitCagr3y,
+        MetricCodes.EbitCagr5y,
+        MetricCodes.FcfPsCagr3y,
+        MetricCodes.FcfPsCagr5y,
     ];
 
     private readonly PostgresFixture _postgres;
@@ -251,6 +271,9 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
             [FinItemCodes.Cogs] = 600m,
             [FinItemCodes.Ebit] = 200m,
             [FinItemCodes.FinExp] = 25m,
+            // The panel's inputs (02 §6.2 v2): the TMS 29 distortion alert's two lines.
+            ["PRETAX_INC"] = 400m,
+            ["NET_MONETARY_GL"] = 60m,
         };
         var bsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
         {
@@ -266,11 +289,50 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
         {
             [FinItemCodes.Ocf] = 250m,
             [FinItemCodes.Capex] = 100m,
+            // The CF statement's own interest-paid line (a KAP outflow) — cfo_interest's
+            // denominator, taken in absolute value.
+            ["INTEREST_PAID"] = -40m,
         };
         var priorCfLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
         {
             [FinItemCodes.Ocf] = 200m,
             [FinItemCodes.Capex] = 80m,
+            ["INTEREST_PAID"] = -35m,
+        };
+        // The panel's growth half needs a multi-year EBIT / NI / FCF-per-share history: two
+        // prior FYs beside the current one, so every gated CAGR would compute if the gate
+        // were absent (fcf_ni_3y's window is all-or-nothing over the three most recent FYs).
+        var priorIsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ni] = 280m,
+            [FinItemCodes.Ebit] = 190m,
+            ["PRETAX_INC"] = 380m,
+            ["NET_MONETARY_GL"] = 55m,
+        };
+        var priorBsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.TotalEquity] = 2900m,
+            [FinItemCodes.SharesDiluted] = 300m,
+            [FinItemCodes.SharesOut] = 300m,
+        };
+        var oldestIsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ni] = 260m,
+            [FinItemCodes.Ebit] = 180m,
+            ["PRETAX_INC"] = 350m,
+            ["NET_MONETARY_GL"] = 50m,
+        };
+        var oldestBsLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.TotalEquity] = 2800m,
+            [FinItemCodes.SharesDiluted] = 300m,
+            [FinItemCodes.SharesOut] = 300m,
+        };
+        var oldestCfLines = new Dictionary<string, decimal>(StringComparer.Ordinal)
+        {
+            [FinItemCodes.Ocf] = 180m,
+            [FinItemCodes.Capex] = 70m,
+            ["INTEREST_PAID"] = -30m,
         };
 
         return
@@ -278,7 +340,12 @@ public sealed class ProfileMetricServingTests : IClassFixture<PostgresFixture>, 
             ("IS", StrayFyEnd, isLines),
             ("BS", StrayFyEnd, bsLines),
             ("CF", StrayFyEnd, cfLines),
+            ("IS", StrayPriorFyEnd, priorIsLines),
+            ("BS", StrayPriorFyEnd, priorBsLines),
             ("CF", StrayPriorFyEnd, priorCfLines),
+            ("IS", StrayOldestFyEnd, oldestIsLines),
+            ("BS", StrayOldestFyEnd, oldestBsLines),
+            ("CF", StrayOldestFyEnd, oldestCfLines),
         ];
     }
 

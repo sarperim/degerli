@@ -78,10 +78,12 @@ public sealed class ScreenerMetricVisibilityTests : IClassFixture<PostgresFixtur
             Assert.False(document.RootElement.GetProperty("isScreenable").GetBoolean());
         }
 
-        // --- the anonymous catalog excludes ROE (UXR-SCR-011) — 17 of the 18 concepts.
+        // --- the anonymous catalog excludes ROE (UXR-SCR-011) — 31 of the 32 catalog rows
+        // (18 through v1; the key-value & moat panel's 14 additions land the catalog at 32
+        // — TKT-foundation-096, `02` §6.2 v2 — and this case makes every row screenable).
         var visible = await CatalogCodesAsync(anonymous);
         Assert.DoesNotContain("roe", visible);
-        Assert.Equal(17, visible.Count);
+        Assert.Equal(31, visible.Count);
 
         // --- the affected saved screen re-run drops ROE and proceeds (TC-SCR-018 mechanism).
         using (var rerun = await RerunAsync(user, screenId, criteriaJson))
@@ -114,7 +116,7 @@ public sealed class ScreenerMetricVisibilityTests : IClassFixture<PostgresFixtur
 
         var restoredCodes = await CatalogCodesAsync(anonymous);
         Assert.Contains("roe", restoredCodes);
-        Assert.Equal(18, restoredCodes.Count);
+        Assert.Equal(32, restoredCodes.Count);
 
         using (var rerun = await RerunAsync(user, screenId, criteriaJson))
         {

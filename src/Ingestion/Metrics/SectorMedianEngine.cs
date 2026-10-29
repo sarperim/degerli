@@ -59,14 +59,47 @@ public sealed class SectorMedianEngine
     /// <summary>The index whose current constituents form the covered universe.</summary>
     private const string UniverseIndexCode = "XU100";
 
-    /// <summary>The five valuation-family metrics the strip carries (confirmed OQ-UX-002).</summary>
-    private static readonly string[] ValuationMetricCodes =
+    /// <summary>
+    /// The metric codes the medians lane covers (`02` §6.3, extended by TKT-foundation-096):
+    /// the five valuation-family codes the vs.-sector strip has always carried, plus the
+    /// key-value &amp; moat panel's set so the stock page's "current vs. sector median" column
+    /// is served from one store. This is the panel list union the strip list — a code the
+    /// panel renders and this lane did not cover would be a silently missing median.
+    /// </summary>
+    private static readonly string[] MedianMetricCodes =
     [
         MetricCodes.Pe,
         MetricCodes.Pb,
         MetricCodes.EvEbitda,
         MetricCodes.EvFcf,
         MetricCodes.FcfYield,
+        MetricCodes.Roic,
+        MetricCodes.Croic,
+        MetricCodes.Roe,
+        MetricCodes.Roa,
+        MetricCodes.FcfNi,
+        MetricCodes.FcfNi3y,
+        MetricCodes.CfoEbit,
+        MetricCodes.MonetaryGainPretax,
+        MetricCodes.EvEbit,
+        MetricCodes.PFcf,
+        MetricCodes.PTbv,
+        MetricCodes.DivYield,
+        MetricCodes.NetDebtEbitda,
+        MetricCodes.NetDebtFcf,
+        MetricCodes.InterestCoverage,
+        MetricCodes.CfoInterest,
+        MetricCodes.CurrentRatio,
+        MetricCodes.RevCagr3y,
+        MetricCodes.RevCagr5y,
+        MetricCodes.EbitCagr3y,
+        MetricCodes.EbitCagr5y,
+        MetricCodes.EpsCagr3y,
+        MetricCodes.EpsCagr5y,
+        MetricCodes.FcfPsCagr3y,
+        MetricCodes.FcfPsCagr5y,
+        MetricCodes.BvpsCagr3y,
+        MetricCodes.BvpsCagr5y,
     ];
 
     private readonly DegerliDbContext _db;
@@ -89,6 +122,14 @@ public sealed class SectorMedianEngine
     /// <summary>
     /// Computes the sector medians at <paramref name="asOfDate"/> from the canonical
     /// metrics of that date across the current-universe constituents (classified peers only).
+    /// <para>
+    /// <b>Profile-gated codes exclude financial-sector peers (TKT-foundation-096).</b> For a
+    /// code that is not-meaningful by accounting profile (<see cref="CanonicalMetrics.IsProfileGated"/>)
+    /// a <c>bank</c>/<c>insurance</c> peer contributes to no median — its row is NULL by the
+    /// gate, and it is counted in <see cref="SectorMedianResult.ExcludedCount"/> so the
+    /// exclusion is disclosed by count rather than silently shrinking the peer set
+    /// (UXR-RES-024/025).
+    /// </para>
     /// </summary>
     public async Task<IReadOnlyList<SectorMedianResult>> ComputeAsync(
         DateOnly asOfDate,
@@ -100,31 +141,46 @@ public sealed class SectorMedianEngine
                 join constituent in _db.IndexConstituents on instrument.Id equals constituent.InstrumentId
                 join index in _db.Indices on constituent.IndexId equals index.Id
                 where metric.AsOfDate == asOfDate
-                    && ValuationMetricCodes.Contains(metric.MetricCode)
+                    && MedianMetricCodes.Contains(metric.MetricCode)
                     && index.Code == UniverseIndexCode
                     && constituent.EffectiveTo == null
                     && instrument.SectorId != null
-                select new { InstrumentSectorId = instrument.SectorId!.Value, metric.MetricCode, metric.Value })
+                select new
+                {
+                    InstrumentSectorId = instrument.SectorId!.Value,
+                    metric.MetricCode,
+                    metric.Value,
+                    instrument.AccountingProfile,
+                })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         var results = new List<SectorMedianResult>();
         foreach (var group in rows.GroupBy(row => (row.InstrumentSectorId, row.MetricCode)))
         {
-            var values = group
-                .Where(row => row.Value is not null)
-                .Select(row => row.Value!.Value)
-                .OrderBy(value => value)
+            // The assessed peer set: every same-day row for the code, less the peers a
+            // profile-gated code cannot speak about at all.
+            var gated = CanonicalMetrics.IsProfileGated(group.Key.MetricCode);
+            var assessed = group
+                .Where(row => !gated || !CanonicalMetrics.IsFinancialProfile(row.AccountingProfile))
                 .ToList();
 
-            // `values` is the meaningful peer set; `group` also carries same-day rows whose
-            // value is NULL (not-meaningful, excluded). A peer with no derived_metrics row at
-            // all never joins here, so it contributes to neither count — deliberate: the
-            // strip discloses the peers that were *assessed* (UXR-RES-024/025).
+            var values = assessed
+                .Where(row => row.Value is not null)
+                .Select(row => row.Value!.Value)
+                .ToList();
+
+            // `values` is the meaningful peer set. `assessed` keeps same-day rows whose value is
+            // NULL (not-meaningful) but has already dropped a gated code's financial-sector
+            // peers, while `group` still holds them — so `ExcludedCount` (group − values) counts
+            // both the unassessed financial peers and the assessed-but-not-meaningful rows. A
+            // peer with no derived_metrics row at all never joins here, so it contributes to
+            // neither count — deliberate: the strip discloses the peers that were *assessed*
+            // (UXR-RES-024/025).
             results.Add(new SectorMedianResult(
                 group.Key.InstrumentSectorId,
                 group.Key.MetricCode,
-                Median(values),
+                MetricMath.Median(values),
                 PeerCount: values.Count,
                 ExcludedCount: group.Count() - values.Count));
         }
@@ -232,19 +288,5 @@ public sealed class SectorMedianEngine
 
         public int GetHashCode((long SectorId, string MetricCode) obj) =>
             HashCode.Combine(obj.SectorId, StringComparer.Ordinal.GetHashCode(obj.MetricCode));
-    }
-
-    /// <summary>Standard statistical median; even count → the mean of the two middle values (FU §2).</summary>
-    private static decimal? Median(IReadOnlyList<decimal> sortedValues)
-    {
-        if (sortedValues.Count == 0)
-        {
-            return null;
-        }
-
-        var middle = sortedValues.Count / 2;
-        return sortedValues.Count % 2 == 1
-            ? sortedValues[middle]
-            : (sortedValues[middle - 1] + sortedValues[middle]) / 2m;
     }
 }
