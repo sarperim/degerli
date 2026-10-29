@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-097: The SCR-005 capital & dilution tracker and key value metrics & moat panel — the user's v0 spec's remaining two blocks rendered on the stock page
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P1 — slice 5 (final) of the 2026-10-28 financial-statements view wave. The user's spec lives verbatim on TKT-foundation-095; this ticket renders the last two blocks, consuming TKT-foundation-096's `GET /stocks/{symbol}/key-metrics` payload.**
 
@@ -24,8 +24,32 @@ scope:
 - **Layout/copy posture:** structure and behavior only — visual grouping (moat/valuation/health/growth), styling and final copy stay minimal-unopinionated with the ux-designer flow-back noted (the 095 routing item covers both blocks; the ux spec's SCR-005 amendment folds them in).
 - **Pinned non-goals:** no new computation (096 owns every number); no statements-view changes (095's); no USD/real basis, no 3M/TTM, no 10Y CAGR (the 095 exclusions, verbatim); no screener changes.
 - Traces to: FR-RES-006/007 (valuation metrics + vs-sector strip — the panel generalizes the strip's honesty fields), FR-RES-009 (profitability), FR-RES-010 (growth), FR-RES-012/FR-RES-027 (dividend payout / per-share book values), FR-MDF-004 (corporate actions display), UC-RES-003.
-- Acceptance: **TC-RES-038** (stock-research.md §8, v1.2 — planner-authored per the lane precedent, test-planner confirmation pending) — component tests on MSW doubles aligned to 096's payload (red = the blocks absent on the current contracts): both row sets complete, every state (value / N/M / no-data) rendered honestly, the regime-break marker on a spanning CAGR and its absence on a one-side CAGR, the TMS 29 alert case, peer-count rendering, the bedelli/bedelsiz history case with adjusted-data disclaimer, the share-count N/M case; i18n parity both catalogs; E2E (`tests/e2e/src/stock-page.spec.ts`) extended for the panel's honest states on the fixture world. **Live criterion (orchestrator-owned):** TUPRS's page renders both blocks with the served medians and honest N/Ms verbatim; a bank-profile company's panel shows only the profile-appropriate rows.
+- Acceptance: **TC-RES-041** (stock-research.md §8, v1.2 — planner-authored per the lane precedent, test-planner confirmation pending; renumbered from the ticket's `TC-RES-038`, which belongs to the dividends-availability lane — see the implementation notes) — component tests on MSW doubles aligned to 096's payload (red = the blocks absent on the current contracts): both row sets complete, every state (value / N/M / no-data) rendered honestly, the regime-break marker on a spanning CAGR and its absence on a one-side CAGR, the TMS 29 alert case, peer-count rendering, the bedelli/bedelsiz history case with adjusted-data disclaimer, the share-count N/M case; i18n parity both catalogs; E2E (`tests/e2e/src/stock-page.spec.ts`) extended for the panel's honest states on the fixture world. **Live criterion (orchestrator-owned):** TUPRS's page renders both blocks with the served medians and honest N/Ms verbatim; a bank-profile company's panel shows only the profile-appropriate rows.
 - Architecture refs: `01-system-architecture.md` §13.1 **v1.5.73** (soft reservation; re-pin at merge).
 - UX refs: **SCR-005** (§2 Valuation, §4 Profitability, §5 Growth — the panel's structure; the tracker's flow-back rides the 095 routing item), UXR-RES-012/013 (valuation content + sector-median disclosure), UXR-RES-015/016 (profitability/growth content), UXR-RES-017 (book value per share), UXR-RES-024/025 (peer count, N/M), UXR-RES-026/027 (regime-break markers), UXR-RES-020 (adjusted-data disclaimer), UXR-G-006/007.
 - Dependencies: TKT-foundation-095 (shared Web stock-page files, contracts, i18n catalogs — serial), TKT-foundation-096 (the payload).
 - Parallel group: none.
+
+
+## Implementation notes (2026-10-29)
+
+**What was built.** `KeyMetricsPanel.tsx` (the key value metrics & moat panel and the capital & dilution tracker, both in the Financials section after the statements), `keyMetricsView.ts` (the pure row model: the four display groups, the 31 served codes, formatting units, the financial-profile row filter, the served alerts/flags), plus the additive contracts (`StockKeyMetricsResponse`, `KeyMetricEntry`, `CompanyMedianBlock`, `CapitalTracker`, `CapitalAction`, `FinancialSectorNotice`) and `fetchStockKeyMetrics`/query key. The panel owns its own `/key-metrics` query inside `FinancialsSection`, so its load/failure/retry is independent of the statements (M-5).
+
+**Basis honesty (binding).** The backend serves **group/consolidated**-basis `roe` and `eps_cagr_*`; the user's spec names Parent. The rows are labelled with the served basis ("ROE (Grup/Konsolide, %)" / "ROE (Group/Consolidated, %)", same on both EPS CAGRs) and never with a Parent label. The parent-basis pair is **not fabricated** — it stays the routed planner follow-up. Test (i) pins both the group wording and the absence of Parent/Ana Ortaklık.
+
+**Honesty decisions pinned in code.** A served-null value/median is `—` (never 0); the company median always carries its served `windowYears`/`observations`/`depthYears`/`minimumObservations` disclosure and is withheld as a dash below the floor; the sector median carries its peer count and (for gated codes) the served exclusion count, with a null median as a dash; the CAGR rows carry the served `regimeBreak` marker (`†`, distinct from the restatement `*`) plus the footnote; the TMS 29 alert is driven by the served `monetary_gain_pretax` value — no client threshold; the capital tracker renders the dated bedelli/bedelsiz history with the served percentages and the corporate-action-adjusted disclaimer, and the share-count Y/Y change as the honest `no-count-history` N/M; a financial-sector profile renders the served notice and only its non-`profileGated` rows.
+
+**TC id (renumbering, recorded not hidden).** The ticket pinned `TC-RES-038`, but that id is already the dividends-availability lane's (`Dividends.test.tsx`, TKT-foundation-052) and the statements lane took 039/040 — the exact collision the 095 lane recorded. This PR takes the next free id **TC-RES-041**, authors it in `stock-research.md` §8 (change record v1.2), and corrects this ticket's acceptance line. The planner/test-planner should record the renumbering so nothing re-collides.
+
+**Live smoke.** `GET /api/v1/stocks/TUPRS/key-metrics` on the local dev stack answers 200 with the full 31-code map, the honest withheld company medians (observations below the floor), the sector-median/exclusion fields and the capital-tracker block — the payload this view binds to. No browser was available in this session (no Chrome/Chromium binary), so the rendered-page smoke test remains the orchestrator's live criterion.
+
+## Test evidence
+
+- **Red, measured:** with the panel's dispatch in `StockSections.tsx` removed (view files kept, so the red is the surface's absence) `KeyMetricsPanel.test.tsx` reads **12 failed / 1 passed** — the pass is the catalog-parity case (reads catalogs only). **Green:** TC-RES-041 **13/13**; `src/screens/stock-page` **95/95** (11 files); full Web suite **394/394** (59 files); `tsc --noEmit` clean (Web and `tests/e2e`); `eslint .` clean; i18n parity **841 keys**; advice-vocabulary clean.
+- **E2E:** `tests/e2e/src/stock-page.spec.ts` extended with the TC-RES-041 fixture-world case (ALFA's served values, withheld-median disclosure, honest sector-median dashes, `roa` dash, group-basis ROE label, share-count N/M); typed clean. Not executed here (no `compose.ci`) — CI runs it.
+- **Flagged:**
+  1. The fixture world runs no `medians` job, so the L4 case asserts the honest sector-median **dash** rather than a live median (the L3 double pins the median/peer/exclusion rendering); a future fixture-derived medians pass would light the E2E medians up with no view change.
+  2. The Growth section still renders no regime-break marker today (no Web consumer of `metricFlags` landed before this ticket); this panel implements UXR-RES-026/027 for its CAGR rows, and the Growth-section gap is a routed follow-up, not silently claimed as done.
+  3. The TMS 29 alert's "high" reading is the served ratio itself (the alert displays it and its caveat); no client threshold exists in the payload, so none was invented.
+  4. The ux flow-back (the SCR-005 amendment folding in both new blocks) still rides the 095 routing item; the labels are scaffolding until then.
+  5. `node_modules` in this worktree is a symlink to the main checkout's install (gitignored) — no dependency change.

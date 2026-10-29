@@ -641,6 +641,107 @@ export interface StockFinancialsResponse extends HonestDataEnvelope {
   layoutNotice?: LayoutNotice | null
 }
 
+/* ------------------------------------------------------------------ *
+ * Key value metrics & capital tracker (`03` §3; TKT-foundation-096's
+ * `GET /stocks/{symbol}/key-metrics`, rendered by TKT-foundation-097).
+ *
+ * Every canonical figure is served: the current value from the store, the 5Y
+ * company median with its own depth/observation disclosure, and the sector
+ * median with its peer/exclusion counts. The page computes nothing
+ * (BR-RES-004); a `null` value is an explicit not-meaningful/no-data fact,
+ * never a zero (BR-RES-008).
+ * ------------------------------------------------------------------ */
+
+/**
+ * The served 5Y company-median block. The median is withheld below the served
+ * observation floor (`minimumObservations`, `02` §6.2) — the depth the stored
+ * history actually reaches (`depthYears`) is disclosed instead, so a thin
+ * history is never dressed as a five-year statistic.
+ */
+export interface CompanyMedianBlock {
+  /** The nominal window the column is labelled with (5). */
+  windowYears: number
+  value: number | null
+  notMeaningful: boolean
+  observations: number
+  depthYears: number
+  minimumObservations: number
+}
+
+/** One panel metric: the served current value, company median and sector median. */
+export interface KeyMetricEntry {
+  value: number | null
+  notMeaningful: boolean
+  asOf: string
+  /** A bank/insurance profile gates the industrial-shaped codes (served by the API). */
+  profileGated: boolean
+  /** The window a growth code actually used; `null` for a point-in-time metric. */
+  windowYears: number | null
+  /** The TMS 29 regime-break marker for a window spanning the transition. */
+  regimeBreak: boolean | null
+  isAdjusted: boolean | null
+  isRestated: boolean | null
+  companyMedian5y: CompanyMedianBlock
+  sectorMedian: number | null
+  peerCount: number | null
+  excludedCount: number | null
+}
+
+/** One dated corporate action in the capital tracker's bedelli/bedelsiz history. */
+export interface CapitalAction {
+  date: string
+  /** The stored action class (`rights_issue`, `bonus_issue`, `split`). */
+  type: string
+  /** The display kind (`bedelli`, `bedelsiz`, `split`) decided by the server. */
+  kind: string
+  ratio: number | null
+  /** The served percentage (the ingested ratio × 100), never a client-scaled value. */
+  percent: number | null
+}
+
+/** The served capital & dilution tracker block. */
+export interface CapitalTracker {
+  /** Money (the share-count store, D4) — never derived from a share count. */
+  paidInCapital: number | null
+  paidInCapitalAsOf: string | null
+  sharesOutstanding: number | null
+  sharesOutstandingAsOf: string | null
+  /** The served derivation (`price-derived`), so the count's basis is stated. */
+  sharesOutstandingBasis: string | null
+  /** Honest N/M: no share-count history is stored, so the Y/Y change is never guessed. */
+  shareCountChangeYoy: {
+    value: number | null
+    notMeaningful: boolean
+    state: string
+  }
+  corporateActions: CapitalAction[]
+  /** `corporate-action-adjusted` — the disclaimer the history carries (UXR-RES-020). */
+  corporateActionsBasis: string | null
+  payoutRatio: {
+    value: number | null
+    notMeaningful: boolean
+    asOf: string
+  }
+}
+
+/** The financial-sector verdict (`sector_not_applicable`, architecture §10.9.19). */
+export interface FinancialSectorNotice {
+  state: string
+  reason: string
+  profile: string
+}
+
+/** `GET /api/v1/stocks/{symbol}/key-metrics` (`03` §3; FR-RES-006/007/009/010/027). */
+export interface StockKeyMetricsResponse extends HonestDataEnvelope {
+  symbol: string
+  accountingProfile: string
+  /** Set for a bank/insurance filer — the industrial panel does not describe it. */
+  financialSector: FinancialSectorNotice | null
+  /** Keyed by the panel's metric code (`roic`, `croic`, `roe`, …); 31 codes. */
+  metrics: Record<string, KeyMetricEntry>
+  capitalTracker: CapitalTracker
+}
+
 /** A canonical metric value; `null` is explicitly not-meaningful (BR-RES-008). */
 export interface MetricValue {
   value: number | null

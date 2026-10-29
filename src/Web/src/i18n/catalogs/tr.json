@@ -319,6 +319,84 @@
       "neverPaidBody": "Bu şirket hiç temettü ödemedi.",
       "unavailableTitle": "Temettü verisi yok",
       "unavailableBody": "Bu şirket için temettü verisi henüz yüklenmedi."
+    },
+    "keyMetrics": {
+      "title": "Kilit Değer Metrikleri ve Rekabet Avantajı Göstergeleri",
+      "tableCaption": "{{date}} itibarıyla · Değerler sunucudan geldiği gibidir",
+      "columns": {
+        "metric": "Metrik",
+        "current": "Güncel",
+        "companyMedian": "5Y Şirket Medyanı",
+        "sectorMedian": "Sektör Medyanı"
+      },
+      "groups": {
+        "moat": "Kârlılık ve Nakit Dönüşümü",
+        "valuation": "Değerleme",
+        "health": "Finansal Sağlık",
+        "growth": "Büyüme (3Y ve 5Y CAGR)"
+      },
+      "rows": {
+        "roic": "ROIC (%)",
+        "croic": "CROIC (%)",
+        "roe": "ROE (Grup/Konsolide, %)",
+        "roa": "ROA (%)",
+        "fcf_ni": "FCF / Net Kâr (Yıllık)",
+        "fcf_ni_3y": "FCF / Net Kâr (3Y Ortalama)",
+        "cfo_ebit": "CFO / FVÖK",
+        "monetary_gain_pretax": "Parasal Kazanç / Vergi Öncesi Kâr (%) (TMS 29)",
+        "ev_ebit": "FD/FVÖK",
+        "ev_ebitda": "FD/FAVÖK",
+        "pe": "F/K",
+        "p_fcf": "F/Serbest Nakit Akışı",
+        "fcf_yield": "Serbest Nakit Akışı Getirisi (%)",
+        "pb": "PD/DD",
+        "p_tbv": "PD/Maddi Defter Değeri",
+        "div_yield": "Temettü Verimi (%)",
+        "net_debt_ebitda": "Net Borç / FAVÖK",
+        "net_debt_fcf": "Net Borç / Serbest Nakit Akışı",
+        "interest_coverage": "FVÖK / Faiz Gideri",
+        "cfo_interest": "CFO / Nakit Faiz",
+        "current_ratio": "Cari Oran",
+        "rev_cagr_3y": "Hasılat CAGR (3Y)",
+        "rev_cagr_5y": "Hasılat CAGR (5Y)",
+        "ebit_cagr_3y": "FVÖK CAGR (3Y)",
+        "ebit_cagr_5y": "FVÖK CAGR (5Y)",
+        "eps_cagr_3y": "EPS CAGR (3Y, Grup/Konsolide)",
+        "eps_cagr_5y": "EPS CAGR (5Y, Grup/Konsolide)",
+        "fcf_ps_cagr_3y": "FCF/Pay CAGR (3Y)",
+        "fcf_ps_cagr_5y": "FCF/Pay CAGR (5Y)",
+        "bvps_cagr_3y": "BVPS CAGR (3Y)",
+        "bvps_cagr_5y": "BVPS CAGR (5Y)"
+      },
+      "medianDisclosure": "{{window}} yıl · {{observations}} gözlem · derinlik {{depth}} yıl · eşik {{minimum}}",
+      "peerCount": "{{count}} emsalin medyanı",
+      "exclusionCount": "{{count}} emsal hariç tutuldu",
+      "regimeBreakMarker": "TMS 29 rejim kırılması",
+      "regimeBreakNotice": "† ile işaretlenen büyüme pencereleri TMS 29 geçişini (31.12.2023) kapsar; nominal değer gösterilir, gizlenmez.",
+      "tms29Alert": {
+        "title": "TMS 29 bozulma uyarısı",
+        "body": "Vergi öncesi kârın parasal kazanç payı sunulmuştur ({{value}}). Enflasyon düzeltmesi kârlılık oranlarını bozabilir; oranı kendi bağlamında değerlendirin."
+      },
+      "financialNotice": "Bu şirket {{profile}} muhasebe düzeninde raporluyor; yalnızca bu düzene uygun metrikler gösteriliyor."
+    },
+    "capitalTracker": {
+      "title": "Sermaye ve Seyreltme Takibi",
+      "rows": {
+        "paidInCapital": "Ödenmiş Sermaye",
+        "sharesOutstanding": "Bölünme Düzeltmeli Pay Sayısı [C]",
+        "shareCountChangeYoy": "Pay Sayısı Değişimi (Y/Y %) [C]",
+        "bedelliBedelsizHistory": "Bedelli/Bedelsiz % Geçmişi",
+        "payoutRatio": "Temettü Dağıtım Oranı (%) [C]"
+      },
+      "actionKinds": {
+        "bedelli": "Bedelli",
+        "bedelsiz": "Bedelsiz",
+        "split": "Bölünme"
+      },
+      "priceDerivedBasis": "fiyat türevi pay sayısı",
+      "noCountHistory": "pay sayısı geçmişi tutulmadığı için hesaplanamaz",
+      "noActions": "Kayıtlı bedelli/bedelsiz işlemi yok.",
+      "adjustedDisclaimer": "Bu işlem geçmişi ve oranları kurumsal işlemler (bölünme, bedelli, bedelsiz) için düzeltilmiştir."
     }
   },
   "stockList": {

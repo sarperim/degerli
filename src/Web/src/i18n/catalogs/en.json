@@ -319,6 +319,84 @@
       "neverPaidBody": "This company has not paid any dividends.",
       "unavailableTitle": "No dividend data",
       "unavailableBody": "Dividend data for this company has not been ingested yet."
+    },
+    "keyMetrics": {
+      "title": "Key Value Metrics & Moat Indicators",
+      "tableCaption": "As of {{date}} · Values are shown exactly as served",
+      "columns": {
+        "metric": "Metric",
+        "current": "Current",
+        "companyMedian": "5Y Company Median",
+        "sectorMedian": "Sector Median"
+      },
+      "groups": {
+        "moat": "Profitability & Cash Conversion",
+        "valuation": "Valuation",
+        "health": "Financial Health",
+        "growth": "Growth (3Y & 5Y CAGR)"
+      },
+      "rows": {
+        "roic": "ROIC (%)",
+        "croic": "CROIC (%)",
+        "roe": "ROE (Group/Consolidated, %)",
+        "roa": "ROA (%)",
+        "fcf_ni": "FCF / Net Income (Annual)",
+        "fcf_ni_3y": "FCF / Net Income (3Y Average)",
+        "cfo_ebit": "CFO / EBIT",
+        "monetary_gain_pretax": "Monetary Gain / Pretax Income (%) (TMS 29)",
+        "ev_ebit": "EV/EBIT",
+        "ev_ebitda": "EV/EBITDA",
+        "pe": "P/E",
+        "p_fcf": "P/FCF",
+        "fcf_yield": "FCF Yield (%)",
+        "pb": "P/B",
+        "p_tbv": "P/Tangible Book Value",
+        "div_yield": "Dividend Yield (%)",
+        "net_debt_ebitda": "Net Debt / EBITDA",
+        "net_debt_fcf": "Net Debt / FCF",
+        "interest_coverage": "EBIT / Interest Expense",
+        "cfo_interest": "CFO / Cash Interest",
+        "current_ratio": "Current Ratio",
+        "rev_cagr_3y": "Revenue CAGR (3Y)",
+        "rev_cagr_5y": "Revenue CAGR (5Y)",
+        "ebit_cagr_3y": "EBIT CAGR (3Y)",
+        "ebit_cagr_5y": "EBIT CAGR (5Y)",
+        "eps_cagr_3y": "EPS CAGR (3Y, Group/Consolidated)",
+        "eps_cagr_5y": "EPS CAGR (5Y, Group/Consolidated)",
+        "fcf_ps_cagr_3y": "FCF/Share CAGR (3Y)",
+        "fcf_ps_cagr_5y": "FCF/Share CAGR (5Y)",
+        "bvps_cagr_3y": "BVPS CAGR (3Y)",
+        "bvps_cagr_5y": "BVPS CAGR (5Y)"
+      },
+      "medianDisclosure": "{{window}}Y · {{observations}} observations · depth {{depth}}Y · floor {{minimum}}",
+      "peerCount": "median of {{count}} peers",
+      "exclusionCount": "{{count}} peers excluded",
+      "regimeBreakMarker": "TMS 29 regime break",
+      "regimeBreakNotice": "† marks growth windows spanning the TMS 29 transition (2023-12-31); the nominal value stays displayed, never hidden.",
+      "tms29Alert": {
+        "title": "TMS 29 distortion alert",
+        "body": "The served monetary-gain share of pretax income is shown ({{value}}). Inflation adjustment can distort profitability ratios; read the ratio in its own context."
+      },
+      "financialNotice": "This company reports under the {{profile}} accounting profile; only the metrics appropriate to that profile are shown."
+    },
+    "capitalTracker": {
+      "title": "Capital & Dilution Tracker",
+      "rows": {
+        "paidInCapital": "Paid-In Capital",
+        "sharesOutstanding": "Split-Adjusted Share Count [C]",
+        "shareCountChangeYoy": "Share Count Change (Y/Y %) [C]",
+        "bedelliBedelsizHistory": "Rights/Bonus Issue % History",
+        "payoutRatio": "Dividend Payout Ratio (%) [C]"
+      },
+      "actionKinds": {
+        "bedelli": "Rights issue",
+        "bedelsiz": "Bonus issue",
+        "split": "Split"
+      },
+      "priceDerivedBasis": "price-derived share count",
+      "noCountHistory": "not computable — no share-count history is stored",
+      "noActions": "No rights/bonus issue history is stored.",
+      "adjustedDisclaimer": "This action history and its ratios are corporate-action adjusted (splits, rights and bonus issues)."
     }
   },
   "stockList": {
