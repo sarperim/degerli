@@ -17,7 +17,7 @@ scope:
 
 # TKT-foundation-100: The durable KAP public-site access fix — adapter TLS shaping, 429-quota awareness, and the export pacing knob (the fingerprint-block and rolling-quota findings; the relay becomes documented ops posture)
 
-- Status: in-review
+- Status: done (PR #161 squash-merged b50dc52; 3 review rounds, round-3 verdict MERGEABLE — scope widening verified minimum, v1.5.76 collision renumbered to v1.5.77, truncation honesty test-proven via TC_MDF_127_c2; 4 deferred nits DR2-1..DR2-4 recorded; LIVE CRITERION PENDING: orchestrator paced probe with relay disabled, post-walk)
 - PR: https://github.com/sarperim/degerli/pull/161
 - Size: M
 - **Priority: P1 — the durable half of the live access mitigation (the user's 2026-10-29 deadline rides the orchestrator's relay in the meantime; this ticket removes the product's dependence on it).**
