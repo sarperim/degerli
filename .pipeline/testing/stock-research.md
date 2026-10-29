@@ -165,7 +165,7 @@
 
 **TC-RES-041 — Key value metrics & moat panel + capital & dilution tracker (SCR-005, the user's v0 spec's last two blocks)**
 - Traces: FR-RES-006/007 (valuation metrics + vs-sector strip honesty fields), FR-RES-009 (profitability), FR-RES-010 (growth CAGRs), FR-RES-012/FR-RES-027 (payout / per-share book values), FR-MDF-004 (corporate actions), FR-MDF-014 (window honesty), UC-RES-003, UXR-RES-012/013/015/016/017, UXR-RES-020 (adjusted disclaimer), UXR-RES-024/025 (peer count, N/M), UXR-RES-026/027 (regime-break marker), UXR-G-006/007, BR-RES-004 · Level: L3 (with its L4 extension in `tests/e2e/src/stock-page.spec.ts`) · Design: EP — served-payload classes (value / served-null / no sector median / withheld company median / spanning vs one-side CAGR / profile-gated row / financial-sector profile), decision table — served flag × marker
-- Expected: (a) both blocks render every served panel code (31) and every capital-tracker row (paid-in capital, split-adjusted share count, share-count Y/Y change, bedelli/bedelsiz history, payout ratio); (b) a served value renders as served and a served-null value renders "—", never zero — the page computes nothing (BR-RES-004); (c) the 5Y company median renders with its served `windowYears`/`observations`/`depthYears`/`minimumObservations` disclosure, and a withheld median is a dash, never a fabricated statistic; (d) the sector median renders with its peer count and, for a gated code, the served exclusion-count disclosure; a null sector median is the honest dash; (e) the regime-break marker renders on a CAGR whose served `regimeBreak` is true, is absent on a one-side CAGR, is distinguishable from the restatement marker, and the footnote accompanies it; (f) the TMS 29 alert renders from the served `monetary_gain_pretax` value (and not when the ratio is unserved) — no client threshold; (g) the bedelli/bedelsiz history renders dated with its served percentages and the corporate-action-adjusted disclaimer; (h) the share-count Y/Y change renders the honest `no-count-history` N/M, never a guessed change; (i) the served group-basis `roe` and `eps_cagr_*` rows are labelled group/consolidated — never the spec's Parent wording over a group figure (the routed parent-basis pair is not fabricated); (j) a financial-sector profile renders the notice and only its profile-appropriate (non-`profileGated`) rows; (k) TR and EN label the row set from the catalogs (parity). **L4 (fixture world):** ALFA's panel renders the served current values and the withheld company median's disclosure, the absent sector medians are the honest dash (the fixture world runs no medians job), a code with no fixture input (`roa`) is the dash, and the tracker's share-count N/M renders.
+- Expected: (a) both blocks render every served panel code (31) and every capital-tracker row (paid-in capital, split-adjusted share count, share-count Y/Y change, bedelli/bedelsiz history, payout ratio); (b) a served value renders as served and a served-null value renders "—", never zero — the page computes nothing (BR-RES-004); (c) the 5Y company median renders with its served `windowYears`/`observations`/`depthYears`/`minimumObservations` disclosure, and a withheld median is a dash, never a fabricated statistic; (d) the sector median renders with its peer count and, for a gated code, the served exclusion-count disclosure; a null sector median is the honest dash; (e) the regime-break marker renders on a CAGR whose served `regimeBreak` is true, is absent on a one-side CAGR, is distinguishable from the restatement marker (whose served `isRestated: true` path renders its own `*` on a separate metric), and the footnote accompanies it; a CAGR whose served `windowYears` is shorter than its nominal window discloses the actual span beside its label (FR-MDF-014) — the value is never hidden and the row is never dropped; (f) the TMS 29 alert renders from the served `monetary_gain_pretax` value (and not when the ratio is unserved) — no client threshold; (g) the bedelli/bedelsiz history renders dated with its served percentages and the corporate-action-adjusted disclaimer; (h) the share-count Y/Y change renders the honest `no-count-history` N/M, never a guessed change; (i) the served group-basis `roe` and `eps_cagr_*` rows are labelled group/consolidated — never the spec's Parent wording over a group figure (the routed parent-basis pair is not fabricated); (j) a financial-sector profile renders the notice — with the served profile **mapped to localized copy** (raw enum only as the unknown-value fallback) — and only its profile-appropriate (non-`profileGated`) rows; (k) TR and EN label the row set from the catalogs (parity). **L4 (fixture world):** ALFA's panel renders the served current values and the withheld company median's disclosure, the absent sector medians are the honest dash (the fixture world runs no medians job), a code with no fixture input (`roa`) is the dash, and the tracker's share-count N/M renders.
 - Dependencies: TC-RES-039 (same section), TC-MDF-124 (the served payload).
 
 ### Group F — End-to-end flows (L4)
@@ -243,13 +243,13 @@
 | FR-RES-003 | main | TC-003, 022 | planned |
 | FR-RES-004 | main | TC-004, 035 | planned |
 | FR-RES-005 | main | TC-005, 026 | planned |
-| FR-RES-006 | main (current + historical) | TC-007 | planned |
-| FR-RES-007 | main | TC-007, 008, 025 | planned |
+| FR-RES-006 | main (current + historical) | TC-007, 041 | planned |
+| FR-RES-007 | main | TC-007, 008, 025, 041 | planned |
 | FR-RES-008 | main | TC-009, 039, 040 | planned |
-| FR-RES-009 | main | TC-010 | planned |
-| FR-RES-010 | main + window indication | TC-011 | planned |
+| FR-RES-009 | main | TC-010, 041 | planned |
+| FR-RES-010 | main + window indication | TC-011, 041 | planned |
 | FR-RES-011 | main | TC-012 | planned |
-| FR-RES-012 | main | TC-013 | planned |
+| FR-RES-012 | main | TC-013, 041 | planned |
 | FR-RES-013 | adjusted disclaimer | TC-024, 032 | planned |
 | FR-RES-014 | restatement marks | TC-009, 024, 030, 039 | planned |
 | FR-RES-015 | per-section as-of/stale | TC-015, 024, 039 | planned |
@@ -261,10 +261,10 @@
 | FR-RES-021 | builder edits | TC-019, 034 | planned |
 | FR-RES-022 | last-reviewed date | TC-005, 021, 026 | planned |
 | FR-RES-026 | preparing state | TC-006, 026, 029 | planned |
-| FR-RES-027 | book value + BVPS | TC-012 | planned |
+| FR-RES-027 | book value + BVPS | TC-012, 041 | planned |
 | UC-RES-001 | main; alt a | TC-001..004, 022, 035; TC-003/022 (no-match) | planned |
 | UC-RES-002 | main; alt a | TC-005, 026; TC-006, 029 | planned |
-| UC-RES-003 | main; alt a (stale); alt b (short history) | TC-007..015, 028, 039, 040; TC-015/024 (stale payloads); TC-011, 031 | planned |
+| UC-RES-003 | main; alt a (stale); alt b (short history) | TC-007..015, 028, 039, 040, 041; TC-015/024 (stale payloads); TC-011, 031 | planned |
 | UC-RES-004 | main; alt a (re-draft); alt b (new filings cycle) | TC-016, 018..021, 034; re-draft = CLI re-run (TC-016 variant); alt b → manual/content-cycle ledger note | planned |
 | UC-RES-005 | main | TC-028 | planned |
 | NFR-RES-001 | bilingual | XC parity; publish gate TC-020 | planned |
@@ -279,20 +279,20 @@
 | UXR-RES-008 | seven sections | TC-023, 028 | planned |
 | UXR-RES-009/010 | description language/date | TC-005, 026 | planned |
 | UXR-RES-011 | preparing | TC-006, 026, 029 | planned |
-| UXR-RES-012 | valuation display | TC-007 | planned |
-| UXR-RES-013 | strip | TC-007, 025 | planned |
+| UXR-RES-012 | valuation display | TC-007, 041 | planned |
+| UXR-RES-013 | strip | TC-007, 025, 041 | planned |
 | UXR-RES-014 | financials (restructured per the 2026-10-28 user spec) | TC-009, 039, 040 | planned |
-| UXR-RES-015 | profitability | TC-010 | planned |
-| UXR-RES-016 | growth windows | TC-011, 031 | planned |
-| UXR-RES-017 | book value | TC-012 | planned |
+| UXR-RES-015 | profitability | TC-010, 041 | planned |
+| UXR-RES-016 | growth windows | TC-011, 031, 041 | planned |
+| UXR-RES-017 | book value | TC-012, 041 | planned |
 | UXR-RES-018 | dividends | TC-013 | planned |
 | UXR-RES-019 | restatement marks | TC-024, 030, 039 | planned |
-| UXR-RES-020 | adjusted disclaimer | TC-024, 032 | planned |
+| UXR-RES-020 | adjusted disclaimer | TC-024, 032, 041 | planned |
 | UXR-RES-021 | as-of/stale | TC-015, 024, 039 | planned |
 | UXR-RES-022 | no-data boundary | TC-011, 013, 015, 031, 039 | planned |
 | UXR-RES-023 | DCF hand-off | TC-028 | planned |
-| UXR-RES-024 | peer count | TC-007, 025 | planned |
-| UXR-RES-025 | not-meaningful | TC-008, 025 | planned |
+| UXR-RES-024 | peer count | TC-007, 025, 041 | planned |
+| UXR-RES-025 | not-meaningful | TC-008, 025, 041 | planned |
 | UXR-MDF-018 | queue + filter | TC-018, 034 | planned |
 | UXR-MDF-019 | editor save/preserve | TC-019, 034 | planned |
 | UXR-MDF-020 | KAP source refs | TC-018, 034 | planned |
@@ -311,4 +311,4 @@
 
 *Change record: v1.1 2026-10-29 — added **TC-RES-039** (L3, the SCR-005 financial-statements view per the user's 2026-10-28 v0 spec) and **TC-RES-040** (its L4 extension on the fixture world), plus their coverage-matrix traces. Rendered by TKT-foundation-095; test-planner confirmation pending (the UXR-RES-014 breadth supersession is a ux flow-back item on the ticket). Note: TC-RES-037/038 were already taken by the dividends-availability lane (TKT-foundation-052), so the statements cases take the next free IDs 039/040.*
 
-*Change record: v1.2 2026-10-29 — added **TC-RES-041** (L3 + its L4 extension, the SCR-005 key value metrics & moat panel and the capital & dilution tracker per the same user spec), plus its coverage-matrix traces. Rendered by TKT-foundation-097; test-planner confirmation pending. Note: the ticket pinned `TC-RES-038`, which belongs to the dividends-availability lane (TKT-foundation-052, `Dividends.test.tsx`); with 039/040 taken by the statements lane, this case takes the next free ID **041** — the ticket's acceptance line and implementation notes carry the renumbering.*
+*Change record: v1.2 2026-10-29 — added **TC-RES-041** (L3 + its L4 extension, the SCR-005 key value metrics & moat panel and the capital & dilution tracker per the same user spec), plus its coverage-matrix traces (the matrix rows for FR-RES-006/007/009/010/012/027, UC-RES-003 and UXR-RES-012/013/015/016/017/020/024/025 were appended in the review-round-1 fix pass — the phrase was premature as first written; UXR-RES-026/027 have no matrix rows at all, a pre-existing gap this case does not silently close). Rendered by TKT-foundation-097; test-planner confirmation pending. Note: the ticket pinned `TC-RES-038`, which belongs to the dividends-availability lane (TKT-foundation-052, `Dividends.test.tsx`); with 039/040 taken by the statements lane, this case takes the next free ID **041** — the ticket's acceptance line and implementation notes carry the renumbering.*

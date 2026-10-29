@@ -374,8 +374,12 @@
       "regimeBreakMarker": "TMS 29 rejim kırılması",
       "regimeBreakNotice": "† ile işaretlenen büyüme pencereleri TMS 29 geçişini (31.12.2023) kapsar; nominal değer gösterilir, gizlenmez.",
       "tms29Alert": {
-        "title": "TMS 29 bozulma uyarısı",
+        "title": "TMS 29 etkisi",
         "body": "Vergi öncesi kârın parasal kazanç payı sunulmuştur ({{value}}). Enflasyon düzeltmesi kârlılık oranlarını bozabilir; oranı kendi bağlamında değerlendirin."
+      },
+      "profiles": {
+        "bank": "banka",
+        "insurance": "sigorta"
       },
       "financialNotice": "Bu şirket {{profile}} muhasebe düzeninde raporluyor; yalnızca bu düzene uygun metrikler gösteriliyor."
     },

@@ -12,7 +12,6 @@ import {
   resetStockPageTest,
   stockKeyMetricsHandler,
 } from '@/screens/stock-page/testSupport'
-import { KEY_METRIC_CODES } from '@/screens/stock-page/keyMetricsView'
 
 /**
  * TC-RES-041 — the SCR-005 key value metrics & moat panel and the capital &
@@ -25,17 +24,21 @@ import { KEY_METRIC_CODES } from '@/screens/stock-page/keyMetricsView'
  * `stock-research.md` §8 updated with it).
  *
  * Cases:
- *  (a) both row sets are complete — every served panel code and every tracker row;
+ *  (a) both row sets are complete — the 31 panel codes (an independent literal
+ *      expectation, never the component's own constant) and every tracker row;
  *  (b) a served value renders as served; a served-null value renders "—", never 0;
  *  (c) the 5Y company median renders its depth/observation disclosure and a
  *      withheld median is a dash (never a fabricated statistic);
  *  (d) the sector median renders with peer count and exclusion disclosure;
- *  (e) the regime-break marker renders on a spanning CAGR and not on a one-side one;
+ *  (e) the regime-break marker renders on a spanning CAGR and not on a one-side
+ *      one, distinct from a served restatement `*`, and a served short window is
+ *      disclosed beside its nominal label;
  *  (f) the TMS 29 alert renders from the served ratio (and not when unserved);
  *  (g) the bedelli/bedelsiz history renders dated with the adjusted-data disclaimer;
  *  (h) the share-count Y/Y change renders the honest no-count-history N/M;
  *  (i) ROE and EPS CAGR rows are labelled with their served group basis, never Parent;
- *  (j) a financial-sector profile shows only its profile-appropriate rows + notice;
+ *  (j) a financial-sector profile shows only its profile-appropriate rows + the
+ *      localized notice (the served profile enum is mapped, never interpolated);
  *  (k) the EN catalog labels the same row set (TR/EN parity).
  *
  * Copy is read from the catalogs, never hardcoded (§8.3).
@@ -43,6 +46,46 @@ import { KEY_METRIC_CODES } from '@/screens/stock-page/keyMetricsView'
 
 const TR = (key: string) => catalogValue('tr', key)
 const EN = (key: string) => catalogValue('en', key)
+
+/**
+ * The panel's 31 served codes, written out independently of the view module.
+ * Completeness must not be asserted against the very constant the component
+ * renders (`KEY_METRIC_CODES`): a code dropped from `KEY_METRIC_GROUPS` would
+ * otherwise keep this case green while the row silently disappeared.
+ */
+const EXPECTED_PANEL_CODES = [
+  'roic',
+  'croic',
+  'roe',
+  'roa',
+  'fcf_ni',
+  'fcf_ni_3y',
+  'cfo_ebit',
+  'monetary_gain_pretax',
+  'ev_ebit',
+  'ev_ebitda',
+  'pe',
+  'p_fcf',
+  'fcf_yield',
+  'pb',
+  'p_tbv',
+  'div_yield',
+  'net_debt_ebitda',
+  'net_debt_fcf',
+  'interest_coverage',
+  'cfo_interest',
+  'current_ratio',
+  'rev_cagr_3y',
+  'rev_cagr_5y',
+  'ebit_cagr_3y',
+  'ebit_cagr_5y',
+  'eps_cagr_3y',
+  'eps_cagr_5y',
+  'fcf_ps_cagr_3y',
+  'fcf_ps_cagr_5y',
+  'bvps_cagr_3y',
+  'bvps_cagr_5y',
+] as const
 
 function fill(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) =>
@@ -77,13 +120,20 @@ describe('TC-RES-041 (a) — both row sets are complete', () => {
 
     await screen.findByTestId('key-metrics-panel')
 
-    for (const code of KEY_METRIC_CODES) {
+    for (const code of EXPECTED_PANEL_CODES) {
       expect(
         panel().querySelector(`[data-metric="${code}"]`),
         `${code} row is missing`,
       ).not.toBeNull()
     }
-    expect(panel().querySelectorAll('[data-metric]')).toHaveLength(KEY_METRIC_CODES.length)
+    // The pinned count and the exact rendered order (the literal list above is
+    // the independent expectation, not the constant the component renders).
+    expect(EXPECTED_PANEL_CODES).toHaveLength(31)
+    const renderedCodes = Array.from(
+      panel().querySelectorAll('[data-metric]'),
+      (element) => element.getAttribute('data-metric'),
+    )
+    expect(renderedCodes).toEqual([...EXPECTED_PANEL_CODES])
 
     for (const key of [
       'paidInCapital',
@@ -228,8 +278,8 @@ describe('TC-RES-041 (d) — sector median with peer and exclusion counts', () =
   })
 })
 
-describe('TC-RES-041 (e) — the regime-break marker', () => {
-  it('marks a spanning CAGR and leaves a one-side CAGR unmarked, with the footnote', async () => {
+describe('TC-RES-041 (e) — the regime-break marker and the served growth window', () => {
+  it('marks a spanning CAGR, leaves a one-side CAGR unmarked, and discloses a short window', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
     renderStockPage()
 
@@ -244,9 +294,32 @@ describe('TC-RES-041 (e) — the regime-break marker', () => {
     expect(panel().querySelector('[data-slot="regime-break-notice"]')).toHaveTextContent(
       TR('stockPage.keyMetrics.regimeBreakNotice'),
     )
-    // The marker is distinguishable from the restatement asterisk.
+
+    // The served restatement path (`isRestated: true`, on a different metric)
+    // renders its own asterisk marker...
+    const restated = metricRow('current_ratio')
+    expect(restated.querySelector('[data-slot="restated-marker"]')).not.toBeNull()
+    expect(restated).toHaveTextContent('*')
+
+    // ...so the regime-break row is distinguishable: the `†` glyph and no `*`.
+    const regimeBreakRow = metricRow('rev_cagr_3y')
+    expect(regimeBreakRow.textContent).toContain('†')
+    expect(regimeBreakRow.textContent).not.toContain('*')
+
+    // The 5Y row's served window is 3 years: the nominal label must not stand
+    // alone — the actual span is disclosed beside it, the value stays displayed.
+    const rev5 = metricRow('rev_cagr_5y')
+    expect(rev5.querySelector('th')).toHaveTextContent(
+      TR('stockPage.keyMetrics.rows.rev_cagr_5y'),
+    )
+    expect(rev5.querySelector('[data-slot="actual-window"]')).toHaveTextContent(
+      fill(TR('stockPage.growth.actualWindow'), { years: 3 }),
+    )
+    expect(rev5).toHaveTextContent(percent(0.1))
+
+    // A row whose served window equals its nominal window carries no disclosure.
     expect(
-      metricRow('rev_cagr_3y').querySelector('[data-slot="restated-marker"]'),
+      metricRow('rev_cagr_3y').querySelector('[data-slot="actual-window"]'),
     ).toBeNull()
   })
 })
@@ -346,8 +419,13 @@ describe('TC-RES-041 (j) — a financial-sector profile', () => {
     await screen.findByTestId('key-metrics-panel')
 
     expect(screen.getByTestId('key-metrics-sector-notice')).toHaveTextContent(
-      'bank',
+      fill(TR('stockPage.keyMetrics.financialNotice'), {
+        profile: TR('stockPage.keyMetrics.profiles.bank'),
+      }),
     )
+    // The served enum is mapped, not interpolated: `bank` would leave the raw
+    // English code in Turkish copy.
+    expect(TR('stockPage.keyMetrics.profiles.bank')).not.toBe('bank')
     // Profile-appropriate rows stay (roe/pe/bvps CAGR compute for a financial).
     expect(panel().querySelector('[data-metric="roe"]')).not.toBeNull()
     expect(panel().querySelector('[data-metric="pe"]')).not.toBeNull()
@@ -384,7 +462,7 @@ describe('TC-RES-041 (k) — EN labels the same row set', () => {
     for (const lang of ['tr', 'en'] as const) {
       expect(CATALOGS[lang].stockPage.keyMetrics.title).toBeTruthy()
       expect(CATALOGS[lang].stockPage.capitalTracker.title).toBeTruthy()
-      for (const code of KEY_METRIC_CODES) {
+      for (const code of EXPECTED_PANEL_CODES) {
         expect(
           catalogValue(lang, `stockPage.keyMetrics.rows.${code}`),
           `${lang} label for ${code}`,

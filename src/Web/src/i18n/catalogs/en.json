@@ -374,8 +374,12 @@
       "regimeBreakMarker": "TMS 29 regime break",
       "regimeBreakNotice": "† marks growth windows spanning the TMS 29 transition (2023-12-31); the nominal value stays displayed, never hidden.",
       "tms29Alert": {
-        "title": "TMS 29 distortion alert",
+        "title": "TMS 29 context",
         "body": "The served monetary-gain share of pretax income is shown ({{value}}). Inflation adjustment can distort profitability ratios; read the ratio in its own context."
+      },
+      "profiles": {
+        "bank": "bank",
+        "insurance": "insurance"
       },
       "financialNotice": "This company reports under the {{profile}} accounting profile; only the metrics appropriate to that profile are shown."
     },

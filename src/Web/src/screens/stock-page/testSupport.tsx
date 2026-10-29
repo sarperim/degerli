@@ -729,7 +729,7 @@ export const KEY_METRICS_FIXTURE: StockKeyMetricsResponse = {
     net_debt_fcf: servedMetric(2),
     interest_coverage: keyMetricEntry({ profileGated: true }),
     cfo_interest: keyMetricEntry({ profileGated: true }),
-    current_ratio: servedMetric(1.4),
+    current_ratio: servedMetric(1.4, { isRestated: true }),
     rev_cagr_3y: servedMetric(0.12, { windowYears: 3, regimeBreak: true }),
     rev_cagr_5y: servedMetric(0.1, { windowYears: 3, regimeBreak: false }),
     ebit_cagr_3y: keyMetricEntry(),

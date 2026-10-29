@@ -38,6 +38,13 @@ export interface KeyMetricRow {
   /** The catalog key for the spec row name (TR/EN). */
   labelKey: string
   format: KeyMetricFormat
+  /**
+   * The nominal window the row's label claims (3 or 5 years for a CAGR). The
+   * served `windowYears` may be shorter when history is thin; the panel then
+   * discloses the actual span beside the label instead of letting the claim
+   * stand (FR-MDF-014, the Growth section's convention).
+   */
+  window?: number
 }
 
 export interface KeyMetricGroup {
@@ -50,7 +57,8 @@ const row = (
   code: string,
   labelKey: string,
   format: KeyMetricFormat = 'ratio',
-): KeyMetricRow => ({ code, labelKey, format })
+  window?: number,
+): KeyMetricRow => ({ code, labelKey, format, window })
 
 /**
  * The four display groups (moat / valuation / health / growth). Order follows the
@@ -104,16 +112,16 @@ export const KEY_METRIC_GROUPS: readonly KeyMetricGroup[] = [
     key: 'growth',
     labelKey: 'stockPage.keyMetrics.groups.growth',
     rows: [
-      row('rev_cagr_3y', 'stockPage.keyMetrics.rows.rev_cagr_3y', 'percent'),
-      row('rev_cagr_5y', 'stockPage.keyMetrics.rows.rev_cagr_5y', 'percent'),
-      row('ebit_cagr_3y', 'stockPage.keyMetrics.rows.ebit_cagr_3y', 'percent'),
-      row('ebit_cagr_5y', 'stockPage.keyMetrics.rows.ebit_cagr_5y', 'percent'),
-      row('eps_cagr_3y', 'stockPage.keyMetrics.rows.eps_cagr_3y', 'percent'),
-      row('eps_cagr_5y', 'stockPage.keyMetrics.rows.eps_cagr_5y', 'percent'),
-      row('fcf_ps_cagr_3y', 'stockPage.keyMetrics.rows.fcf_ps_cagr_3y', 'percent'),
-      row('fcf_ps_cagr_5y', 'stockPage.keyMetrics.rows.fcf_ps_cagr_5y', 'percent'),
-      row('bvps_cagr_3y', 'stockPage.keyMetrics.rows.bvps_cagr_3y', 'percent'),
-      row('bvps_cagr_5y', 'stockPage.keyMetrics.rows.bvps_cagr_5y', 'percent'),
+      row('rev_cagr_3y', 'stockPage.keyMetrics.rows.rev_cagr_3y', 'percent', 3),
+      row('rev_cagr_5y', 'stockPage.keyMetrics.rows.rev_cagr_5y', 'percent', 5),
+      row('ebit_cagr_3y', 'stockPage.keyMetrics.rows.ebit_cagr_3y', 'percent', 3),
+      row('ebit_cagr_5y', 'stockPage.keyMetrics.rows.ebit_cagr_5y', 'percent', 5),
+      row('eps_cagr_3y', 'stockPage.keyMetrics.rows.eps_cagr_3y', 'percent', 3),
+      row('eps_cagr_5y', 'stockPage.keyMetrics.rows.eps_cagr_5y', 'percent', 5),
+      row('fcf_ps_cagr_3y', 'stockPage.keyMetrics.rows.fcf_ps_cagr_3y', 'percent', 3),
+      row('fcf_ps_cagr_5y', 'stockPage.keyMetrics.rows.fcf_ps_cagr_5y', 'percent', 5),
+      row('bvps_cagr_3y', 'stockPage.keyMetrics.rows.bvps_cagr_3y', 'percent', 3),
+      row('bvps_cagr_5y', 'stockPage.keyMetrics.rows.bvps_cagr_5y', 'percent', 5),
     ],
   },
 ]
@@ -146,9 +154,22 @@ export function hasRegimeBreak(metrics: Record<string, KeyMetricEntry>): boolean
   return Object.values(metrics).some((entry) => entry.regimeBreak === true)
 }
 
-/** True when any rendered metric is served on the corporate-action-adjusted basis. */
-export function hasAdjustedMetric(metrics: Record<string, KeyMetricEntry>): boolean {
-  return Object.values(metrics).some((entry) => entry.isAdjusted === true)
+/**
+ * The catalog key for a served financial-sector profile. The served enum
+ * (`bank`, `insurance`, …) is not prose: it must never be interpolated raw into
+ * a sentence (an `insurance` filer would put an English code inside Turkish
+ * copy). `null` lets the caller fall back to the raw value for an unknown
+ * profile rather than inventing a label for it.
+ */
+export function financialProfileLabelKey(profile: string): string | null {
+  switch (profile) {
+    case 'bank':
+      return 'stockPage.keyMetrics.profiles.bank'
+    case 'insurance':
+      return 'stockPage.keyMetrics.profiles.insurance'
+    default:
+      return null
+  }
 }
 
 /**

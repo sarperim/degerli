@@ -29,13 +29,30 @@ import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import { fetchStockKeyMetrics, stockPageQueryKeys } from '@/screens/stock-page/api'
 import {
   corporateActionKindKey,
+  financialProfileLabelKey,
   formatKeyMetric,
-  hasAdjustedMetric,
   hasRegimeBreak,
   monetaryGainAlert,
   visibleKeyMetricGroups,
   type KeyMetricFormat,
 } from '@/screens/stock-page/keyMetricsView'
+
+/**
+ * The dashed tracker shape a malformed payload degrades to: every served gap is
+ * an explicit dash, never a crash. Sibling stock-page views are equally
+ * defensive (no ErrorBoundary sits above these sections).
+ */
+const EMPTY_CAPITAL_TRACKER: CapitalTracker = {
+  paidInCapital: null,
+  paidInCapitalAsOf: null,
+  sharesOutstanding: null,
+  sharesOutstandingAsOf: null,
+  sharesOutstandingBasis: null,
+  shareCountChangeYoy: { value: null, notMeaningful: true, state: '' },
+  corporateActions: [],
+  corporateActionsBasis: null,
+  payoutRatio: { value: null, notMeaningful: true, asOf: '' },
+}
 
 /**
  * SCR-005 — the KEY VALUE METRICS & MOAT INDICATORS panel and the CAPITAL &
@@ -362,10 +379,15 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
 
   const data = query.data
   const financialProfile = data?.financialSector !== null && data?.financialSector !== undefined
-  const groups = data ? visibleKeyMetricGroups(data.metrics, financialProfile) : []
-  const regimeBreak = data ? hasRegimeBreak(data.metrics) : false
-  const adjusted = data ? hasAdjustedMetric(data.metrics) : false
-  const alert = data ? monetaryGainAlert(data.metrics) : null
+  const metrics = data?.metrics ?? {}
+  const tracker = data?.capitalTracker ?? EMPTY_CAPITAL_TRACKER
+  const groups = visibleKeyMetricGroups(metrics, financialProfile)
+  const regimeBreak = hasRegimeBreak(metrics)
+  const alert = monetaryGainAlert(metrics)
+  const sectorProfile = data?.financialSector?.profile ?? ''
+  const sectorProfileKey = financialProfileLabelKey(sectorProfile)
+  const sectorProfileLabel =
+    sectorProfileKey === null ? sectorProfile : t(sectorProfileKey)
 
   return (
     <SectionBody
@@ -389,7 +411,7 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
                 className="max-w-prose text-sm text-muted-foreground"
               >
                 {t('stockPage.keyMetrics.financialNotice', {
-                  profile: data.financialSector?.profile ?? '',
+                  profile: sectorProfileLabel,
                 })}
               </p>
             ) : null}
@@ -428,11 +450,26 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
                         </TableHead>
                       </TableRow>
                       {group.rows.map((metric) => {
-                        const entry = data.metrics[metric.code]
+                        const entry = metrics[metric.code]
                         return (
                           <TableRow key={metric.code} data-metric={metric.code}>
                             <TableHead scope="row" className="font-normal text-foreground">
                               {t(metric.labelKey)}
+                              {metric.window !== undefined &&
+                              entry?.windowYears != null &&
+                              entry.windowYears < metric.window ? (
+                                <>
+                                  {' '}
+                                  <span
+                                    data-slot="actual-window"
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    {t('stockPage.growth.actualWindow', {
+                                      years: entry.windowYears,
+                                    })}
+                                  </span>
+                                </>
+                              ) : null}
                               {entry?.regimeBreak === true ? (
                                 <>
                                   {' '}
@@ -470,7 +507,7 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
               </Table>
             </TableContainer>
 
-            {alert ? (
+            {alert !== null && alert.value !== null ? (
               <div
                 data-testid="tms29-alert"
                 role="note"
@@ -481,7 +518,7 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
                 </span>
                 <span>
                   {t('stockPage.keyMetrics.tms29Alert.body', {
-                    value: formatPercent(locale, alert.value ?? 0, 2),
+                    value: formatPercent(locale, alert.value, 2),
                   })}
                 </span>
               </div>
@@ -492,10 +529,9 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
                 {t('stockPage.keyMetrics.regimeBreakNotice')}
               </p>
             ) : null}
-            {adjusted ? <AdjustedNotice /> : null}
           </section>
 
-          <CapitalTrackerBlock tracker={data.capitalTracker} locale={locale} />
+          <CapitalTrackerBlock tracker={tracker} locale={locale} />
 
           <SectionMarkers asOf={data.asOf} stale={data.stale} />
         </div>
