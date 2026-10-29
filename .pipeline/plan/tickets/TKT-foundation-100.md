@@ -14,7 +14,7 @@ scope:
 
 # TKT-foundation-100: The durable KAP public-site access fix — adapter TLS shaping, 429-quota awareness, and the export pacing knob (the fingerprint-block and rolling-quota findings; the relay becomes documented ops posture)
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P1 — the durable half of the live access mitigation (the user's 2026-10-29 deadline rides the orchestrator's relay in the meantime; this ticket removes the product's dependence on it).**
 - **The live findings (orchestrator, 2026-10-28/29, relay logs; recorded dated in `01` §10.9.19 by the same planner round):**
@@ -36,3 +36,28 @@ scope:
 - Dependencies: none hard (code scope disjoint from in-review 094/096 and from 099 — verified against their frontmatter; 099's resolver file is untouched here). Shares the permanent docs (last-lander rebase).
 - Parallel group: none (doc serialization).
 - **Live criteria (orchestrator, post-merge, paced, never CI, relay disabled for the probe):** sustained export fetches through the adapter's own fingerprint without the transport-failure burst; a 429 encountered is named, backed off and resumed — counts verbatim.
+
+---
+
+## Implementation notes (TKT-foundation-100)
+
+### What landed
+1. **TLS handler** — `KapPublicHttpHandlerFactory` (`Create` / `CreateSslOptions` / `ParseMinimumTlsVersion` / `ParseAlpn` / `ParseCipherSuites`) in `KapPublicHttpSourceClient.cs`. The lane's keyed `HttpClient` in `IngestionServiceCollectionExtensions.cs` is constructed over it (`HttpVersion.Version20` / `RequestVersionOrLower`). Shipped shape: TLS floor `Tls12` → `Tls12 | Tls13`, ALPN `h2,http/1.1`, an 11-suite browser-ordered `CipherSuitesPolicy` (Linux only; `null` on Windows by platform constraint, asserted as such). `TlsShapeEnabled = false` sets no `SslOptions` (pre-ticket stack).
+2. **429 awareness** — `KapPublicHttpSourceClient`: `Retry-After` (delta-seconds or HTTP-date) honored verbatim, otherwise `QuotaBackoffMs` (default 8,000 ms); a wait `>=` the request's per-item bound → `KapPublicQuotaException(Deferred = true, WALK_QUOTA_BACKOFF)` with **no sleep and no re-issue** (the walk truncates); otherwise sleep + **one** re-issue (`MaxQuotaAttempts = 2`), then `QUOTA_RATE_LIMITED`. New reason codes `WALK_QUOTA_BACKOFF` / `QUOTA_RATE_LIMITED` in `KapPublicReasonCodes`; `KapPublicFetchResult.IsQuotaDeferred`.
+3. **Export pacing** — `KapPublicRequestKind` (`General`/`Export`) + `PaceAsync(kind, ct)` on `KapPublicRequestPacer`; `KapPublicSourceOptions.DelayMsFor(kind)` with `ExportRequestDelayMs` (default 12,000 ms) for detail/report fetches and the unchanged 3,000 ms general pace for list/identity. A `RequestDelayMs <= 0` disables the floor too (L2 harness binding).
+4. **Relay as ops posture** — `deploy/kap-relay/kap-tls-relay.py` + `deploy/kap-relay/README.md` (design, when-to-use, the `Ingestion:KapPublic:BaseUrl` seam); `deploy/README.md` points to it.
+5. **Config** — `src/Api/appsettings.json` gains `ExportRequestDelayMs`, `QuotaBackoffMs`, `TlsShapeEnabled`, `TlsMinimumVersion`, `TlsAlpnProtocols`, `TlsCipherSuites` (values as JSON strings, parsed with `GetString()`/`bool.Parse`). The 091 UA pin is untouched.
+6. **Docs** — test plan §38 + change record v1.51; architecture §10.9.19 access-posture subsection + change record v1.5.76.
+
+### Acceptance tests — TC-MDF-127 (a)–(e), all tagged `TC_MDF_127_*`
+`tests/Api.IntegrationTests/KapPublicSourceTests.cs`: `TC_MDF_127_a_a_429_is_named_with_one_bounded_reissue_and_never_a_ladder`, `…_b_a_retry_after_header_is_honored_verbatim`, `…_c_a_backoff_past_the_per_item_bound_truncates_instead_of_sleeping`, `…_d_the_export_pacing_knob_delays_detail_fetches_and_only_them`, `…_e_the_tls_shape_is_config_equivalence_pinned`. L2 doubles only (`RecordingHandler` + `FakeTimeProvider` + a recording quota-delay delegate); **zero live requests** — no CI test contacts kap.org.tr.
+
+### Red → green evidence
+- **Red:** with env-var gates temporarily standing the three behaviours down (TLS shaping off, quota awareness off, export floor off), `dotnet test --filter "FullyQualifiedName~TC_MDF_127"` → **Failed: 5, Passed: 0, Total: 5**, each failing for its own reason (missing quota exception/journal count in (a), missing verbatim `Retry-After` wait in (b), missing `WALK_QUOTA_BACKOFF` deferral in (c), missing export-floor gap in (d), unshaped handler in (e)). The gates were then removed; the working tree carries no instrumentation.
+- **Green:** `dotnet test --filter "FullyQualifiedName~TC_MDF_127"` → **Passed: 5, Failed: 0, Skipped: 0, Total: 5** (172 ms).
+- **Non-regression:** `KapPublicSourceTests | KapPublicStatementsIngestTests | KapPublicIdentityTests | KapPublicIdentityJobTests` → **Passed: 71, Failed: 0, Skipped: 0, Total: 71** (31 s).
+- `dotnet build` → **0 warnings, 0 errors**.
+
+### Flagged for the orchestrator
+- **Scope gap (planning defect, not a silent widening):** the ticket's frontmatter `scope:` does not list `src/Ingestion/KapPublic/KapPublicSourceReader.cs`, `src/Ingestion/KapPublic/KapPublicIdentityReader.cs` or `src/Ingestion/KapPublic/KapPublicStatementsWalk.cs`. All three were edited — the two readers add the `KapPublicQuotaException` catch mapping to `IsQuotaDeferred`, and the walker treats `IsQuotaDeferred` as truncation at its three seams. This is the minimum the ruled truncation requires; 099's resolver (`KapPublicCompanyIdentityResolver.cs`, merged d591414), the decoder, the store and every serving file are untouched, and PRs #158/#159's files are untouched. Needs a `scope:` amendment or an explicit acceptance.
+- **Live criterion remains orchestrator-owned:** the adapter's fingerprint is verified live post-merge (paced, relay disabled); .NET cannot guarantee a byte-identical browser ClientHello, so the acceptance is that live probe, never a CI claim.

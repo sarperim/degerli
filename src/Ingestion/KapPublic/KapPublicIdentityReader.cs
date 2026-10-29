@@ -109,6 +109,14 @@ public sealed class KapPublicIdentityReader
                 exception.Message,
                 Excerpt(exception.Body));
         }
+        catch (KapPublicQuotaException exception)
+        {
+            // The source's request quota answered 429 (TKT-foundation-100): the pass ends honestly
+            // under the quota's own named reason — nothing stored, nothing guessed.
+            return KapPublicFetchResult<KapPublicCompanyHitList>.SourceDown(
+                exception.ReasonCode,
+                exception.Message);
+        }
         catch (KapPublicSourceTimeoutException exception)
         {
             return KapPublicFetchResult<KapPublicCompanyHitList>.SourceDown(

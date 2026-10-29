@@ -332,6 +332,17 @@ public sealed class KapPublicStatementsWalker
 
                 replaysAttempted++;
                 var replay = await _reader.ReadReportAsync(quarantinedIndex, cancellationToken).ConfigureAwait(false);
+                if (replay.IsQuotaDeferred)
+                {
+                    // The source's quota asked for a wait longer than this request's own bound
+                    // (TKT-foundation-100, 01 v1.5.76 §10.9.19): the pass stops here rather than
+                    // sleeping past its caller. The replay consumes no tombstone — the backlog is
+                    // exactly where it was, so the next pass resumes it.
+                    truncated = true;
+                    truncationReason = replay.ReasonCode;
+                    break;
+                }
+
                 if (!replay.IsOk)
                 {
                     // Failed again: re-quarantined **terminally**. The index keeps its evidence (the
@@ -435,6 +446,17 @@ public sealed class KapPublicStatementsWalker
                     .ConfigureAwait(false);
                 windowsListed++;
 
+                if (listed.IsQuotaDeferred)
+                {
+                    // The list route's quota (the 2026-10-28 finding is export-only, but the
+                    // contract is endpoint-agnostic): stop before the window is claimed, exactly
+                    // like a cap or the deadline — the watermark stays where the last completed
+                    // unit left it and the next pass resumes there (TKT-foundation-100).
+                    truncated = true;
+                    truncationReason = listed.ReasonCode;
+                    break;
+                }
+
                 if (listed.IsSourceDown)
                 {
                     // No index, no walk — but the windows already completed are real work and their
@@ -503,6 +525,18 @@ public sealed class KapPublicStatementsWalker
 
                     var read = await _reader.ReadReportAsync(candidate.DisclosureIndex, cancellationToken)
                         .ConfigureAwait(false);
+                    if (read.IsQuotaDeferred)
+                    {
+                        // The export quota demanded a wait longer than the request's per-item
+                        // bound: do not sleep past it and do not mark this report done — stop at
+                        // the last completed unit and let the next pass resume (TKT-foundation-100,
+                        // 01 v1.5.76 §10.9.19). The window is not closed, so the watermark stays.
+                        windowTruncated = true;
+                        truncated = true;
+                        truncationReason = read.ReasonCode;
+                        break;
+                    }
+
                     if (!read.IsOk)
                     {
                         // Per-detail isolation (the 063 doctrine applied to this source): the rest of

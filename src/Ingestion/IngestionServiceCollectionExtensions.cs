@@ -146,13 +146,34 @@ public static class IngestionServiceCollectionExtensions
         {
             var options = provider.GetRequiredService<IOptions<KapPublicSourceOptions>>().Value;
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
-            return new HttpClient
+
+            // The transport is the lane's own (TKT-foundation-100, 01 v1.5.76 §10.9.19): the
+            // 2026-10-28 finding is that KAP's edge refuses the .NET stack's TLS ClientHello after
+            // a burst while curl/python succeed from the same host, so the handler presents a
+            // browser-shaped fingerprint (TLS floor, browser-ordered cipher suites, h2/http1.1
+            // ALPN) while the request keeps identifying itself honestly in its User-Agent. The
+            // shaping is configuration (`Ingestion:KapPublic:TlsShapeEnabled`), never a fork, and
+            // standing it down reproduces the pre-ticket stack exactly.
+            var http = new HttpClient(
+                KapPublicHttpHandlerFactory.Create(options),
+                disposeHandler: true)
             {
                 BaseAddress = KapPublicUri.WithDirectorySeparator(new Uri(baseUrl, UriKind.Absolute)),
                 // Every request carries its own bound (the per-item detail timeout is the
                 // shorter one): a stalled body can never outlive the bound its request set.
                 Timeout = Timeout.InfiniteTimeSpan,
             };
+
+            if (options.TlsShapeEnabled)
+            {
+                // The ALPN the handler offers is h2/http1.1, so the request version default has to
+                // agree with it — a browser-shaped offer that only ever sends HTTP/1.1 would be a
+                // half-truth on the wire. `RequestVersionOrLower` keeps the HTTP/1.1 fallback.
+                http.DefaultRequestVersion = System.Net.HttpVersion.Version20;
+                http.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            }
+
+            return http;
         });
         services.AddScoped<KapPublicRequestPacer>();
         services.AddScoped<IKapPublicSourceClient>(provider => new KapPublicHttpSourceClient(

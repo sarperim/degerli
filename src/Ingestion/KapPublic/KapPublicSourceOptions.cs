@@ -109,6 +109,91 @@ public sealed class KapPublicSourceOptions
         "Chrome/124.0 Safari/537.36 Degerli/0.1";
 
     /// <summary>
+    /// The shipped <b>export-endpoint</b> pacing floor: <b>12,000 ms</b> (TKT-foundation-100,
+    /// 01 v1.5.76 §10.9.19). The excel export route carries a rolling per-IP request quota —
+    /// HTTP <c>429</c> "Request Limit Exceeded", empty body, <b>no</b> <c>Retry-After</c> — that
+    /// accumulates under heavy use, while the <c>byCriteria</c>/<c>search</c> routes are
+    /// unaffected. The floor was verified live by the 2026-10-28/29 relay runs, which serialized
+    /// export fetches at exactly this interval: the general pace
+    /// (<see cref="DefaultRequestDelayMs"/>) is a politeness measure for a website, this one is
+    /// the source's own quota being honored.
+    /// <para>
+    /// It applies to <b>export/detail</b> requests only, <b>raises</b> the general pace on that
+    /// path (never lowers it) and never touches the list/identity routes. The lane stays
+    /// single-flight, and the quota is treated as <b>authoritative</b>: this is a longer wait,
+    /// never a way around the limit (no rotation, no parallel clients, no header games).
+    /// </para>
+    /// <para>
+    /// <c>≤ 0</c> disables the floor, and so does a general <see cref="RequestDelayMs"/> of
+    /// <c>≤ 0</c> (the L2 harness binding that turns pacing off altogether): a harness must not
+    /// be slowed by a floor whose pacing contract it has just disabled.
+    /// </para>
+    /// </summary>
+    public const int DefaultExportRequestDelayMs = 12_000;
+
+    /// <summary>
+    /// The shipped <b>quota backoff</b>: <b>8,000 ms</b> — the conservative fixed wait used when a
+    /// <c>429</c> carries <b>no</b> usable <c>Retry-After</c> header (the observed answer: empty
+    /// body, no header). A <c>Retry-After</c> that <i>is</i> present is honored verbatim instead.
+    /// <para>
+    /// The wait is bounded by the caller's own per-item bound (<see cref="RequestTimeout"/> or
+    /// <see cref="DetailFetchTimeout"/>): a wait that is not shorter than that bound is never
+    /// slept — the request stops there and the walk truncates honestly under
+    /// <see cref="KapPublicReasonCodes.WalkQuotaBackoff"/> instead of outliving its caller. One
+    /// bounded re-issue per request, never a retry ladder. <c>≤ 0</c> keeps the shipped value.
+    /// </para>
+    /// </summary>
+    public const int DefaultQuotaBackoffMs = 8_000;
+
+    /// <summary>
+    /// Whether the lane's <see cref="System.Net.Http.HttpClient"/> is built over a
+    /// <b>browser-shaped</b> TLS handler (<see cref="DefaultTlsMinimumVersion"/>,
+    /// <see cref="DefaultTlsCipherSuites"/>, <see cref="DefaultTlsAlpnProtocols"/>) — the durable
+    /// half of the 2026-10-28 <b>TLS-ClientHello fingerprint</b> finding: after a burst the edge
+    /// refused the .NET stack at the transport level while curl and python urllib succeeded from
+    /// the same host, so the discriminator is the runtime's fingerprint, not the honest UA.
+    /// <para>
+    /// <b>An honest fingerprint, not a disguise:</b> the UA token (<see cref="DefaultUserAgent"/>)
+    /// is unchanged, no header lies, the lane stays single-flight and paced, and the quota is
+    /// honored. Configurable so an operator can stand the shaping down without a rebuild;
+    /// <c>false</c> reproduces the pre-ticket stack exactly.
+    /// </para>
+    /// </summary>
+    public const bool DefaultTlsShapeEnabled = true;
+
+    /// <summary>
+    /// The shipped TLS floor: <b>Tls12</b> — a browser's floor. The floor is a <i>minimum</i>: the
+    /// enabled set is the named protocol <b>and everything above it</b> (TLS 1.2 + 1.3 shipped), so
+    /// TLS 1.0/1.1/SSL3 are never offered. See <see cref="DefaultTlsShapeEnabled"/>.
+    /// </summary>
+    public const string DefaultTlsMinimumVersion = "Tls12";
+
+    /// <summary>
+    /// The shipped <b>browser-shaped</b> ALPN list: <c>h2</c> then <c>http/1.1</c> — the protocol
+    /// order a current browser offers, and part of what makes the ClientHello browser-shaped.
+    /// See <see cref="DefaultTlsShapeEnabled"/>.
+    /// </summary>
+    public const string DefaultTlsAlpnProtocols = "h2,http/1.1";
+
+    /// <summary>
+    /// The shipped <b>browser-shaped</b> cipher-suite order (a current browser's ClientHello
+    /// order: the three TLS 1.3 suites first, then the ECDHE AEAD TLS 1.2 suites, then the two
+    /// ECDHE CBC suites; key agreement is ECDHE throughout, so there is no RSA key transport).
+    /// <para>
+    /// Presented only where the platform allows a cipher-suite policy (.NET supports
+    /// <see cref="System.Net.Security.CipherSuitesPolicy"/> on Linux; elsewhere the property is
+    /// not supported and the platform's own default order stands — recorded, never faked).
+    /// </para>
+    /// </summary>
+    public const string DefaultTlsCipherSuites =
+        "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384,TLS_CHACHA20_POLY1305_SHA256," +
+        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256," +
+        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384," +
+        "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256," +
+        "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256," +
+        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA";
+
+    /// <summary>
     /// The shipped per-walk <b>list-page</b> ceiling: <b>40</b>. 40 pages × 3 s of pacing =
     /// 120 s = <b>2 min</b> of list pacing for one walk. A walk stops at the bound, records
     /// the truncation and resumes from the last <b>completed</b> unit — so a walk is finite
@@ -165,6 +250,32 @@ public sealed class KapPublicSourceOptions
 
     /// <summary>The minimum gap between consecutive requests, in ms (0 disables the wait).</summary>
     public int RequestDelayMs { get; set; } = DefaultRequestDelayMs;
+
+    /// <summary>
+    /// The minimum gap between consecutive <b>export/detail</b> requests, in ms — the quota floor
+    /// (see <see cref="DefaultExportRequestDelayMs"/>). It raises, never lowers, the general pace
+    /// on the export path; list/identity requests keep <see cref="RequestDelayMs"/>. A value
+    /// <c>≤ 0</c> — or a <see cref="RequestDelayMs"/> of <c>≤ 0</c> — disables it.
+    /// </summary>
+    public int ExportRequestDelayMs { get; set; } = DefaultExportRequestDelayMs;
+
+    /// <summary>
+    /// The conservative fixed wait used when a <c>429</c> carries no usable <c>Retry-After</c>
+    /// (see <see cref="DefaultQuotaBackoffMs"/>). <c>≤ 0</c> keeps the shipped value.
+    /// </summary>
+    public int QuotaBackoffMs { get; set; } = DefaultQuotaBackoffMs;
+
+    /// <summary>Whether the browser-shaped TLS handler is used (see <see cref="DefaultTlsShapeEnabled"/>).</summary>
+    public bool TlsShapeEnabled { get; set; } = DefaultTlsShapeEnabled;
+
+    /// <summary>The TLS minimum version (see <see cref="DefaultTlsMinimumVersion"/>).</summary>
+    public string TlsMinimumVersion { get; set; } = DefaultTlsMinimumVersion;
+
+    /// <summary>The ALPN offer, comma separated (see <see cref="DefaultTlsAlpnProtocols"/>).</summary>
+    public string TlsAlpnProtocols { get; set; } = DefaultTlsAlpnProtocols;
+
+    /// <summary>The cipher-suite order, comma separated (see <see cref="DefaultTlsCipherSuites"/>).</summary>
+    public string TlsCipherSuites { get; set; } = DefaultTlsCipherSuites;
 
     /// <summary>
     /// The disclosure-list route — <c>POST</c> with the byCriteria body
@@ -231,6 +342,35 @@ public sealed class KapPublicSourceOptions
     /// <summary>The configured general request timeout as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan RequestTimeout =>
         TimeSpan.FromMilliseconds(RequestTimeoutMs > 0 ? RequestTimeoutMs : DefaultRequestTimeoutMs);
+
+    /// <summary>
+    /// The configured quota backoff as a <see cref="TimeSpan"/> (<c>≤ 0</c> keeps the shipped value).
+    /// </summary>
+    public TimeSpan QuotaBackoff =>
+        TimeSpan.FromMilliseconds(QuotaBackoffMs > 0 ? QuotaBackoffMs : DefaultQuotaBackoffMs);
+
+    /// <summary>
+    /// The gap that applies to one request of <paramref name="kind"/> — the general pace, or the
+    /// export quota floor when that is longer (see <see cref="DefaultExportRequestDelayMs"/>).
+    /// <para>
+    /// A disabled general pace (<see cref="RequestDelayMs"/> <c>≤ 0</c>) disables the floor too:
+    /// that binding is the L2 harness's "no pacing at all", and a floor surviving it would slow
+    /// every harness run by 12 s per export for no politeness gain (the lane issues requests as
+    /// fast as it can either way).
+    /// </para>
+    /// </summary>
+    public int DelayMsFor(KapPublicRequestKind kind)
+    {
+        if (RequestDelayMs <= 0)
+        {
+            return 0;
+        }
+
+        return kind == KapPublicRequestKind.Export && ExportRequestDelayMs > RequestDelayMs
+            ? ExportRequestDelayMs
+            : RequestDelayMs;
+    }
+
 
     /// <summary>
     /// The report-export route for one public-site disclosure index. The index is the

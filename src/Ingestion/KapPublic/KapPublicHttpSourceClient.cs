@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Security;
+using System.Security.Authentication;
 using System.Text;
 using Degerli.Ingestion.Sources;
 using Microsoft.Extensions.Options;
@@ -32,6 +35,194 @@ public sealed class KapPublicAccessRefusedException : Exception
 public sealed class KapPublicSourceTimeoutException : Exception
 {
     public KapPublicSourceTimeoutException(string message) : base(message) { }
+}
+
+/// <summary>
+/// The source's <b>request quota</b> answered <c>429</c> (TKT-foundation-100, 01 v1.5.76
+/// §10.9.19). Two outcomes share this type because they are one story told honestly:
+/// <list type="bullet">
+/// <item><b>rate-limited</b> — the lane waited its one bounded backoff, re-issued exactly once and
+/// was still refused (<see cref="KapPublicReasonCodes.QuotaRateLimited"/>): a named, counted
+/// outcome, never a retry ladder;</item>
+/// <item><b>deferred</b> — the wait the source demanded is <b>not shorter</b> than this request's
+/// own per-item bound, so the lane does not sleep past its caller: the walk truncates
+/// (<see cref="KapPublicReasonCodes.WalkQuotaBackoff"/>) at its last completed unit and the next
+/// pass resumes there.</item>
+/// </list>
+/// <para>
+/// The quota is <b>authoritative</b>: this type is how the lane obeys it. Nothing here retries in
+/// parallel, rotates an identity or otherwise tries to get around the limit.
+/// </para>
+/// </summary>
+public sealed class KapPublicQuotaException : Exception
+{
+    public KapPublicQuotaException(
+        string message,
+        string reasonCode,
+        TimeSpan requiredWait,
+        bool deferred) : base(message)
+    {
+        ReasonCode = reasonCode;
+        RequiredWait = requiredWait;
+        Deferred = deferred;
+    }
+
+    /// <summary>The named reason (<see cref="KapPublicReasonCodes"/>).</summary>
+    public string ReasonCode { get; }
+
+    /// <summary>The wait the source demanded (the <c>Retry-After</c> value, or the fixed backoff).</summary>
+    public TimeSpan RequiredWait { get; }
+
+    /// <summary>True when the demanded wait did not fit inside the caller's per-item bound.</summary>
+    public bool Deferred { get; }
+}
+
+/// <summary>
+/// Builds the lane's <b>browser-shaped</b> transport (TKT-foundation-100, 01 v1.5.76 §10.9.19).
+/// The <c>2026-10-28</c> finding: after a burst the edge refused the .NET <c>HttpClient</c> at the
+/// <b>transport</b> level (connection reset / timeout) while curl and python urllib succeeded from
+/// the same host and even the same container — an escalation of the 087/091 User-Agent finding to
+/// the <b>TLS ClientHello fingerprint</b>. The handler therefore presents a shape the edge accepts:
+/// a TLS 1.2+ floor, a browser-ordered cipher-suite policy (where the platform allows one) and the
+/// browser's ALPN offer.
+/// <para>
+/// <b>An honest fingerprint, not a disguise.</b> The User-Agent (<see
+/// cref="KapPublicSourceOptions.DefaultUserAgent"/>) is unchanged, no header lies, and the lane
+/// stays single-flight, paced and quota-obedient. .NET cannot reproduce a browser's ClientHello
+/// byte for byte — the shape is pinned by configuration and confirmed by the orchestrator's live
+/// probe, never by a claim in CI.
+/// </para>
+/// </summary>
+public static class KapPublicHttpHandlerFactory
+{
+    /// <summary>
+    /// The lane's <see cref="SocketsHttpHandler"/>: a browser-shaped TLS <b>ClientHello</b> when
+    /// <see cref="KapPublicSourceOptions.TlsShapeEnabled"/> is on, and the framework's own stack
+    /// (the pre-ticket behaviour) when it is off.
+    /// </summary>
+    public static SocketsHttpHandler Create(KapPublicSourceOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var handler = new SocketsHttpHandler
+        {
+            // Bounded reuse, like a browser's few long-lived connections: a rotated edge
+            // certificate or a closed idle socket must not pin the lane to a dead connection, and
+            // an unbounded pool would grow across a long pass.
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            UseCookies = false,
+        };
+
+        if (options.TlsShapeEnabled)
+        {
+            handler.SslOptions = CreateSslOptions(options);
+        }
+
+        return handler;
+    }
+
+    /// <summary>
+    /// The TLS shape the handler presents (see <see cref="Create"/>): the configured floor (as an
+    /// enabled set — the named protocol and everything above it), the configured ALPN offer, and
+    /// the configured browser-ordered cipher-suite policy.
+    /// <para>
+    /// <see cref="System.Net.Security.SslClientAuthenticationOptions.CipherSuitesPolicy"/> is a
+    /// <b>platform capability</b>: .NET supports it on Linux and throws
+    /// <see cref="PlatformNotSupportedException"/> elsewhere. Where the platform refuses it, the
+    /// property stays unset and the platform's own order stands — recorded honestly in the config
+    /// equivalence the tests pin, never faked by an order nobody presented.
+    /// </para>
+    /// </summary>
+    public static SslClientAuthenticationOptions CreateSslOptions(KapPublicSourceOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var ssl = new SslClientAuthenticationOptions
+        {
+            EnabledSslProtocols = ParseMinimumTlsVersion(options.TlsMinimumVersion),
+            ApplicationProtocols = ParseAlpn(options.TlsAlpnProtocols),
+        };
+
+        var suites = ParseCipherSuites(options.TlsCipherSuites);
+        if (suites.Count > 0 && !OperatingSystem.IsWindows())
+        {
+            try
+            {
+                ssl.CipherSuitesPolicy = new CipherSuitesPolicy(suites);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                // The platform does not let a client choose its cipher-suite order: the property
+                // stays unset and the platform default stands (documented on this method).
+            }
+        }
+
+        return ssl;
+    }
+
+    /// <summary>
+    /// The TLS floor as an enabled <b>set</b>: the named protocol plus every protocol above it
+    /// (<c>Tls12</c> → TLS 1.2 + 1.3). TLS 1.0/1.1 are not offered by any value, and anything
+    /// unparseable falls back to the shipped floor — a configuration typo never widens the offer.
+    /// </summary>
+    public static SslProtocols ParseMinimumTlsVersion(string? value)
+    {
+        foreach (var token in Tokenize(value))
+        {
+            if (Enum.TryParse<SslProtocols>(token, ignoreCase: true, out var parsed) &&
+                parsed == SslProtocols.Tls13)
+            {
+                return SslProtocols.Tls13;
+            }
+        }
+
+        // The shipped floor is TLS 1.2 as a minimum: 1.2 *or better*, never "1.2 only" and never
+        // anything below it.
+        return SslProtocols.Tls12 | SslProtocols.Tls13;
+    }
+
+    /// <summary>The ALPN offer, in the configured order (<c>h2</c>, <c>http/1.1</c>); empty when unset.</summary>
+    public static List<SslApplicationProtocol> ParseAlpn(string? value)
+    {
+        var protocols = new List<SslApplicationProtocol>();
+        foreach (var token in Tokenize(value))
+        {
+            if (string.Equals(token, "h2", StringComparison.OrdinalIgnoreCase))
+            {
+                protocols.Add(SslApplicationProtocol.Http2);
+            }
+            else if (string.Equals(token, "http/1.1", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(token, "http1.1", StringComparison.OrdinalIgnoreCase))
+            {
+                protocols.Add(SslApplicationProtocol.Http11);
+            }
+        }
+
+        return protocols;
+    }
+
+    /// <summary>
+    /// The cipher-suite order, in the configured order. An unrecognised name is skipped (the
+    /// remaining, recognised order still ships) rather than silently reordered.
+    /// </summary>
+    public static List<TlsCipherSuite> ParseCipherSuites(string? value)
+    {
+        var suites = new List<TlsCipherSuite>();
+        foreach (var token in Tokenize(value))
+        {
+            if (Enum.TryParse<TlsCipherSuite>(token, ignoreCase: true, out var suite))
+            {
+                suites.Add(suite);
+            }
+        }
+
+        return suites;
+    }
+
+    private static IEnumerable<string> Tokenize(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
 /// <summary>
@@ -88,22 +279,32 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
     /// <summary>The maximum number of response-body bytes carried on a failure/timeout.</summary>
     public const int MaxErrorBodyBytes = 2048;
 
+    /// <summary>
+    /// How many times one logical request is sent when the source answers <c>429</c>: the first
+    /// attempt plus <b>exactly one</b> bounded re-issue (TKT-foundation-100). A third attempt would
+    /// be the retry ladder the quota finding forbids.
+    /// </summary>
+    public const int MaxQuotaAttempts = 2;
+
     private readonly HttpClient _http;
     private readonly KapPublicSourceOptions _options;
     private readonly KapPublicRequestPacer _pacer;
     private readonly TimeProvider _clock;
+    private readonly KapPublicDelay _quotaDelay;
     private readonly SemaphoreSlim _flight = new(1, 1);
 
     public KapPublicHttpSourceClient(
         HttpClient http,
         IOptions<KapPublicSourceOptions> options,
         KapPublicRequestPacer pacer,
-        TimeProvider clock)
+        TimeProvider clock,
+        KapPublicDelay? quotaDelay = null)
     {
         _http = http;
         _options = options.Value;
         _pacer = pacer;
         _clock = clock;
+        _quotaDelay = quotaDelay ?? ((wait, token) => Task.Delay(wait, token));
 
         // The base is the site root; the request paths are root-relative routes on it. The
         // lane-local join keeps a configured path prefix (a reverse proxy in front of a
@@ -119,18 +320,30 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
 
     /// <inheritdoc />
     public Task<string> GetStringAsync(string path, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Get, path, null, _options.RequestTimeout, cancellationToken);
+        SendAsync(HttpMethod.Get, path, null, _options.RequestTimeout, KapPublicRequestKind.General, cancellationToken);
 
     /// <inheritdoc />
     public Task<string> PostJsonAsync(string path, string jsonBody, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(jsonBody);
-        return SendAsync(HttpMethod.Post, path, jsonBody, _options.RequestTimeout, cancellationToken);
+        return SendAsync(
+            HttpMethod.Post,
+            path,
+            jsonBody,
+            _options.RequestTimeout,
+            KapPublicRequestKind.General,
+            cancellationToken);
     }
 
     /// <inheritdoc />
     public Task<string> GetDetailStringAsync(string path, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Get, path, null, _options.DetailFetchTimeout, cancellationToken);
+        SendAsync(
+            HttpMethod.Get,
+            path,
+            null,
+            _options.DetailFetchTimeout,
+            KapPublicRequestKind.Export,
+            cancellationToken);
 
     /// <summary>
     /// The refusal gate (TC-MDF-104 (iii)): called before <b>every</b> request, and before the
@@ -161,6 +374,7 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
         string path,
         string? jsonBody,
         TimeSpan timeout,
+        KapPublicRequestKind kind,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -172,48 +386,93 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
         try
         {
             // Pace first, then start the per-item timeout: pacing is politeness, not latency.
-            await _pacer.PaceAsync(cancellationToken).ConfigureAwait(false);
-
-            using var request = new HttpRequestMessage(method, KapPublicUri.ToRelativePath(path));
-            if (jsonBody is not null)
-            {
-                request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-            }
-
-            request.Headers.Accept.ParseAdd("application/json, text/plain, */*");
-            if (!string.IsNullOrWhiteSpace(_options.UserAgent))
-            {
-                request.Headers.UserAgent.Clear();
-                request.Headers.TryAddWithoutValidation("User-Agent", _options.UserAgent);
-            }
+            // The gap is the one this request's own kind owes — the general pace, or the export
+            // route's quota floor (TKT-foundation-100).
+            await _pacer.PaceAsync(kind, cancellationToken).ConfigureAwait(false);
 
             using var timeoutSource = new CancellationTokenSource(timeout, _clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, timeoutSource.Token);
 
             HttpResponseMessage response;
-            try
+            for (var attempt = 1; ; attempt++)
             {
-                // Buffered completion on purpose: a headers-only read would put the body
-                // outside the per-item bound and let a site that sends headers then stalls
-                // hang the walk.
-                response = await _http
-                    .SendAsync(request, HttpCompletionOption.ResponseContentRead, linked.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new KapPublicSourceTimeoutException(
-                    $"Public-site request '{method} {path}' timed out after {timeout.TotalSeconds:0.###} s " +
-                    $"({KapPublicReasonCodes.RequestTimeout}).");
-            }
-            catch (HttpRequestException exception)
-            {
-                throw new SourceFetchException(
-                    $"Public-site request '{method} {path}' failed in transport: {exception.Message}",
-                    statusCode: null,
-                    body: null,
-                    exception);
+                using var request = BuildRequest(method, path, jsonBody);
+
+                try
+                {
+                    // Buffered completion on purpose: a headers-only read would put the body
+                    // outside the per-item bound and let a site that sends headers then stalls
+                    // hang the walk.
+                    response = await _http
+                        .SendAsync(request, HttpCompletionOption.ResponseContentRead, linked.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new KapPublicSourceTimeoutException(
+                        $"Public-site request '{method} {path}' timed out after {timeout.TotalSeconds:0.###} s " +
+                        $"({KapPublicReasonCodes.RequestTimeout}).");
+                }
+                catch (HttpRequestException exception)
+                {
+                    throw new SourceFetchException(
+                        $"Public-site request '{method} {path}' failed in transport: {exception.Message}",
+                        statusCode: null,
+                        body: null,
+                        exception);
+                }
+
+                if (response.StatusCode != HttpStatusCode.TooManyRequests)
+                {
+                    break;
+                }
+
+                // A 429 is the source's *quota* answering (TKT-foundation-100, 01 v1.5.76
+                // §10.9.19): a named outcome, never a silent retry ladder. The wait is the
+                // source's own Retry-After when it sends one, and the conservative fixed backoff
+                // when it does not (the observed answer: empty body, no header).
+                var wait = RequiredQuotaWait(response);
+                var quota = $"Public-site request '{method} {path}' answered HTTP 429 (Request Limit Exceeded)";
+
+                if (wait >= timeout)
+                {
+                    // The demanded wait would outlive this request's own caller: sleeping is
+                    // useless (the caller's bound expires first) and stacking waits is worse. Say
+                    // so and stop — the walk truncates honestly and the next pass resumes.
+                    response.Dispose();
+                    throw new KapPublicQuotaException(
+                        $"{quota}; the source asked for a {wait.TotalSeconds:0.###} s wait, which is not shorter " +
+                        $"than this request's {timeout.TotalSeconds:0.###} s per-item bound, so the lane does not " +
+                        $"sleep past its caller ({KapPublicReasonCodes.WalkQuotaBackoff}).",
+                        KapPublicReasonCodes.WalkQuotaBackoff,
+                        wait,
+                        deferred: true);
+                }
+
+                if (attempt >= MaxQuotaAttempts)
+                {
+                    response.Dispose();
+                    throw new KapPublicQuotaException(
+                        $"{quota} again after one bounded {wait.TotalSeconds:0.###} s wait — no retry ladder " +
+                        $"({KapPublicReasonCodes.QuotaRateLimited}).",
+                        KapPublicReasonCodes.QuotaRateLimited,
+                        wait,
+                        deferred: false);
+                }
+
+                response.Dispose();
+                try
+                {
+                    await _quotaDelay(wait, linked.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new KapPublicSourceTimeoutException(
+                        $"Public-site request '{method} {path}' timed out after {timeout.TotalSeconds:0.###} s " +
+                        $"while honoring the source's {wait.TotalSeconds:0.###} s quota backoff " +
+                        $"({KapPublicReasonCodes.RequestTimeout}).");
+                }
             }
 
             using (response)
@@ -243,6 +502,53 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
             _flight.Release();
         }
     }
+
+    /// <summary>
+    /// The wait a <c>429</c> demands: the <c>Retry-After</c> the source sent, <b>verbatim</b>
+    /// (delta-seconds or an HTTP date), or — the observed case, where the header is absent — the
+    /// configured conservative fixed backoff. A header the framework could not read is treated as
+    /// absent: the lane guesses nothing.
+    /// </summary>
+    private TimeSpan RequiredQuotaWait(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta)
+        {
+            return delta > TimeSpan.Zero ? delta : TimeSpan.Zero;
+        }
+
+        if (retryAfter?.Date is { } date)
+        {
+            var untilDate = date - _clock.GetUtcNow();
+            return untilDate > TimeSpan.Zero ? untilDate : TimeSpan.Zero;
+        }
+
+        return _options.QuotaBackoff;
+    }
+
+    /// <summary>
+    /// Builds one attempt's request. A fresh <see cref="HttpRequestMessage"/> per attempt: a
+    /// message cannot be sent twice (the framework throws), and the quota's single re-issue is a
+    /// genuine second request.
+    /// </summary>
+    private HttpRequestMessage BuildRequest(HttpMethod method, string path, string? jsonBody)
+    {
+        var request = new HttpRequestMessage(method, KapPublicUri.ToRelativePath(path));
+        if (jsonBody is not null)
+        {
+            request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        }
+
+        request.Headers.Accept.ParseAdd("application/json, text/plain, */*");
+        if (!string.IsNullOrWhiteSpace(_options.UserAgent))
+        {
+            request.Headers.UserAgent.Clear();
+            request.Headers.TryAddWithoutValidation("User-Agent", _options.UserAgent);
+        }
+
+        return request;
+    }
+
 
     /// <summary>
     /// Reads at most <see cref="MaxErrorBodyBytes"/> of a non-success body (UTF-8) — the
