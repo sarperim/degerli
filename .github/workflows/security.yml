@@ -119,6 +119,10 @@ jobs:
           LOG_OPTS: ${{ steps.range.outputs.log_opts }}
         run: |
           set -euo pipefail
+          # `--log-opts ""` degrades to a HEAD-only walk that still prints
+          # "no leaks found": an empty/unresolved range must be a red check, not a
+          # silently narrowed scan. Guard the variable the command actually uses.
+          : "${LOG_OPTS:?scan range is empty — refusing to scan anything less than the resolved range}"
           if gitleaks git . \
               --config .gitleaks.toml \
               --log-opts "$LOG_OPTS" \
@@ -175,19 +179,67 @@ jobs:
           with open(path, encoding="utf-8") as fh:
               report = json.load(fh)
 
-          # A restore failure surfaces here as a `problems` entry, not as a finding.
-          # Treat it as blocking: an audit that could not run is not a clean audit.
-          problems = [p for p in report.get("problems", []) if p.get("level") == "error"]
+          # An audit that could not run surfaces here as a `problems` entry, not as a
+          # finding, and it is blocking at EVERY level: a restore failure is an
+          # error, but NU1900 ("Error occurred while getting package vulnerability
+          # data: Unable to load the service index for source …") is emitted at
+          # **warning** level while `dotnet list` still exits 0. Filtering on
+          # level == "error" let a feed outage/misconfiguration read as clean.
+          problems = report.get("problems", [])
           if problems:
               for problem in problems:
-                  print(f"::error::NuGet audit could not run: {problem.get('text')}")
+                  print(f"::error::NuGet audit could not run ({problem.get('level')}): {problem.get('text')}")
+              sys.exit(1)
+
+          # The report must be structurally what this gate reads. `dotnet-version`
+          # floats ("10.0.x"), and `dotnet list package` was renamed to `dotnet
+          # package list`, so an SDK bump can change the shape. Zero projects means
+          # "could not read the report", never "no vulnerabilities".
+          #
+          # Note what a healthy report does NOT contain: `--vulnerable` lists a
+          # `frameworks` section only for projects where it found something, so a
+          # clean run on this tree is 9 projects and ZERO `frameworks` entries
+          # (measured 2026-10-30, SDK 10.0.402). Requiring "a framework with package
+          # lists" would therefore red the check on a clean tree — the guards below
+          # are the ones the real output actually satisfies: the expected project
+          # count, a path on every project, the echoed `--vulnerable` parameter, and
+          # well-typed sections wherever they are present.
+          projects = report.get("projects", [])
+          parameters = report.get("parameters") or ""
+          # Floor: Degerli.sln has 9 projects; a report naming fewer is truncated or
+          # reshaped, not a smaller solution (adding projects only raises the count).
+          shape_errors = []
+          if not isinstance(projects, list) or len(projects) < 9:
+              shape_errors.append(f"projects={len(projects) if isinstance(projects, list) else type(projects).__name__} (expected >= 9)")
+          if "--vulnerable" not in parameters:
+              shape_errors.append(f"parameters={parameters!r} (expected --vulnerable)")
+          for project in projects if isinstance(projects, list) else []:
+              path = project.get("path") if isinstance(project, dict) else None
+              if not path:
+                  shape_errors.append(f"project without a path: {project!r}")
+                  continue
+              frameworks = project.get("frameworks", [])
+              if not isinstance(frameworks, list):
+                  shape_errors.append(f"{path}: frameworks is {type(frameworks).__name__}")
+                  continue
+              for framework in frameworks:
+                  if not isinstance(framework, dict) or not framework.get("framework"):
+                      shape_errors.append(f"{path}: framework entry without a name: {framework!r}")
+                      continue
+                  for kind in ("topLevelPackages", "transitivePackages"):
+                      if kind in framework and not isinstance(framework[kind], list):
+                          shape_errors.append(f"{path} ({framework.get('framework')}): {kind} is {type(framework[kind]).__name__}")
+          if shape_errors:
+              print("::error::NuGet audit report has an unexpected shape — refusing to read it as clean.")
+              for error in shape_errors:
+                  print(f"::error::{error}")
               sys.exit(1)
 
           # Fail on high/critical; an advisory whose severity this SDK does not
           # name is treated as blocking too (unknown is not "safe").
           blocking = {"high", "critical"}
           findings = []
-          for project in report.get("projects", []):
+          for project in projects:
               for framework in project.get("frameworks", []):
                   for kind in ("topLevelPackages", "transitivePackages"):
                       for package in framework.get(kind, []):

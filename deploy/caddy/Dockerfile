@@ -32,6 +32,10 @@ FROM caddy:2
 # the shipped image green under the `Containers (Trivy image scan)` gate for findings
 # that ARE fixable in this repo (TKT-foundation-066; only the vulnerabilities built
 # into the Caddy binary itself are baselined, in .trivyignore.yaml).
+# Trade-off, recorded: this makes the image a function of the Alpine repo state at
+# build time rather than of the commit, so two builds of the same SHA can differ.
+# It stays because the alternative (baselining a fixable CRITICAL) is worse; drop it
+# once a `caddy:2` base rebuild ships these fixes itself.
 RUN apk upgrade --no-cache
 
 # Built SPA → the document root referenced by the Caddyfile.

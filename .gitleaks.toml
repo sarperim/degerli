@@ -23,7 +23,7 @@
 useDefault = true
 
 # --- entry 1/2 — 2026-10-29, owner: builder (sarperim) ------------------------------
-# File: .env.example (line 65). The generic-api-key rule matches the *empty* KAP
+# File: .env.example (lines 70–71). The generic-api-key rule matches the *empty* KAP
 # template keys and, because the match spans the line break, reports the next line's
 # key name (`Ingestion__Kap__ApiSecret=`) as the "secret". Both values are empty by
 # design: .env.example is the template, and the real credentials live only on the VPS
@@ -37,7 +37,7 @@ regexTarget = "match"
 regexes = ['''(?m)^Ingestion__Kap__Api(?:Key|Secret)=$''']
 
 # --- entry 2/2 — 2026-10-29, owner: builder (sarperim) ------------------------------
-# File: tests/Api.IntegrationTests/Harness/FixtureBuilder.cs (line 27). The
+# File: tests/Api.IntegrationTests/Harness/FixtureBuilder.cs (line 29). The
 # deterministic L2 fixture password (`Degerli-Test-2026`) seeded for throwaway test
 # users inside one Testcontainers PostgreSQL instance. It is a test constant, not a
 # credential, and protects nothing that outlives the test run. The regex is pinned to

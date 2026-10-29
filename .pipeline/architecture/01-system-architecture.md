@@ -133,7 +133,7 @@ Every row: choice, why, and a rejected alternative with the reason.
 
 Three workflows, all on GitHub Actions (free — public repo):
 
-### 6.1 `ci.yml` + `security.yml` — on every PR and push to `main`
+### 6.1 `ci.yml` + `security.yml` — on every PR and push to `dev`/`main`
 
 1. **Backend job** — `dotnet restore && dotnet build && dotnet test` (xUnit; Testcontainers spins up a throwaway Postgres service container; migrations applied; metric-engine golden-value tests against seeded fixture data).
 2. **Web job** — `npm ci`, ESLint, `tsc --noEmit`, Vitest unit/component tests, **i18n parity check** (custom script: every key present in both `tr.json` and `en.json`, no unused keys — enforces the 100% bilingual NFRs mechanically), `vite build`.
