@@ -189,7 +189,10 @@ function financialPeriodLabel(
   t: TFunction,
   locale: string,
 ): string {
-  const periodType = period.periodType?.trim().toUpperCase()
+  // Defensive on a malformed served field: a non-string `periodType` degrades to the
+  // period-end label instead of throwing (no ErrorBoundary above these sections).
+  const periodType =
+    typeof period.periodType === 'string' ? period.periodType.trim().toUpperCase() : undefined
 
   if (periodType === 'FY') {
     return t('stockPage.financials.period', { year: period.fiscalYear })
@@ -220,7 +223,9 @@ function anyServedFigureRestated(periods: FinancialPeriod[]): boolean {
       : false
 
   return periods.some((period) => {
-    const compat = FINANCIAL_COLUMNS.some((column) => period[column].restated)
+    // `?.` on the compat column: a malformed payload may omit a figure, and an absent
+    // figure is not restated (it must not throw either — no ErrorBoundary above here).
+    const compat = FINANCIAL_COLUMNS.some((column) => period[column]?.restated === true)
     const blocks = [period.lines, period.otherLines]
     return (
       compat ||

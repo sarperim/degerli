@@ -301,32 +301,37 @@ export function StatementsView({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          data-testid="statements-controls"
-          role="group"
-          aria-label={t('stockPage.financials.basis.label')}
-          className="flex flex-wrap items-center gap-2"
-        >
-          {options.map((option) => {
-            const active = basis === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                data-basis={option.value}
-                aria-pressed={active}
-                onClick={() => setBasis(option.value)}
-                className={
-                  active
-                    ? 'rounded-md border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground'
-                    : 'rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground'
-                }
-              >
-                {t(option.labelKey)}
-              </button>
-            )
-          })}
-        </div>
+        {/* The basis toggle is table chrome: a financial-sector notice renders no
+            tables, so the toggle would be an inert control. The served badges are
+            facts about the filing and stay. */}
+        {notice ? null : (
+          <div
+            data-testid="statements-controls"
+            role="group"
+            aria-label={t('stockPage.financials.basis.label')}
+            className="flex flex-wrap items-center gap-2"
+          >
+            {options.map((option) => {
+              const active = basis === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  data-basis={option.value}
+                  aria-pressed={active}
+                  onClick={() => setBasis(option.value)}
+                  className={
+                    active
+                      ? 'rounded-md border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground'
+                      : 'rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground'
+                  }
+                >
+                  {t(option.labelKey)}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <FilingBadges filing={data.filing} />
       </div>
 

@@ -269,7 +269,9 @@ export const STATEMENTS_ANNUAL_PERIOD: FinancialPeriod = {
     effectiveTaxRate: { value: 0.2, restated: false },
     netMarginParent: { value: 0.24, restated: false },
     netWorkingCapital: { value: 145_000, restated: false },
-    grossDebt: { value: 100_000, restated: false },
+    // Deliberately NOT the line sum: `ST_DEBT` + `LT_DEBT` is 40,000 + 60,000 = 100,000
+    // and the lease-inclusive sum is 111,000, so only a served read can print 100,500.
+    grossDebt: { value: 100_500, restated: false },
     netDebt: { value: 0, restated: false },
     tangibleBookValue: { value: 405_000, restated: false },
     bvps: { value: 12.5, restated: false },

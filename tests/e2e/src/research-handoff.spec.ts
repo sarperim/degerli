@@ -85,8 +85,12 @@ test.describe('TC-RES-028 research hand-off', () => {
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })
+    // Exact match: `Hasılat` is also a substring of the revenue-growth row label
+    // the statements view adds beside the revenue line.
     await expect(
-      financials.getByText(TR('stockPage.financials.columns.revenue')),
+      financials.getByText(TR('stockPage.financials.columns.revenue'), {
+        exact: true,
+      }),
     ).toBeVisible()
     await expect(
       financials.locator('[data-slot="as-of-date"]').first(),

@@ -263,6 +263,7 @@
       "ev": {
         "title": "Piyasa ve Firma Değeri",
         "sharePrice": "Pay Fiyatı",
+        "splitAdjShares": "Bölünme Düzeltmeli Pay Sayısı",
         "marketCap": "Piyasa Değeri",
         "grossDebt": "+ Brüt Borç",
         "cash": "− Nakit ve Nakit Benzerleri",

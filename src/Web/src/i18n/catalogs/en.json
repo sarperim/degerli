@@ -263,6 +263,7 @@
       "ev": {
         "title": "Market & Enterprise Value",
         "sharePrice": "Share Price",
+        "splitAdjShares": "Split-Adj. Shares",
         "marketCap": "Market Cap",
         "grossDebt": "+ Gross Debt",
         "cash": "− Cash & Equivalents",

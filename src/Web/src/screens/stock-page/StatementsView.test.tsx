@@ -11,7 +11,6 @@ import {
   fill,
   renderStockPage,
   resetStockPageTest,
-  STATEMENTS_ANNUAL_PERIOD,
   STATEMENTS_FINANCIALS_FIXTURE,
   stockFinancialsHandler,
 } from '@/screens/stock-page/testSupport'
@@ -108,15 +107,39 @@ describe('TC-RES-039 (a) — the served statements render as three full tables',
       formatPercent('tr', 0.11, 2),
     )
 
+    // The spec's single "Other Op. Inc/Exp Net", "Investing Inc/Exp Net" and
+    // "Financing Inc/Exp Net" lines are served as TWO codes each: both rows render
+    // their own served figure and never a client-computed net (BR-RES-004). A fold
+    // into one net row necessarily loses one of each pair's distinct values.
+    const otherIncome = cell(row(income, 'opIncomeOther'), '2025-12-31')
+    const otherExpense = cell(row(income, 'opExpenseOther'), '2025-12-31')
+    expect(otherIncome).toHaveTextContent(money(5_000))
+    expect(otherExpense).toHaveTextContent(money(2_000))
+    expect(otherIncome.textContent).not.toBe(otherExpense.textContent)
+    expect(cell(row(income, 'investIncome'), '2025-12-31')).toHaveTextContent(
+      money(1_000),
+    )
+    expect(cell(row(income, 'investExpense'), '2025-12-31')).toHaveTextContent(
+      money(500),
+    )
+    expect(cell(row(income, 'finIncome'), '2025-12-31')).toHaveTextContent(
+      money(2_000),
+    )
+    expect(cell(row(income, 'finExpense'), '2025-12-31')).toHaveTextContent(
+      money(60_000),
+    )
+
     // The balance-sheet blocks are structure over the flat served code map.
     const balance = table(region, 'BS')
     expect(cell(row(balance, 'cash'), '2025-12-31')).toHaveTextContent(money(100_000))
     expect(cell(row(balance, 'paidInCapital'), '2025-12-31')).toHaveTextContent(
       money(100_000),
     )
-    // DR-2's fence: gross debt is the served derived row, not a widened client sum.
+    // DR-2's fence: gross debt is the served derived row, not a widened client sum —
+    // the served figure (100,500) differs from both the line sum (100,000) and the
+    // lease-inclusive sum (111,000), so only a served read can produce it.
     expect(cell(row(balance, 'grossDebt'), '2025-12-31')).toHaveTextContent(
-      money(100_000),
+      money(100_500),
     )
 
     // The cash-flow table carries the statement's own lines and the served FCF.
@@ -350,6 +373,10 @@ describe('TC-RES-039 (h) — the financial-sector layout notice', () => {
     expect(region.querySelector('[data-statement]')).toBeNull()
     expect(within(region).queryByTestId('ev-header')).toBeNull()
     expect(within(region).queryByText(TR('stockPage.financials.tables.incomeStatement'))).toBeNull()
+    // The basis toggle is table chrome — inert without tables, so it is suppressed;
+    // the served filing badges are facts and still render.
+    expect(within(region).queryByTestId('statements-controls')).toBeNull()
+    expect(region.querySelector('[data-badge="consolidated"]')).not.toBeNull()
   })
 })
 
@@ -376,8 +403,6 @@ describe('TC-RES-039 (i) — per-share rows are honest where no count exists', (
 
     // The interim serves no count → "—" (exclusion #4, never a paid-in-capital guess).
     expect(cell(row(balance, 'bvps'), '2026-06-30').textContent).toBe('—')
-    // The interim serves no count → "—" (exclusion #4, never a paid-in-capital guess).
-    expect(cell(row(balance, 'bvps'), '2026-06-30').textContent).toBe('—')
     expect(cell(row(balance, 'tbvPerShare'), '2026-06-30').textContent).toBe('—')
     expect(cell(row(table(region, 'CF'), 'fcfPerShare'), '2026-06-30').textContent).toBe(
       '—',
@@ -400,6 +425,18 @@ describe('TC-RES-039 (j) — the market & enterprise value header', () => {
         date: formatAsOfDate('tr', '2026-10-05'),
       }),
     )
+    // The spec's split-adjusted share count is served by no EV field (094's `evHeader`
+    // carries price/cap/debt/cash/NCI only) → the honest dash, never a paid-in-capital
+    // derived count and never a silently omitted row (exclusion #4).
+    const splitAdjShares = header.querySelector(
+      '[data-ev="splitAdjShares"]',
+    ) as HTMLElement
+    expect(splitAdjShares).toHaveTextContent(
+      TR('stockPage.financials.ev.splitAdjShares'),
+    )
+    expect(
+      splitAdjShares.querySelector('[data-slot="no-value"]'),
+    ).toHaveTextContent('—')
     // The debt operand is dated by the statement period, not the price date.
     const grossDebt = header.querySelector('[data-ev="grossDebt"]') as HTMLElement
     expect(grossDebt).toHaveTextContent(
@@ -481,7 +518,5 @@ describe('TC-RES-039 (l) — both catalogs label the served row set', () => {
         fill(EN('stockPage.financials.period'), { year: 2025 }),
       ),
     ).toBeInTheDocument()
-    // The restated marker's copy is the hidden description, unchanged in both languages.
-    expect(STATEMENTS_ANNUAL_PERIOD.periodType).toBe('FY')
   })
 })

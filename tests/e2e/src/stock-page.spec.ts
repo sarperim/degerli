@@ -38,11 +38,18 @@ test.describe('TC-RES-029 description in preparation', () => {
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })
+    // Exact match: `Hasılat` is also a substring of the revenue-growth row label.
     await expect(
-      financials.getByText(TR('stockPage.financials.columns.revenue')),
+      financials.getByText(TR('stockPage.financials.columns.revenue'), {
+        exact: true,
+      }),
     ).toBeVisible()
+    // The fiscal-year label repeats in each statement's header row, so the period
+    // claim is scoped to the income statement's single annual column.
     await expect(
-      financials.getByText(TR('stockPage.financials.period').replace('{{year}}', '2025')),
+      financials
+        .locator('[data-statement="IS"]')
+        .getByText(TR('stockPage.financials.period').replace('{{year}}', '2025')),
     ).toBeVisible()
   })
 })
@@ -149,8 +156,13 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
       .click()
 
     const income = financials.locator('[data-statement="IS"]')
+    // The 2025-06-30 interim is served as a column: every income-statement row carries
+    // its own value cell for it, so the claim is scoped to one row — the interim column
+    // is present, once, beside the other served interims.
+    await expect(
+      income.locator('[data-row="rev"] [data-period="2025-06-30"]'),
+    ).toHaveCount(1)
     // The fixture interims carry no served span, so the honest quarter label renders.
-    await expect(income.locator('[data-period="2025-06-30"]')).toHaveCount(1)
     await expect(income).toContainText(
       TR('stockPage.financials.periodQuarter')
         .replace('{{quarter}}', '2')
@@ -183,7 +195,10 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
     const ev = financials.getByTestId('ev-header')
     await expect(ev).toBeVisible()
     await expect(ev.locator('[data-ev="sharePrice"]')).toBeVisible()
-    await expect(ev.locator('[data-ev="enterpriseValue"]')).toHaveText('—')
+    // The total's value slot is the honest dash — the row also carries its label.
+    await expect(
+      ev.locator('[data-ev="enterpriseValue"] [data-slot="no-value"]'),
+    ).toHaveText('—')
   })
 
   test('the chosen basis survives navigation away and back', async ({ page }) => {

@@ -288,6 +288,10 @@ export function servesStatements(periods: FinancialPeriod[]): boolean {
 /**
  * The periods the toggle selects — newest first. A payload whose `periodType` is
  * outside the vocabulary renders under neither basis rather than being relabelled.
+ *
+ * Both reads are defensive on purpose: a malformed served period (a non-string
+ * `periodType` or `periodEndDate`) must not throw, because Web has no ErrorBoundary
+ * around the stock-page sections and one bad period would blank all four of them.
  */
 export function periodsForBasis(
   periods: FinancialPeriod[],
@@ -295,9 +299,15 @@ export function periodsForBasis(
 ): FinancialPeriod[] {
   const wanted = basis === 'annual' ? ANNUAL_PERIOD_TYPE : QUARTER_PERIOD_TYPE
   return periods
-    .filter((period) => period.periodType?.trim().toUpperCase() === wanted)
+    .filter(
+      (period) =>
+        typeof period.periodType === 'string' &&
+        period.periodType.trim().toUpperCase() === wanted,
+    )
     .slice()
-    .sort((left, right) => right.periodEndDate.localeCompare(left.periodEndDate))
+    .sort((left, right) =>
+      String(right.periodEndDate ?? '').localeCompare(String(left.periodEndDate ?? '')),
+    )
 }
 
 /** Splits an ISO date into its year and month/day parts, or `null`. */
@@ -331,7 +341,10 @@ export function periodLabel(
   t: TFunction,
   locale: string,
 ): string {
-  const periodType = period.periodType?.trim().toUpperCase()
+  // Defensive: a non-string served `periodType` must degrade to the date label,
+  // never throw and blank the section (no ErrorBoundary above this view).
+  const periodType =
+    typeof period.periodType === 'string' ? period.periodType.trim().toUpperCase() : undefined
 
   if (periodType === ANNUAL_PERIOD_TYPE) {
     return t('stockPage.financials.period', { year: period.fiscalYear })
@@ -393,7 +406,13 @@ export function filingBadges(filing: FilingMetadata | null | undefined): FilingB
 }
 
 export interface EvHeaderRow {
-  key: 'sharePrice' | 'marketCap' | 'grossDebt' | 'cash' | 'minorityInterest'
+  key:
+    | 'sharePrice'
+    | 'splitAdjShares'
+    | 'marketCap'
+    | 'grossDebt'
+    | 'cash'
+    | 'minorityInterest'
   labelKey: string
   fact: EvFact | null
 }
@@ -403,6 +422,12 @@ export interface EvHeaderRow {
  * them: no `enterpriseValue` is served, and the page may not compute it (BR-RES-004
  * — the EV arithmetic is a server fact). The header renders the total row as the
  * honest dash until the serving surface carries it.
+ *
+ * `splitAdjShares` is the spec's second operand, but TKT-foundation-094's `evHeader`
+ * serves no share-count fact (the count lives on the balance-sheet lines, never as a
+ * split-adjusted EV input), so the operand renders the honest dash — the same
+ * unserved-row discipline as `ST_FIN_INVEST` and `fcfMargin` — rather than being
+ * omitted or derived from paid-in capital on the client (exclusion #4).
  */
 export function evHeaderRows(evHeader: EvHeader | null | undefined): EvHeaderRow[] {
   return [
@@ -410,6 +435,11 @@ export function evHeaderRows(evHeader: EvHeader | null | undefined): EvHeaderRow
       key: 'sharePrice',
       labelKey: 'stockPage.financials.ev.sharePrice',
       fact: evHeader?.sharePrice ?? null,
+    },
+    {
+      key: 'splitAdjShares',
+      labelKey: 'stockPage.financials.ev.splitAdjShares',
+      fact: null,
     },
     {
       key: 'marketCap',
