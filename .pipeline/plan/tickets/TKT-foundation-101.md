@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-101: GUBRF statements SCHEMA_MISMATCH — the observability fix, the diagnosis, and either the decoder gap or the honest refusal
 
-- Status: in-review
+- Status: done (PR #163 squash-merged a2d1319; round-1 verdict MERGEABLE — v1.5.79 collision renumbered to v1.5.80, additive decoder verified, ASTOR capture honestly labelled; open nits DR-1..DR-5 recorded, DR-3 one-line revert + DR-5 wording to a sweep; LIVE CRITERIA PENDING: orchestrator re-walk of bare-currency companies + 292-quarantine bounded replay + GUBRF real diagnosis)
 - Size: M
 - **Priority: P1 — the user's 2026-10-29 "complete KAP data displayed" criterion needs GUBRF's fetched reports either stored or honestly refused with a reason that names the cause; today they are refused with a bare word and no evidence.**
 - **The finding (live, 2026-10-28/29):** GUBRF's successfully-fetched report bodies (5 × ~1.3 MB, excel export) are refused by the statements job with `SCHEMA_MISMATCH` — the log line "statements: refused public-site payload for GUBRF (SCHEMA_MISMATCH)" (`StatementsJob.cs:578`) carries **no detail**, and the `quarantined_facts` rows since 2026-10-26 carry **NULL payloads** because the refusal path passes `null` evidence (`StatementsJob.cs:576` — `QuarantineAsync(..., null, reasonCode, ...)`). **292 `SCHEMA_MISMATCH` quarantines on 2026-10-28 across companies, some predating the 093 merge (01:00–06:00 UTC under the old decoder) — not a pure regression, but GUBRF is fully refused and undiagnosable from what the system kept.** Hypothesis to verify, never assume: GUBRF may publish a non-standard Excel layout the excel-HTML decoder's shape validation refuses.
