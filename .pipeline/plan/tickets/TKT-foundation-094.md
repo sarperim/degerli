@@ -2,6 +2,7 @@
 scope:
   - src/Ingestion/Statements/FinancialStatementStore.cs
   - src/Ingestion/Statements/StatementsModels.cs
+  - src/Ingestion/Statements/KapPublicReportDecoder.cs
   - src/Persistence/Entities/MarketDataEntities.cs
   - src/Persistence/Migrations/
   - src/Api/Stocks/StockFundamentalsEndpoints.cs
@@ -15,7 +16,7 @@ scope:
 
 # TKT-foundation-094: The statements-view serving surface — `GET /stocks/{symbol}/financials` serves the full line-item set with server-computed derived rows, honest cumulative period labels, filing badges, and the financial-sector layout notice
 
-- Status: todo
+- Status: in-review (PR #157 — https://github.com/sarperim/degerli/pull/157)
 - Size: M
 - **Priority: P1 — slice 2 of the 2026-10-28 financial-statements view wave (093's decode half consumed here; 095 renders this payload on SCR-005).**
 - **Where the computation lives (pinned from the architecture, verified on the current head):** `GET /stocks/{symbol}/financials` already computes per-period figures server-side from stored lines (`Line(EBITDA) ?? Sum(EBIT, DEPR_AMORT)`, `CanonicalMetrics.FreeCashFlow` — `StockFundamentalsEndpoints.cs:125-141`) and the web client computes nothing (BR-RES-004, SCR-005 §6). The statements view follows the same seam: **statement-period-scoped [C] rows (margins, Y/Y growth, NWC, net/gross debt, TBV, per-share rows, EV header inputs) compute serving-side from stored lines in this endpoint** — they are period facts, not the daily canonical metrics. Point-in-time canonical metrics (ROIC, ROA, medians, CAGRs) stay in `derived_metrics` via the Metrics Engine — that half is TKT-foundation-096, never duplicated here.
@@ -36,3 +37,21 @@ scope:
 ## Amendment record — 2026-10-28 (planner, orchestrator-authorized blocker round; rides 093's amendment — the 093 coder stopped pre-code with a well-evidenced blocker; this ticket's premises were ripple-checked, one clarification recorded)
 
 **The BS block dimension's ripple into this ticket (from 093's clause-4 ruling):** the ST/LT distinction **survives serving as distinct canonical codes materialized at decode** — e.g. `ST_LEASE_LIAB` and `LT_LEASE_LIAB` are separate keys in the served `lines` map, exactly like the existing `ST_DEBT`/`LT_DEBT` pair. Serving keeps **no block logic of its own**: the `lines` block stays a flat canonical-code → `{value, restated}` map (per statement type), and the current/non-current structure of the rendered BS is 095's presentation concern over the served codes, never a serving-side re-derivation. Consequences already pinned in the clauses above and unchanged by the ruling: the [C] `grossDebt` row consumes the fenced DR-2 `ST_DEBT + LT_DEBT` exactly as stored (not widened to lease codes); `TBV` consumes 093's goodwill+intangibles codes as stored; a row whose block could not be determined at decode surfaces only as 093's named, counted decode finding — it never reaches this endpoint as a block-guessed figure. No clause of this ticket changes; no TC-MDF-123 amendment needed (the served-shape assertions are keyed on canonical codes, which the ruling only multiplies additively).
+
+## Amendment record — 2026-10-28 (implementation lane; USER-AUTHORIZED scope widening, one file)
+
+**The scope gap, found before code was written and resolved by asking, not guessing.** Clause 1 of this ticket requires the decode result's span (090's `KapPublicLine.PeriodStartDate`/`DurationMonths`) and the filing flag (093's `KapPublicReport.Consolidated`) to reach the store. 093 recorded them **on the decode result only** — its own subsection says "persisting and serving it belong to the statements lane's next slice (094)" — but the two places that carry a decode result into a `StatementFact` (`KapPublicReportDecoder.Group`'s constructor and `ToFact()`) sit in `src/Ingestion/Statements/KapPublicReportDecoder.cs`, **which the planner's `scope:` list did not include**. The lane stopped and asked; the user answered **"Authorize minimal decoder edit"** (2026-10-28).
+
+**What the widening covers, and what it does not.** `scope:` now lists `src/Ingestion/Statements/KapPublicReportDecoder.cs`, and the edit is held to plumbing: `Group` takes `periodStartDate`/`durationMonths`/`consolidated` (constructed from `column.PeriodStart`/`column.DurationMonths` and `ConsolidatedFor(header.ConsolidationType)`, both 090/093 values read as-is) and `ToFact()` passes them through. **No decode behaviour, no label-map entry, no scope resolution, no finding code and no golden changed** — the decoder's own contract (test plans §28/§30/§33) is untouched and re-runs green. Nothing from 095/096/097's scope was touched.
+
+## Implementation record — 2026-10-28
+
+**Delivered:** the additive migration `20261028163150_StatementPeriodSpanAndConsolidation` (`period_start_date` date NULL, `duration_months` int NULL, `consolidated` bool NULL — writes no row, no pre-existing row rewritten); the write path (`StatementFact` → `FinancialStatementStore`); the extended `GET /stocks/{symbol}/financials` payload (`lines`, `otherLines`, `derived`, `span`, `consolidated`, plus the `filing` / `evHeader` / `layoutNotice` envelope); the acceptance tests.
+
+**Red→green (measured in this worktree; Docker/Testcontainers available, so the cases really executed).** With the endpoint reverted to its pre-ticket body (migration, models and store extension kept — the red is the *payload's* absence, never a compile or environment failure), the `TC_MDF_123` filter read **8 failed / 0 passed**, each failure a `KeyNotFoundException` on the first new key its case reads: (a) `lines` (`FinancialStatementsViewTests.cs:69`), (b) `span` (`:180`), (c) `span` (`:223`), (d) `derived` (`:271`), (e) `derived` (`:311`), (f) `layoutNotice` (`:379`), (g) `span` (`:426`), (h) `lines` (`:458`). On the implemented endpoint: **8/8 green**.
+
+**Non-regression re-run green and unrelaxed: 86/86** (`StockFundamentalsEndpointsTests | DcfBaselineEndpointTests | KapPublicRecomputeTests | StatementVersioningTests | MetricsRecomputeIdempotencyTests | KapPublicReportDecoderTests`) and **28/28** on the statements lane (`KapPublicStatementsIngestTests | RealSourceStatementsTests | StatementNormalizationTests`); `dotnet build` 0 warnings.
+
+**Documents updated by this lane (all inside `scope:`):** `02` §3.1 (the three columns + narrative), `03` §3 (the `financials` row, amended additively), `01` §10.9.19 (the serving subsection) and §13.1 **v1.5.70**, test plan §34 + **v1.46**.
+
+**Flagged for review:** (1) the scope widening above (user-authorized; the alternative was a contract violation in either direction — a decoder edit outside scope, or a serving surface whose span/flag never exist); (2) `revenueGrowthYoy` is served as a **fraction** (`REV/prior − 1`, e.g. 0.0446), matching the ticket's "Revenue Growth Y/Y %" arithmetic and the acceptance assertion — the display percentage is the client's (095); (3) `layoutNotice.state` uses a dedicated **`not-applicable`** word rather than `no-data`, because the notice is a verdict about the layout, not a claim that filings are missing; (4) `span` is served only when both the start and the duration are stored (together or null), and `consolidated` is null when a period's statements disagree rather than picked between them.

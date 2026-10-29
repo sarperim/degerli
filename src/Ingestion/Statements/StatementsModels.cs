@@ -17,6 +17,16 @@ public sealed record StatementsPayload(
     [property: JsonPropertyName("statements")] IReadOnlyList<StatementFact> Statements) : IKapPayload;
 
 /// <summary>One statement version of one period, with its source-taxonomy lines.</summary>
+/// <param name="PeriodStartDate">The filing's own declared range start (a KAP public-site
+/// column header's first date), <b>null</b> for an instant statement (a balance sheet) and for
+/// any source that declares no span — never inferred from the period end (TKT-foundation-094,
+/// <c>02</c> §3.1).</param>
+/// <param name="DurationMonths">The declared range length in months (null together with
+/// <paramref name="PeriodStartDate"/>), so an interim can be labelled by its cumulative range
+/// rather than as a discrete quarter (TKT-foundation-090's R-1).</param>
+/// <param name="Consolidated">The filing's own <c>Finansal Tablo Niteliği</c> declaration —
+/// <c>true</c> Konsolide, <c>false</c> Solo, <c>null</c> when the filing carries no such field
+/// (honest absence, never guessed; TKT-foundation-093's flag, persisted by 094).</param>
 /// <param name="ConflictingItemCodes">Canonical item codes whose source concept appeared
 /// more than once with <b>unequal</b> values within this one group (§10.9.5, DR-05
 /// overturned): the fact is a validation event the store quarantines as
@@ -32,7 +42,10 @@ public sealed record StatementFact(
     [property: JsonPropertyName("restatementDate")] DateOnly? RestatementDate,
     [property: JsonPropertyName("publishedAt")] DateOnly? PublishedAt,
     [property: JsonPropertyName("lines")] IReadOnlyDictionary<string, decimal> Lines,
-    [property: JsonIgnore] IReadOnlyList<string>? ConflictingItemCodes = null);
+    [property: JsonIgnore] IReadOnlyList<string>? ConflictingItemCodes = null,
+    [property: JsonIgnore] DateOnly? PeriodStartDate = null,
+    [property: JsonIgnore] int? DurationMonths = null,
+    [property: JsonIgnore] bool? Consolidated = null);
 
 /// <summary>Result of one statement batch: statements written, idempotent no-ops, and
 /// refusals (unknown instrument or an invalid period).</summary>
