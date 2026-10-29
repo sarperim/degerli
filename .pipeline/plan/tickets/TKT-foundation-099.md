@@ -10,7 +10,8 @@ scope:
 
 # TKT-foundation-099: Turkish dotless-ı identity resolution — the ı→i fold in `CarriesToken`, so BIMAS/ENKAI/ISCTR/SISE can resolve (the 091 live-criteria residue)
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/160 (base `dev`)
 - Size: S
 - **Priority: P0 — same-night dispatch (the user's 2026-10-29 deadline: complete KAP data displayed; without this, 4 of 30 XU030 companies can never be walked — the "nothing missing" criterion).**
 - **The verified blocker (recorded on TKT-foundation-091's live-criteria section, dev `e2704b3`):** after 091's comma-token rule, 4 companies remain `COMPANY_IDENTITY_UNRESOLVED` — BIMAS, ENKAI, ISCTR, SISE — because KAP returns their `cmpOrFundCode` tokens with the Turkish **dotless ı**: BIMAS's code is `'bımas'`, SISE's is `'sıse'`. `StringComparison.OrdinalIgnoreCase` folds ASCII case but **not `ı`↔`i`** — they are distinct Unicode letters (U+0131 vs U+0069), and invariant casing maps neither onto the other (`'ı'` uppercases to itself; `'I'` lowercases to `'i'`, never to `'ı'`). The bound symbol `BIMAS` can therefore never equal the token `'bımas'` under the current comparison.
