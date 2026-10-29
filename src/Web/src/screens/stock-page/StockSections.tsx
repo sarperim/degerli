@@ -23,6 +23,9 @@ import {
 } from '@/lib/format'
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
+import { StatementsView } from '@/screens/stock-page/StatementsView'
+import { servesStatements } from '@/screens/stock-page/statementsView'
+
 import {
   fetchStockBalanceSheet,
   fetchStockDividends,
@@ -205,7 +208,41 @@ function financialPeriodLabel(
   })
 }
 
-/** SCR-005 §3 — Financials (FR-RES-008/014). */
+/**
+ * True when any served figure the statements view renders is restated — the compat
+ * five figures, any served canonical line or the `OTHER_*` passthrough, or any [C]
+ * row. The footnote is a claim about the display, so it covers the whole display.
+ */
+function anyServedFigureRestated(periods: FinancialPeriod[]): boolean {
+  const restatedIn = (map: Record<string, { restated: boolean }> | null | undefined) =>
+    map !== null && map !== undefined
+      ? Object.values(map).some((figure) => figure?.restated === true)
+      : false
+
+  return periods.some((period) => {
+    const compat = FINANCIAL_COLUMNS.some((column) => period[column].restated)
+    const blocks = [period.lines, period.otherLines]
+    return (
+      compat ||
+      blocks.some(
+        (lines) =>
+          restatedIn(lines?.IS) || restatedIn(lines?.BS) || restatedIn(lines?.CF),
+      ) ||
+      restatedIn(period.derived)
+    )
+  })
+}
+
+/**
+ * SCR-005 §3 — Financials (FR-RES-008/014).
+ *
+ * Two shapes are served on this seam, and both are rendered honestly:
+ * - a **TKT-foundation-094 payload** (`periods[].lines`, `derived`, `filing`,
+ *   `evHeader`, `layoutNotice`) renders the full statements view — controls bar,
+ *   EV header and the three tables (TKT-foundation-095);
+ * - a **pre-094 payload** carries only the five compat figures, and the section
+ *   keeps the legacy five-column summary rather than an empty statement skeleton.
+ */
 export function FinancialsSection({ symbol }: { symbol: string }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
@@ -218,11 +255,10 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
   const data = query.data
   const missingData = data !== undefined && isMissingData(data) ? data : null
   const sectionData = data !== undefined && !isMissingData(data) ? data : null
-  const anyRestated = sectionData
-    ? sectionData.periods.some((period) =>
-        FINANCIAL_COLUMNS.some((column) => period[column].restated),
-      )
-    : false
+  const anyRestated = sectionData ? anyServedFigureRestated(sectionData.periods) : false
+  const statementsView =
+    sectionData !== null &&
+    (servesStatements(sectionData.periods) || sectionData.layoutNotice?.applies === true)
 
   return (
     <SectionShell section="financials" titleKey="stockPage.sections.financials">
@@ -243,34 +279,42 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
 
         {sectionData ? (
           <div className="flex flex-col gap-3">
-            <TableContainer>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('stockPage.financials.columns.period')}</TableHead>
-                    {FINANCIAL_COLUMNS.map((column) => (
-                      <TableHead key={column}>
-                        {t(FINANCIAL_COLUMN_KEYS[column])}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sectionData.periods.map((period) => (
-                    <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
-                      <TableHead scope="row" className="font-medium text-foreground">
-                        {financialPeriodLabel(period, t, locale)}
-                      </TableHead>
+            {statementsView ? (
+              <StatementsView
+                data={sectionData}
+                asOf={sectionData.asOf}
+                locale={locale}
+              />
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('stockPage.financials.columns.period')}</TableHead>
                       {FINANCIAL_COLUMNS.map((column) => (
-                        <TableCell key={column}>
-                          <FigureValue figure={period[column]} locale={locale} />
-                        </TableCell>
+                        <TableHead key={column}>
+                          {t(FINANCIAL_COLUMN_KEYS[column])}
+                        </TableHead>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHeader>
+                  <TableBody>
+                    {sectionData.periods.map((period) => (
+                      <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
+                        <TableHead scope="row" className="font-medium text-foreground">
+                          {financialPeriodLabel(period, t, locale)}
+                        </TableHead>
+                        {FINANCIAL_COLUMNS.map((column) => (
+                          <TableCell key={column}>
+                            <FigureValue figure={period[column]} locale={locale} />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
             <SectionMarkers
               asOf={sectionData.asOf}
               stale={sectionData.stale}

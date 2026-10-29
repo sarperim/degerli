@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-095: The SCR-005 financial-statements view — the user's v0 spec rendered on the stock page, replacing the 5-metric summary (controls bar, EV header, full IS/BS/CF, period toggle)
 
-- Status: todo
+- Status: in-progress
 - Size: M
 - **Priority: P1 — slice 3 of the 2026-10-28 financial-statements view wave, and its PRIMARY TICKET: the user's spec lives here verbatim. 093 (decode) and 094 (serving) are its supply halves; 096/097 extend it with the metrics panel and capital tracker.**
 

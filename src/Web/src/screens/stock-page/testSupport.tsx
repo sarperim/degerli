@@ -4,7 +4,9 @@ import { Link, MemoryRouter, Route, Routes, useParams } from 'react-router'
 import { http, HttpResponse } from 'msw'
 
 import type {
+  FinancialPeriod,
   MissingDataResponse,
+  StatementLines,
   StockBalanceSheetResponse,
   StockFinancialsResponse,
   StockGrowthResponse,
@@ -162,6 +164,219 @@ export const RESTATED_FINANCIALS_FIXTURE: StockFinancialsResponse = {
       fcf: { value: 50, restated: false },
     },
   ],
+}
+
+/**
+ * SCR-005 §3 statements-view doubles (TKT-foundation-095), shaped exactly as
+ * TKT-foundation-094's endpoint serves them: per period the compat five figures
+ * beside `lines` (canonical code → `{value, restated}` per statement type),
+ * `otherLines`, the server-computed `derived` rows, `span` and `consolidated`; and
+ * the envelope's `filing`, `evHeader` and `layoutNotice`.
+ *
+ * The values are internally consistent on purpose, so the "the page computes
+ * nothing" cases are provable: `FY2025` serves both operands and the derived row,
+ * `Q 2026-06-30` serves `REV`/`GROSS_PROFIT` with `derived.grossMargin` deliberately
+ * **null** (a client-side margin would print 40%), and `Q 2026-03-31` omits `RND`
+ * entirely and carries **no span** (a pre-migration row).
+ */
+const FY_2025_LINES: StatementLines = {
+  IS: {
+    REV: { value: 1_000_000, restated: false },
+    COGS: { value: 600_000, restated: false },
+    GROSS_PROFIT: { value: 400_000, restated: false },
+    RND: { value: 10_000, restated: false },
+    SGA: { value: 50_000, restated: false },
+    OP_INCOME_OTHER: { value: 5_000, restated: false },
+    OP_EXPENSE_OTHER: { value: 2_000, restated: false },
+    EBIT: { value: 343_000, restated: false },
+    INVEST_INCOME: { value: 1_000, restated: false },
+    INVEST_EXPENSE: { value: 500, restated: false },
+    FIN_INCOME: { value: 2_000, restated: false },
+    FIN_EXP: { value: 60_000, restated: false },
+    NET_MONETARY_GL: { value: 30_000, restated: false },
+    PRETAX_INC: { value: 315_500, restated: false },
+    TAX_EXP: { value: 63_100, restated: false },
+    NI: { value: 250_000, restated: false },
+    NI_PARENT: { value: 240_000, restated: false },
+  },
+  BS: {
+    CASH: { value: 100_000, restated: false },
+    ST_TRADE_RECV: { value: 80_000, restated: false },
+    INVENTORY: { value: 70_000, restated: false },
+    CUR_ASSETS_OTHER: { value: 10_000, restated: false },
+    CUR_ASSETS: { value: 260_000, restated: false },
+    PPE_NET: { value: 400_000, restated: false },
+    ROU_ASSET: { value: 20_000, restated: false },
+    GOODWILL: { value: 5_000, restated: false },
+    INTANGIBLES_NET: { value: 15_000, restated: false },
+    NONCUR_ASSETS_OTHER: { value: 10_000, restated: false },
+    TOTAL_ASSETS: { value: 710_000, restated: false },
+    ST_DEBT: { value: 40_000, restated: false },
+    ST_LEASE_LIAB: { value: 3_000, restated: false },
+    ST_TRADE_PAY: { value: 60_000, restated: false },
+    ST_DEFERRED_REV: { value: 7_000, restated: false },
+    CUR_LIAB_OTHER: { value: 5_000, restated: false },
+    CUR_LIAB: { value: 115_000, restated: false },
+    LT_DEBT: { value: 60_000, restated: false },
+    LT_LEASE_LIAB: { value: 8_000, restated: false },
+    NONCUR_LIAB_OTHER: { value: 2_000, restated: false },
+    TOTAL_LIAB: { value: 185_000, restated: false },
+    PAID_IN_CAPITAL: { value: 100_000, restated: false },
+    RETAINED_EARNINGS: { value: 300_000, restated: false },
+    EQUITY_PARENT: { value: 420_000, restated: false },
+    MINORITY_INT: { value: 5_000, restated: false },
+    TOTAL_EQUITY: { value: 425_000, restated: false },
+  },
+  CF: {
+    NI: { value: 250_000, restated: false },
+    DEPR_AMORT: { value: 100_000, restated: false },
+    IMPAIRMENT: { value: 1_000, restated: false },
+    PROVISIONS: { value: 2_000, restated: false },
+    MONETARY_ADJ: { value: -30_000, restated: false },
+    'ΔWC': { value: 20_000, restated: false },
+    OCF: { value: 343_000, restated: false },
+    CAPEX: { value: -93_000, restated: false },
+    ASSET_SALE_PROCEEDS: { value: 4_000, restated: false },
+    ACQUISITION_CASH: { value: -9_000, restated: false },
+    EQUITY_ISSUE_CASH: { value: 12_000, restated: false },
+    BUYBACK: { value: -6_000, restated: false },
+    DIVIDENDS_PAID: { value: -25_000, restated: false },
+    INTEREST_PAID: { value: -40_000, restated: false },
+    DEBT_ISSUED: { value: 70_000, restated: false },
+    DEBT_REPAID: { value: -55_000, restated: false },
+  },
+}
+
+const EMPTY_LINES: StatementLines = { IS: {}, BS: {}, CF: {} }
+
+/** TUPRS-shaped annual period: the full served row set with every [C] row. */
+export const STATEMENTS_ANNUAL_PERIOD: FinancialPeriod = {
+  periodType: 'FY',
+  fiscalYear: 2025,
+  periodEndDate: '2025-12-31',
+  revenue: { value: 1_000_000, restated: false },
+  ebitda: { value: 443_000, restated: false },
+  ebit: { value: 343_000, restated: false },
+  netIncome: { value: 250_000, restated: false },
+  fcf: { value: 250_000, restated: false },
+  lines: FY_2025_LINES,
+  otherLines: EMPTY_LINES,
+  derived: {
+    revenueGrowthYoy: { value: 0.11, restated: false },
+    grossMargin: { value: 0.4, restated: false },
+    operatingMargin: { value: 0.343, restated: false },
+    ebitdaMargin: { value: 0.443, restated: false },
+    effectiveTaxRate: { value: 0.2, restated: false },
+    netMarginParent: { value: 0.24, restated: false },
+    netWorkingCapital: { value: 145_000, restated: false },
+    grossDebt: { value: 100_000, restated: false },
+    netDebt: { value: 0, restated: false },
+    tangibleBookValue: { value: 405_000, restated: false },
+    bvps: { value: 12.5, restated: false },
+    tbvPerShare: { value: 11.25, restated: false },
+    fcfPerShare: { value: 2.5, restated: false },
+  },
+  span: null,
+  consolidated: true,
+}
+
+/** The cumulative six-month interim: a declared span, and a deliberately null margin. */
+export const STATEMENTS_INTERIM_PERIOD: FinancialPeriod = {
+  periodType: 'Q',
+  fiscalYear: 2026,
+  periodEndDate: '2026-06-30',
+  revenue: { value: 520_000, restated: false },
+  ebitda: { value: 210_000, restated: false },
+  ebit: { value: 160_000, restated: false },
+  netIncome: { value: 90_000, restated: false },
+  fcf: { value: 70_000, restated: false },
+  lines: {
+    IS: {
+      REV: { value: 520_000, restated: false },
+      GROSS_PROFIT: { value: 208_000, restated: false },
+      EBIT: { value: 160_000, restated: false },
+      NI: { value: 90_000, restated: false },
+    },
+    BS: { CASH: { value: 120_000, restated: false } },
+    CF: { OCF: { value: 90_000, restated: false }, CAPEX: { value: -20_000, restated: false } },
+  },
+  otherLines: EMPTY_LINES,
+  derived: {
+    // Served null although REV and GROSS_PROFIT are present: the page must print
+    // the dash, never a client-side 40%.
+    grossMargin: { value: null, restated: false, state: 'no-data' },
+    // No served share count reachable → per-share rows are honestly absent.
+    bvps: { value: null, restated: false, state: 'no-data' },
+    fcfPerShare: { value: null, restated: false, state: 'no-data' },
+  },
+  span: { periodStartDate: '2026-01-01', durationMonths: 6 },
+  consolidated: true,
+}
+
+/** A pre-migration interim: no served span, and `RND` absent from its line set. */
+export const STATEMENTS_LEGACY_INTERIM_PERIOD: FinancialPeriod = {
+  ...STATEMENTS_INTERIM_PERIOD,
+  periodEndDate: '2026-03-31',
+  span: null,
+  lines: {
+    IS: { REV: { value: 240_000, restated: false } },
+    BS: {},
+    CF: {},
+  },
+  derived: {},
+}
+
+export const STATEMENTS_FINANCIALS_FIXTURE: StockFinancialsResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  periods: [
+    STATEMENTS_ANNUAL_PERIOD,
+    STATEMENTS_INTERIM_PERIOD,
+    STATEMENTS_LEGACY_INTERIM_PERIOD,
+  ],
+  filing: {
+    periodEndDate: '2026-06-30',
+    sourceRef: 'kap-public',
+    consolidated: true,
+    tms29: true,
+    kapSource: true,
+  },
+  evHeader: {
+    sharePrice: { value: 42.5, asOf: '2026-10-05' },
+    marketCap: { value: 425_000_000, asOf: '2026-10-05' },
+    grossDebt: { value: 100_000, asOf: '2026-06-30' },
+    cash: { value: 120_000, asOf: '2026-06-30' },
+    minorityInterest: { value: 5_000, asOf: '2026-06-30' },
+  },
+  layoutNotice: null,
+}
+
+/** A financial-sector filing: the notice, no industrial row set, no EV header. */
+export const BANK_FINANCIALS_FIXTURE: StockFinancialsResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  periods: [
+    {
+      ...STATEMENTS_INTERIM_PERIOD,
+      lines: EMPTY_LINES,
+      otherLines: EMPTY_LINES,
+      derived: {},
+    },
+  ],
+  filing: {
+    periodEndDate: '2026-06-30',
+    sourceRef: 'kap-public',
+    consolidated: true,
+    tms29: true,
+    kapSource: true,
+  },
+  evHeader: null,
+  layoutNotice: {
+    accountingProfile: 'bank',
+    applies: true,
+    state: 'not-applicable',
+    message: 'industrial statements layout does not apply',
+  },
 }
 
 export const PROFITABILITY_FIXTURE: StockProfitabilityResponse = {
