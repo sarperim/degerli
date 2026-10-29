@@ -15,6 +15,7 @@ scope:
 # TKT-foundation-100: The durable KAP public-site access fix — adapter TLS shaping, 429-quota awareness, and the export pacing knob (the fingerprint-block and rolling-quota findings; the relay becomes documented ops posture)
 
 - Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/161
 - Size: M
 - **Priority: P1 — the durable half of the live access mitigation (the user's 2026-10-29 deadline rides the orchestrator's relay in the meantime; this ticket removes the product's dependence on it).**
 - **The live findings (orchestrator, 2026-10-28/29, relay logs; recorded dated in `01` §10.9.19 by the same planner round):**
