@@ -170,11 +170,13 @@ public sealed class SectorMedianEngine
                 .Select(row => row.Value!.Value)
                 .ToList();
 
-            // `values` is the meaningful peer set; `assessed` also carries same-day rows whose
-            // value is NULL (not-meaningful, excluded) — and, for a gated code, the
-            // financial-sector peers removed above. A peer with no derived_metrics row at all
-            // never joins here, so it contributes to neither count — deliberate: the strip
-            // discloses the peers that were *assessed* (UXR-RES-024/025).
+            // `values` is the meaningful peer set. `assessed` keeps same-day rows whose value is
+            // NULL (not-meaningful) but has already dropped a gated code's financial-sector
+            // peers, while `group` still holds them — so `ExcludedCount` (group − values) counts
+            // both the unassessed financial peers and the assessed-but-not-meaningful rows. A
+            // peer with no derived_metrics row at all never joins here, so it contributes to
+            // neither count — deliberate: the strip discloses the peers that were *assessed*
+            // (UXR-RES-024/025).
             results.Add(new SectorMedianResult(
                 group.Key.InstrumentSectorId,
                 group.Key.MetricCode,

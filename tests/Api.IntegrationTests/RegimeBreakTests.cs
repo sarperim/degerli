@@ -55,7 +55,8 @@ public sealed class RegimeBreakTests : IClassFixture<PostgresFixture>
         MetricCodes.BvpsCagr5y,
     ];
 
-    /// <summary>The twelve window-suffixed CAGR codes the fixture computes (FU §11.1 / Q5).</summary>
+    /// <summary>The fourteen window-suffixed CAGR codes the fixture computes (FU §11.1 / Q5;
+    /// 12 through v1, plus the panel's <c>fcf_ps_cagr_3y/5y</c> — TKT-foundation-096).</summary>
     private static readonly string[] CagrCodes =
         MetricCodes.All.Where(MetricCodes.IsGrowth).Except(UnavailableCagrCodes, StringComparer.Ordinal).ToArray();
 

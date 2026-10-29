@@ -33,7 +33,8 @@ public sealed class MetricsRecomputeIdempotencyTests : IClassFixture<PostgresFix
     /// 26 through v1, 43 since the key-value/moat panel — TKT-foundation-096).</summary>
     private const int MetricRows = 16 * 43;
 
-    /// <summary>The FU's three classified sectors × the five valuation-family metrics.</summary>
+    /// <summary>The FU's three classified sectors × the 32 covered median codes (`02` §6.3 —
+    /// the five valuation-family codes plus the panel's 27).</summary>
     private const int MedianRows = 3 * 32;
 
     private static readonly FixtureSet L2 = FixtureUniverse.Build(FixtureAnchor.L2);

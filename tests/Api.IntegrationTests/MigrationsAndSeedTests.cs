@@ -43,7 +43,9 @@ public sealed class MigrationsAndSeedTests : IClassFixture<PostgresFixture>
         await DegerliDbSeeder.ApplyAsync(db);
         await DegerliDbSeeder.ApplyAsync(db);
 
-        Assert.Equal(18, await CountAsync(db, "metric_catalog"));
+        // The catalog is 32 rows: 18 through v1; the key-value & moat panel's 14 additions
+        // land it at 32 — TKT-foundation-096, `02` §6.2 v2.
+        Assert.Equal(32, await CountAsync(db, "metric_catalog"));
         Assert.Equal(6, await CountAsync(db, "macro_series"));
         Assert.Equal(1, await ScalarIntAsync(db,
             "SELECT count(*)::int FROM asp_net_roles WHERE normalized_name = 'BUILDER'"));

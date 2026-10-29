@@ -11,6 +11,7 @@ scope:
   - tests/Api.IntegrationTests/ProfileMetricServingTests.cs
   - tests/Api.IntegrationTests/ScreenerMetricVisibilityTests.cs
   - tests/Api.IntegrationTests/RegimeBreakTests.cs
+  - tests/Api.IntegrationTests/MigrationsAndSeedTests.cs
   - tests/Api.IntegrationTests/StockKeyMetricsEndpointsTests.cs
   - .pipeline/architecture/01-system-architecture.md
   - .pipeline/architecture/02-data-model.md
@@ -22,7 +23,7 @@ scope:
 
 - Status: in-review
 - Size: M
-- **Scope widened (USER-APPROVED 2026-10-28, implementation lane):** four test files added to the scope list — `MetricsRecomputeIdempotencyTests.cs`, `KapPublicRecomputeTests.cs`, `ScreenerMetricVisibilityTests.cs` and `RegimeBreakTests.cs`. All four are named in this ticket's non-regression list and all four pin **fixture-contract constants bound to the old catalog size**: `MetricRows = 16 * 26` / `MedianRows = 3 * 5` (re-pinned to `16 * 43` / `3 * 32`), the screener catalog's visible count `17` (a 32-row catalog with `roe` hidden → `31`), and the growth-code loop over `MetricCodes.All.Where(IsGrowth)` (scoped to the twelve v1 families, plus an explicit assertion that the panel's six new CAGR families are honestly NULL with no flag on the L2 world). Constants, loops and their doc comments only — no assertion is added, removed or weakened, and no product behaviour changes. The original scope list omitted them: a planning defect, resolved by the user rather than improvised.
+- **Scope widened (USER-APPROVED 2026-10-28, implementation lane; FIFTH FILE ADDED 2026-10-29, review round 1):** four test files added to the scope list — `MetricsRecomputeIdempotencyTests.cs`, `KapPublicRecomputeTests.cs`, `ScreenerMetricVisibilityTests.cs` and `RegimeBreakTests.cs`. All four are named in this ticket's non-regression list and all four pin **fixture-contract constants bound to the old catalog size**: `MetricRows = 16 * 26` / `MedianRows = 3 * 5` (re-pinned to `16 * 43` / `3 * 32`), the screener catalog's visible count `17` (a 32-row catalog with `roe` hidden → `31`), and the growth-code loop over `MetricCodes.All.Where(IsGrowth)` (scoped to the twelve v1 families, plus an explicit assertion that the panel's six new CAGR families are honestly NULL with no flag on the L2 world). Constants, loops and their doc comments only — no assertion is added, removed or weakened, and no product behaviour changes. The original scope list omitted them: a planning defect, resolved by the user rather than improvised. **A fifth file of the same mechanical class was added in review round 1:** `tests/Api.IntegrationTests/MigrationsAndSeedTests.cs`, whose `Seed_is_idempotent_and_rerunnable` asserted `18` metric-catalog rows and now asserts `32` (18 through v1 + the 14 panel concepts; comment naming the rows added, no other assertion in the file touched). It was missed by both the original scope list and the four-file widening, which is why CI went red on head `ca886d9` — a fixture-contract constant bound to the catalog size, exactly the approved class. **The orchestrator/user confirms this fifth-file scope addition at merge.**
 - **Priority: P1 — slice 4 of the 2026-10-28 financial-statements view wave (serves the KEY VALUE METRICS & MOAT INDICATORS panel and the CAPITAL & DILUTION TRACKER; both render in TKT-foundation-097 — the user spec, verbatim, lives on TKT-foundation-095).**
 - **Where the computation lives (USER-CONFIRMED 2026-10-28):** BR-RES-004/UXR-G-011 require the panel's canonical values to be the same numbers the screener serves, and `derived_metrics` is the formula-versioned single source (`02` §1 principle 3, §6.2, 070's versioning discipline). **New codes go through the Metrics Engine like the existing 26; the 5Y historical company median computes serving-side from stored `derived_metrics` history; sector medians extend the existing job.** No second formula implementation anywhere (AD-06, §5.1).
 - **What to implement:**
@@ -88,16 +89,30 @@ catalog count 17 → 31, 18 → 32), `RegimeBreakTests.cs` (the growth loop scop
 families plus an explicit honest-NULL assertion for the panel's new CAGR families). No assertion was
 added, removed or weakened beyond that; no product behaviour changed for them.
 
+**Fifth file of the same class (2026-10-29, review round 1):**
+`tests/Api.IntegrationTests/MigrationsAndSeedTests.cs` — `Seed_is_idempotent_and_rerunnable`'s
+`metric_catalog` count `18 → 32` (18 through v1 + the panel's 14 concepts), with a comment naming
+the rows. It is the one fixture-contract constant the original widening missed, and it is what made
+the Backend CI check red on head `ca886d9` (round 1, G-1/DR-1). Constants and a comment only — no
+other assertion in the file touched, no product behaviour changed. Added to the `scope:` list and
+pending the orchestrator/user's confirmation of the fifth-file scope addition at merge.
+
 ## Test evidence
 
 - **Acceptance TC:** TC-MDF-124, test plan §35 → `tests/Api.IntegrationTests/StockKeyMetricsEndpointsTests.cs`,
-  **8 cases, every one tagged `TC_MDF_124`**: (a) `…_engine_writes_the_panel_codes_stamped_with_the_bumped_formula_version`,
+  **9 cases, every one tagged `TC_MDF_124`**: (a) `…_engine_writes_the_panel_codes_stamped_with_the_bumped_formula_version`,
   (b) `…_key_metrics_endpoint_serves_the_stored_canonical_values`, (b cont.) `…_the_new_formulas_compute_from_the_stored_lines`,
+  (b cont., basis marker) `…_the_basis_marker_is_per_family` (added in review round 1 — DR-4),
   (c) `…_company_median_is_withheld_on_thin_history_and_exact_when_deep_enough`,
   (d) `…_sector_medians_cover_the_panel_set_with_peer_and_exclusion_counts`,
   (e) `…_a_bank_serves_pe_and_roe_but_never_ev_ebit_and_is_excluded_from_gated_medians`,
   (f)/(g) `…_capital_tracker_serves_the_bedelli_bedelsiz_history_and_the_share_count_nm`,
   (h) `…_a_symbol_outside_the_covered_universe_is_not_found`.
+- **Review round 1 fix evidence (2026-10-29):** the CI-red fixture constant re-pinned
+  (`MigrationsAndSeedTests`: `metric_catalog` 18 → 32, G-1/DR-1) and the new per-family basis case
+  (DR-4) — narrow local filters, Docker/Testcontainers: `TC_MDF_124` **9/9**,
+  `Seed_is_idempotent_and_rerunnable` + `Migrations_apply_to_a_fresh_container_and_rerun_is_a_noop`
+  **2/2**. The full suite stays CI's (the PR's required Backend check).
 - **Red, measured (Docker/Testcontainers available; re-run, not remembered):** with
   `StockKeyMetricsEndpoints.cs` removed and `Program.cs`/`MetricsEngine.cs` reverted to the pre-ticket
   files (the code catalog and formulas kept, so the red is behaviour — never a compile or environment
@@ -122,7 +137,9 @@ added, removed or weakened beyond that; no product behaviour changed for them.
    re-run here); the PR's required checks are the authority.
 2. **The four test-file re-pins are the user-approved scope widening** (constants/loops only) — recorded
    above and in test plan v1.50; a reviewer seeing `16*43`/`3*32`/`31`/`32` in those files should read
-   them as catalog-size contracts, not as relaxed assertions.
+   them as catalog-size contracts, not as relaxed assertions. **A fifth file joined the class in review
+   round 1** — `MigrationsAndSeedTests.cs` (catalog count 18 → 32) — added to the `scope:` list above
+   and pending the orchestrator/user's confirmation at merge.
 3. **`is_screenable = false` on the 14 new catalog rows** — the screener offers the same set as before;
    flipping it is a later builder decision (FR-SCR-017), deliberately not done here.
 4. **Company median is withheld on today's store depth** (12-observation floor, ~3.5-year history) — by
@@ -133,3 +150,21 @@ added, removed or weakened beyond that; no product behaviour changed for them.
    pass over the walked world writing the new codes stamped with the bumped version, then
    `GET /stocks/TUPRS/key-metrics` serving current values, the company median and the sector medians
    verbatim.
+7. **The L1 profile-gate matrix is behind the gate's width (review round 1, DR-9) — not fixed here.**
+   `tests/Core.UnitTests/Metrics/ProfileMetricMatrixTests.cs` (TC-MDF-057) still enumerates the twelve
+   v1 gated codes while `02` §6.2 now gates **26**. Nothing fails (the matrix's codes are a subset of
+   the gate) and no assertion is wrong — it is a coverage gap in an L1 contract, and the file is **not**
+   in this ticket's `scope:` list. Extending it is a sixth-file scope decision, so it is routed rather
+   than improvised: the follow-up is a TC-MDF-057 amendment enumerating the 26 (planner/test-planner,
+   with the file added to a scope list when it is next touched).
+8. **`percent` is documented, not redesigned (review round 1, DR-10).** The capital tracker serves the
+   ingested ratio × 100 uniformly — a 1:5 split is **500%**, the post-action count as a multiple, not the
+   +400% increase — because TC-MDF-124 (f)/(g) pins 500% and an expected result is not changed in a fix
+   loop. `03` §3 now states the semantics and tells 097 to read a split's percentage as the multiple.
+   Changing the payload to `(n−1)×100` is a requirements call (097 + the user), not a fix.
+9. **Routed upstream, untouched (review round 1, DR-2/DR-3).** DR-2: the company median's floor is a
+   **session/observation** count, not a depth floor — a definition decision for the architect + user
+   (floor on `depthYears`, per-period bucketing, or an explicit statement in `02`/`03` that this is a
+   session-count statistic). DR-3: the panel serves group-basis `roe`/`eps_cagr_*` where the user spec
+   asks for Parent basis — a requirements gap (add the parent-basis pair, or pin the group-basis decision
+   in `02` §6.2 and 097). Neither is a code defect in this PR's scope.

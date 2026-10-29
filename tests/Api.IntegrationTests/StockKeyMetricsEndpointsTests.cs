@@ -266,6 +266,55 @@ public sealed class StockKeyMetricsEndpointsTests : IClassFixture<PostgresFixtur
         }
     }
 
+    // -- (b cont.) the per-family basis marker (DR-4) ---------------------------
+
+    /// <summary>
+    /// TC-MDF-124 (b cont.) — the basis marker is computed <b>per family</b> (`02` §6.2 v2): an
+    /// instrument whose only corporate-action-adjusted series is the panel's per-share one never
+    /// re-stamps its v1 EPS/DPS rows. ZETA has no dividends, and its two EPS years (FY2024,
+    /// FY2025) both fall <em>after</em> the injected 2022-06-01 split, so its EPS series is
+    /// unadjusted — while the injected FY2021–FY2023 equity/share-count rows put the BVPS series
+    /// on the adjusted basis and therefore set the panel family's marker. The one action, one
+    /// instrument: the split alone cannot distinguish the two families, only the per-family
+    /// application can.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_124_the_basis_marker_is_per_family()
+    {
+        await SeedAsync();
+        await InjectZetaPanelPerShareHistoryAsync();
+        try
+        {
+            await RunMetricsAsync();
+
+            await using var db = _postgres.CreateContext();
+            var zetaId = await db.Instruments.Where(i => i.Symbol == "ZETA").Select(i => i.Id).SingleAsync();
+            var rows = await db.DerivedMetrics
+                .Where(metric => metric.InstrumentId == zetaId && metric.AsOfDate == T)
+                .ToDictionaryAsync(metric => metric.MetricCode, StringComparer.Ordinal);
+
+            // The panel's per-share family is stamped adjusted, and the adjusted BVPS series
+            // still yields its CAGR (the marker is not a blanket swallow).
+            Assert.True(rows[MetricCodes.BvpsCagr3y].IsAdjusted, "bvps_cagr_3y lost its adjusted marker");
+            Assert.True(rows[MetricCodes.BvpsCagr5y].IsAdjusted, "bvps_cagr_5y lost its adjusted marker");
+            Assert.NotNull(rows[MetricCodes.BvpsCagr5y].Value);
+            // fcf_ps has too few FCF years on this world to compound, but the family's marker
+            // still applies to it (`02` §6.2: adjusted basis, no value → honest NULL).
+            Assert.True(rows[MetricCodes.FcfPsCagr3y].IsAdjusted, "fcf_ps_cagr_3y lost its adjusted marker");
+            Assert.True(rows[MetricCodes.FcfPsCagr5y].IsAdjusted, "fcf_ps_cagr_5y lost its adjusted marker");
+
+            // The v1 EPS/DPS rows are untouched by the panel family's adjustment.
+            Assert.False(rows[MetricCodes.EpsCagr3y].IsAdjusted, "the panel family re-stamped eps_cagr_3y");
+            Assert.False(rows[MetricCodes.EpsCagr5y].IsAdjusted, "the panel family re-stamped eps_cagr_5y");
+            Assert.False(rows[MetricCodes.DivCagr3y].IsAdjusted, "the panel family re-stamped div_cagr_3y");
+            Assert.False(rows[MetricCodes.DivCagr5y].IsAdjusted, "the panel family re-stamped div_cagr_5y");
+        }
+        finally
+        {
+            await RemoveZetaPanelPerShareHistoryAsync();
+        }
+    }
+
     // -- (c) the 5Y company median: honest on thin depth, exact when deep ------
 
     /// <summary>
@@ -676,6 +725,93 @@ public sealed class StockKeyMetricsEndpointsTests : IClassFixture<PostgresFixtur
             await builder.UpsertStatementLinesAsync(
                 instrumentId, "BS", new DateOnly(year, 12, 31), new Dictionary<string, decimal> { ["TOTAL_EQUITY"] = value });
         }
+    }
+
+    /// <summary>
+    /// Put a panel-only per-share history on ZETA: FY2020–FY2024 equity and share counts (none
+    /// of those statements exist on the L2 world) plus a 2022-06-01 1:5 split. ZETA has no
+    /// dividends and no EPS years before FY2024, so the action reaches only the BVPS series —
+    /// the per-family marker's discriminating case.
+    /// </summary>
+    private async Task InjectZetaPanelPerShareHistoryAsync()
+    {
+        var builder = new FixtureBuilder(_postgres.CreateContext());
+        long instrumentId;
+        await using (var db = _postgres.CreateContext())
+        {
+            instrumentId = await db.Instruments.Where(i => i.Symbol == "ZETA").Select(i => i.Id).SingleAsync();
+        }
+
+        var equity = new (int Year, decimal Value)[]
+        {
+            (2020, 35m), (2021, 40m), (2022, 45m), (2023, 50m), (2024, 55m),
+        };
+        foreach (var (year, value) in equity)
+        {
+            await builder.UpsertStatementLinesAsync(
+                instrumentId,
+                "BS",
+                new DateOnly(year, 12, 31),
+                new Dictionary<string, decimal>
+                {
+                    ["TOTAL_EQUITY"] = value,
+                    ["SHARES_DILUTED"] = 50m,
+                });
+        }
+
+        await using var actions = _postgres.CreateContext();
+        actions.CorporateActions.Add(new CorporateAction
+        {
+            InstrumentId = instrumentId,
+            ActionType = "split",
+            ActionDate = new DateOnly(2022, 6, 1),
+            TermsJson = """{"n":5}""",
+            SourceRef = "test:tkt-foundation-096:basis-marker",
+            RecordedAt = FixtureBuilder.Epoch,
+        });
+        await actions.SaveChangesAsync();
+    }
+
+    /// <summary>Removes what <see cref="InjectZetaPanelPerShareHistoryAsync"/> added.</summary>
+    private async Task RemoveZetaPanelPerShareHistoryAsync()
+    {
+        await using var db = _postgres.CreateContext();
+        var instrumentId = await db.Instruments.Where(i => i.Symbol == "ZETA").Select(i => i.Id).SingleAsync();
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM fin_line_items
+            WHERE item_code = 'TOTAL_EQUITY'
+              AND statement_id IN (
+                  SELECT id FROM financial_statements
+                  WHERE instrument_id = {0} AND fiscal_year BETWEEN 2020 AND 2024)
+            """,
+            instrumentId);
+
+        // FY2024's share count is the fixture's own line — only the injected years give it up.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM fin_line_items
+            WHERE item_code = 'SHARES_DILUTED'
+              AND statement_id IN (
+                  SELECT id FROM financial_statements
+                  WHERE instrument_id = {0} AND fiscal_year BETWEEN 2020 AND 2023)
+            """,
+            instrumentId);
+
+        // The statements themselves were created by the injection (the world has none here).
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM financial_statements
+            WHERE instrument_id = {0} AND fiscal_year BETWEEN 2020 AND 2023
+              AND NOT EXISTS (SELECT 1 FROM fin_line_items WHERE statement_id = financial_statements.id)
+            """,
+            instrumentId);
+
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM corporate_actions WHERE instrument_id = {0} AND source_ref = {1}",
+            instrumentId,
+            "test:tkt-foundation-096:basis-marker");
     }
 
     /// <summary>Removes the lines <see cref="InjectAlfaInputsAsync"/> added (they were absent before).</summary>
