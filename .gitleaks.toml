@@ -28,7 +28,9 @@ useDefault = true
 # key name (`Ingestion__Kap__ApiSecret=`) as the "secret". Both values are empty by
 # design: .env.example is the template, and the real credentials live only on the VPS
 # `.env` / in GitHub Actions secrets (§6.3). The regex pins the empty form only, so a
-# real key typed onto either line is still a finding.
+# real key typed onto either line is still a finding (measured 2026-10-30, gitleaks
+# 8.30.1: a value on line 70 alone, and on line 71 alone, each report
+# `generic-api-key` at that line and exit 1).
 [[allowlists]]
 description = ".env.example — empty Ingestion__Kap__ApiKey= / ApiSecret= template lines (no value)"
 condition = "AND"
