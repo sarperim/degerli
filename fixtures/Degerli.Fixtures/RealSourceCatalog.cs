@@ -159,6 +159,19 @@ public static class RealSourceCatalog
     public const string KapPublicIdentityGaranCommaCoded = "kap-public-identity-garan-comma-coded";
     public const string KapPublicIdentityIsctrCommaCoded = "kap-public-identity-isctr-comma-coded";
 
+    // TKT-foundation-099's Turkish dotless-ı identity captures. The 091 live pass (run 362) left
+    // four XU030 companies unresolved — BIMAS, ENKAI, ISCTR, SISE — because KAP spells their
+    // `cmpOrFundCode` with the Turkish dotless ı ('bımas', 'sıse', 'enkaı',
+    // 'ısatr,ısbtr,ısctr,ıskur,tıb') and `OrdinalIgnoreCase` folds case but not ı↔i. These four
+    // bodies are the VERBATIM search answers the fold is authored against — captured by the
+    // ticket's orchestrator-owned paced pass (one request per symbol, ≥3 s apart, single-flight,
+    // honest browser-shaped User-Agent), committed unmodified so the dotless spelling in the record
+    // is the source's own. No CI test ever calls kap.org.tr.
+    public const string KapPublicIdentityBimas = "kap-public-identity-BIMAS";
+    public const string KapPublicIdentityEnkai = "kap-public-identity-ENKAI";
+    public const string KapPublicIdentitySise = "kap-public-identity-SISE";
+    public const string KapPublicIdentityIsctrDotless = "kap-public-identity-ISCTR";
+
     /// <summary>Concrete source name of the KAP public-site payloads (never `kap`).</summary>
     public const string KapPublicSource = "kap-public";
 
@@ -215,6 +228,10 @@ public static class RealSourceCatalog
         KapPublicIdentity,
         KapPublicIdentityGaranCommaCoded,
         KapPublicIdentityIsctrCommaCoded,
+        KapPublicIdentityBimas,
+        KapPublicIdentityEnkai,
+        KapPublicIdentitySise,
+        KapPublicIdentityIsctrDotless,
     ];
 
     /// <summary>The day the bounded live capture was taken.</summary>
@@ -517,6 +534,45 @@ public static class RealSourceCatalog
         "all constructed for the branch shape. The frame is the committed ASELS answer's exact " +
         "shape.";
 
+    // ---- TKT-foundation-099's dotless-ı identity captures -----------------------------------
+    // CAPTURED verbatim (the ticket's orchestrator-owned paced pass, 2026-10-29): one request per
+    // symbol, ≥ 3 s apart, single-flight, honest browser-shaped User-Agent. These are the four
+    // answers TKT-foundation-091's live run left unresolved, and the dotless code in each is the
+    // source's own spelling — never normalized, never rewritten.
+    private const string KapPublicIdentityBimasLabel =
+        "Captured live from POST /tr/api/search/combined with body {\"keyword\":\"BIMAS\"} on " +
+        "2026-10-29 (the TKT-foundation-099 orchestrator-owned capture pass: one paced, " +
+        "single-flight request per symbol with the lane's honest browser-shaped User-Agent): the " +
+        "companyOrFunds hit carrying memberOrFundOid 4028e4a140e95be70140ee1b7b030119, searchType " +
+        "'C', cmpOrFundCode 'bımas' — the Turkish DOTLESS ı (U+0131), which OrdinalIgnoreCase does " +
+        "not fold onto ASCII i, the reason the bound symbol BIMAS could never match it. Verbatim: " +
+        "the body is committed unmodified, so the dotless code in this record is the source's own.";
+
+    private const string KapPublicIdentityEnkaiLabel =
+        "Captured live from POST /tr/api/search/combined with body {\"keyword\":\"ENKAI\"} on " +
+        "2026-10-29 (the TKT-foundation-099 orchestrator-owned capture pass: one paced, " +
+        "single-flight request per symbol with the lane's honest browser-shaped User-Agent): the " +
+        "companyOrFunds hit carrying memberOrFundOid 4028e4a240e95dc90140ed3883fe0093, searchType " +
+        "'C', cmpOrFundCode 'enkaı' — the same dotless-ı root cause as BIMAS/SISE, not a different " +
+        "code shape. Verbatim: the body is committed unmodified.";
+
+    private const string KapPublicIdentitySiseLabel =
+        "Captured live from POST /tr/api/search/combined with body {\"keyword\":\"SISE\"} on " +
+        "2026-10-29 (the TKT-foundation-099 orchestrator-owned capture pass: one paced, " +
+        "single-flight request per symbol with the lane's honest browser-shaped User-Agent): the " +
+        "companyOrFunds hit carrying memberOrFundOid 4028e4a140f2ed710140f385d5690102, searchType " +
+        "'C', cmpOrFundCode 'sıse' — the Turkish DOTLESS ı (U+0131) that OrdinalIgnoreCase never " +
+        "folds onto ASCII i. Verbatim: the body is committed unmodified.";
+
+    private const string KapPublicIdentityIsctrDotlessLabel =
+        "Captured live from POST /tr/api/search/combined with body {\"keyword\":\"ISCTR\"} on " +
+        "2026-10-29 (the TKT-foundation-099 orchestrator-owned capture pass: one paced, " +
+        "single-flight request per symbol with the lane's honest browser-shaped User-Agent): the " +
+        "companyOrFunds hit carrying memberOrFundOid 4028e4a140f2ed7201411682b0cb05c6, searchType " +
+        "'C', cmpOrFundCode 'ısatr,ısbtr,ısctr,ıskur,tıb' — a FIVE-token comma list in which every " +
+        "token carries the dotless ı, so this answer needs 091's comma-token rule and 099's fold " +
+        "together (the token 'ısctr' folds to 'isctr'). Verbatim: the body is committed unmodified.";
+
     // ---- TKT-foundation-088's IS/BS coverage captures -------------------------------------
     // Three further public-site FR bodies, committed for the debt/cash decode evidence the
     // 1643141 double cannot carry (its balance sheet and income statement are trimmed to a
@@ -623,6 +679,17 @@ public static class RealSourceCatalog
     private const string KapPublicIdentityGaranCommaCodedJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE GARANTİ BANKASI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e00f1","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"garan,tgb","indexList":null},{"searchValue":"GARANTİ YATIRIM ORTAKLIĞI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e00f2","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"garan,gryo","indexList":null}]}]""";
 
     private const string KapPublicIdentityIsctrCommaCodedJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE İŞ BANKASI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e01c1","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"isctr,isatr","indexList":null},{"searchValue":"İŞ PORTFÖY HİSSE SENEDİ FONU","searchType":"F","actionKey":"companyFundAction","memberOrFundOid":"4028e4a1413b7ef401413bc2251e01c2","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"isctr","indexList":null}]}]""";
+
+    // TKT-foundation-099 — the four captured dotless-ı identity answers (VERBATIM; see the labels
+    // above). Committed unmodified from the paced capture pass: the dotless spelling is the
+    // source's own, which is exactly what the comparison-time fold must leave untouched.
+    private const string KapPublicIdentityBimasJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"BİM BİRLEŞİK MAĞAZALAR A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a140e95be70140ee1b7b030119","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"bımas","indexList":null}]}]""";
+
+    private const string KapPublicIdentityEnkaiJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"ENKA İNŞAAT VE SANAYİ A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a240e95dc90140ed3883fe0093","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"enkaı","indexList":null}]}]""";
+
+    private const string KapPublicIdentitySiseJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE ŞİŞE VE CAM FABRİKALARI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a140f2ed710140f385d5690102","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"sıse","indexList":null}]}]""";
+
+    private const string KapPublicIdentityIsctrDotlessJson = """[{"category":"combined","results":[]},{"category":"subjects","results":[]},{"category":"companyOrFunds","results":[{"searchValue":"TÜRKİYE İŞ BANKASI A.Ş.","searchType":"C","actionKey":"companyFundAction","memberOrFundOid":"4028e4a140f2ed7201411682b0cb05c6","subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,"cmpOrFundCode":"ısatr,ısbtr,ısctr,ıskur,tıb","indexList":null}]}]""";
 
 
     // The bounded-trimmed excel-HTML report (TKT-foundation-081's decode input).
@@ -41837,6 +41904,14 @@ public static class RealSourceCatalog
             KapPublicIdentityGaranCommaCodedJson),
         KapPublicDerived(KapPublicIdentityIsctrCommaCoded, KapPublicIdentityIsctrCommaCodedLabel,
             KapPublicIdentityIsctrCommaCodedJson),
+        KapPublicCaptured(KapPublicIdentityBimas, KapPublicIdentityBimasLabel,
+            KapPublicIdentityBimasJson, method: "POST"),
+        KapPublicCaptured(KapPublicIdentityEnkai, KapPublicIdentityEnkaiLabel,
+            KapPublicIdentityEnkaiJson, method: "POST"),
+        KapPublicCaptured(KapPublicIdentitySise, KapPublicIdentitySiseLabel,
+            KapPublicIdentitySiseJson, method: "POST"),
+        KapPublicCaptured(KapPublicIdentityIsctrDotless, KapPublicIdentityIsctrDotlessLabel,
+            KapPublicIdentityIsctrDotlessJson, method: "POST"),
     ];
 
     /// <summary>Loads one payload by name; throws <see cref="KeyNotFoundException"/> when unknown.</summary>

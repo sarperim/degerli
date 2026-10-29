@@ -6,8 +6,9 @@ import { catalogValue, loadCatalog } from './helpers/catalog'
  * TC-SCR-021 (L4) — SCR-012 metric-visibility panel and its consequence-stating
  * confirmation (TKT-scr-005; UXR-MDF-023/024, FR-SCR-017, UC-SCR-004).
  *
- * Against the seeded compose.ci stack: the panel lists the 18 screenable metrics
- * with their state; toggling requires a confirmation stating both consequences;
+ * Against the seeded compose.ci stack: the panel lists the whole metric catalog — the
+ * 32 seeded rows (the 18 v1 rows plus TKT-foundation-096's 14 panel rows, 18 screenable
+ * in total) — with their state; toggling requires a confirmation stating both consequences;
  * cancel aborts with no change; confirming flips the state and SCR-003's criteria
  * builder reflects it on the next load without a manual refresh. The metric is
  * restored at the end so the shared stack is left as seeded.

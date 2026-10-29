@@ -289,9 +289,26 @@ public sealed class KapPublicCompanyIdentityResolver
 
     /// <summary>
     /// Whether one <c>cmpOrFundCode</c> value carries <paramref name="symbol"/> as a
-    /// <b>comma-separated token</b> (trimmed, ordinal-ignore-case) — the 046 rule class applied to
-    /// this source's field. A code that merely <i>contains</i> the symbol inside a longer token is
-    /// not a match, and neither is an empty token.
+    /// <b>comma-separated token</b> (trimmed, Turkish-dotless-ı folded, ordinal-ignore-case) — the
+    /// 046 rule class applied to this source's field. A code that merely <i>contains</i> the symbol
+    /// inside a longer token is not a match, and neither is an empty token.
+    /// <para>
+    /// <b>The Turkish dotless-ı fold (v1.5.75 §10.9.19, TKT-foundation-099) is a comparison-time
+    /// rule, never a data mutation.</b> The site spells several companies' codes with the Turkish
+    /// dotless <c>ı</c> (U+0131) — BIMAS <c>'bımas'</c>, SISE <c>'sıse'</c>, ENKAI <c>'enkaı'</c>,
+    /// ISCTR <c>'ısatr,ısbtr,ısctr,ıskur,tıb'</c> — and <c>OrdinalIgnoreCase</c> folds ASCII case
+    /// but <b>not</b> <c>ı</c>↔<c>i</c>: they are distinct Unicode letters and invariant casing maps
+    /// neither onto the other (<c>'ı'</c> uppercases to itself; <c>'I'</c> lowercases to <c>'i'</c>).
+    /// Both sides are therefore folded (<c>ı</c>→<c>i</c>, and the uppercase dotted <c>İ</c>→<c>i</c>)
+    /// before the token equality. The stored mapping, the answer body and the symbol keep their
+    /// original spelling — the fold decides a <b>match</b>, it never rewrites anything.
+    /// </para>
+    /// <para>
+    /// The fold is not a general transcription rule and never a tie-break: a token that differs by
+    /// any other letter (<c>'ş'</c>, an extra part, a suffix) is still not a match, and a dotless
+    /// token shared by several companies is still <c>COMPANY_IDENTITY_AMBIGUOUS</c> — the fold only
+    /// lets a candidate be <i>counted</i>, it never chooses between candidates.
+    /// </para>
     /// </summary>
     private static bool CarriesToken(string? cmpOrFundCode, string symbol)
     {
@@ -300,15 +317,41 @@ public sealed class KapPublicCompanyIdentityResolver
             return false;
         }
 
+        var foldedSymbol = FoldTurkishDotlessI(symbol);
         foreach (var token in cmpOrFundCode.Split(','))
         {
             var trimmed = token.Trim();
-            if (trimmed.Length > 0 && string.Equals(trimmed, symbol, StringComparison.OrdinalIgnoreCase))
+            if (trimmed.Length > 0
+                && string.Equals(FoldTurkishDotlessI(trimmed), foldedSymbol, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Folds the two Turkish i letters that <see cref="StringComparison.OrdinalIgnoreCase"/> does not
+    /// equate with ASCII <c>i</c>: the dotless <c>ı</c> (U+0131) and the uppercase dotted <c>İ</c>
+    /// (U+0130) both become <c>i</c>. Only the two letters that break this source's codes are
+    /// folded — this is not a culture-wide Turkish text rule, it is one comparison's normalization
+    /// (TKT-foundation-099), applied to both sides of a token equality and to nothing else.
+    /// </summary>
+    private static string FoldTurkishDotlessI(string value)
+    {
+        if (value.AsSpan().IndexOfAny('ı', 'İ') < 0)
+        {
+            return value;
+        }
+
+        return string.Create(value.Length, value, static (folded, source) =>
+        {
+            for (var index = 0; index < source.Length; index++)
+            {
+                var character = source[index];
+                folded[index] = character is 'ı' or 'İ' ? 'i' : character;
+            }
+        });
     }
 }
