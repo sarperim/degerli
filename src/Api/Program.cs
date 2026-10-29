@@ -123,6 +123,11 @@ api.MapDegerliStockOverviewAndValuationEndpoints();
 // and Dividends sections (FR-RES-008..012/014..016/027).
 api.MapDegerliStockFundamentalsEndpoints();
 
+// Stocks module (TKT-foundation-096): the key-value & moat panel plus the capital &
+// dilution tracker — current canonical values, the 5Y company median, the sector
+// median with peer counts, and the paid-in-capital/share-count/action history block.
+api.MapDegerliStockKeyMetricsEndpoints();
+
 // Screener module (TKT-scr-002): the visible metric catalog and the core ad-hoc run
 // (FR-SCR-001..006/014/015; UC-SCR-001). Saved screens/admin visibility follow later.
 api.MapDegerliScreenerEndpoints();

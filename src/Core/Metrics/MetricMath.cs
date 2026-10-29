@@ -130,4 +130,25 @@ public static class MetricMath
     /// <summary>Decimal power via the platform double (deterministic, ~1e-15 relative).</summary>
     private static decimal Pow(decimal value, double exponent) =>
         (decimal)Math.Pow((double)value, exponent);
+
+    /// <summary>
+    /// The standard statistical median of <paramref name="values"/> — the one implementation
+    /// every median surface uses (FU §2: an even count yields the mean of the two middle
+    /// values). NULL for an empty set (no observation, never <c>0</c>).
+    /// </summary>
+    public static decimal? Median(IEnumerable<decimal> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        var sorted = values.OrderBy(value => value).ToList();
+        if (sorted.Count == 0)
+        {
+            return null;
+        }
+
+        var middle = sorted.Count / 2;
+        return sorted.Count % 2 == 1
+            ? sorted[middle]
+            : (sorted[middle - 1] + sorted[middle]) / 2m;
+    }
 }

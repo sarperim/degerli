@@ -51,7 +51,25 @@ public static class DegerliSeed
             ('current_ratio', 'financial_health', 'x', 'Cari Oran', 'Current Ratio', 'Dönen varlıkların kısa vadeli borçlara oranı', 'Current assets to current liabilities', true, false, 15),
             ('div_yield', 'dividends', '%', 'Temettü Verimi', 'Dividend Yield', 'Son 12 ay temettüsünün fiyata oranı', 'Trailing twelve month dividend to price', true, false, 16),
             ('div_cagr', 'dividends', '%', 'Temettü Bileşik Büyüme', 'Dividend CAGR', 'Temettünün seçilen dönemdeki bileşik büyümesi', 'Compound annual growth of dividends over the chosen window', true, true, 17),
-            ('payout_ratio', 'dividends', '%', 'Dağıtım Oranı', 'Payout Ratio', 'Temettünün net kâra oranı', 'Dividends to net income', true, false, 18)
+            ('payout_ratio', 'dividends', '%', 'Dağıtım Oranı', 'Payout Ratio', 'Temettünün net kâra oranı', 'Dividends to net income', true, false, 18),
+            -- The key-value & moat panel's codes (TKT-foundation-096, 02 §6.2 v2). Seeded with
+            -- is_screenable = false: the catalog row exists so the code has a name, a family and
+            -- a unit, while making it a screener criterion stays the builder's later toggle
+            -- (FR-SCR-017 — a flag flip, no code change).
+            ('roa', 'quality', '%', 'Aktif Kârlılığı', 'ROA', 'Net kârın toplam aktiflere oranı', 'Net income to total assets', false, false, 19),
+            ('croic', 'quality', '%', 'Nakit Yatırılan Sermaye Getirisi', 'CROIC', 'İşletme nakit akışının yatırılan sermayeye oranı', 'Operating cash flow to invested capital', false, false, 20),
+            ('ev_ebit', 'valuation', 'x', 'FD/FVÖK', 'EV/EBIT', 'Firma değerinin faaliyet kârına oranı', 'Enterprise value to operating income', false, false, 21),
+            ('p_fcf', 'valuation', 'x', 'PD/Serbest Nakit Akışı', 'P/FCF', 'Piyasa değerinin serbest nakit akışına oranı', 'Market cap to free cash flow', false, false, 22),
+            ('p_tbv', 'valuation', 'x', 'PD/Maddi Defter Değeri', 'P/TBV', 'Piyasa değerinin maddi defter değerine oranı', 'Market cap to tangible book value', false, false, 23),
+            ('fcf_ni', 'quality', 'x', 'Serbest Nakit Akışı/Net Kâr', 'FCF/NI', 'Serbest nakit akışının net kâra oranı', 'Free cash flow to net income', false, false, 24),
+            ('fcf_ni_3y', 'quality', 'x', 'Serbest Nakit Akışı/Net Kâr (3Y Ort.)', 'FCF/NI (3Y Avg)', 'Son üç yılın serbest nakit akışı/net kâr oranı ortalaması', 'Three-year average of free cash flow to net income', false, false, 25),
+            ('cfo_ebit', 'quality', 'x', 'İşletme Nakit Akışı/FVÖK', 'CFO/EBIT', 'İşletme nakit akışının faaliyet kârına oranı', 'Operating cash flow to operating income', false, false, 26),
+            ('monetary_gain_pretax', 'quality', '%', 'Parasal Kazanç/Vergi Öncesi Kâr', 'Monetary Gain/Pretax', 'TMS 29 parasal pozisyon kazancının vergi öncesi kâra oranı', 'TMS 29 net monetary gain to pretax income', false, false, 27),
+            ('cfo_interest', 'financial_health', 'x', 'İşletme Nakit Akışı/Nakit Faiz', 'CFO/Cash Interest', 'İşletme nakit akışının ödenen nakit faize oranı', 'Operating cash flow to cash interest paid', false, false, 28),
+            ('net_debt_fcf', 'financial_health', 'x', 'Net Borç/Serbest Nakit Akışı', 'Net Debt/FCF', 'Net borcun serbest nakit akışına oranı', 'Net debt to free cash flow', false, false, 29),
+            ('ebit_cagr', 'growth', '%', 'FVÖK Bileşik Büyüme', 'EBIT CAGR', 'Faaliyet kârının seçilen dönemdeki bileşik büyümesi', 'Compound annual growth of operating income over the chosen window', false, true, 30),
+            ('bvps_cagr', 'growth', '%', 'HBDA Bileşik Büyüme', 'BVPS CAGR', 'Hisse başına defter değerinin seçilen dönemdeki bileşik büyümesi', 'Compound annual growth of book value per share over the chosen window', false, true, 31),
+            ('fcf_ps_cagr', 'growth', '%', 'Hisse Başına Serbest Nakit Akışı Bileşik Büyüme', 'FCF/Share CAGR', 'Hisse başına serbest nakit akışının seçilen dönemdeki bileşik büyümesi', 'Compound annual growth of free cash flow per share over the chosen window', false, true, 32)
         ON CONFLICT (metric_code) DO NOTHING;
         """;
 

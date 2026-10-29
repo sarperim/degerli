@@ -38,9 +38,26 @@ public sealed class RegimeBreakTests : IClassFixture<PostgresFixture>
     private static readonly FixtureSet L2 = FixtureUniverse.Build(FixtureAnchor.L2);
     private static DateOnly T => L2.Anchor.T;
 
-    /// <summary>The twelve window-suffixed CAGR codes (FU §11.1 / Q5).</summary>
+    /// <summary>
+    /// The panel's four CAGRs the L2 fixture world cannot compute: its statements carry no
+    /// multi-year <c>EBIT</c> or <c>TOTAL_EQUITY</c> series (only the current FY), so
+    /// <c>ebit_cagr_*</c> and <c>bvps_cagr_*</c> (TKT-foundation-096, <c>02</c> §6.2 v2) are
+    /// honestly NULL everywhere — asserted separately below, never folded into the
+    /// spanning-window loop. The panel's <c>fcf_ps_cagr_*</c> pair <em>does</em> compute (the
+    /// fixture has a deep OCF/CAPEX history over a constant share count), so it stays in the
+    /// loop with every other window-suffixed code.
+    /// </summary>
+    private static readonly string[] UnavailableCagrCodes =
+    [
+        MetricCodes.EbitCagr3y,
+        MetricCodes.EbitCagr5y,
+        MetricCodes.BvpsCagr3y,
+        MetricCodes.BvpsCagr5y,
+    ];
+
+    /// <summary>The twelve window-suffixed CAGR codes the fixture computes (FU §11.1 / Q5).</summary>
     private static readonly string[] CagrCodes =
-        MetricCodes.All.Where(MetricCodes.IsGrowth).ToArray();
+        MetricCodes.All.Where(MetricCodes.IsGrowth).Except(UnavailableCagrCodes, StringComparer.Ordinal).ToArray();
 
     private readonly PostgresFixture _postgres;
 
@@ -99,6 +116,18 @@ public sealed class RegimeBreakTests : IClassFixture<PostgresFixture>
             var row = bySymbol["NEWP"][code];
             Assert.Null(row.Value);
             Assert.Null(row.RegimeBreak);
+        }
+
+        // The panel's EBIT / BVPS CAGR families: the L2 fixture has no multi-year EBIT or
+        // equity series, so they are honestly NULL on every instrument — and a NULL value
+        // never carries a regime-break flag (TKT-foundation-096).
+        foreach (var symbol in new[] { "ALFA", "ZETA", "NEWP" })
+        {
+            foreach (var code in UnavailableCagrCodes)
+            {
+                Assert.Null(bySymbol[symbol][code].Value);
+                Assert.Null(bySymbol[symbol][code].RegimeBreak);
+            }
         }
 
         // The flag is CAGR-only: no non-growth metric carries it.

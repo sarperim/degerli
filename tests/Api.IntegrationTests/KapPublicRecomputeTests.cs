@@ -53,8 +53,9 @@ namespace Degerli.Api.IntegrationTests;
 /// </summary>
 public sealed class KapPublicRecomputeTests : IClassFixture<PostgresFixture>
 {
-    /// <summary>The FU universe × the 26 canonical metric codes (TC-MDF-026's written count).</summary>
-    private const int MetricRows = 16 * 26;
+    /// <summary>The FU universe × the 43 canonical metric codes (TC-MDF-026's written count;
+    /// 26 through v1, 43 since the key-value/moat panel — TKT-foundation-096).</summary>
+    private const int MetricRows = 16 * 43;
 
     private const string Kap = StatementSourcePreference.IncumbentSource;
     private const string KapPublic = StatementSourcePreference.PublicSiteSource;
