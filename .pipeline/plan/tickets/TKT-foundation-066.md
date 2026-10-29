@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-066: CI hardening — secret scanning, dependency audit and container scanning as required checks
 
-- Status: todo
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/165
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 1 unparked).**
 - **Evidence (gathered 2026-10-24, current repo state):**
