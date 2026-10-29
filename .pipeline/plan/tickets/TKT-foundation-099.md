@@ -1,0 +1,28 @@
+---
+scope:
+  - src/Ingestion/KapPublic/KapPublicCompanyIdentityResolver.cs
+  - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
+  - tests/Api.IntegrationTests/KapPublicIdentityTests.cs
+  - tests/Api.IntegrationTests/KapPublicIdentityJobTests.cs
+  - .pipeline/testing/market-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-099: Turkish dotless-ı identity resolution — the ı→i fold in `CarriesToken`, so BIMAS/ENKAI/ISCTR/SISE can resolve (the 091 live-criteria residue)
+
+- Status: todo
+- Size: S
+- **Priority: P0 — same-night dispatch (the user's 2026-10-29 deadline: complete KAP data displayed; without this, 4 of 30 XU030 companies can never be walked — the "nothing missing" criterion).**
+- **The verified blocker (recorded on TKT-foundation-091's live-criteria section, dev `e2704b3`):** after 091's comma-token rule, 4 companies remain `COMPANY_IDENTITY_UNRESOLVED` — BIMAS, ENKAI, ISCTR, SISE — because KAP returns their `cmpOrFundCode` tokens with the Turkish **dotless ı**: BIMAS's code is `'bımas'`, SISE's is `'sıse'`. `StringComparison.OrdinalIgnoreCase` folds ASCII case but **not `ı`↔`i`** — they are distinct Unicode letters (U+0131 vs U+0069), and invariant casing maps neither onto the other (`'ı'` uppercases to itself; `'I'` lowercases to `'i'`, never to `'ı'`). The bound symbol `BIMAS` can therefore never equal the token `'bımas'` under the current comparison.
+- **What to implement:**
+  1. **The fold, in `CarriesToken` only** (`KapPublicCompanyIdentityResolver.cs:296`): a Turkish-aware normalization applied to **both sides at comparison time** — `ı`→`i` and `İ`→`i` (the uppercase dotted İ folds to plain i) — before the existing `OrdinalIgnoreCase` token equality. **Comparison-time only:** the stored mapping (oid, code, the search answer itself) is never rewritten — the fold is a matching rule, not a data mutation.
+  2. **Semantics unchanged (the 091 rule class, restated because the fold touches it):** comma-token splitting and trimming stand; an empty token never matches; a token that merely *contains* the symbol inside a longer token is not a match; several distinct company candidates sharing the (folded) token are still `COMPANY_IDENTITY_AMBIGUOUS` — named, counted, nothing stored, **never a pick** (a dotless token can be ambiguous exactly like a plain one; the fold must not become a tie-break).
+  3. **Capture-first evidence (the lane doctrine):** the BIMAS and SISE `search/combined` answers are committed to `RealSourceCatalog.cs` as doubles — **orchestrator-owned paced capture** (one request per symbol, ≥3 s, single-flight, honest UA — the relay mitigation is live, so this is one paced pair, never a CI request). ENKAI's and ISCTR's answers are captured in the same paced pass if cheap; if their root cause turns out to be something other than the dotless fold (a different odd code shape), it is **recorded on the ticket and routed, never guessed at** — the fold lands only what the evidence shows. No CI test ever calls kap.org.tr.
+- **Pinned non-goals:** no change to the comma-token rule, the ambiguity refusal, the resolver's classification or the store; no walk/decode change; no serving/UI work (094/095/096/097); no culture-wide Turkish text handling anywhere else in the codebase — this is one comparison in one method, not a localization project.
+- Traces to: FR-MDF-002 (the identity precondition of the company-scoped fetch — 4 companies are locked out), FR-MDF-012 (named/counted outcomes — the fold never turns an ambiguity into a pick), FR-MDF-016 (the ledger row the job writes); TKT-foundation-091 (the live finding this closes — its live-criteria section records the residue verbatim).
+- Acceptance: **TC-MDF-126** (test plan §37, v1.50 reservation — planner-authored per the lane precedent, test-planner confirmation pending) — L2 doubles only, zero live requests: (a) the committed BIMAS answer (`'bımas'`) resolves BIMAS; (b) the committed SISE answer (`'sıse'`) resolves SISE; (c) the fold is comparison-only — the stored map row and the answer body carry the verbatim dotless code; (d) a dotless multi-candidate answer (two companies sharing a folded token) is `COMPANY_IDENTITY_AMBIGUOUS`, never a pick — the ambiguity semantics survive the fold; (e) the fold does not over-match — a token merely containing the symbol is still not a match, and a non-Turkish near-miss stays unresolved; (f) the committed 091 doubles (ASELS single-token, comma-coded GARAN/ISCTR) decode unchanged — every 080/091 golden holds. Red→green recorded (red = the pre-ticket head: (a)/(b) unresolved — exactly the live run's observed state). Non-regression: `KapPublicIdentityTests`, `KapPublicIdentityJobTests`, `KapPublicSourceTests`, `KapPublicStatementsIngestTests` re-run green.
+- Architecture refs: `01-system-architecture.md` §10.9.19 (the identity subsection's comma-token rule extended by the fold — recorded there dated) + §13.1 **v1.5.75** (soft reservation, next free above the landed v1.5.74 and the wave's outstanding reservations; re-pin at merge); test plan §37 (TC-MDF-126).
+- UX refs: none (identity lane).
+- Dependencies: none hard. **Code scope disjoint from in-review 094 (PR #157) and 096 (PR #158)** — verified against their frontmatter; shares the permanent docs with the wave (last-lander rebase).
+- Parallel group: none (doc serialization).
+- **Live criteria (orchestrator, post-merge, paced, never CI):** one identity pass resolves all four symbols (BIMAS, ENKAI, ISCTR, SISE — or the residue honestly named if any root cause differs); their statements walk then lands data for them — the user's "nothing missing" deadline criterion.
