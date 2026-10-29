@@ -25,7 +25,7 @@ scope:
 - **Pinned non-goals:** no map entry, canonical code or fail-safe change beyond what the diagnosed gap requires (the 093/098 decoder surface is frozen input to the diagnosis); no store/schema change beyond the evidence the quarantine row already carries (the payload column exists — this ticket writes it); no serving/UI work; no capture beyond the one GUBRF body; no attempt to make the decoder accept everything (an honest refusal with a specific reason is a valid outcome).
 - Traces to: FR-MDF-003 (statement decode correctness — a full company refused undiagnosed), FR-MDF-012 (named/counted skips — a bare `SCHEMA_MISMATCH` with NULL evidence names nothing), NFR-MDF-001 (no silent ledger hole — the NULL-payload rows are holes in the evidence, not just the data), FR-MDF-016; TKT-foundation-092 (the replay doctrine the re-walk rides), TKT-foundation-093/098 (the decoder surface this diagnoses).
 - Acceptance: **TC-MDF-128** (test plan §39, v1.52 reservation — planner-authored per the lane precedent, test-planner confirmation pending) — L2 doubles only, zero live requests: (a) the observability fix — a refused public-site payload writes a quarantine row **with evidence** (payload non-null, bounded) and the log line names the reason's detail (asserted); (b) the committed GUBRF body produces the **recorded ruled outcome** — the fixed golden decode (case (a) of the diagnosis) or the specific named refusal (case (b)) — whichever the diagnosis ruled, pinned as the case either way, never left as a bare `SCHEMA_MISMATCH`; (c) non-regression — the five committed bodies and every 093/098 decoder golden unchanged; the statements-lane suites re-run green. Red→green recorded (red = the observability gap itself: the current head's refusal row carries NULL and the log names nothing).
-- Architecture refs: `01-system-architecture.md` §10.9.19 (the quarantine/observability rule and — if the diagnosis rules a new reason — the closed reason's entry) + §13.1 **v1.5.77** (soft reservation above the wave's outstanding ones; re-pin at merge); test plan §39 (TC-MDF-128).
+- Architecture refs: `01-system-architecture.md` §10.9.19 (the quarantine/observability rule and — if the diagnosis rules a new reason — the closed reason's entry) + §13.1 **v1.5.80** (re-pinned at merge — the branch's change-record row); test plan §39 (TC-MDF-128).
 - UX refs: none (ingest lane).
 - Dependencies: TKT-foundation-093/098/094 merged (PR #155/#156/#157 — verified on dev). **No code-scope overlap with any in-flight or queued ticket** (096's PR #158 scope is the metrics lane; 095/097 are Web/UI — verified against their frontmatter). The capture step waits on the orchestrator (quota-gated) — the observability fix and test scaffolding can proceed without it.
 - Parallel group: none.
@@ -83,7 +83,7 @@ case (b) was the alternative ruling, not the finding.
    (header block + the full BS table `tbl_general_role_210015` + the full IS table
    `tbl_general_role_310003`; CF and equity tables omitted whole), labelled **honestly as ASTOR's
    body, index 1605802, not a GUBRF body**.
-5. **Docs** — test plan §39 (TC-MDF-128, v1.56); `01` §10.9.19's new subsection and §13.1 v1.5.79.
+5. **Docs** — test plan §39 (TC-MDF-128, v1.56); `01` §10.9.19's new subsection and §13.1 v1.5.80.
 
 ### Acceptance: TC-MDF-128 (all three sub-cases shipped, L2 doubles only, zero live requests)
 

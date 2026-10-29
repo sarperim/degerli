@@ -5,11 +5,13 @@ import { http, HttpResponse } from 'msw'
 
 import type {
   FinancialPeriod,
+  KeyMetricEntry,
   MissingDataResponse,
   StatementLines,
   StockBalanceSheetResponse,
   StockFinancialsResponse,
   StockGrowthResponse,
+  StockKeyMetricsResponse,
   StockOverviewResponse,
   StockProfitabilityResponse,
   StockValuationResponse,
@@ -633,9 +635,195 @@ export const RAW_VALUATION_FIXTURE: StockValuationResponse = {
   },
 }
 
+/** One served panel metric, honest by default (null = not meaningful, never 0). */
+function keyMetricEntry(overrides: Partial<KeyMetricEntry> = {}): KeyMetricEntry {
+  return {
+    value: null,
+    notMeaningful: true,
+    asOf: '2026-10-06',
+    profileGated: false,
+    windowYears: null,
+    regimeBreak: null,
+    isAdjusted: false,
+    isRestated: false,
+    companyMedian5y: {
+      windowYears: 5,
+      value: null,
+      notMeaningful: true,
+      observations: 0,
+      depthYears: 0,
+      minimumObservations: 12,
+    },
+    sectorMedian: null,
+    peerCount: null,
+    excludedCount: null,
+    ...overrides,
+  }
+}
+
+/** A published, meaningful metric with a served median disclosure. */
+function servedMetric(
+  value: number,
+  overrides: Partial<KeyMetricEntry> = {},
+): KeyMetricEntry {
+  return keyMetricEntry({
+    value,
+    notMeaningful: false,
+    companyMedian5y: {
+      windowYears: 5,
+      value: null,
+      notMeaningful: true,
+      observations: 2,
+      depthYears: 0.02,
+      minimumObservations: 12,
+    },
+    ...overrides,
+  })
+}
+
+/** The key-metrics panel double (096's payload shape). */
+export const KEY_METRICS_FIXTURE: StockKeyMetricsResponse = {
+  asOf: '2026-10-06',
+  stale: false,
+  symbol: 'ALFA',
+  accountingProfile: 'industrial',
+  financialSector: null,
+  metrics: {
+    roic: servedMetric(0.25, {
+      companyMedian5y: {
+        windowYears: 5,
+        value: 0.22,
+        notMeaningful: false,
+        observations: 14,
+        depthYears: 3.5,
+        minimumObservations: 12,
+      },
+      sectorMedian: 0.2,
+      peerCount: 3,
+      excludedCount: 0,
+    }),
+    croic: servedMetric(0.208333, {
+      sectorMedian: 0.15,
+      peerCount: 4,
+      excludedCount: 1,
+    }),
+    roe: servedMetric(0.18),
+    roa: keyMetricEntry(),
+    fcf_ni: servedMetric(0.5),
+    fcf_ni_3y: servedMetric(0.82),
+    cfo_ebit: servedMetric(0.833333),
+    monetary_gain_pretax: keyMetricEntry(),
+    ev_ebit: servedMetric(7.333333),
+    ev_ebitda: servedMetric(5.5),
+    pe: servedMetric(10, {
+      sectorMedian: 10,
+      peerCount: 3,
+      excludedCount: 2,
+    }),
+    p_fcf: servedMetric(20),
+    fcf_yield: keyMetricEntry({ profileGated: true }),
+    pb: servedMetric(2),
+    p_tbv: servedMetric(2),
+    div_yield: keyMetricEntry(),
+    net_debt_ebitda: servedMetric(1.2),
+    net_debt_fcf: servedMetric(2),
+    interest_coverage: keyMetricEntry({ profileGated: true }),
+    cfo_interest: keyMetricEntry({ profileGated: true }),
+    current_ratio: servedMetric(1.4, { isRestated: true }),
+    rev_cagr_3y: servedMetric(0.12, { windowYears: 3, regimeBreak: true }),
+    rev_cagr_5y: servedMetric(0.1, { windowYears: 3, regimeBreak: false }),
+    ebit_cagr_3y: keyMetricEntry(),
+    ebit_cagr_5y: keyMetricEntry(),
+    eps_cagr_3y: keyMetricEntry(),
+    eps_cagr_5y: keyMetricEntry(),
+    fcf_ps_cagr_3y: keyMetricEntry({ isAdjusted: true }),
+    fcf_ps_cagr_5y: keyMetricEntry({ isAdjusted: true }),
+    bvps_cagr_3y: keyMetricEntry(),
+    bvps_cagr_5y: keyMetricEntry(),
+  },
+  capitalTracker: {
+    paidInCapital: 1_000_000_000,
+    paidInCapitalAsOf: '2026-09-30',
+    sharesOutstanding: 100_000_000,
+    sharesOutstandingAsOf: '2026-10-05',
+    sharesOutstandingBasis: 'price-derived',
+    shareCountChangeYoy: {
+      value: null,
+      notMeaningful: true,
+      state: 'no-count-history',
+    },
+    corporateActions: [
+      {
+        date: '2026-03-02',
+        type: 'bonus_issue',
+        kind: 'bedelsiz',
+        ratio: 0.1,
+        percent: 10,
+      },
+      {
+        date: '2025-06-02',
+        type: 'split',
+        kind: 'split',
+        ratio: 5,
+        percent: 500,
+      },
+    ],
+    corporateActionsBasis: 'corporate-action-adjusted',
+    payoutRatio: { value: 0.4, notMeaningful: false, asOf: '2026-10-06' },
+  },
+}
+
+/** A bank-profile double: every industrial-shaped code served `profileGated`. */
+export const BANK_KEY_METRICS_FIXTURE: StockKeyMetricsResponse = {
+  ...KEY_METRICS_FIXTURE,
+  accountingProfile: 'bank',
+  financialSector: {
+    state: 'sector_not_applicable',
+    reason: 'financial_sector',
+    profile: 'bank',
+  },
+  metrics: Object.fromEntries(
+    Object.entries(KEY_METRICS_FIXTURE.metrics).map(([code, entry]) => [
+      code,
+      [
+        'roic',
+        'croic',
+        'fcf_ni',
+        'fcf_ni_3y',
+        'cfo_ebit',
+        'monetary_gain_pretax',
+        'ev_ebit',
+        'ev_ebitda',
+        'p_fcf',
+        'fcf_yield',
+        'p_tbv',
+        'net_debt_ebitda',
+        'net_debt_fcf',
+        'interest_coverage',
+        'cfo_interest',
+        'current_ratio',
+        'ebit_cagr_3y',
+        'ebit_cagr_5y',
+        'fcf_ps_cagr_3y',
+        'fcf_ps_cagr_5y',
+      ].includes(code)
+        ? { ...entry, profileGated: true }
+        : entry,
+    ]),
+  ),
+}
+
 /** `GET /stocks/:symbol/overview`. */
 export function stockOverviewHandler(body: StockOverviewResponse = PUBLISHED_OVERVIEW) {
   return http.get(`${API_BASE}/stocks/:symbol/overview`, () => HttpResponse.json(body))
+}
+
+export function stockKeyMetricsHandler(
+  body: StockKeyMetricsResponse = KEY_METRICS_FIXTURE,
+) {
+  return http.get(`${API_BASE}/stocks/:symbol/key-metrics`, () =>
+    HttpResponse.json(body),
+  )
 }
 
 export function stockFinancialsHandler(body: StockFinancialsResponse = FINANCIALS_FIXTURE) {
@@ -684,6 +872,7 @@ export function registerStockPageHandlers() {
     stockOverviewHandler(),
     stockValuationHandler(),
     stockFinancialsHandler(),
+    stockKeyMetricsHandler(),
     stockProfitabilityHandler(),
     stockGrowthHandler(),
     stockBalanceSheetHandler(),
