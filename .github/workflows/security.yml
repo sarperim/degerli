@@ -1,0 +1,277 @@
+# Security gates (architecture 01-system-architecture.md §6.1 job 4 / §6.3
+# policies; ticket TKT-foundation-066).
+#
+# Three jobs, one per required check — all honest gates on the free
+# GitHub-hosted runners of this PUBLIC repo. The repo and the production images
+# are public (deploy/README.md §Topology), so a committed secret or a vulnerable
+# dependency/image is publishable the moment it lands.
+#
+#   1. secrets      — gitleaks over the full history on push, over the PR's own
+#                     commits on pull_request; `--redact` is mandatory; a reviewed
+#                     per-finding allowlist only (.gitleaks.toml).
+#   2. dependencies — NuGet `--vulnerable --include-transitive` (parsed: the command
+#                     itself exits 0 even when it finds a CVE) and `npm audit
+#                     --audit-level=high` for src/Web and tests/e2e. Fails on
+#                     high/critical.
+#   3. containers   — builds the two production images (the exact Dockerfiles
+#                     deploy.yml ships) and scans them with Trivy
+#                     (`--severity HIGH,CRITICAL --exit-code 1`). The one baseline
+#                     is .trivyignore.yaml and it is per-finding, dated and expiring.
+#
+# `continue-on-error` MUST NOT appear in this file: these checks are required
+# (deploy/README.md §"Security checks" lists the exact check names for branch
+# protection). A scanner that cannot run is a red check, never a skipped one.
+#
+# Scanners are pinned binaries installed with a pinned SHA-256 (no third-party
+# action can silently change what runs); no artifact is uploaded, and the only
+# secret-derived output is gitleaks' redacted report, printed on failure.
+
+name: Security
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+# Public repo: read-only token is enough. Nothing is pushed, nothing is commented.
+permissions:
+  contents: read
+
+# One run per ref; a newer push supersedes an in-flight run for the same branch/PR.
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  # Pinned scanner releases + the SHA-256 of the exact tarball each job verifies
+  # before executing it. Bumping a version means bumping its checksum in the same
+  # commit — the release assets are what these values are taken from.
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  TRIVY_VERSION: "0.76.1"
+  TRIVY_SHA256: "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Secrets — gitleaks. On push: every commit in the repository's history
+  #    (a secret stays compromised after it is deleted — the full-history scan is
+  #    the point). On pull_request: only the commits the PR adds, so a long-lived
+  #    branch pays for its own diff, not for the whole history again.
+  # ---------------------------------------------------------------------------
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # `gitleaks git` walks commits, so a shallow clone would scan almost
+          # nothing. fetch-depth: 0 also carries the PR's base commit.
+          fetch-depth: 0
+
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          install -m 0755 "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+
+      # The scan range is explicit in both branches: nothing is scanned by
+      # accident and an unresolvable base commit fails the check instead of
+      # quietly scanning nothing.
+      - name: Resolve scan range
+        id: range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            : "${BASE_SHA:?pull_request event without a base sha}"
+            : "${HEAD_SHA:?pull_request event without a head sha}"
+            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              echo "Base commit ${BASE_SHA} absent from the clone; fetching it."
+              git fetch --no-tags origin "$BASE_SHA" || true
+            fi
+            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              echo "::error::cannot resolve the PR base commit ${BASE_SHA} — refusing to scan a partial range."
+              exit 1
+            fi
+            echo "log_opts=${BASE_SHA}..${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Scanning the PR's own commits: ${BASE_SHA}..${HEAD_SHA}"
+          else
+            echo "log_opts=--all" >> "$GITHUB_OUTPUT"
+            echo "Scanning the full history (--all)."
+          fi
+
+      - name: Scan for secrets (gitleaks)
+        env:
+          LOG_OPTS: ${{ steps.range.outputs.log_opts }}
+        run: |
+          set -euo pipefail
+          if gitleaks git . \
+              --config .gitleaks.toml \
+              --log-opts "$LOG_OPTS" \
+              --redact \
+              --no-banner \
+              --report-format json \
+              --report-path "$RUNNER_TEMP/gitleaks-report.json"; then
+            echo "gitleaks: no leaks found."
+            exit 0
+          fi
+          echo "::error::gitleaks found at least one candidate secret (values redacted)."
+          # Redacted report only; the raw secret value is never emitted and never
+          # uploaded as an artifact.
+          cat "$RUNNER_TEMP/gitleaks-report.json"
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # 2. Dependencies — known-vulnerable packages in NuGet (incl. transitive) and
+  #    npm. `dotnet list package --vulnerable` exits 0 even when it prints a CVE,
+  #    so the job parses its JSON and fails on high/critical itself; that
+  #    behaviour is asserted, not assumed (ticket evidence, 2026-10-29).
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: Dependencies (NuGet · npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # --- NuGet --------------------------------------------------------------
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        # `NuGetAudit=false` on purpose: Directory.Build.props sets
+        # TreatWarningsAsErrors, so `NU1903` would fail restore with the opaque
+        # "Restore failed. Run dotnet restore for more details" — hiding the CVE behind
+        # a build error. The authoritative audit is the explicit step below, which
+        # names the package, the advisory URL and the severity.
+        run: dotnet restore Degerli.sln -p:NuGetAudit=false
+
+      - name: Audit NuGet packages (vulnerable, transitive included)
+        run: |
+          set -euo pipefail
+          dotnet list Degerli.sln package --vulnerable --include-transitive --no-restore \
+            --format json > "$RUNNER_TEMP/nuget-vulnerabilities.json"
+          python3 - "$RUNNER_TEMP/nuget-vulnerabilities.json" <<'PY'
+          import json, sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as fh:
+              report = json.load(fh)
+
+          # A restore failure surfaces here as a `problems` entry, not as a finding.
+          # Treat it as blocking: an audit that could not run is not a clean audit.
+          problems = [p for p in report.get("problems", []) if p.get("level") == "error"]
+          if problems:
+              for problem in problems:
+                  print(f"::error::NuGet audit could not run: {problem.get('text')}")
+              sys.exit(1)
+
+          # Fail on high/critical; an advisory whose severity this SDK does not
+          # name is treated as blocking too (unknown is not "safe").
+          blocking = {"high", "critical"}
+          findings = []
+          for project in report.get("projects", []):
+              for framework in project.get("frameworks", []):
+                  for kind in ("topLevelPackages", "transitivePackages"):
+                      for package in framework.get(kind, []):
+                          for vuln in package.get("vulnerabilities", []):
+                              severity = (vuln.get("severity") or "unknown").lower()
+                              findings.append(
+                                  (severity, project.get("path"), framework.get("framework"),
+                                   package.get("id"), package.get("resolvedVersion"),
+                                   vuln.get("advisoryurl"))
+                              )
+
+          for severity, project, framework, package, version, url in sorted(findings):
+              print(f"{severity:8} {package} {version} ({framework}) in {project} — {url}")
+
+          blocking_hits = [f for f in findings if f[0] in blocking or f[0] == "unknown"]
+          if blocking_hits:
+              print(f"::error::{len(blocking_hits)} high/critical (or unrated) NuGet vulnerability finding(s).")
+              sys.exit(1)
+          print(f"NuGet audit clean ({len(findings)} low/moderate finding(s), none blocking).")
+          PY
+
+      # --- npm ----------------------------------------------------------------
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      # `npm audit` reads the committed lockfile; no install is needed for it.
+      - name: Audit web dependencies
+        working-directory: src/Web
+        run: npm audit --audit-level=high
+
+      - name: Audit e2e dependencies
+        working-directory: tests/e2e
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # 3. Containers — build the two images deploy.yml ships and scan what actually
+  #    runs in production. An image scan (not `trivy fs`) is the pinned choice:
+  #    it covers the base OS layers, which a filesystem scan of this checkout
+  #    cannot see at all.
+  # ---------------------------------------------------------------------------
+  containers:
+    name: Containers (Trivy image scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Trivy (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+          install -m 0755 "$RUNNER_TEMP/trivy" /usr/local/bin/trivy
+          trivy --version
+
+      # The exact production Dockerfiles (deploy.yml builds the same two files).
+      - name: Build API image
+        run: docker build -f src/Api/Dockerfile -t degerli-api:scan .
+
+      - name: Build web (Caddy + SPA) image
+        run: docker build -f deploy/caddy/Dockerfile -t degerli-web:scan .
+
+      - name: Scan API image (HIGH, CRITICAL)
+        run: |
+          trivy image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --no-progress \
+            --ignorefile .trivyignore.yaml \
+            degerli-api:scan
+
+      - name: Scan web image (HIGH, CRITICAL)
+        run: |
+          trivy image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --no-progress \
+            --ignorefile .trivyignore.yaml \
+            degerli-web:scan

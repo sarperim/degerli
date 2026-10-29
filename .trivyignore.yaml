@@ -1,0 +1,80 @@
+# Container-scan baseline (architecture 01-system-architecture.md §6.3;
+# ticket TKT-foundation-066). Consumed explicitly by the `Containers (Trivy image
+# scan)` job: `trivy image --ignorefile .trivyignore.yaml ...`.
+#
+# Empty by default, and that is the goal: every finding in a shipped image is a
+# finding this file does NOT hide. An entry exists only when the fix CANNOT be made in
+# this repository, and each one is per-finding (an exact CVE id, scoped to the exact
+# binary path), dated, owned, and self-expiring.
+#
+# Two properties make this a gate rather than a mute button:
+#   1. `expired_at` is enforced by Trivy — on the day it passes, the entry stops
+#      applying and the CVE fails the build again. Silence is temporary, by design.
+#   2. Scope is narrow: `paths` pins the finding to the exact target inside the image,
+#      so the same CVE appearing in a different layer (or a new package) is still red.
+#
+# Rules: never a bare id (always `paths`), never a wildcard path, never an id without a
+# `statement` and an `expired_at`, never an entry for something this repo could fix —
+# and no entry at all for a CRITICAL whose fix is available from Alpine, since that is
+# a one-line Dockerfile change, not a baseline.
+
+version: 1
+
+vulnerabilities:
+  # --- owner: builder (sarperim); review by 2026-12-31 -----------------------
+  # All seven are inside the Caddy server binary itself (`/usr/bin/caddy`), which the
+  # upstream `caddy:2` image ships prebuilt with a fixed Go toolchain. They are not
+  # fixable from this repository: they need an upstream Caddy rebuild (a newer caddy
+  # release), and the Alpine base-image findings in this same image were NOT
+  # baselined — they were fixed by `RUN apk upgrade --no-cache` in
+  # deploy/caddy/Dockerfile.
+  # Re-check: pull the newest `caddy:2`, rebuild, and delete whatever no longer
+  # reports. When Caddy ships a Go 1.26.10+/1.27.3+ build, all of these disappear.
+  - id: CVE-2026-116587
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      go-jose DoS via crafted RSA parameters in JWKs. Vendored inside the upstream
+      Caddy binary (go-jose v3 and v4); no Caddy release carries the fixed versions
+      yet. Not reachable from this app's own code — Caddy uses ACME, not the JWK path.
+      Owner: builder. Re-check when Caddy ships a build with go-jose >= 4.1.6.
+    expired_at: 2026-12-31
+
+  - id: CVE-2026-78669
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Go net/http HTTP/2 SETTINGS-flood DoS (via golang.org/x/net). Upstream Caddy
+      binary, unfixable here; the API image's own runtime is a separate scan target
+      and is clean.
+      Owner: builder. Re-check when Caddy ships x/net >= 0.60.0.
+    expired_at: 2026-12-31
+
+  - id: CVE-2026-111943
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Go crypto/x509 MITM via untrusted intermediate certificates (Go stdlib 1.26.8
+      as built into the upstream Caddy binary). Needs a Caddy rebuild on Go >=
+      1.26.10 / 1.27.3; not fixable from this repo.
+      Owner: builder. Re-check when Caddy ships a rebuild.
+    expired_at: 2026-12-31
+
+  - id: CVE-2026-78667
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Go net/http DoS via crafted Range headers (Go stdlib 1.26.8 in the upstream
+      Caddy binary). Not fixable from this repo; needs an upstream rebuild.
+      Owner: builder. Re-check when Caddy ships Go >= 1.26.9 / 1.27.2.
+    expired_at: 2026-12-31
+
+  - id: CVE-2026-97031
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Go crypto/tls DoS via multiple ECH outer extension references (Go stdlib 1.26.8
+      in the upstream Caddy binary). Not fixable from this repo; needs an upstream
+      rebuild. ECH is not configured on this deployment's Caddyfile.
+      Owner: builder. Re-check when Caddy ships Go >= 1.26.9 / 1.27.2.
+    expired_at: 2026-12-31
