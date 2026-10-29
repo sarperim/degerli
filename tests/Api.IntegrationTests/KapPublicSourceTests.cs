@@ -905,7 +905,7 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
 
     // =================================================================================
     // TC-MDF-127 — the durable access fix: quota awareness, the export floor, the TLS shape
-    // (TKT-foundation-100, 01 v1.5.76 §10.9.19)
+    // (TKT-foundation-100, 01 v1.5.77 §10.9.19)
     // =================================================================================
 
     /// <summary>

@@ -40,7 +40,7 @@ public static class KapPublicReasonCodes
 
     /// <summary>
     /// A walk stopped because the source's <b>request quota</b> demanded a wait that is not
-    /// shorter than the caller's per-item bound (TKT-foundation-100, 01 v1.5.76 §10.9.19). The
+    /// shorter than the caller's per-item bound (TKT-foundation-100, 01 v1.5.77 §10.9.19). The
     /// excel export route answers <c>429</c> "Request Limit Exceeded" with an empty body and no
     /// <c>Retry-After</c>; the lane honors the quota, so it <b>does not</b> sleep past its own
     /// caller's bound — it stops at the last <b>completed</b> unit and the next pass resumes there.
@@ -55,7 +55,7 @@ public static class KapPublicReasonCodes
 
     /// <summary>
     /// A request answered <c>429</c> (the source's request quota) and stayed rate-limited after
-    /// the lane's <b>one</b> bounded re-issue (TKT-foundation-100, 01 v1.5.76 §10.9.19) — named
+    /// the lane's <b>one</b> bounded re-issue (TKT-foundation-100, 01 v1.5.77 §10.9.19) — named
     /// and counted, <b>never</b> a retry ladder. A <c>Retry-After</c> header is honored verbatim
     /// when present; the observed answer carries none, and then the configured conservative fixed
     /// backoff is used.
@@ -137,7 +137,7 @@ public sealed record KapPublicFetchResult<T>(
 
     /// <summary>
     /// True when the read stopped because the source's <b>request quota</b> demanded a wait longer
-    /// than the caller's per-item bound (TKT-foundation-100, 01 v1.5.76 §10.9.19) — a
+    /// than the caller's per-item bound (TKT-foundation-100, 01 v1.5.77 §10.9.19) — a
     /// <b>truncation</b> class (<see cref="KapPublicReasonCodes.WalkQuotaBackoff"/>), never a source
     /// failure and never a skip that gets marked done: the walk stops at the last completed unit and
     /// the next pass resumes there.

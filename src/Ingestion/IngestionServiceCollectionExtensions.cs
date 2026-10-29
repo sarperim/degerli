@@ -147,7 +147,7 @@ public static class IngestionServiceCollectionExtensions
             var options = provider.GetRequiredService<IOptions<KapPublicSourceOptions>>().Value;
             var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost" : options.BaseUrl;
 
-            // The transport is the lane's own (TKT-foundation-100, 01 v1.5.76 §10.9.19): the
+            // The transport is the lane's own (TKT-foundation-100, 01 v1.5.77 §10.9.19): the
             // 2026-10-28 finding is that KAP's edge refuses the .NET stack's TLS ClientHello after
             // a burst while curl/python succeed from the same host, so the handler presents a
             // browser-shaped fingerprint (TLS floor, browser-ordered cipher suites, h2/http1.1

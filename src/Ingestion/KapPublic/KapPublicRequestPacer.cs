@@ -12,7 +12,7 @@ namespace Degerli.Ingestion.KapPublic;
 public delegate Task KapPublicDelay(TimeSpan delay, CancellationToken cancellationToken);
 
 /// <summary>
-/// The two pacing paths of the lane (TKT-foundation-100, 01 v1.5.76 §10.9.19). The public site
+/// The two pacing paths of the lane (TKT-foundation-100, 01 v1.5.77 §10.9.19). The public site
 /// is one website with two very different cost profiles: the <b>general</b> path (the robots
 /// probe, a byCriteria list, an identity search — a few KiB of JSON) keeps the shipped 3 s
 /// politeness pace, while the <b>export</b> path (the ~1.8 MB excel report, whose route carries

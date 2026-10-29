@@ -110,7 +110,7 @@ public sealed class KapPublicSourceOptions
 
     /// <summary>
     /// The shipped <b>export-endpoint</b> pacing floor: <b>12,000 ms</b> (TKT-foundation-100,
-    /// 01 v1.5.76 §10.9.19). The excel export route carries a rolling per-IP request quota —
+    /// 01 v1.5.77 §10.9.19). The excel export route carries a rolling per-IP request quota —
     /// HTTP <c>429</c> "Request Limit Exceeded", empty body, <b>no</b> <c>Retry-After</c> — that
     /// accumulates under heavy use, while the <c>byCriteria</c>/<c>search</c> routes are
     /// unaffected. The floor was verified live by the 2026-10-28/29 relay runs, which serialized

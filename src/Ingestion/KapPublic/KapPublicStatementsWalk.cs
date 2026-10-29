@@ -335,7 +335,7 @@ public sealed class KapPublicStatementsWalker
                 if (replay.IsQuotaDeferred)
                 {
                     // The source's quota asked for a wait longer than this request's own bound
-                    // (TKT-foundation-100, 01 v1.5.76 §10.9.19): the pass stops here rather than
+                    // (TKT-foundation-100, 01 v1.5.77 §10.9.19): the pass stops here rather than
                     // sleeping past its caller. The replay consumes no tombstone — the backlog is
                     // exactly where it was, so the next pass resumes it.
                     truncated = true;
@@ -530,7 +530,7 @@ public sealed class KapPublicStatementsWalker
                         // The export quota demanded a wait longer than the request's per-item
                         // bound: do not sleep past it and do not mark this report done — stop at
                         // the last completed unit and let the next pass resume (TKT-foundation-100,
-                        // 01 v1.5.76 §10.9.19). The window is not closed, so the watermark stays.
+                        // 01 v1.5.77 §10.9.19). The window is not closed, so the watermark stays.
                         windowTruncated = true;
                         truncated = true;
                         truncationReason = read.ReasonCode;

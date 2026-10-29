@@ -38,7 +38,7 @@ public sealed class KapPublicSourceTimeoutException : Exception
 }
 
 /// <summary>
-/// The source's <b>request quota</b> answered <c>429</c> (TKT-foundation-100, 01 v1.5.76
+/// The source's <b>request quota</b> answered <c>429</c> (TKT-foundation-100, 01 v1.5.77
 /// §10.9.19). Two outcomes share this type because they are one story told honestly:
 /// <list type="bullet">
 /// <item><b>rate-limited</b> — the lane waited its one bounded backoff, re-issued exactly once and
@@ -78,7 +78,7 @@ public sealed class KapPublicQuotaException : Exception
 }
 
 /// <summary>
-/// Builds the lane's <b>browser-shaped</b> transport (TKT-foundation-100, 01 v1.5.76 §10.9.19).
+/// Builds the lane's <b>browser-shaped</b> transport (TKT-foundation-100, 01 v1.5.77 §10.9.19).
 /// The <c>2026-10-28</c> finding: after a burst the edge refused the .NET <c>HttpClient</c> at the
 /// <b>transport</b> level (connection reset / timeout) while curl and python urllib succeeded from
 /// the same host and even the same container — an escalation of the 087/091 User-Agent finding to
@@ -428,7 +428,7 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
                     break;
                 }
 
-                // A 429 is the source's *quota* answering (TKT-foundation-100, 01 v1.5.76
+                // A 429 is the source's *quota* answering (TKT-foundation-100, 01 v1.5.77
                 // §10.9.19): a named outcome, never a silent retry ladder. The wait is the
                 // source's own Retry-After when it sends one, and the conservative fixed backoff
                 // when it does not (the observed answer: empty body, no header).
