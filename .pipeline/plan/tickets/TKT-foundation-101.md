@@ -35,7 +35,7 @@ scope:
 
 ## Implementation record (2026-10-29, implementation lane)
 
-**PR:** <!-- PR_LINK --> (branch `tkt-foundation-101`, against `dev`).
+**PR:** https://github.com/sarperim/degerli/pull/163 (branch `tkt-foundation-101`, against `dev`).
 
 ### The diagnosis, recorded before any code changed — and it corrects the ticket's hypothesis
 
