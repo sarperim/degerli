@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-097: The SCR-005 capital & dilution tracker and key value metrics & moat panel — the user's v0 spec's remaining two blocks rendered on the stock page
 
-- Status: in-review
+- Status: done (PR #162 squash-merged 976dda3; 2 review rounds, round-2 verdict MERGEABLE — window-honesty fix verified, basis/median honesty clean, page-computes-nothing confirmed; routing items DR-11/DR-12, SEC-1/3/4/5, TC-RES-038→041 planner correction, UXR-RES-026/027 coverage gap recorded; LIVE CRITERION PENDING: rendered-page smoke on dev stack, post-walk)
 - PR: https://github.com/sarperim/degerli/pull/162 (base `dev`)
 - Size: M
 - **Priority: P1 — slice 5 (final) of the 2026-10-28 financial-statements view wave. The user's spec lives verbatim on TKT-foundation-095; this ticket renders the last two blocks, consuming TKT-foundation-096's `GET /stocks/{symbol}/key-metrics` payload.**
