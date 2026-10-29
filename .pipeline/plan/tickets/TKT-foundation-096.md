@@ -41,6 +41,8 @@ scope:
 
 ## Implementation record — 2026-10-29 (implementation lane)
 
+- **PR:** https://github.com/sarperim/degerli/pull/158 (branch `tkt-foundation-096`, base `dev`)
+
 **What landed, file by file.**
 
 - `src/Core/Metrics/MetricCodes.cs` — **17 new codes**, `MetricCodes.All` 26 → 43 (25 non-growth + 18
