@@ -574,9 +574,28 @@ public sealed class StatementsJob : IIngestJob
 
                         foreach (var reasonCode in outcome.RejectedReasonCodes)
                         {
+                            // A bare reason code is not a diagnosis (TKT-foundation-101; FR-MDF-012,
+                            // NFR-MDF-001). The store reads the same predicates it refused on and
+                            // names the specific clause that fired, and the quarantine row keeps a
+                            // bounded excerpt of the decoded report beside it — so this refusal is
+                            // diagnosable from the system's own record, not from a re-fetch. The
+                            // payload handed to the describer is the one the store saw (`keep`),
+                            // never the whole report, so the detail cannot describe facts that were
+                            // withheld before the store was asked.
+                            var detail = FinancialStatementStore.DescribeRefusal(
+                                report.Payload with { Statements = keep },
+                                reasonCode,
+                                report.Header.PresentationUnit);
                             _logger.LogWarning(
-                                "statements: refused public-site payload for {Symbol} ({ReasonCode})", symbol, reasonCode);
-                            await QuarantineAsync(KapPublicSourceOptions.SourceName, null, reasonCode, token)
+                                "statements: refused public-site payload for {Symbol} ({ReasonCode}): {RefusalDetail}",
+                                symbol,
+                                reasonCode,
+                                detail);
+                            await QuarantineAsync(
+                                    KapPublicSourceOptions.SourceName,
+                                    RefusalEvidence(symbol, disclosureIndex, reasonCode, detail, report),
+                                    reasonCode,
+                                    token)
                                 .ConfigureAwait(false);
                             symbolQuarantined++;
                         }
@@ -793,6 +812,88 @@ public sealed class StatementsJob : IIngestJob
 
         return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
+
+    /// <summary>
+    /// The evidence a quarantine row keeps for a payload the <b>store refused</b> (TKT-foundation-101;
+    /// FR-MDF-012, NFR-MDF-001): before this, the refusal path passed <c>null</c> and the row recorded
+    /// <i>that</i> a filing was refused but nothing about <i>what</i> was refused — 292 rows of exactly
+    /// that shape on 2026-10-28, GUBRF's five filings among them.
+    /// <para>
+    /// <b>Bounded by construction (the capture doctrine).</b> A live FR export is ~1.3 MB; the row
+    /// keeps the decode's own digest instead of the body: the filing's identity block verbatim (the
+    /// <c>Sunum Para Birimi</c> declaration that caused this ticket's refusal among it), the decode's
+    /// counts, and the first <see cref="RefusalEvidenceMaxFindings"/> honesty findings with their
+    /// excerpts clipped to <see cref="RefusalEvidenceMaxExcerpt"/> characters — a few kilobytes at
+    /// most, never a body. The full detail of the refusal itself is carried verbatim on
+    /// <c>detail</c>, because that is the sentence a reader came for.
+    /// </para>
+    /// </summary>
+    private static string RefusalEvidence(
+        string symbol,
+        long disclosureIndex,
+        string reasonCode,
+        string detail,
+        KapPublicReport report)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("symbol", symbol);
+            writer.WriteNumber("kapPublicDisclosureIndex", disclosureIndex);
+            writer.WriteString("sourceRef", report.SourceRef);
+            writer.WriteString("reasonCode", reasonCode);
+            writer.WriteString("detail", detail);
+            writer.WriteStartObject("filing");
+            writer.WriteString("companyName", report.Header.CompanyName);
+            writer.WriteString(
+                "submittedAt",
+                report.Header.SubmittedAt?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("periodType", report.Header.PeriodType);
+            writer.WriteString("presentationUnit", report.Header.PresentationUnit);
+            writer.WriteString("unitScale", report.Header.UnitScale);
+            writer.WriteString("currency", report.Header.Currency);
+            writer.WriteString("consolidationType", report.Header.ConsolidationType);
+            writer.WriteEndObject();
+            writer.WriteStartObject("decode");
+            writer.WriteNumber("statementCount", report.Payload.Statements.Count);
+            writer.WriteNumber("lineCount", report.Lines.Count);
+            writer.WriteNumber("findingCount", report.Findings.Count);
+            writer.WriteBoolean("findingsTruncated", report.Findings.Count > RefusalEvidenceMaxFindings);
+            writer.WriteStartArray("findings");
+            foreach (var finding in report.Findings.Take(RefusalEvidenceMaxFindings))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("reasonCode", finding.ReasonCode);
+                writer.WriteNumber("count", finding.Count);
+                writer.WriteString("statementType", finding.StatementType);
+                writer.WriteString("label", finding.Label);
+                writer.WriteString("detail", Clip(finding.Detail, RefusalEvidenceMaxExcerpt));
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.WriteString(
+                "note",
+                "the store refused this decoded payload; the row keeps the filing's identity block, the " +
+                "decode's counts and a bounded excerpt of its findings instead of the ~1.3 MB body, so the " +
+                "refusal is diagnosable from the system's own record. `detail` names the clause that fired.");
+            writer.WriteEndObject();
+        }
+
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>How many of a refused decode's findings its quarantine evidence carries.</summary>
+    private const int RefusalEvidenceMaxFindings = 12;
+
+    /// <summary>How many characters of one finding's excerpt a quarantine row keeps.</summary>
+    private const int RefusalEvidenceMaxExcerpt = 240;
+
+    /// <summary><paramref name="value"/> clipped to <paramref name="max"/> characters, marked when it was.</summary>
+    private static string Clip(string value, int max) =>
+        value.Length <= max ? value : value[..max] + "…";
 
     /// <summary>The evidence a quarantine row keeps for an unmapped company (no oid was invented).</summary>
     private static string IdentityEvidence(string symbol)

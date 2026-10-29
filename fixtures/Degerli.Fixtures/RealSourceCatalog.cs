@@ -143,6 +143,15 @@ public static class RealSourceCatalog
     // liabilities, deferred revenue, the equity block and the CF detail lines). A BOUNDED
     // TRIM of the live export, committed as a double and labelled as such.
     public const string KapPublicReportThyao = "kap-public-report-1565996";
+
+    // TKT-foundation-101's capture: the FR body whose `Sunum Para Birimi` is a BARE currency
+    // (`TL`, no multiplier) — every other committed body declares a multiplier (`1.000 TL`,
+    // `1.000.000 TL`). It is the evidence the decoder's bare-currency reading is authored
+    // against, and it is NOT a GUBRF body: the file the orchestrator's 2026-10-29 paced pass
+    // produced (`/tmp/opencode/captures/kap-export-GUBRF-1605802.json`) carries ASTOR ENERJİ
+    // A.Ş.'s heading and disclosure index 1605802, so it is labelled for what it actually is
+    // (see the label below). A BOUNDED TRIM of the export, committed as a double.
+    public const string KapPublicReportAstorQ1 = "kap-public-report-1605802";
     public const string KapPublicIdentity = "kap-public-identity-ASELS";
 
     // TKT-foundation-091's comma-coded identity answers. Run 301 (TKT-foundation-087's live pass)
@@ -225,6 +234,7 @@ public static class RealSourceCatalog
         KapPublicReportAselsAnnual,
         KapPublicReportMgros,
         KapPublicReportThyao,
+        KapPublicReportAstorQ1,
         KapPublicIdentity,
         KapPublicIdentityGaranCommaCoded,
         KapPublicIdentityIsctrCommaCoded,
@@ -662,6 +672,26 @@ public static class RealSourceCatalog
 </body>
 </html>
 """;
+
+    private const string KapPublicReportAstorQ1Label =
+        "Captured live into /tmp/opencode/captures/kap-export-GUBRF-1605802.json on 2026-10-29 " +
+        "(the orchestrator's paced pass; TKT-foundation-101 issued ZERO live requests): the FR " +
+        "export answer for disclosure index 1605802 — company heading 'ASTOR ENERJİ A.Ş.' / " +
+        "'Finansal Rapor', Gönderim Tarihi 11.05.2026 22:38:31, Bildirim Tipi FR, Yıl 2026 / " +
+        "Periyot 1, Finansal Tablo Niteliği Konsolide. HONESTY, stated on the entry itself: the " +
+        "capture was filed under the GUBRF name, but its own <h1> and its own disclosure index " +
+        "name ASTOR ENERJİ — nothing in this body is GUBRF data and none is treated as such. Its " +
+        "evidentiary value is the presentation-unit declaration: 'Sunum Para Birimi' is the BARE " +
+        "currency 'TL' (no multiplier), the shape the decoder could not read and the store " +
+        "therefore refused as SCHEMA_MISMATCH. BOUNDED TRIM, honestly labelled: the header " +
+        "metadata block is kept verbatim; the balance sheet (tbl_general_role_210015, 443,752 of " +
+        "1,278,975 body bytes) and the income statement (tbl_general_role_310003, 230,636 bytes) " +
+        "are kept COMPLETE, each with its headings and column-context headers; the cash-flow " +
+        "(tbl_general_role_520003) and equity (tbl_general_role_610000) tables are omitted whole " +
+        "rather than trimmed mid-table. Every retained value is real and the retained tables " +
+        "decode to the same rows and figures as the whole document. This is NOT a byte-verbatim " +
+        "capture of the whole document.";
+
 
     // The byCriteria FR window for ASELS (the lane's list double).
     private const string KapPublicByCriteriaJson = """[{"publishDate":"25.09.2026 18:15:28","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"ODA","disclosureCategory":"ODA","summary":"2025 TSRS Uyumlu Sürdürülebilirlik Raporu'nun Kamuya Açıklanması","subject":"TSRS Uyumlu Sürdürülebilirlik Raporu","relatedStocks":null,"year":2025,"ruleType":"Yıllık","period":1,"disclosureIndex":1668298,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":0,"modifyStatus":null},{"publishDate":"04.08.2026 18:39:55","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"4 Ağustos 2026 Z-AS331-843.05.01-24724","subject":"Sorumluluk Beyanı (Konsolide)","relatedStocks":null,"year":2026,"ruleType":"6 Aylık","period":2,"disclosureIndex":1643142,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":false,"attachmentCount":0,"modifyStatus":null},{"publishDate":"04.08.2026 18:39:41","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"FR","summary":null,"subject":"Finansal Rapor","relatedStocks":null,"year":2026,"ruleType":"6 Aylık","period":2,"disclosureIndex":1643141,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null},{"publishDate":"04.08.2026 18:39:22","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"4 Ağustos 2026 1315 Sayılı Yönetim Kurulu Kararı","subject":"Faaliyet Raporu (Konsolide)","relatedStocks":null,"year":2026,"ruleType":"6 Aylık","period":2,"disclosureIndex":1643140,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null},{"publishDate":"28.04.2026 18:32:04","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"28 Nisan 2026 Z-AS331-843.05.01-10727","subject":"Sorumluluk Beyanı (Konsolide)","relatedStocks":null,"year":2026,"ruleType":"3 Aylık","period":1,"disclosureIndex":1598321,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":false,"attachmentCount":0,"modifyStatus":null},{"publishDate":"28.04.2026 18:31:52","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"28 Nisan 2026 1304 Sayılı Yönetim Kurulu Kararı","subject":"Faaliyet Raporu (Konsolide)","relatedStocks":null,"year":2026,"ruleType":"3 Aylık","period":1,"disclosureIndex":1598319,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null},{"publishDate":"28.04.2026 18:31:38","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"FR","summary":null,"subject":"Finansal Rapor","relatedStocks":null,"year":2026,"ruleType":"3 Aylık","period":1,"disclosureIndex":1598316,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null},{"publishDate":"24.02.2026 18:27:48","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"24 Şubat 2026 AS011-2026-0001","subject":"Sorumluluk Beyanı (Konsolide)","relatedStocks":null,"year":2025,"ruleType":"Yıllık","period":4,"disclosureIndex":1561040,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":false,"attachmentCount":0,"modifyStatus":null},{"publishDate":"24.02.2026 18:27:36","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"FR","summary":null,"subject":"Finansal Rapor","relatedStocks":null,"year":2025,"ruleType":"Yıllık","period":4,"disclosureIndex":1561039,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null},{"publishDate":"24.02.2026 18:27:13","fundCode":null,"kapTitle":"ASELSAN ELEKTRONİK SANAYİ VE TİCARET A.Ş.","isOldKap":false,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"ODA","summary":"24 Şubat 2026 1293 Sayılı Yönetim Kurulu Kararı","subject":"Faaliyet Raporu (Konsolide)","relatedStocks":null,"year":2025,"ruleType":"Yıllık","period":4,"disclosureIndex":1561038,"isLate":false,"stockCodes":"ASELS","hasMultiLanguageSupport":true,"attachmentCount":2,"modifyStatus":null}]""";
@@ -41858,6 +41888,13820 @@ public static class RealSourceCatalog
 </html>
 """";
 
+    // TKT-foundation-101 — the bare-currency (`TL`) FR body; see the capture label above.
+    private const string KapPublicReportAstorQ1Html = """"
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+ <head>
+  <meta http-equiv="Content-Type" content="text/html;" charset="utf-8">
+  <meta name="ProgId" content="Excel.Sheet">
+  <meta name="Generator" content="Microsoft Excel 11">
+  <title>Document and Custom Property </title><!--[if gte mso 9]><xml><o:CustomDocumentProperties><o:BUSINESSGROUP dt:dt="string">CHANNELA</o:BUSINESSGROUP><o:BUSINESSGROUPID dt:dt="string">2</o:BUSINESSGROUPID></o:CustomDocumentProperties></xml><![endif]-->
+  <style> body { text-align: left; } </style>
+ </head>
+ <body>
+  <h1 style="font-size: medium">ASTOR ENERJİ A.Ş.</h1>
+  <h1 style="font-size: medium">Finansal Rapor</h1>
+  <div>
+   Gönderim Tarihi:11.05.2026 22:38:31
+  </div>
+  <div>
+   Bildirim Tipi:FR
+  </div>
+  <div>
+   Yıl:2026
+  </div>
+  <div>
+   Periyot:1
+  </div>
+  <div>
+   <table class="financial-header-table" border="1" style="font-size:10px">
+    <tbody>
+     <tr>
+      <td class="financial-header-title">Sunum Para Birimi</td>
+      <td>TL</td>
+     </tr>
+     <tr>
+      <td class="financial-header-title">Finansal Tablo Niteliği</td>
+      <td>Konsolide</td>
+     </tr>
+    </tbody>
+   </table>
+   <table class="financial-table tbl_general_role_210015" border="1" style="font-size:10px">
+    <tbody>
+     <tr>
+      <td colspan="3" rowspan="1">
+       <div class="gwt-Label"></div></td>
+      <td align="center" class="context-header" column-id="5">
+       <div>
+        <div class="gwt-HTML multi-language-content content-tr" style="display: block;">
+         Cari Dönem
+         <br>
+         31.03.2026
+        </div>
+       </div></td>
+      <td align="center" class="context-header" column-id="6">
+       <div>
+        <div class="gwt-HTML multi-language-content content-tr" style="display: block;">
+         Önceki Dönem
+         <br>
+         31.12.2025
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-1 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Durum Tablosu (Bilanço)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-2 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-3 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DÖNEN VARLIKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-4 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit ve Nakit Benzerleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         3
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1924174870">
+         1.924.174.870
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1403812199">
+         1.403.812.199
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-5 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gayrimenkul Projeleri Kapsamında Açılan Nakit Hesapları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-6 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         3
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="13091843348">
+         13.091.843.348
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="12396907301">
+         12.396.907.301
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-7 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanımı Kısıtlı Banka Bakiyeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-8 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Vadeli Mevduatlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-9 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-10 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Vadeye Kadar Elde Tutulacak Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-11 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-12 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Elde Tutulan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-13 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılarak Ölçülen Diğer Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-14 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılan Olarak Sınıflandırılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-15 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yatırım Riski Hayat Poliçesi Sahiplerine Ait Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-16 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-17 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılarak Ölçülen Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-18 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yapılan Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-19 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İtfa Edilmiş Maliyetiyle Ölçülen Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-20 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-21 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Teminata Verilen Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-22 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="11232656102">
+         11.232.656.102
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="12938105434">
+         12.938.105.434
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-23 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         5,17
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="348785514">
+         348.785.514
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="167539911">
+         167.539.911
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-24 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         5
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="10883870588">
+         10.883.870.588
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="12770565523">
+         12.770.565.523
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-25 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-26 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Taraflardan Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-27 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Olmayan Taraflardan Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-28 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türkiye Cumhuriyet Merkez Bankası Hesabı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-29 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="662150389">
+         662.150.389
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="497229202">
+         497.229.202
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-30 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-31 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="662150389">
+         662.150.389
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="497229202">
+         497.229.202
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-32 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Müşteri Sözleşmelerinden Doğan Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-33 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devam Eden İnşaat ve Taahhüt İşlerinden Doğan Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-34 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Mal ve Hizmet Satışlarından Doğan Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-35 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-36 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İmtiyaz Sözleşmelerine İlişkin Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-37 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-38 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-39 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Riskten Korunma Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-40 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Stoklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         6
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="8923483357">
+         8.923.483.357
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="8579499804">
+         8.579.499.804
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-41 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Proje Halindeki Stoklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-42 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Canlı Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-43 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         8
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="5681278386">
+         5.681.278.386
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3559822874">
+         3.559.822.874
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-44 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-45 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-46 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Sigortacılık Üretim Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-47 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Cari Dönem Vergisiyle İlgili Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-48 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Dışı Serbest Kullanılabilir Teminatlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-49 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Dönen Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="34933613">
+         34.933.613
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="35228643">
+         35.228.643
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-50 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Diğer Dönen Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-51 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Diğer Dönen Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-52 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel alternativeTotalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            ARA TOPLAM
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="41550520065">
+         41.550.520.065
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="39410605457">
+         39.410.605.457
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-53 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satış Amaçlı Sınıflandırılan Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-54 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ortaklara Dağıtılmak Üzere Elde Tutulan Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-55 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM DÖNEN VARLIKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="41550520065">
+         41.550.520.065
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="39410605457">
+         39.410.605.457
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-56 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DURAN VARLIKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-57 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         3
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="2288399242">
+         2.288.399.242
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="2174180907">
+         2.174.180.907
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-58 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanımı Kısıtlı Banka Bakiyeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-59 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Vadeli Mevduatlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-60 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-61 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Vadeye Kadar Elde Tutulacak Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-62 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-63 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Elde Tutulan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-64 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılarak Ölçülen Diğer Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-65 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Kar/Zarara Yansıtılan Olarak Sınıflandırılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-66 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yatırım Riski Hayat Poliçesi Sahiplerine Ait Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-67 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-68 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılarak Ölçülen Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-69 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yapılan Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-70 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İtfa Edilmiş Maliyetiyle Ölçülen Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-71 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Finansal Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-72 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İştirakler, İş Ortaklıkları ve Bağlı Ortaklıklardaki Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-73 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-74 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-75 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Ticari Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-76 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-77 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Taraflardan Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-78 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Olmayan Taraflardan Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-79 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="65101104">
+         65.101.104
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="59187667">
+         59.187.667
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-80 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-81 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Diğer Alacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="65101104">
+         65.101.104
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="59187667">
+         59.187.667
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-82 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Müşteri Sözleşmelerinden Doğan Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-83 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devam Eden İnşaat ve Taahhüt İşlerinden Doğan Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-84 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Mal ve Hizmet Satışlarından Doğan Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-85 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Sözleşme Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-86 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İmtiyaz Sözleşmelerine İlişkin Finansal Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-87 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-88 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-89 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Riskten Korunma Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-90 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Stoklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-91 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-92 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Canlı Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-93 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yatırım Amaçlı Gayrimenkuller
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-94 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Proje Halindeki Yatırım Amaçlı Gayrimenkuller
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-95 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         7
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="11539335623">
+         11.539.335.623
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="10990141371">
+         10.990.141.371
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-96 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Arazi ve Arsalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-97 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yeraltı ve Yerüstü Düzenlemeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-98 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Binalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-99 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Tesis, Makine ve Cihazlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-100 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Taşıtlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-101 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Mobilya ve Demirbaşlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-102 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özel Maliyetler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-103 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Taşıyıcı Bitkiler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-104 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özel Tükenmeye Tabi Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-105 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yapılmakta Olan Yatırımlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-106 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Faaliyet Kiralamasına Konu Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-107 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Maddi Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-108 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanım Hakkı Varlıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-109 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Olmayan Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="2077650921">
+         2.077.650.921
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1825688240">
+         1.825.688.240
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-110 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Şerefiye
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         7
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="325976592">
+         325.976.592
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="136113242">
+         136.113.242
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-111 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İmtiyaz Sözleşmelerinden Doğan Haklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-112 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Haklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-113 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Patentler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-114 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Markalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-115 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Lisanslar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-116 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Bilgisayar Yazılımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-117 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Aktifleştirilen Geliştirme Maliyetleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-118 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Maddi Olmayan Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         7
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1751674329">
+         1.751.674.329
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1689574998">
+         1.689.574.998
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-119 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="357716398">
+         357.716.398
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="358657245">
+         358.657.245
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-120 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-121 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Peşin Ödenmiş Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-122 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Vergi Varlığı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         12
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="751979373">
+         751.979.373
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="954773078">
+         954.773.078
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-123 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Cari Dönem Vergisiyle İlgili Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-124 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Dışı Serbest Kullanılabilir Teminatlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-125 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-126 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara İlişkin Diğer Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-127 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara İlişkin Diğer Duran Varlıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-128 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM DURAN VARLIKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="17080182661">
+         17.080.182.661
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="16362628508">
+         16.362.628.508
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-129 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM VARLIKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="58630702726">
+         58.630.702.726
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="55773233965">
+         55.773.233.965
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-130 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            KAYNAKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-131 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            KISA VADELİ YÜKÜMLÜLÜKLER
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-132 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kısa Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         4
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="3808173000">
+         3.808.173.000
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="5000624422">
+         5.000.624.422
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-133 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Kısa Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-134 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-135 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-136 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-137 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kısa Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-138 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Kısa Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-139 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-140 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-141 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-142 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kısa Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-143 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="34493171">
+         34.493.171
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="79692660">
+         79.692.660
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-144 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-145 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-146 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-147 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-148 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-149 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-150 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-151 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-152 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-153 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-154 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Finansal Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-155 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylara İlişkin Satış Opsiyon Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-156 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Teminat Sözleşmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-157 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Muhtelif Finansal Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-158 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3183644151">
+         3.183.644.151
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3581431630">
+         3.581.431.630
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-159 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         5,17
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="46519826">
+         46.519.826
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="508333">
+         508.333
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-160 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         5
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3137124325">
+         3.137.124.325
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3580923297">
+         3.580.923.297
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-161 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-162 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Taraflara Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-163 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Olmayan Taraflara Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-164 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Çalışanlara Sağlanan Faydalar Kapsamında Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="375214679">
+         375.214.679
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="383911084">
+         383.911.084
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-165 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-166 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-167 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-168 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Müşteri Sözleşmelerinden Doğan Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-169 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devam Eden İnşaat ve Taahhüt İşlerinden Doğan Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-170 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Mal ve Hizmet Satışlarından Doğan Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-171 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-172 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımlardan Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-173 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-174 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-175 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Riskten Korunma Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-176 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devlet Teşvik ve Yardımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-177 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         10
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="9138402213">
+         9.138.402.213
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="9010253745">
+         9.010.253.745
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-178 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-179 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-180 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Dönem Karı Vergi Yükümlülüğü
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="137318033">
+         137.318.033
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="142403024">
+         142.403.024
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-181 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kısa Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="366930997">
+         366.930.997
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="377424957">
+         377.424.957
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-182 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Çalışanlara Sağlanan Faydalara İlişkin Kısa Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="66533648">
+         66.533.648
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="77316714">
+         77.316.714
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-183 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sigortacılık Teknik Karşılıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-184 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kısa Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="300397349">
+         300.397.349
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="300108243">
+         300.108.243
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-185 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kısa Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="483390903">
+         483.390.903
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="479941029">
+         479.941.029
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-186 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Diğer Kısa Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-187 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Diğer Kısa Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-188 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel alternativeTotalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            ARA TOPLAM
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="17527567147">
+         17.527.567.147
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="19055682551">
+         19.055.682.551
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-189 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satış Amaçlı Sınıflandırılan Varlık Gruplarına İlişkin Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-190 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ortaklara Dağıtılmak Üzere Elde Tutulan Varlık Gruplarına İlişkin Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-191 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM KISA VADELİ YÜKÜMLÜLÜKLER
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="17527567147">
+         17.527.567.147
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="19055682551">
+         19.055.682.551
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-192 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            UZUN VADELİ YÜKÜMLÜLÜKLER
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-193 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Uzun Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         4
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="2608648395">
+         2.608.648.395
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-194 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Uzun Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-195 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-196 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-197 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-198 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-199 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Uzun Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-200 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Banka Kredileri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-201 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kiralama İşlemlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-202 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İhraç Edilmiş Borçlanma Araçları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-203 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Borçlanmalar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-204 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Finansal Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-205 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylara İlişkin Satış Opsiyon Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-206 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Teminat Sözleşmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-207 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Muhtelif Finansal Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-208 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-209 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-210 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Ticari Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-211 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-212 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Taraflara Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-213 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden İlişkili Olmayan Taraflara Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-214 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Çalışanlara Sağlanan Faydalar Kapsamında Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-215 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-216 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-217 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Diğer Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-218 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Müşteri Sözleşmelerinden Doğan Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-219 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devam Eden İnşaat ve Taahhüt İşlerinden Doğan Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-220 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Mal ve Hizmet Satışlarından Doğan Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-221 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Sözleşme Yükümlülükleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-222 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımlardan Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-223 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-224 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Alım Satım Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-225 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Riskten Korunma Amaçlı Türev Araçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-226 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Devlet Teşvik ve Yardımları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-227 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-228 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflardan Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-229 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflardan Ertelenmiş Gelirler (Müşteri Sözleşmelerinden Doğan Yükümlülüklerin Dışında Kalanlar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-230 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Uzun Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="90921289">
+         90.921.289
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="96036553">
+         96.036.553
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-231 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Çalışanlara Sağlanan Faydalara İlişkin Uzun Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="90921289">
+         90.921.289
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="96036553">
+         96.036.553
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-232 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Genel Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-233 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Muhtemel Riskler İçin Ayrılan Serbest Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-234 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sigortacılık Teknik Karşılıkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-235 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Karşılıklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-236 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Cari Dönem Vergisiyle İlgili Borçlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-237 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Vergi Yükümlülüğü
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-238 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Uzun Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-239 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Taraflara Diğer Uzun Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-240 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İlişkili Olmayan Taraflara Diğer Uzun Vadeli Yükümlülükler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-241 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM UZUN VADELİ YÜKÜMLÜLÜKLER
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="2699569684">
+         2.699.569.684
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="96036553">
+         96.036.553
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-242 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM YÜKÜMLÜLÜKLER
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="20227136831">
+         20.227.136.831
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="19151719104">
+         19.151.719.104
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-243 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            ÖZKAYNAKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_210015-row-244 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ana Ortaklığa Ait Özkaynaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="38403565895">
+         38.403.565.895
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="36621514861">
+         36.621.514.861
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-245 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ödenmiş Sermaye
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         11
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="998000000">
+         998.000.000
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="998000000">
+         998.000.000
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-246 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sermaye Düzeltme Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         11
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="3260257254">
+         3.260.257.254
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="3260257254">
+         3.260.257.254
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-247 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Birleşme Denkleştirme Hesabı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-248 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pay Sahiplerinin İlave Sermaye Katkıları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-249 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sermaye Avansı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-250 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedVerboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Geri Alınmış Paylar (-)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-251 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Karşılıklı İştirak Sermaye Düzeltmesi (-)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-252 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Paylara İlişkin Primler (İskontolar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="3380982640">
+         3.380.982.640
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="3380982640">
+         3.380.982.640
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-253 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ortak Kontrole Tabi Teşebbüs veya İşletmeleri İçeren Birleşmelerin Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-254 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylara İlişkin Satış Opsiyon Değerleme Fonu
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-255 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pay Bazlı Ödemeler (-)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-256 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zararda Yeniden Sınıflandırılmayacak Birikmiş Diğer Kapsamlı Gelirler (Giderler)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1052203093">
+         1.052.203.093
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1056848256">
+         1.056.848.256
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-257 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yatırımlardan Kaynaklanan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-258 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yeniden Değerleme ve Ölçüm Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1052203093">
+         1.052.203.093
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1056848256">
+         1.056.848.256
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-259 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Duran Varlık Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1146458073">
+         1.146.458.073
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1146458073">
+         1.146.458.073
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-260 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Olmayan Duran Varlık Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-261 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanım Hakkı Varlıkları Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-262 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Tanımlanmış Fayda Planları Yeniden Ölçüm Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-94254980">
+         -94.254.980
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-89609817">
+         -89.609.817
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-263 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Yeniden Değerleme ve Ölçüm Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-264 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kredi Riskindeki Değişikliğe Bağlı Olarak Finansal Yükümlülüğün Gerçeğe Uygun Değerindeki Değişikliklerden Kaynaklanan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-265 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yapılan Yatırımlara İlişkin Finansal Riskten Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-266 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemi ile Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar veya Zararda Sınıflandırılmayacak Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-267 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Çevrim Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-268 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-269 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zararda Yeniden Sınıflandırılacak Birikmiş Diğer Kapsamlı Gelirler (Giderler)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-17884950">
+         -17.884.950
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="7175618">
+         7.175.618
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-270 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Çevrim Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-17884950">
+         -17.884.950
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="7175618">
+         7.175.618
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-271 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Riskten Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-272 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Akış Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-273 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmeye İlişkin Yatırım Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-274 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Riskten Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-275 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yeniden Değerleme ve Sınıflandırma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-276 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıkların Yeniden Değerleme ve/veya Sınıflandırma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-277 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklardan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-278 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Yeniden Değerleme ve Sınıflandırma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-279 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Opsiyonların Zaman Değerindeki Değişiklikler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-280 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Forward Sözleşmesinin Forward Bileşeninin Değerindeki Değişiklikler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-281 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Alım Satım Marjlarındaki Değişiklikler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-282 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemi ile Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar/Zararda Sınıflandırılacak Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-283 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-284 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kardan Ayrılan Kısıtlanmış Yedekler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1205720280">
+         1.205.720.280
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1205720280">
+         1.205.720.280
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-285 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sermayeye Eklenecek Gayrimenkul veya İştirak Satış Kazancı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-286 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yasal Yedekler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-287 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Geri Alınan Paylara İlişkin Yedekler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-288 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Girişim Sermayesi Fonu
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-289 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kısıtlanmış Yedekler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-290 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Özkaynak Payları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-291 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Yedekler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-292 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ödenen Kar Payı Avansları (Net) (-)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-293 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Geçmiş Yıllar Karları veya Zararları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="26712530813">
+         26.712.530.813
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="18273650069">
+         18.273.650.069
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-294 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Net Dönem Karı veya Zararı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1811756765">
+         1.811.756.765
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="8438880744">
+         8.438.880.744
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-295 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-296 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel totalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM ÖZKAYNAKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="38403565895">
+         38.403.565.895
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field totalLabel containsTotalLabel monetary-field-default" title="36621514861">
+         36.621.514.861
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_210015-row-297 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseTotalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM KAYNAKLAR
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseTotalLabel containsTotalLabel monetary-field-default" title="58630702726">
+         58.630.702.726
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseTotalLabel containsTotalLabel monetary-field-default" title="55773233965">
+         55.773.233.965
+        </div>
+       </div></td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+  <br>
+  <br>
+  <div style="margin: 10px 0; text-align: center; font-weight: bold;">
+   ----------------------------------------------------------------------------------------------------------------
+  </div>
+  <br>
+  <br>
+  <div>
+   <table class="financial-header-table" border="1" style="font-size:10px">
+    <tbody>
+     <tr>
+      <td class="financial-header-title">Sunum Para Birimi</td>
+      <td>TL</td>
+     </tr>
+     <tr>
+      <td class="financial-header-title">Finansal Tablo Niteliği</td>
+      <td>Konsolide</td>
+     </tr>
+    </tbody>
+   </table>
+   <table class="financial-table tbl_general_role_310003" border="1" style="font-size:10px">
+    <tbody>
+     <tr>
+      <td colspan="3" rowspan="1">
+       <div class="gwt-Label"></div></td>
+      <td align="center" class="context-header">
+       <div>
+        <div class="gwt-HTML multi-language-content content-tr" style="display: block;">
+         Cari Dönem
+         <br>
+         01.01.2026 - 31.03.2026
+        </div>
+       </div></td>
+      <td align="center" class="context-header">
+       <div>
+        <div class="gwt-HTML multi-language-content content-tr" style="display: block;">
+         Önceki Dönem
+         <br>
+         01.01.2025 - 31.03.2025
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-1 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zarar ve Diğer Kapsamlı Gelir Tablosu
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-2 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            KAR VEYA ZARAR KISMI
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-3 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Hasılat
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         13
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="9286457701">
+         9.286.457.701
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="8215343353">
+         8.215.343.353
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-4 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satışların Maliyeti
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-5762096344">
+         -5.762.096.344
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-5356057283">
+         -5.356.057.283
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-5 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TİCARİ FAALİYETLERDEN BRÜT KAR (ZARAR)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="3524361357">
+         3.524.361.357
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="2859286070">
+         2.859.286.070
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-6 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetleri Hasılatı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-7 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ücret, Prim, Komisyon ve Diğer Hizmet Gelirleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-8 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kambiyo Gelirleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-9 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Faiz Gelirleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-10 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar Payı Gelirleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-11 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Finansal İşlemlerden Kazanç
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-12 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Portföy İşletmeciliği Faaliyetinden Elde Edilen Gelir
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-13 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sigortacılık Hizmetlerinden Elde Edilen Gelir
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-14 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Emeklilik Hizmetlerinden Elde Edilen Gelir
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-15 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Varlık ve Yükümlülüklere İlişkin Gerçekleşmemiş Karlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-16 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Diğer Gelirler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-17 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetleri Maliyeti
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-18 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ücret, Prim, Komisyon ve Diğer Hizmet Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-19 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kambiyo Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-20 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Faiz Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-21 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar Payı Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-22 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Karşılık Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-23 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Türev Finansal İşlemlerden Zarar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-24 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Portföy İşletmeciliği Faaliyetinden Kaynaklanan Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-25 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sigortacılık Hizmetlerinden Kaynaklanan Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-26 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Emeklilik Hizmetlerinden Kaynaklanan Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-27 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansal Varlık ve Yükümlülüklere İlişkin Gerçekleşmemiş Zararlar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-28 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finans Sektörü Faaliyetlerinden Diğer Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-29 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            FİNANS SEKTÖRÜ FAALİYETLERİNDEN BRÜT KAR (ZARAR)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-30 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Canlı Varlıklar Gerçeğe Uygun Değer Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-31 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            BRÜT KAR (ZARAR)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="3524361357">
+         3.524.361.357
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="2859286070">
+         2.859.286.070
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-32 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedVerboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Genel Yönetim Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default" title="-200228796">
+         -200.228.796
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default" title="-184466912">
+         -184.466.912
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-33 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pazarlama Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-596400007">
+         -596.400.007
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-608907121">
+         -608.907.121
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-34 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Araştırma ve Geliştirme Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-43314041">
+         -43.314.041
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-37784480">
+         -37.784.480
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-35 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Esas Faaliyetlerden Diğer Gelirler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         14
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="1302018237">
+         1.302.018.237
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="990630498">
+         990.630.498
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-36 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedVerboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Esas Faaliyetlerden Diğer Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         14
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default" title="-1119772545">
+         -1.119.772.545
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default" title="-1181611809">
+         -1.181.611.809
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-37 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-38 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            ESAS FAALİYET KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="2866664205">
+         2.866.664.205
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1837146246">
+         1.837.146.246
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-39 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ödenecek Kar Paylarının Defter Değeri ile Dağıtılan Nakit Dışı Varlıkların Değeri Arasındaki Fark
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-40 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İtfa Edilmiş Maliyetinden Ölçülen Finansal Varlıkların Finansal Tablo Dışı Bırakılmasından Kaynaklanan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-41 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yatırım Faaliyetlerinden Gelirler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         15
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1265032469">
+         1.265.032.469
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="1170185709">
+         1.170.185.709
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-42 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yatırım Faaliyetlerinden Giderler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         15
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-132317652">
+         -132.317.652
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-24216699">
+         -24.216.699
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-43 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TFRS 9 Uyarınca Belirlenen Değer Düşüklüğü Kazançları (Zararları) ve Değer Düşüklüğü Zararlarının İptalleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-44 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Karlarından (Zararlarından) Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-45 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İştirakler, Müşterek Kontrol Edilen İşletmeler ve Bağlı Ortaklıklardan Diğer Gelirler (Giderler)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-46 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            İtfa Edilmiş Maliyetinden Ölçülen Finansal Varlıkların Gerçeğe Uygun Değer Farkı Kar veya Zarara Yansıtılan Olarak Sınıflandırılmasından Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-47 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıkların Gerçeğe Uygun Değer Farkı Kar veya Zarara Yansıtılan Olarak Sınıflandırılmasından Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-48 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Risk Pozisyonlarını Netleştiren Kalemler Grubuna Yönelik Finansal Riskten Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-49 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            FİNANSMAN GELİRİ (GİDERİ) ÖNCESİ FAALİYET KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="3999379022">
+         3.999.379.022
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="2983115256">
+         2.983.115.256
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-50 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansman Gelirleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         16
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="179593186">
+         179.593.186
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="602086433">
+         602.086.433
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-51 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Finansman Giderleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         16
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-311594338">
+         -311.594.338
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="-427122094">
+         -427.122.094
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-52 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Net Parasal Pozisyon Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="-2210184390">
+         -2.210.184.390
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standardLabel monetary-field-default" title="-2104659573">
+         -2.104.659.573
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-53 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            SÜRDÜRÜLEN FAALİYETLER VERGİ ÖNCESİ KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1657193480">
+         1.657.193.480
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1053420022">
+         1.053.420.022
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-54 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sürdürülen Faaliyetler Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="154563285">
+         154.563.285
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default" title="134017376">
+         134.017.376
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-55 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Dönem Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         12
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="-147966558">
+         -147.966.558
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="-150535867">
+         -150.535.867
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-56 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value">
+         12
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="302529843">
+         302.529.843
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="284553243">
+         284.553.243
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-57 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            SÜRDÜRÜLEN FAALİYETLER DÖNEM KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1811756765">
+         1.811.756.765
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1187437398">
+         1.187.437.398
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-58 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DURDURULAN FAALİYETLER DÖNEM KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-59 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel standartCapitalsLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DÖNEM KARI (ZARARI)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1811756765">
+         1.811.756.765
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field standartCapitalsLabel monetary-field-default" title="1187437398">
+         1.187.437.398
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-60 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Dönem Karının (Zararının) Dağılımı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-61 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="0">
+         0
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-62 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ana Ortaklık Payları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="1811756765">
+         1.811.756.765
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="1187437398">
+         1.187.437.398
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-63 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title label" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pay Başına Kazanç
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-64 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title standardLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pay Başına Kazanç
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-65 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="typed-dimension-row with-plus-row general_role_310003-row-66 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr typed-dimension-field-label" style="display: block;">
+            Sürdürülen Faaliyetlerden Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;"><a href="javascript:;" class="general_role_310003-typed-dimension-btn-66"><i class="fa fa-plus fa-2x"></i> </a></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel typed-dimension-field-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel typed-dimension-field-value"></div>
+       </div></td>
+     </tr>
+     <tr class="new-type-row">
+      <td></td>
+      <td></td>
+      <td class="bordered-cell">
+       <div>
+        <div class="taxonomy-label-field typed-dimension-field-caption">
+         Pay Başına Kazanç
+        </div><a href="javascript:;" class="delete-typed-dimension-row"><i class="fa fa-trash-o fa-2x"></i> </a>
+       </div></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value">
+       <div>
+        <div class="taxonomy-label-field align-right-important">
+         1,82000000
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value">
+       <div>
+        <div class="taxonomy-label-field align-right-important">
+         1,19000000
+        </div>
+       </div></td>
+     </tr>
+     <tr class="typed-dimension-row with-plus-row general_role_310003-row-67 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr typed-dimension-field-label" style="display: block;">
+            Durdurulan Faaliyetlerden Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;"><a href="javascript:;" class="general_role_310003-typed-dimension-btn-67"><i class="fa fa-plus fa-2x"></i> </a></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel typed-dimension-field-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel typed-dimension-field-value"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-68 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Sulandırılmış Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="typed-dimension-row with-plus-row general_role_310003-row-69 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr typed-dimension-field-label" style="display: block;">
+            Sürdürülen Faaliyetlerden Sulandırılmış Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;"><a href="javascript:;" class="general_role_310003-typed-dimension-btn-69"><i class="fa fa-plus fa-2x"></i> </a></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel typed-dimension-field-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel typed-dimension-field-value"></div>
+       </div></td>
+     </tr>
+     <tr class="typed-dimension-row with-plus-row general_role_310003-row-70 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr typed-dimension-field-label" style="display: block;">
+            Durdurulan Faaliyetlerden Sulandırılmış Pay Başına Kazanç (Zarar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;"><a href="javascript:;" class="general_role_310003-typed-dimension-btn-70"><i class="fa fa-plus fa-2x"></i> </a></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel typed-dimension-field-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel typed-dimension-field-value"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-71 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title capslockLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DİĞER KAPSAMLI GELİR KISMI
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-72 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zararda Yeniden Sınıflandırılmayacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-4645163">
+         -4.645.163
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1415328">
+         1.415.328
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-73 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yatırımlardan Kaynaklanan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-74 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Duran Varlıklar Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-75 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Olmayan Duran Varlıklar Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-76 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanım Hakkı Varlıkları Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-77 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Tanımlanmış Fayda Planları Yeniden Ölçüm Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-6193551">
+         -6.193.551
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1887105">
+         1.887.105
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-78 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kredi Riskindeki Değişikliğe Bağlı Olarak Finansal Yükümlülüğün Gerçeğe Uygun Değerindeki Değişiklikler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-79 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yapılan Yatırımlara İlişkin Finansal Riskten Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-80 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar veya Zararda Sınıflandırılmayacak Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-81 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Tanımlanmış Fayda Planları Yeniden Ölçüm Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-82 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Maddi Duran Varlık Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-83 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Maddi Olmayan Duran Varlık Yeniden Değerleme Artışları (Azalışları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-84 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar/Zararda Sınıflandırılmayacak Diğer Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-85 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimi Dışındaki Yabancı Para Çevrim Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-86 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kar veya Zarar Olarak Yeniden Sınıflandırılmayacak Diğer Kapsamlı Gelir Unsurları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-87 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zararda Yeniden Sınıflandırılmayacak Diğer Kapsamlı Gelire İlişkin Vergiler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="1548388">
+         1.548.388
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="-471777">
+         -471.777
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-88 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Dönem Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="1548388">
+         1.548.388
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default" title="-471777">
+         -471.777
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-89 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-90 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yatırımlardan Kaynaklanan Kazançlar (Kayıplar), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-91 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Duran Varlıklar Yeniden Değerleme Artışları (Azalışları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-92 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Maddi Olmayan Duran Varlıklar Yeniden Değerleme Artışları (Azalışları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-93 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kullanım Hakkı Varlıkları Yeniden Değerleme Artışları (Azalışları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-94 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Tanımlanmış Fayda Planları Yeniden Ölçüm Kazançları (Kayıpları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-95 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kredi Riskindeki Değişikliğe Bağlı Olarak Finansal Yükümlülüğün Gerçeğe Uygun Değerindeki Değişiklikler, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-96 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynağa Dayalı Finansal Araçlara Yapılan Yatırımlara İlişkin Koruma Sağlayan Finansal Riskten Korunma Araçlarından Kaynaklanan Kazançlar (Kayıplar), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-97 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemine Göre Muhasebeleştirilen İştirak ve İş Ortaklıklarının Kar veya Zararda Yeniden Sınıflandırılmayacak Diğer Kapsamlı Gelirlerinden Paylar, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-98 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimi Dışındaki Yabancı Para Çevrim Farkları, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-99 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kar veya Zarar Olarak Yeniden Sınıflandırılmayacak Diğer Kapsamlı Gelir Unsurları, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-100 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zarar Olarak Yeniden Sınıflandırılacaklar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="-25060568">
+         -25.060.568
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="3799111">
+         3.799.111
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-101 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimine İlişkin Yabancı Para Çevrim Farkları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="-25060568">
+         -25.060.568
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default" title="3799111">
+         3.799.111
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-102 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimine İlişkin Yabancı Para Çevrim Farklarından Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-103 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedVerboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimine İlişkin Yabancı Para Çevrim Farklarındaki Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-104 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel verboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıkların Yeniden Değerleme ve/veya Sınıflandırma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field verboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-105 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıkların Yeniden Değerleme Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-106 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıkların Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-107 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklara İlişkin Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-108 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklardan Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-109 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklardaki Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-110 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıkların Yeniden Sınıflandırılmasında Özkaynaklardan Çıkarılan ve Gerçeğe Uygun Değerde Yapılan Düzeltme Tutarı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-111 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Akış Riskinden Korunmaya İlişkin Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-112 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Akış Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-113 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Akış Riskinden Korunma İşlemindeki Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-114 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Edinimi veya Yüklenimi Finansal Riskten Korunan Gerçekleşme Olasılığı Yüksek Tahmini İşlemin Konusunu Oluşturan Finansal Olmayan Varlığın (Yükümlülüğün) Defter Değerine Özkaynaklardan Çıkarılarak Eklenen Tutar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-115 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmeye İlişkin Net Yatırım Riskinden Korunma ile İlgili Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-116 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmeye İlişkin Net Yatırım Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-117 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmeye İlişkin Net Yatırım Riskinden Korunmadaki Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-118 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Opsiyonların Zaman Değerindeki Değişikliklere İlişkin Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-119 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Opsiyonların Zaman Değerindeki Değişimden Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-120 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Opsiyonların Zaman Değerindeki Değişikliklerin Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-121 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Forward Sözleşmesinin Forward Bileşeninin Değerindeki Değişikliklere İlişkin Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-122 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Forward Sözleşmesinin Forward Bileşeninin Değerindeki Değişimden Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-123 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Forward Sözleşmesinin Forward Bileşeninin Değerindeki Değişikliklerin Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-124 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Alım Satım Marjlarındaki Değişikliklere İlişkin Diğer Kapsamlı Gelir (Gider)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-125 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Alım Satım Marjlarındaki Değişimden Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-126 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Alım Satım Marjlarındaki Değişikliklerdeki Yeniden Sınıflandırma Düzeltmeleri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-127 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar veya Zararda Sınıflandırılacak Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-128 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Satılmaya Hazır Finansal Varlıklarının Yeniden Değerleme ve/veya Sınıflandırma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-129 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Nakit Akış Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-130 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Yurtdışındaki İşletmeye İlişkin Yatırım Riskinden Korunma Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-131 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Yabancı Para Çevrim Farkları Kazançları (Kayıpları)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-132 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar veya Zararda Yeniden Sınıflandırılacak Diğer Kazançlar (Kayıplar)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-133 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kar veya Zarar Olarak Yeniden Sınıflandırılacak Diğer Kapsamlı Gelir Unsurları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-134 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kar veya Zararda Yeniden Sınıflandırılacak Diğer Kapsamlı Gelire İlişkin Vergiler
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-135 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Dönem Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-136 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ertelenmiş Vergi (Gideri) Geliri
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-137 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedVerboseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmelerin Çevrimine İlişkin Yabancı Para Çevrim Farkları, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedVerboseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-138 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Satılmaya Hazır Finansal Varlıkların Yeniden Değerleme ve/veya Sınıflandırma Kazançları (Kayıpları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-139 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Gerçeğe Uygun Değer Farkı Diğer Kapsamlı Gelire Yansıtılan Finansal Varlıklara İlişkin Diğer Kapsamlı Gelir, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-140 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Nakit Akış Riskinden Korunmaya İlişkin Diğer Kapsamlı Gelir, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-141 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yurtdışındaki İşletmeye İlişkin Yatırım Riskinden Korunma Kazançları (Kayıpları), Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-142 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Opsiyonların Zaman Değerindeki Değişikliklere İlişkin Diğer Kapsamlı Gelir, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-143 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Forward Sözleşmesinin Forward Bileşeninin Değerindeki Değişikliklere İlişkin Diğer Kapsamlı Gelir, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-144 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Yabancı Para Alım Satım Marjlarındaki Değişikliklere İlişkin Diğer Kapsamlı Gelir, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-145 data-input-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedTerseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Özkaynak Yöntemiyle Değerlenen Yatırımların Diğer Kapsamlı Gelirinden Kar veya Zararda Sınıflandırılacak Paylar, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedTerseLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-146 data-input-row alternate-row presentation-disabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel negatedLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Diğer Kar veya Zarar Olarak Yeniden Sınıflandırılacak Diğer Kapsamlı Gelir Unsurları, Vergi Etkisi
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field negatedLabel monetary-field-default"></div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-147 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel alternativeTotalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            DİĞER KAPSAMLI GELİR (GİDER)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="-29705731">
+         -29.705.731
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="5214439">
+         5.214.439
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-148 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel alternativeTotalLabel containsTotalLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            TOPLAM KAPSAMLI GELİR (GİDER)
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="1782051034">
+         1.782.051.034
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field alternativeTotalLabel containsTotalLabel monetary-field-default" title="1192651837">
+         1.192.651.837
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-149 abstract-row">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel taxonomy-abstract-title terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Toplam Kapsamlı Gelirin Dağılımı
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+     </tr>
+     <tr class="general_role_310003-row-150 data-input-row alternate-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Kontrol Gücü Olmayan Paylar
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="0">
+         0
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="0">
+         0
+        </div>
+       </div></td>
+     </tr>
+     <tr class="general_role_310003-row-151 data-input-row presentation-enabled">
+      <td class="taxonomy-nondimensional-context-cell"></td>
+      <td class="taxonomy-field-title">
+       <table cellspacing="0" cellpadding="0" class="taxonomy-title-panel terseLabel" border="1" style="font-size:10px">
+        <tbody>
+         <tr>
+          <td align="left" style="vertical-align: top;">
+           <div class="gwt-Label multi-language-content content-tr" style="display: block;">
+            Ana Ortaklık Payları
+           </div></td>
+          <td align="left" style="vertical-align: top;"></td>
+          <td align="left" style="vertical-align: top;">
+           <div class="fa fa-question-circle fa-2x taxonomy-field-documentation  multi-language-content content-tr" aria-hidden="true" style="display: block;"></div></td>
+          <td align="left" style="vertical-align: top;"></td>
+         </tr>
+        </tbody>
+       </table></td>
+      <td class="taxonomy-footnote-cell">
+       <div>
+        <div class="taxonomy-footnote-value"></div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-4">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1782051034">
+         1.782.051.034
+        </div>
+       </div></td>
+      <td class="taxonomy-context-value col-order-class-5">
+       <div>
+        <div class="gwt-Label taxonomy-label-field terseLabel monetary-field-default" title="1192651837">
+         1.192.651.837
+        </div>
+       </div></td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+  <br>
+  <br>
+  <div style="margin: 10px 0; text-align: center; font-weight: bold;">
+   ----------------------------------------------------------------------------------------------------------------
+  </div>
+  <br>
+  <br>
+  <div>
+   <table class="financial-header-table" border="1" style="font-size:10px">
+    <tbody>
+     <tr>
+      <td class="financial-header-title">Sunum Para Birimi</td>
+      <td>TL</td>
+     </tr>
+     <tr>
+      <td class="financial-header-title">Finansal Tablo Niteliği</td>
+      <td>Konsolide</td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+ </body>
+</html>
+"""";
+
+
     /// <summary>Builds every named real-source payload.</summary>
     public static IReadOnlyList<RealSourcePayload> Build() =>
     [
@@ -41898,6 +55742,7 @@ public static class RealSourceCatalog
         KapPublicCaptured(KapPublicReportAselsAnnual, KapPublicReportAselsAnnualLabel, KapPublicReportAselsAnnualHtml),
         KapPublicCaptured(KapPublicReportMgros, KapPublicReportMgrosLabel, KapPublicReportMgrosHtml),
         KapPublicCaptured(KapPublicReportThyao, KapPublicReportThyaoLabel, KapPublicReportThyaoHtml),
+        KapPublicCaptured(KapPublicReportAstorQ1, KapPublicReportAstorQ1Label, KapPublicReportAstorQ1Html),
         KapPublicCaptured(KapPublicIdentity, KapPublicIdentityLabel, KapPublicIdentityJson,
             method: "POST"),
         KapPublicDerived(KapPublicIdentityGaranCommaCoded, KapPublicIdentityGaranCommaCodedLabel,
