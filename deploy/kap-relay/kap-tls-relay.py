@@ -32,6 +32,8 @@ POLITENESS CONTRACT (binding)
 * 429 backoffs are **brief by design**: the app's per-item timeout is 30 s (detail
   fetch 60 s), so a longer wait outlives its caller and stacks uselessly. The adapter
   truncates the walk honestly instead (reason `WALK_QUOTA_BACKOFF`).
+* A 429 re-issue is a **second** request: one, never a ladder, and paced — exports by the
+  pacing floor above, everything else at the lane's ≥ 3 s general floor.
 
 HOW IT IS WIRED
 ---------------
@@ -41,9 +43,13 @@ fork. See `README.md` beside this file for the dev-stack override and the exit c
 
 USAGE
 -----
-    python3 deploy/kap-relay/kap-tls-relay.py [--port 8899] [--upstream https://www.kap.org.tr]
+    python3 deploy/kap-relay/kap-tls-relay.py [--bind 127.0.0.1] [--port 8899] [--upstream https://www.kap.org.tr]
 
-Environment variables (all optional) mirror the flags: `KAP_RELAY_PORT`,
+The listener binds loopback by default: the relay forwards `Authorization` headers and adds no
+authentication of its own, so exposing it beyond this host is an explicit, deliberate choice —
+`--bind 0.0.0.0` inside a compose network (see README.md), never a default.
+
+Environment variables (all optional) mirror the flags: `KAP_RELAY_BIND`, `KAP_RELAY_PORT`,
 `KAP_RELAY_UPSTREAM`, `KAP_RELAY_EXPORT_MIN_INTERVAL`, `KAP_RELAY_429_BACKOFF`,
 `KAP_RELAY_UPSTREAM_TIMEOUT`, `KAP_RELAY_MAX_429_ATTEMPTS`.
 """
@@ -59,6 +65,7 @@ import time
 import urllib.error
 import urllib.request
 
+DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8899
 DEFAULT_UPSTREAM = "https://www.kap.org.tr"
 # The app's own bound on a detail fetch is 60 s and on any other request 30 s; the relay's
@@ -70,7 +77,13 @@ DEFAULT_UPSTREAM_TIMEOUT = 90.0
 DEFAULT_EXPORT_MIN_INTERVAL = 12.0
 # Brief by design: the caller's per-item bound is 30 s (60 s for a detail fetch).
 DEFAULT_429_BACKOFF = 8.0
-DEFAULT_MAX_429_ATTEMPTS = 3
+# The lane's general start-to-start pacing floor (`KapPublicSourceOptions.DefaultRequestDelayMs`).
+# A re-issued non-export request is a second request and owes the same gap, whatever backoff an
+# operator configures; export re-issues are paced by the export floor on every attempt.
+GENERAL_PACE_FLOOR = 3.0
+# One re-issue after a 429, mirroring the adapter's `MaxQuotaAttempts = 2`: a third attempt
+# would be the retry ladder the quota finding forbids.
+DEFAULT_MAX_429_ATTEMPTS = 2
 
 # Headers forwarded upstream. Everything else (Host, Content-Length, hop-by-hop headers)
 # is rebuilt by urllib. The app's honest User-Agent is forwarded verbatim: the relay
@@ -80,6 +93,7 @@ FORWARDED_HEADERS = ("User-Agent", "Accept", "Content-Type", "Accept-Language", 
 
 class Settings:
     def __init__(self, args: argparse.Namespace) -> None:
+        self.bind = args.bind
         self.port = args.port
         self.upstream = args.upstream.rstrip("/")
         self.upstream_timeout = args.upstream_timeout
@@ -163,12 +177,17 @@ class Relay(http.server.BaseHTTPRequestHandler):
             except urllib.error.HTTPError as error:
                 payload = error.read() if error.fp else b""
                 if error.code == 429 and attempt < attempts:
-                    # Brief, bounded, and never concurrent: the quota is authoritative.
+                    # Brief, bounded, and never concurrent: the quota is authoritative. A
+                    # re-issue is a second request, so a non-export one also owes the lane's
+                    # general pace floor; an export re-issue is paced above, on its next turn.
+                    wait = self.settings.backoff_429
+                    if not is_export:
+                        wait = max(wait, GENERAL_PACE_FLOOR)
                     self._log(
                         f"{method} {self.path} -> 429, bounded backoff "
-                        f"{self.settings.backoff_429:.0f}s (attempt {attempt}/{attempts})"
+                        f"{wait:.0f}s (attempt {attempt}/{attempts})"
                     )
-                    time.sleep(self.settings.backoff_429)
+                    time.sleep(wait)
                     continue
 
                 self._respond(error.code, payload, error.headers.get_content_type() if error.headers else "text/plain")
@@ -204,6 +223,11 @@ class ThreadedRelayServer(http.server.ThreadingHTTPServer):
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KAP public-site TLS relay (ops posture).")
+    parser.add_argument(
+        "--bind",
+        default=os.environ.get("KAP_RELAY_BIND", DEFAULT_BIND),
+        help="listener address (loopback by default; the README's compose fragment passes 0.0.0.0 deliberately)",
+    )
     parser.add_argument("--port", type=int, default=int(os.environ.get("KAP_RELAY_PORT", DEFAULT_PORT)))
     parser.add_argument("--upstream", default=os.environ.get("KAP_RELAY_UPSTREAM", DEFAULT_UPSTREAM))
     parser.add_argument(
@@ -236,13 +260,13 @@ def serve(settings: Settings) -> None:
     # so they ride a class attribute rather than the constructor.
     handler = type("ConfiguredRelay", (Relay,), {"settings": settings})
     print(
-        f"KAP public-site relay listening on :{settings.port} -> {settings.upstream} "
+        f"KAP public-site relay listening on {settings.bind}:{settings.port} -> {settings.upstream} "
         f"(export floor {settings.export_min_interval:g}s, 429 backoff {settings.backoff_429:g}s, "
         f"upstream timeout {settings.upstream_timeout:g}s)",
         file=sys.stderr,
         flush=True,
     )
-    ThreadedRelayServer(("0.0.0.0", settings.port), handler).serve_forever()
+    ThreadedRelayServer((settings.bind, settings.port), handler).serve_forever()
 
 
 def main(argv: list[str] | None = None) -> int:

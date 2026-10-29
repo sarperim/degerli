@@ -156,7 +156,11 @@ public sealed class KapPublicSourceOptions
     /// <b>An honest fingerprint, not a disguise:</b> the UA token (<see cref="DefaultUserAgent"/>)
     /// is unchanged, no header lies, the lane stays single-flight and paced, and the quota is
     /// honored. Configurable so an operator can stand the shaping down without a rebuild;
-    /// <c>false</c> reproduces the pre-ticket stack exactly.
+    /// <c>false</c> sets <b>no TLS opinions</b> — the pre-ticket transport shape. The bounded
+    /// connection pool and the cookie-less handler the factory builds are <b>unconditional</b>:
+    /// the pool keeps reuse bounded across a long pass and the handler keeps no cookie jar,
+    /// whatever the TLS shape, so standing the shaping down changes the handshake and nothing
+    /// else.
     /// </para>
     /// </summary>
     public const bool DefaultTlsShapeEnabled = true;

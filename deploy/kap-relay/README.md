@@ -17,7 +17,7 @@ edge accepts — while keeping every politeness rule the lane already ships:
 | forward the app's headers verbatim (User-Agent included) | the relay presents a *fingerprint*, it never launders an identity | — |
 | serialize export fetches behind one lock | the export route's quota is per-IP and accumulates | — |
 | export pacing floor | verified live 2026-10-28/29: serialized 12 s export fetches stopped tripping the quota | `--export-min-interval 12` |
-| bounded 429 backoff (brief) | the app's per-item bound is 30 s (60 s detail); a longer wait outlives its caller and stacks uselessly | `--backoff-429 8`, at most 3 attempts |
+| bounded 429 backoff (brief) | the app's per-item bound is 30 s (60 s detail); a longer wait outlives its caller and stacks uselessly | `--backoff-429 8`, one re-issue (`--max-429-attempts 2` — the adapter's `MaxQuotaAttempts`, never a ladder), the re-issue paced at the lane's ≥ 3 s general floor |
 | one upstream request per inbound request | no parallel clients, no address rotation, no quota workaround | — |
 
 **The quota is authoritative.** The relay waits it out; it never rotates addresses,
@@ -53,7 +53,10 @@ A dev-stack override (compose, git-ignored outside the repo's own override file)
 services:
   kap-relay:
     image: python:3.12-slim
-    command: ["python", "/relay/kap-tls-relay.py", "--port", "8899"]
+    # `--bind 0.0.0.0` is deliberate: inside the compose network the relay must accept
+    # connections from the api container, and the port is not published to the host or the
+    # internet. Standalone from the host the default (`127.0.0.1`) applies — see below.
+    command: ["python", "/relay/kap-tls-relay.py", "--bind", "0.0.0.0", "--port", "8899"]
     volumes:
       - ./deploy/kap-relay:/relay:ro
     restart: unless-stopped
@@ -72,6 +75,10 @@ python3 deploy/kap-relay/kap-tls-relay.py --port 8899
 # and point the API at http://localhost:8899
 ```
 
+The listener binds `127.0.0.1` by default. The relay forwards `Authorization` headers and
+adds no authentication of its own, so widening the listener is an explicit choice: pass
+`--bind` only for a network you control (the compose fragment above does exactly that).
+
 ## Standing it down
 
 The relay is stood down once a **paced live probe through the adapter itself** (never
@@ -84,7 +91,8 @@ stop the relay service.
 
 - **Never in CI.** No test, workflow or automated job may call `kap.org.tr` — through this
   relay or otherwise. The lane's tests use recorded doubles.
-- **Dev/ops only.** The relay adds no authentication, so bind it to the compose network
-  (`:8899` internal) or `127.0.0.1`, never to a public interface.
+- **Dev/ops only.** The relay adds no authentication, so it binds `127.0.0.1` by default: keep
+  it there, or bind it to the compose network's own address (the fragment above passes
+  `--bind 0.0.0.0` without publishing the port) — never to a public interface.
 - **It is not a caching proxy.** It adds no store, no rewriting and no content handling:
   status, body and content type are forwarded as the source sent them.

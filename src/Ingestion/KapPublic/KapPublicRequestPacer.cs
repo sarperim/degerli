@@ -76,13 +76,6 @@ public sealed class KapPublicRequestPacer
     public int ExportDelayMs => _options.DelayMsFor(KapPublicRequestKind.Export);
 
     /// <summary>
-    /// Waits until at least <see cref="DelayMs"/> has elapsed since the previous paced
-    /// request, then stamps the request's start (the instant the caller then issues it).
-    /// </summary>
-    public Task PaceAsync(CancellationToken cancellationToken = default) =>
-        PaceAsync(KapPublicRequestKind.General, cancellationToken);
-
-    /// <summary>
     /// Waits until at least the gap <paramref name="kind"/> owes has elapsed since the previous
     /// paced request, then stamps the request's start (the instant the caller then issues it).
     /// The gap is measured start-to-start: a slow response does not let the next request come

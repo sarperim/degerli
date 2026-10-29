@@ -127,10 +127,13 @@ public static class KapPublicHttpHandlerFactory
     /// the configured browser-ordered cipher-suite policy.
     /// <para>
     /// <see cref="System.Net.Security.SslClientAuthenticationOptions.CipherSuitesPolicy"/> is a
-    /// <b>platform capability</b>: .NET supports it on Linux and throws
-    /// <see cref="PlatformNotSupportedException"/> elsewhere. Where the platform refuses it, the
-    /// property stays unset and the platform's own order stands — recorded honestly in the config
-    /// equivalence the tests pin, never faked by an order nobody presented.
+    /// <b>platform capability</b>: .NET supports it on Linux, throws
+    /// <see cref="PlatformNotSupportedException"/> where the platform has no notion of a
+    /// client-side suite order, and throws <see cref="ArgumentException"/> when the platform knows
+    /// the suites but refuses to configure this set. Both are a platform refusal, not a
+    /// configuration error to crash the lane on. Where the platform refuses it, the property stays
+    /// unset and the platform's own order stands — recorded honestly in the config equivalence the
+    /// tests pin, never faked by an order nobody presented.
     /// </para>
     /// </summary>
     public static SslClientAuthenticationOptions CreateSslOptions(KapPublicSourceOptions options)
@@ -150,10 +153,12 @@ public static class KapPublicHttpHandlerFactory
             {
                 ssl.CipherSuitesPolicy = new CipherSuitesPolicy(suites);
             }
-            catch (PlatformNotSupportedException)
+            catch (Exception exception) when (exception is PlatformNotSupportedException or ArgumentException)
             {
-                // The platform does not let a client choose its cipher-suite order: the property
-                // stays unset and the platform default stands (documented on this method).
+                // The platform does not let a client choose its cipher-suite order (or refuses this
+                // recognised set): the property stays unset and the platform default stands
+                // (documented on this method). A configuration typo therefore never widens the
+                // offer and never takes the lane down at construction.
             }
         }
 
@@ -397,6 +402,31 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
             HttpResponseMessage response;
             for (var attempt = 1; ; attempt++)
             {
+                if (attempt > 1)
+                {
+                    // Re-pace before a re-issue (TKT-foundation-100 review round 2, DR-3): the
+                    // quota's single re-issue is a *second* request to the same website, so it
+                    // owes the same start-to-start gap as any other. Sleeping the quota wait alone
+                    // is not enough — a `Retry-After: 0` (or a date already past) maps to a zero
+                    // wait, and the re-issue would then go out back-to-back.
+                    try
+                    {
+                        await _pacer.PaceAsync(kind, linked.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw new KapPublicSourceTimeoutException(
+                            $"Public-site request '{method} {path}' timed out after {timeout.TotalSeconds:0.###} s " +
+                            $"while re-pacing the quota re-issue ({KapPublicReasonCodes.RequestTimeout}).");
+                    }
+                }
+
+                // The instant this attempt starts — after its pacing, because politeness is not
+                // latency. The per-item bound is spent from here, so the quota check below compares
+                // the demanded wait with what is actually *left* of the caller's bound (review
+                // round 2, DR-9), not with the whole bound a slow attempt has already eaten into.
+                var attemptStart = _clock.GetUtcNow();
+
                 using var request = BuildRequest(method, path, jsonBody);
 
                 try
@@ -435,7 +465,15 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
                 var wait = RequiredQuotaWait(response);
                 var quota = $"Public-site request '{method} {path}' answered HTTP 429 (Request Limit Exceeded)";
 
-                if (wait >= timeout)
+                // What is left of the caller's per-item bound at this instant. On a fast attempt
+                // this is the whole bound; a slow attempt has already spent part of it.
+                var remaining = timeout - (_clock.GetUtcNow() - attemptStart);
+                if (remaining < TimeSpan.Zero)
+                {
+                    remaining = TimeSpan.Zero;
+                }
+
+                if (wait >= remaining)
                 {
                     // The demanded wait would outlive this request's own caller: sleeping is
                     // useless (the caller's bound expires first) and stacking waits is worse. Say
@@ -443,8 +481,9 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
                     response.Dispose();
                     throw new KapPublicQuotaException(
                         $"{quota}; the source asked for a {wait.TotalSeconds:0.###} s wait, which is not shorter " +
-                        $"than this request's {timeout.TotalSeconds:0.###} s per-item bound, so the lane does not " +
-                        $"sleep past its caller ({KapPublicReasonCodes.WalkQuotaBackoff}).",
+                        $"than the {remaining.TotalSeconds:0.###} s left of this request's " +
+                        $"{timeout.TotalSeconds:0.###} s per-item bound, so the lane does not sleep past its " +
+                        $"caller ({KapPublicReasonCodes.WalkQuotaBackoff}).",
                         KapPublicReasonCodes.WalkQuotaBackoff,
                         wait,
                         deferred: true);

@@ -152,8 +152,11 @@ public static class IngestionServiceCollectionExtensions
             // a burst while curl/python succeed from the same host, so the handler presents a
             // browser-shaped fingerprint (TLS floor, browser-ordered cipher suites, h2/http1.1
             // ALPN) while the request keeps identifying itself honestly in its User-Agent. The
-            // shaping is configuration (`Ingestion:KapPublic:TlsShapeEnabled`), never a fork, and
-            // standing it down reproduces the pre-ticket stack exactly.
+            // shaping is configuration (`Ingestion:KapPublic:TlsShapeEnabled`), never a fork.
+            // Standing it down (`false`) sets no TLS opinions at all — the pre-ticket transport
+            // shape — while the bounded pool (`PooledConnectionLifetime` 10 min) and the
+            // cookie-less handler are unconditional: they bound a long pass and keep no jar,
+            // whether or not the TLS shape is on.
             var http = new HttpClient(
                 KapPublicHttpHandlerFactory.Create(options),
                 disposeHandler: true)

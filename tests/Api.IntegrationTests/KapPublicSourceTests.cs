@@ -9,6 +9,9 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Scheduling;
+using Degerli.Persistence;
+using Degerli.Persistence.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -33,8 +36,13 @@ namespace Degerli.Api.IntegrationTests;
 /// <c>kap-public</c> (never the VYK lane's <c>kap</c>), and the public index space
 /// (1643141) is never written where a VYK index (head 1231017) belongs.
 /// </para>
+/// <para>
+/// The walker-level sub-case (c2) additionally uses the <see cref="PostgresFixture"/>: the
+/// statements walk's own cursor/depth stores persist to the real schema, so "the next pass
+/// resumes there" is read back from a stored cursor rather than inferred.
+/// </para>
 /// </summary>
-public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
+public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>, IClassFixture<PostgresFixture>
 {
     private const string ByCriteriaPath = "/tr/api/disclosure/members/byCriteria";
     private const string ReportPath = "/tr/api/notification/export/excel/1643141";
@@ -45,8 +53,13 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     private const string AselsPublicOid = "4028e4a1413b7ef401413bc2251e0047";
 
     private readonly WireMockFixture _wireMock;
+    private readonly PostgresFixture _postgres;
 
-    public KapPublicSourceTests(WireMockFixture wireMock) => _wireMock = wireMock;
+    public KapPublicSourceTests(WireMockFixture wireMock, PostgresFixture postgres)
+    {
+        _wireMock = wireMock;
+        _postgres = postgres;
+    }
 
     // =================================================================================
     // TC-MDF-103 (i) — the configuration contract
@@ -1114,12 +1127,154 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         Assert.Empty(generalWaits);
 
         // The contrast that makes it a *bound*, not a blanket refusal: a wait that fits still
-        // re-issues (asserted by (a)/(b)); here the same 8 s backoff under a 30 s bound defers
-        // nothing — it is slept and re-issued.
-        var roomyHandler = new RecordingHandler(_ => JsonResponse("[]"));
-        var roomy = BuildClient(roomyHandler, clock, quotaDelay: generalRecorder);
+        // re-issues (asserted by (a)/(b)); here the same 8 s backoff under the default 30 s bound
+        // defers nothing — it is slept and the request re-issued exactly once, and the re-issue is
+        // a second request that owes the pace like any other (never back-to-back).
+        var paceWaits = new List<TimeSpan>();
+        KapPublicDelay paceRecorder = (delay, _) =>
+        {
+            paceWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var roomyAttempts = 0;
+        var roomyHandler = new RecordingHandler(_ =>
+        {
+            roomyAttempts++;
+            return roomyAttempts == 1 ? TooManyRequests() : JsonResponse("[]");
+        });
+        var roomy = BuildClient(roomyHandler, clock, delay: paceRecorder, delayMs: 3000, quotaDelay: generalRecorder);
         Assert.Equal("[]", await roomy.GetStringAsync(ProbePath));
-        Assert.Single(roomyHandler.Requests);
+        Assert.Equal(2, roomyHandler.Requests.Count);
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs),
+            Assert.Single(generalWaits));
+        Assert.Equal(TimeSpan.FromSeconds(3), Assert.Single(paceWaits));
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (c2) — the walker's own half of the deferral (review round 2, DR-2). A deferred
+    /// quota read is not only a client outcome: it must truncate the <b>pass</b> honestly at the
+    /// walker's seam. The pass reports <c>Truncated</c> under <c>WALK_QUOTA_BACKOFF</c>, spends no
+    /// detail budget as a completed unit, closes no window (the watermark stays where the window
+    /// started) and marks nothing done — no tombstone, no skip. The next pass over the same stored
+    /// cursor lists the same window, fetches the report it had to leave behind and finishes it, so
+    /// the resume the reason code promises is asserted, not inferred.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_c2_a_deferred_quota_read_truncates_the_walk_at_its_own_seam_and_resumes()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+        const string symbol = "ASELS";
+        const long deferredIndex = 1643141L;
+        await EnsureWalkInstrumentAsync(symbol);
+
+        // One financial report in the only window the plan asks for.
+        const string listBody =
+            """[{"disclosureIndex":1643141,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"FR","publishDate":"25.10.2026 18:00:00","kapTitle":"ASELS"}]""";
+
+        var plan = new KapPublicStatementWalkPlan(
+            new DateOnly(2026, 10, 1),
+            new DateOnly(2026, 10, 31),
+            31);
+
+        // The export route answers 429 asking for 120 s on a 60 s per-item bound: deferred at the
+        // client, never slept, never re-issued.
+        var quotaWaits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            quotaWaits.Add(wait);
+            return Task.CompletedTask;
+        };
+        var deferring = new RecordingHandler(request =>
+        {
+            if (IsByCriteria(request))
+            {
+                return JsonResponse(listBody);
+            }
+
+            var response = TooManyRequests();
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                TimeSpan.FromSeconds(120));
+            return response;
+        });
+
+        await using var db = _postgres.CreateContext();
+        var options = OptionsOf();
+        var cursors = new KapPublicStatementCursorStore(db);
+        var depths = new KapPublicStatementDepthStore(db);
+        var walker = new KapPublicStatementsWalker(
+            new KapPublicSourceReader(BuildClient(deferring, clock, quotaDelay: quotaRecorder), options),
+            cursors,
+            depths,
+            new KapPublicWalkBudget(0, 0, TimeSpan.Zero, clock));
+        var sinkCalls = 0;
+        KapPublicStatementSink sink = (_, _, _) =>
+        {
+            sinkCalls++;
+            return Task.FromResult(new KapPublicStatementWrite(1, 0, 0));
+        };
+
+        var first = await walker.WalkAsync(symbol, PublicCompanyOid.Parse(AselsPublicOid), plan, sink);
+
+        // The seam: an honest bounded pass, not a success and not a source-down.
+        Assert.True(first.Truncated);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, first.TruncationReason);
+        Assert.Null(first.Failure);
+        Assert.Equal(1, first.WindowsListed);
+        Assert.Equal(0, first.WindowsWalked);   // the window was never closed
+        Assert.Equal(1, first.ReportsListed);
+        Assert.Equal(0, first.ReportsFetched);  // nothing was marked done
+        Assert.Empty(first.Skips);              // and nothing was quarantined or skipped
+        Assert.Equal(0, first.Inserted);
+        Assert.Equal(0, sinkCalls);
+        Assert.Null(first.AchievedFrom);
+        Assert.Null(first.AchievedTo);
+        Assert.Empty(quotaWaits);               // the deferred wait was never slept
+
+        // No tombstone spent, no window closed: the stored cursor is exactly the bootstrap start.
+        var persisted = await cursors.GetAsync(symbol);
+        Assert.NotNull(persisted);
+        Assert.Equal(plan.From, persisted!.Watermark);
+        Assert.False(persisted.Contains(deferredIndex));
+        Assert.Empty(persisted.PendingReplay());
+
+        var depthNotes = await db.CoverageMetadata
+            .Where(row => row.DataType == KapPublicStatementDepthStore.DataType)
+            .Select(row => row.Notes)
+            .SingleAsync();
+        Assert.Contains("\"truncated\":true", depthNotes, StringComparison.Ordinal);
+        Assert.Contains(KapPublicReasonCodes.WalkQuotaBackoff, depthNotes, StringComparison.Ordinal);
+
+        // The next pass resumes on the same cursor: the same window, the same report, now answered.
+        var completing = new RecordingHandler(request =>
+            IsByCriteria(request)
+                ? JsonResponse(listBody)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body,
+                        Encoding.UTF8,
+                        "text/html"),
+                });
+        var resuming = new KapPublicStatementsWalker(
+            new KapPublicSourceReader(BuildClient(completing, clock, quotaDelay: quotaRecorder), options),
+            cursors,
+            depths,
+            new KapPublicWalkBudget(0, 0, TimeSpan.Zero, clock));
+
+        var second = await resuming.WalkAsync(symbol, PublicCompanyOid.Parse(AselsPublicOid), plan, sink);
+
+        Assert.False(second.Truncated);
+        Assert.Null(second.TruncationReason);
+        Assert.Equal(1, second.WindowsListed);
+        Assert.Equal(1, second.WindowsWalked);
+        Assert.Equal(1, second.ReportsFetched);
+        Assert.Equal(1, second.Inserted);
+        Assert.Equal(1, sinkCalls);
+
+        var resumed = await cursors.GetAsync(symbol);
+        Assert.True(resumed!.Contains(deferredIndex));
+        Assert.Equal(plan.To, resumed.Watermark);
     }
 
     /// <summary>
@@ -1154,8 +1309,8 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
             o.RequestDelayMs = 3000;
             o.ExportRequestDelayMs = 12000;
         });
-        var client = new KapPublicHttpSourceClient(
-            BuildHttp(handler), options, new KapPublicRequestPacer(options, clock, recorder), clock);
+        var pacer = new KapPublicRequestPacer(options, clock, recorder);
+        var client = new KapPublicHttpSourceClient(BuildHttp(handler), options, pacer, clock);
 
         await client.GetStringAsync(ProbePath);        // 1. list/probe — general pace
         await client.GetDetailStringAsync(ReportPath); // 2. export — the floor
@@ -1171,6 +1326,10 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         Assert.Equal(
             [TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(12)],
             waits);
+
+        // The floor is the pacer's own configured gap, not a literal inside the client.
+        Assert.Equal(12000, pacer.ExportDelayMs);
+        Assert.Equal(3000, pacer.DelayMs);
 
         // The floor is configuration: with it at 0 the export path keeps the general 3 s pace.
         var flatWaits = new List<TimeSpan>();
@@ -1218,7 +1377,8 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     /// discipline applied to the new options): the shipped <c>appsettings.json</c> values equal
     /// the code defaults, the factory the DI registration uses builds exactly that shape
     /// (protocol floor, ALPN offer, cipher-suite order where the platform allows one), standing
-    /// the shaping down reproduces the pre-ticket stack, and the honest User-Agent the shaping
+    /// the shaping down sets <b>no TLS opinions</b> (the pre-ticket transport shape — the bounded
+    /// pool and cookie-less handler stay unconditional), and the honest User-Agent the shaping
     /// rides beside is <b>unchanged</b>.
     /// </summary>
     [Fact]
@@ -1400,6 +1560,46 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     {
         Content = new StringContent(string.Empty, Encoding.UTF8, "text/plain"),
     };
+
+    /// <summary>True when the request addresses the byCriteria list route (the walk's list half).</summary>
+    private static bool IsByCriteria(HttpRequestMessage request) =>
+        request.RequestUri!.AbsolutePath.EndsWith("/byCriteria", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Binds one instrument (plus no cursor/depth state) so the walker-level (c2) case can drive the
+    /// production stores against the real schema: a fresh instrument, and the two coverage rows this
+    /// case writes cleared so a re-run starts from a bootstrap.
+    /// </summary>
+    private async Task EnsureWalkInstrumentAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        var instrument = await db.Instruments.SingleOrDefaultAsync(candidate => candidate.Symbol == symbol);
+        if (instrument is null)
+        {
+            instrument = new Instrument
+            {
+                Symbol = symbol,
+                Isin = $"TRA{symbol}00001",
+                Name = symbol,
+                Status = "active",
+                SourceRef = "test:kap-public-walk",
+                RecordedAt = new DateTimeOffset(2026, 10, 29, 0, 0, 0, TimeSpan.Zero),
+            };
+            db.Instruments.Add(instrument);
+            await db.SaveChangesAsync();
+        }
+
+        var stale = await db.CoverageMetadata
+            .Where(row => row.InstrumentId == instrument.Id
+                && (row.DataType == KapPublicStatementCursorStore.DataType
+                    || row.DataType == KapPublicStatementDepthStore.DataType))
+            .ToListAsync();
+        if (stale.Count > 0)
+        {
+            db.CoverageMetadata.RemoveRange(stale);
+            await db.SaveChangesAsync();
+        }
+    }
 
     private void ResetDoubles()
     {
