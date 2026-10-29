@@ -13,7 +13,8 @@ scope:
 
 # TKT-foundation-095: The SCR-005 financial-statements view — the user's v0 spec rendered on the stock page, replacing the 5-metric summary (controls bar, EV header, full IS/BS/CF, period toggle)
 
-- Status: in-progress
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/159 (base `dev`)
 - Size: M
 - **Priority: P1 — slice 3 of the 2026-10-28 financial-statements view wave, and its PRIMARY TICKET: the user's spec lives here verbatim. 093 (decode) and 094 (serving) are its supply halves; 096/097 extend it with the metrics panel and capital tracker.**
 
@@ -60,3 +61,17 @@ Also: **financial-sector companies (banks/insurance) are out of v0's row set** �
 - UX refs: **SCR-005** (§3 Financials — restructured per this ticket's user spec; flow-back routing item above), UXR-RES-008 (sections navigable — the view lives inside the Financials section), UXR-RES-014 (content, superseded in breadth by the user spec), UXR-RES-019/020/021/022 (markers/as-of/no-data), UXR-G-006/007 (honesty), UXR-G-021 (state preservation — the toggle).
 - Dependencies: TKT-foundation-094 (the payload). Shares Web stock-page files with 097 (serial: 095 first).
 - Parallel group: none.
+
+## Implementation notes (2026-10-29)
+
+**What was built.** `StatementsView.tsx` (the controls & filing bar, the served badges, the market & EV header, the three tables, the layout notice, the empty-basis state), `statementsView.ts` (the pure row model — served code bindings, period labels, badge evidence, EV operand rows) and `statementsPeriod.ts` (the basis hook), all under `src/screens/stock-page/`; `StockSections.tsx`'s `FinancialsSection` now dispatches to the view when the payload carries a served line set (or a financial-sector notice) and keeps the legacy five-figure summary otherwise, and `anyServedFigureRestated` was widened to cover `lines`/`otherLines`/`derived`. `contracts.ts` grew the additive statement types.
+
+**Honesty decisions pinned in code.** `[R]` → served `lines`, `[C]` → served `derived`, nothing computed (BR-RES-004). Spec rows the serving surface does not carry render as explicit dash rows: `ST financial investments`, the TMS 29 capital adjustment, `fcfMargin`, and the `enterpriseValue` total (094 serves the EV inputs, never a total). A spec row that 094 carries as **two** codes ("Other Op. Inc/Exp Net", "Investing Inc/Exp Net", "Financing Inc/Exp Net") renders as two rows rather than a client-computed net. `revenueGrowthYoy` is served as a fraction; the `%` rendering is the client's formatting only.
+
+**State.** The basis toggle persists in `sessionStorage` (`degerli.statements.basis`, UXR-G-021) — the zustand draft store is outside this ticket's scope, and the toggle is view state, not draft state.
+
+**TC ids (user decision).** The ticket names TC-RES-037, which TKT-foundation-052 already owns (dividends availability), and TC-RES-038 is taken by `Dividends.test.tsx`; per the user's answer the statements cases are tagged **TC-RES-039** (L3) and **TC-RES-040** (L4), both recorded in `stock-research.md` (v1.1). The ticket's acceptance line above still says 037 — a planner correction is owed.
+
+**Evidence.** Red: with `StockSections.tsx` reverted to its pre-ticket dispatch, TC-RES-039 reads **15 failed / 1 passed** (the pass is the pre-094 legacy-payload case). Green: TC-RES-039 **16/16**, `src/screens/stock-page` **10 files / 82 tests**, full Web suite **381/381** (58 files), `tsc --noEmit` clean (Web and `tests/e2e`), `eslint .` clean, i18n parity **778 keys**, advice-vocabulary clean. E2E was not executed here (no `compose.ci` stack) — typechecked only; CI runs it.
+
+**Flags.** (1) Copy reworded for the informational-only gate: `acquisitionCash` → "Devralma Nakit Çıkışları (M&A)" / "Acquisition Cash (M&A)", `buyback` → "Geri Edinilen Paylar" / "Share Repurchases" (the gate rejects "alım"/"buy") — ux flow-back. (2) The spec restructures SCR-005 §3 beyond UXR-RES-014; the dated SCR-005 amendment in `ux/stock-research.md` is owed by the ux-designer. (3) The fixture universe has no financial-sector instrument and no stored interim span, so the bank notice and the span label are pinned at L3 only. (4) Environment: on this session's dev stack `GET /api/v1/stocks/TUPRS/financials` (also ASELS) answered **500** while `/api/v1/stocks` answered 200 — the live criterion stays orchestrator-owned. (5) Both catalogs' `financials.macro.cadence` block was mis-indented at HEAD; re-serialising normalised it (5 lines/file).
