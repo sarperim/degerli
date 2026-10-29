@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-035: prices `CONFLICTING_VALUE` quarantine hygiene — bulk-resolve the re-fetch drift backlog and settle the policy
 
-- Status: in-progress (dispatched 2026-10-29, branch `TKT-foundation-035`)
+- Status: in-review (PR https://github.com/sarperim/degerli/pull/164 — branch `TKT-foundation-035`)
 - Size: M
 - **Priority: QUEUED — later lane** (2026-10-19/20 routing; the queue gate is superseded — the policy decision landed 2026-10-29 and the ticket is dispatch-ready). **Policy decision (a) RESOLVED 2026-10-29, user-ratified OPTION 1**: keep-first + a bulk-resolve/acknowledge admin tool for the backlog (quarantine rows reviewed/bulk-acknowledged as drift, never auto-promoted into facts). Options 2 and 3 rejected. Part (b) tooling follows option 1 as written.
 - Finding (live-run session finding 5): the paced Monday catch-up produced **74,008 `CONFLICTING_VALUE` quarantine rows** — İş Yatırım EOD values drift between fetches (revision/rounding churn), and the duplicate-guard design quarantines the re-fetched conflicting value instead of overwriting (correct and honest by design; first-write wins). The backlog is operational noise, not a product defect: nothing fabricated, nothing dropped silently.
