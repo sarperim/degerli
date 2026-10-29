@@ -1,3 +1,4 @@
+using System.Globalization;
 using Degerli.Ingestion.Validation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -72,16 +73,17 @@ public sealed class FinancialStatementStore
 
         // The payload's scale/currency declaration is mandatory and must be valid: an
         // undeclared or unknown scale/currency is a payload-schema failure (02 §3.1,
-        // TC-MDF-055) — never a silent guess.
-        var currency = payload.Currency;
-        var isTry = string.Equals(currency, "TRY", StringComparison.Ordinal);
-        if (payload.UnitScale is null
-            || !UnitScaleFactors.TryGetValue(payload.UnitScale, out var scale)
-            || currency is null
-            || !(isTry || FxSeriesByCurrency.ContainsKey(currency)))
+        // TC-MDF-055) — never a silent guess. The predicate is shared with
+        // <see cref="DescribeRefusal"/>, so the refusal's recorded detail can never describe a
+        // different rule than the one that fired.
+        if (DeclarationFailure(payload, out _))
         {
             return new StatementWriteResult(payload.Symbol, 0, 0, [QuarantineReason.SchemaMismatch]);
         }
+
+        var currency = payload.Currency;
+        var isTry = string.Equals(currency, "TRY", StringComparison.Ordinal);
+        var scale = UnitScaleFactors[payload.UnitScale!];
 
         var instrumentId = await _db.Instruments
             .Where(i => i.Symbol == payload.Symbol)
@@ -296,4 +298,107 @@ public sealed class FinancialStatementStore
         DateOnly periodEndDate,
         string statementType) =>
         string.Join('|', instrumentId, sourceRef, periodType, periodEndDate.ToString("yyyy-MM-dd"), statementType);
+
+    /// <summary>
+    /// True when the payload's mandatory scale/currency declaration is unusable (02 §3.1,
+    /// TC-MDF-055), with the reason spelled out. One definition shared by
+    /// <see cref="UpsertAsync"/>'s refusal and <see cref="DescribeRefusal"/>'s detail, so a
+    /// recorded refusal can never describe a different rule than the one that fired.
+    /// </summary>
+    private static bool DeclarationFailure(StatementsPayload payload, out string detail)
+    {
+        if (payload.UnitScale is null || !UnitScaleFactors.ContainsKey(payload.UnitScale))
+        {
+            detail = payload.UnitScale is null
+                ? $"the payload carries no usable scale declaration (unitScale is absent) — the declaration is mandatory and is never guessed (02 §3.1)"
+                : $"the payload's unitScale '{payload.UnitScale}' is outside the store's vocabulary (units/thousands/millions) — never scaled on an unknown multiplier";
+            return true;
+        }
+
+        if (payload.Currency is null)
+        {
+            detail = "the payload carries no usable currency declaration (currency is absent) — the declaration is mandatory and is never guessed (02 §3.1)";
+            return true;
+        }
+
+        if (!string.Equals(payload.Currency, "TRY", StringComparison.Ordinal)
+            && !FxSeriesByCurrency.ContainsKey(payload.Currency))
+        {
+            detail = $"the payload's currency '{payload.Currency}' is neither TRY nor a currency with a convergence series (USD/EUR) — never converted on an unknown currency";
+            return true;
+        }
+
+        detail = string.Empty;
+        return false;
+    }
+
+    /// <summary>
+    /// The <b>specific</b> detail behind one refusal reason — what actually failed, named, so a
+    /// quarantine row and its log line say <i>why</i> a payload was refused and not only the
+    /// reason code (TKT-foundation-101; FR-MDF-012, NFR-MDF-001). It covers exactly the clauses
+    /// this store refuses on, reading the same predicates the refusal itself uses.
+    /// </summary>
+    /// <param name="payload">The payload the store refused.</param>
+    /// <param name="reasonCode">The reason code the store returned (<see cref="QuarantineReason"/>).</param>
+    /// <param name="presentationUnit">The filing's own <c>Sunum Para Birimi</c> declaration,
+    /// verbatim, when the caller has it — it is what the public-site decoder could not read, and
+    /// naming it is the difference between "a scale was absent" and "the filing wrote <c>TL</c>".</param>
+    public static string DescribeRefusal(
+        StatementsPayload payload,
+        string reasonCode,
+        string? presentationUnit = null)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+
+        var declared = string.IsNullOrWhiteSpace(presentationUnit)
+            ? string.Empty
+            : $" The filing declares Sunum Para Birimi '{presentationUnit}'.";
+
+        if (string.Equals(reasonCode, QuarantineReason.ConflictingValue, StringComparison.Ordinal))
+        {
+            var conflicts = payload.Statements
+                .Where(fact => fact.ConflictingItemCodes is { Count: > 0 })
+                .SelectMany(fact => fact.ConflictingItemCodes!)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(code => code, StringComparer.Ordinal)
+                .ToList();
+
+            return conflicts.Count == 0
+                ? "a statement row carried repeated canonical item codes with unequal values — both values are retained on the decode and the row is quarantined, never latest-wins."
+                : $"statement row(s) carried repeated canonical item codes with unequal values: {string.Join(", ", conflicts)} — both values are retained on the decode and the row is quarantined, never latest-wins.";
+        }
+
+        if (string.Equals(reasonCode, QuarantineReason.MissingFxRate, StringComparison.Ordinal))
+        {
+            var series = payload.Currency is { } currency
+                ? FxSeriesByCurrency.GetValueOrDefault(currency)
+                : null;
+            return $"a statement is reported in '{payload.Currency ?? "(undeclared)"}' and no period-end rate for "
+                + $"'{series ?? "(no series)"}' exists in macro_values at or before its period end — never converted at a guessed rate (02 §3.1/§5.9).";
+        }
+
+        if (DeclarationFailure(payload, out var declarationDetail))
+        {
+            return declarationDetail + "." + declared;
+        }
+
+        foreach (var fact in payload.Statements)
+        {
+            var row = $"{fact.StatementType} {fact.PeriodType} {fact.PeriodEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
+
+            if (string.Equals(fact.Version, Restated, StringComparison.Ordinal) && fact.RestatementDate is null)
+            {
+                return $"{row}: a '{Restated}' version carries no restatement date — 02 §3.1 reserves the NULL date for the as-reported version 0, so the restatement cannot be identified.";
+            }
+
+            if (!string.Equals(fact.Version, AsReported, StringComparison.Ordinal)
+                && !string.Equals(fact.Version, Restated, StringComparison.Ordinal))
+            {
+                return $"{row}: the version word '{fact.Version}' is neither '{AsReported}' nor '{Restated}' — the row is refused rather than version-guessed.";
+            }
+        }
+
+        return $"the payload's symbol '{payload.Symbol}' has no stored instrument — nothing is written under an unknown identity.";
+    }
 }

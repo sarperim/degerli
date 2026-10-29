@@ -76,6 +76,7 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
             [RealSourceCatalog.KapPublicReportAselsAnnual] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportAselsAnnual).Body,
             [RealSourceCatalog.KapPublicReportMgros] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportMgros).Body,
             [RealSourceCatalog.KapPublicReportThyao] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportThyao).Body,
+            [RealSourceCatalog.KapPublicReportAstorQ1] = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReportAstorQ1).Body,
         };
 
     /// <summary>
@@ -2564,6 +2565,109 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.NotNull(incomeStatement.ConflictingItemCodes);
         Assert.Contains("NI_PARENT", incomeStatement.ConflictingItemCodes!);
         Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
+    }
+
+    // =================================================================================
+    // TC-MDF-128 — the bare-currency declaration (TKT-foundation-101)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-128 (b) — <b>the ruled outcome, case (a): the decoder gap, fixed.</b> The committed
+    /// <c>1605802</c> body declares <c>Sunum Para Birimi: TL</c> — a currency and <b>no
+    /// multiplier</b> — which the old grammar could not read at all, so scale and currency both
+    /// came back null, the store refused the whole filing as <c>SCHEMA_MISMATCH</c>, and (before
+    /// this ticket's observability half) the row recorded nothing about which body it had
+    /// refused.
+    /// <para>
+    /// A declaration naming a currency and no multiplier says <b>one lira per unit</b>: the bare
+    /// form is read as the store's <c>units</c> scale, never guessed into thousands or millions,
+    /// and no <c>PRESENTATION_UNIT_UNRECOGNISED</c> finding stands against it. The store then
+    /// accepts the filing — the point of the ruling — and writes all four statement rows the
+    /// bounded trim carries.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_128_b_a_bare_currency_declaration_reads_as_units_and_the_filing_decodes()
+    {
+        var report = KapPublicReportDecoder.Decode(
+            CaptureBodies[RealSourceCatalog.KapPublicReportAstorQ1],
+            "ASTOR");
+
+        // The declaration itself, read for what it says.
+        Assert.Equal("TL", report.Header.PresentationUnit);
+        Assert.Equal("units", report.Header.UnitScale);
+        Assert.Equal("TRY", report.Header.Currency);
+        Assert.Equal(0, report.Count(KapPublicReportReasons.PresentationUnitUnrecognised));
+
+        // The filing's own identity — this body is ASTOR ENERJİ A.Ş. (index 1605802), which is
+        // what it is labelled as; no GUBRF fact is manufactured from it.
+        Assert.Equal("ASTOR ENERJİ A.Ş.", report.Header.CompanyName);
+        Assert.Equal(new DateOnly(2026, 5, 11), report.Header.SubmittedAt);
+        Assert.Equal(2026, report.Header.Year);
+        Assert.Equal(1, report.Header.Period);
+        Assert.Equal("3 Aylık", report.Header.PeriodType);
+        Assert.Equal("Konsolide", report.Header.ConsolidationType);
+
+        // Both statements the trim carries, each in its own two columns.
+        Assert.Equal(2, report.Payload.Statements.Count(s => s.StatementType == "BS"));
+        Assert.Equal(2, report.Payload.Statements.Count(s => s.StatementType == "IS"));
+        Assert.All(report.Payload.Statements, statement => Assert.Null(statement.ConflictingItemCodes));
+
+        var balanceSheet = report.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2026, 3, 31));
+        Assert.Equal(58_630_702_726m, balanceSheet.Lines["TOTAL_ASSETS"]);
+        Assert.Equal(38_403_565_895m, balanceSheet.Lines["TOTAL_EQUITY"]);
+
+        var income = report.Payload.Statements.Single(
+            s => s.StatementType == "IS" && s.PeriodEndDate == new DateOnly(2026, 3, 31));
+        Assert.Equal("Q", income.PeriodType);
+        Assert.Equal(3, income.DurationMonths);
+        Assert.Equal(9_286_457_701m, income.Lines["REV"]);
+        Assert.Equal(3_524_361_357m, income.Lines["GROSS_PROFIT"]);
+
+        // … and the store takes it: the refusal the live lane produced is gone, not papered over.
+        var (store, instrumentId) = await StoreAsync("ASTOR");
+        var result = await store.UpsertAsync(
+            "kap-public",
+            new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.Zero),
+            report.Payload);
+
+        Assert.Empty(result.RejectedReasonCodes);
+        Assert.Equal(4, result.Inserted);
+        Assert.Equal(0, result.Unchanged);
+        Assert.True(instrumentId > 0);
+    }
+
+    /// <summary>
+    /// TC-MDF-128 (c) — <b>non-regression: the fix moves nothing that was already right.</b> The
+    /// five committed bodies keep their own presentation-unit readings (four declare
+    /// <c>1.000 TL</c> → <c>thousands</c>; THYAO declares <c>1.000.000 TL</c> → <c>millions</c>),
+    /// their decode sizes and their zero-conflict row sets, and not one of them gains a
+    /// <c>PRESENTATION_UNIT_UNRECOGNISED</c> finding: the bare-currency branch is additive, so a
+    /// multiplier-bearing declaration is still read by the pattern it always was.
+    /// </summary>
+    [Fact]
+    public void TC_MDF_128_c_the_five_committed_bodies_keep_their_decodes()
+    {
+        foreach (var (name, symbol, scale, lines, statements, findings) in new (string, string, string, int, int, int)[]
+        {
+            (RealSourceCatalog.KapPublicReport, "ASELS", "thousands", 116, 6, 3),
+            (RealSourceCatalog.KapPublicReportTuprs, "TUPRS", "thousands", 346, 6, 20),
+            (RealSourceCatalog.KapPublicReportAselsAnnual, "ASELS", "thousands", 383, 6, 35),
+            (RealSourceCatalog.KapPublicReportMgros, "MGROS", "thousands", 314, 6, 22),
+            (RealSourceCatalog.KapPublicReportThyao, "THYAO", "millions", 497, 6, 41),
+        })
+        {
+            var report = KapPublicReportDecoder.Decode(CaptureBodies[name], symbol);
+
+            Assert.Equal(scale, report.Header.UnitScale);
+            Assert.Equal("TRY", report.Header.Currency);
+            Assert.Equal(0, report.Count(KapPublicReportReasons.PresentationUnitUnrecognised));
+            Assert.Equal(lines, report.Lines.Count);
+            Assert.Equal(statements, report.Payload.Statements.Count);
+            Assert.Equal(findings, report.Findings.Count);
+            Assert.All(report.Payload.Statements, statement => Assert.Null(statement.ConflictingItemCodes));
+        }
     }
 
     // =================================================================================

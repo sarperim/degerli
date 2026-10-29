@@ -1200,7 +1200,7 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         await BindAsync("ASELS");
 
         // --- pass 1: every report fetch dies in transport (the burst shape) -------------------
-        StubDoubles(serveInterimBody: false);
+        StubDoubles(failingReports: [Q1Index, AnnualIndex], serveInterimBody: false);
         StubTransportFailure(InterimIndex, Q1Index, AnnualIndex);
         await using (var host = BuildTransportIngestion())
         {
@@ -1447,7 +1447,7 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         await BindAsync("ASELS");
 
         // Seed the backlog: three transport-failure quarantines, no window content written.
-        StubDoubles(serveInterimBody: false);
+        StubDoubles(failingReports: [Q1Index, AnnualIndex], serveInterimBody: false);
         StubTransportFailure(InterimIndex, Q1Index, AnnualIndex);
         await using (var host = BuildTransportIngestion())
         {
@@ -1539,6 +1539,97 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
         Assert.Empty(cursor.Quarantined);
         Assert.Empty(cursor.Retried);
         Assert.Empty(cursor.PendingReplay());
+    }
+
+    // =============================================================================================
+    // TC-MDF-128 (a) — a refused payload keeps evidence and names why (TKT-foundation-101)
+    // =============================================================================================
+
+    /// <summary>
+    /// TC-MDF-128 (a) — <b>the observability gap itself, red before this ticket.</b> A payload the
+    /// store refuses used to write a quarantine row with <c>NULL</c> evidence and a log line
+    /// carrying only the reason code, so 292 refusals on 2026-10-28 (GUBRF's five filings among
+    /// them) recorded <i>that</i> something was refused and nothing about <i>what</i>.
+    /// <para>
+    /// The double here is the committed interim body with its own declaration rewritten to a
+    /// currency the store's vocabulary does not know (<c>1.000 QAR</c>) — the same refusal class
+    /// the live lane produced, derived from a committed capture and never invented. The row must
+    /// now carry a <b>bounded</b> evidence document naming the filing, the index, the decode and
+    /// the refusal's own detail, and the log line must name that detail rather than a bare word.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_128_a_a_refused_payload_keeps_bounded_evidence_and_the_log_names_the_detail()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // The committed body, its declaration rewritten — the refused shape, never a live call.
+        StubDoubles(failingReports: [Q1Index, AnnualIndex], serveInterimBody: false);
+        var body = System.Text.RegularExpressions.Regex.Replace(
+            RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body,
+            "<td>1\\.000 TL</td>",
+            "<td>1.000 QAR</td>",
+            System.Text.RegularExpressions.RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+        Assert.Contains("<td>1.000 QAR</td>", body, StringComparison.Ordinal);
+        _wireMock.StubBytes(
+            string.Format(ReportRoute, InterimIndex),
+            System.Text.Encoding.UTF8.GetBytes(body),
+            "text/html; charset=utf-8");
+
+        var log = new LogSink();
+        await using (var host = BuildIngestion(logSink: log))
+        {
+            var result = await RunAsync(host);
+            Assert.Equal(IngestResult.Partial, result.Status);
+            // Three reports are listed: the refused interim and the two the source answers a 500
+            // for — every one of them counted, none of them silent.
+            Assert.Equal(3, result.Quarantined);
+            Assert.Equal(0, result.Written);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var row = await db.QuarantinedFacts.SingleAsync(
+                quarantine => quarantine.ReasonCode == QuarantineReason.SchemaMismatch);
+
+            // The evidence exists at all — the gap this ticket closes — and it is bounded.
+            Assert.NotNull(row.PayloadJson);
+            Assert.True(
+                row.PayloadJson!.Length < 16_384,
+                $"the refusal evidence must stay a bounded excerpt, not a body ({row.PayloadJson.Length} chars)");
+
+            using var document = JsonDocument.Parse(row.PayloadJson);
+            var root = document.RootElement;
+            Assert.Equal("ASELS", root.GetProperty("symbol").GetString());
+            Assert.Equal(InterimIndex, root.GetProperty("kapPublicDisclosureIndex").GetInt64());
+            Assert.Equal(QuarantineReason.SchemaMismatch, root.GetProperty("reasonCode").GetString());
+
+            // The filing's own declaration, verbatim: this is what a reader needs to see.
+            var filing = root.GetProperty("filing");
+            Assert.Equal("1.000 QAR", filing.GetProperty("presentationUnit").GetString());
+            Assert.Equal(JsonValueKind.Null, filing.GetProperty("unitScale").ValueKind);
+
+            // The decode it refused, counted rather than dumped.
+            var decode = root.GetProperty("decode");
+            Assert.Equal(6, decode.GetProperty("statementCount").GetInt32());
+            Assert.True(decode.GetProperty("lineCount").GetInt32() > 0);
+            Assert.True(decode.GetProperty("findingsTruncated").ValueKind is JsonValueKind.True or JsonValueKind.False);
+
+            // The detail names the clause that fired and the declaration it could not read.
+            var detail = root.GetProperty("detail").GetString();
+            Assert.NotNull(detail);
+            Assert.Contains("1.000 QAR", detail!, StringComparison.Ordinal);
+        }
+
+        // … and the log line carries that same detail, not a bare reason code.
+        Assert.Contains(
+            log.Messages,
+            message => message.Contains("refused public-site payload for ASELS", StringComparison.Ordinal)
+                && message.Contains(QuarantineReason.SchemaMismatch, StringComparison.Ordinal)
+                && message.Contains("Sunum Para Birimi '1.000 QAR'", StringComparison.Ordinal)
+                && message.Contains("never guessed", StringComparison.Ordinal));
     }
 
     // =============================================================================================

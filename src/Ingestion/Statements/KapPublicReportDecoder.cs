@@ -1070,6 +1070,17 @@ public static class KapPublicReportDecoder
     /// Parses <c>Sunum Para Birimi</c> (the capture's <c>1.000 TL</c>) into the store's scale
     /// vocabulary and an ISO currency. An unrecognised unit leaves both null — the store then
     /// refuses the payload rather than scaling it wrongly (02 §3.1, TC-MDF-055).
+    /// <para>
+    /// <b>A bare currency is a declaration too (TKT-foundation-101).</b> Filers do not all write a
+    /// multiplier: the committed <c>1605802</c> capture declares <c>Sunum Para Birimi: TL</c> with
+    /// no number at all, which states the unit plainly — one lira per unit, i.e. the store's
+    /// <c>units</c> scale — and is exactly the shape the old grammar could not read, so the store
+    /// refused the whole filing as <c>SCHEMA_MISMATCH</c> without recording why. The bare form is
+    /// read as <b>units</b> because that is what it says: a declaration naming a currency and no
+    /// multiplier is not a missing declaration, and inferring a multiplier for it would be the
+    /// guess 02 §3.1 forbids. Every multiplier-bearing declaration keeps its existing reading
+    /// (the pattern below), so no committed body's decode moves.
+    /// </para>
     /// </summary>
     private static (string? Scale, string? Currency) ParsePresentationUnit(
         string? presentationUnit,
@@ -1082,6 +1093,12 @@ public static class KapPublicReportDecoder
                 1,
                 "Sunum Para Birimi is absent — scale and currency stay null (the store refuses rather than guesses)."));
             return (null, null);
+        }
+
+        var bareCurrency = CurrencyFor(presentationUnit.Trim());
+        if (bareCurrency is not null)
+        {
+            return ("units", bareCurrency);
         }
 
         var match = PresentationUnitPattern.Match(presentationUnit.Trim());
@@ -1112,13 +1129,7 @@ public static class KapPublicReportDecoder
             _ => null,
         };
 
-        var currency = match.Groups["unit"].Value.ToUpperInvariant() switch
-        {
-            "TL" or "TRY" or "₺" => "TRY",
-            "USD" or "$" => "USD",
-            "EUR" or "€" => "EUR",
-            _ => null,
-        };
+        var currency = CurrencyFor(match.Groups["unit"].Value);
 
         if (scale is null || currency is null)
         {
@@ -1143,6 +1154,22 @@ public static class KapPublicReportDecoder
 
         return (scale, currency);
     }
+
+    /// <summary>
+    /// The ISO currency a presentation-unit token names (<c>TL</c>/<c>TRY</c>/<c>₺</c>,
+    /// <c>USD</c>/<c>$</c>, <c>EUR</c>/<c>€</c>), or null when it names none this source's
+    /// vocabulary knows. One definition for both halves of
+    /// <see cref="ParsePresentationUnit"/> — the bare form and the multiplier-bearing form — so
+    /// the two can never drift apart.
+    /// </summary>
+    private static string? CurrencyFor(string unit) =>
+        unit.Trim().ToUpperInvariant() switch
+        {
+            "TL" or "TRY" or "₺" => "TRY",
+            "USD" or "$" => "USD",
+            "EUR" or "€" => "EUR",
+            _ => null,
+        };
 
     // ---------------------------------------------------------------------------------
     // Tables and columns
