@@ -775,6 +775,354 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
     }
 
     // =================================================================================
+    // TC-MDF-126 — Turkish dotless-ı identity resolution (the ı→i fold in CarriesToken)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-126 (a) — the committed BIMAS answer, whose <c>cmpOrFundCode</c> is <c>'bımas'</c> (the
+    /// Turkish dotless <c>ı</c>, U+0131), resolves the bound symbol <c>BIMAS</c>. This is exactly the
+    /// live residue TKT-foundation-091's run 362 recorded: <c>OrdinalIgnoreCase</c> folds ASCII case
+    /// but not <c>ı</c>↔<c>i</c>, so the company could never be mapped and never statement-fed.
+    /// <para>
+    /// Red on the pre-ticket head: this answer was <c>COMPANY_IDENTITY_UNRESOLVED</c> — the live
+    /// run's observed state for BIMAS, ENKAI, ISCTR and SISE.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_a_the_committed_dotless_bimas_answer_resolves_bimas()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("BIMAS", "BİM BİRLEŞİK MAĞAZALAR A.Ş.", "TRABIMAS91N1");
+        var bindings = await BindingsAsync("BIMAS");
+
+        var body = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityBimas).Body;
+        // The committed answer really carries the dotless code — the fold is authored against the
+        // source's own spelling, not against a transcription of it.
+        Assert.Contains("\"cmpOrFundCode\":\"bımas\"", body, StringComparison.Ordinal);
+        StubIdentityFor("BIMAS", body);
+        var bimOid = OidInCommittedBody(body, "bımas");
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.False(result.IsSourceDown, result.Detail);
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(1, result.Bound);
+        Assert.Equal(1, result.Resolved);
+        Assert.Equal(1, result.Inserted);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(0, result.Unchanged);
+        Assert.Empty(result.Unresolved);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(bindings[0].InstrumentId, row.InstrumentId);
+        Assert.Equal(bimOid, row.KapPublicOid);
+        Assert.Contains("keyword=BIMAS", row.KapPublicOidSource, StringComparison.Ordinal);
+        Assert.Equal(T, row.KapPublicOidAsOf);
+
+        Assert.Equal(1, _wireMock.RequestsFor(IdentityPath));
+        Assert.Equal(0, _wireMock.RequestsFor(ByCriteriaPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (a2) — the other two captured dotless answers resolve in the same pass: ENKAI's
+    /// single token <c>'enkaı'</c> (the same root cause as BIMAS, not a different odd shape — the
+    /// ticket's recorded finding) and ISCTR's <b>five-token</b> dotless list
+    /// <c>'ısatr,ısbtr,ısctr,ıskur,tıb'</c>, which needs 091's comma-token rule <b>and</b> this
+    /// ticket's fold together (the token <c>'ısctr'</c> folds to <c>isctr</c>). Both are committed
+    /// captures, committed verbatim.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_a2_the_other_captured_dotless_answers_resolve_through_the_fold()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("ENKAI", "ENKA İNŞAAT VE SANAYİ A.Ş.", "TREENKAI91N1");
+        await BindSymbolAsync("ISCTR", "TÜRKİYE İŞ BANKASI A.Ş.", "TRAISCTR91N2");
+        var bindings = await BindingsAsync("ENKAI", "ISCTR");
+
+        var enkaiBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityEnkai).Body;
+        var isctrBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrDotless).Body;
+        Assert.Contains("\"cmpOrFundCode\":\"enkaı\"", enkaiBody, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"cmpOrFundCode\":\"ısatr,ısbtr,ısctr,ıskur,tıb\"", isctrBody, StringComparison.Ordinal);
+        StubIdentityFor("ENKAI", enkaiBody);
+        StubIdentityFor("ISCTR", isctrBody);
+
+        var enkaOid = OidInCommittedBody(enkaiBody, "enkaı");
+        var iscOid = OidInCommittedBody(isctrBody, "ısatr,ısbtr,ısctr,ıskur,tıb");
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(2, result.Bound);
+        Assert.Equal(2, result.Resolved);
+        Assert.Equal(2, result.Inserted);
+        Assert.Empty(result.Unresolved);
+
+        await using var db = _postgres.CreateContext();
+        var rows = await db.KapPublicCompanyMaps.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.InstrumentId == bindings.Single(b => b.Symbol == "ENKAI").InstrumentId
+            && row.KapPublicOid == enkaOid);
+        Assert.Contains(rows, row => row.InstrumentId == bindings.Single(b => b.Symbol == "ISCTR").InstrumentId
+            && row.KapPublicOid == iscOid);
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (b) — the committed SISE answer, whose code is <c>'sıse'</c>, resolves the bound
+    /// symbol <c>SISE</c> — the ticket's second named live residue item.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_b_the_committed_dotless_sise_answer_resolves_sise()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("SISE", "TÜRKİYE ŞİŞE VE CAM FABRİKALARI A.Ş.", "TRASISE91N1");
+        var bindings = await BindingsAsync("SISE");
+
+        var body = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentitySise).Body;
+        Assert.Contains("\"cmpOrFundCode\":\"sıse\"", body, StringComparison.Ordinal);
+        StubIdentityFor("SISE", body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(1, result.Resolved);
+        Assert.Equal(1, result.Inserted);
+        Assert.Empty(result.Unresolved);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(OidInCommittedBody(body, "sıse"), row.KapPublicOid);
+        Assert.Equal(T, row.KapPublicOidAsOf);
+        Assert.Equal(1, _wireMock.RequestsFor(IdentityPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (c) — the fold is <b>comparison-time only</b>: nothing the resolver touches is
+    /// rewritten. The committed answer body keeps its verbatim dotless spelling (its UTF-8 bytes are
+    /// unmodified, 386 bytes as captured, and the byte stream carries U+0131), and the stored map row
+    /// carries the public oid and the resolution provenance — never a normalized copy of the code, and
+    /// never a translated symbol. The matched mapping is the source's oid, stored under our own
+    /// ASCII symbol.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_c_the_fold_is_comparison_only_and_rewrites_nothing()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("BIMAS", "BİM BİRLEŞİK MAĞAZALAR A.Ş.", "TRABIMAS91N1");
+        var bindings = await BindingsAsync("BIMAS");
+
+        var payload = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityBimas);
+        Assert.Equal(RealSourceProvenance.Captured, payload.Provenance);
+        Assert.Equal(RealSourceCatalog.KapPublicSource, payload.Source);
+        Assert.Equal("POST", payload.Method);
+        // Verbatim: the committed bytes are the captured answer — dotless ı present, ASCII 'bimas'
+        // absent — so the record itself shows the fold was never applied to the data.
+        Assert.Equal(386, payload.RawBytes.Length);
+        var body = payload.Body;
+        Assert.Contains('\u0131', body);
+        Assert.Contains("\"cmpOrFundCode\":\"bımas\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"cmpOrFundCode\":\"bimas\"", body, StringComparison.Ordinal);
+
+        StubIdentityFor("BIMAS", body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(1, result.Resolved);
+
+        await using var db = _postgres.CreateContext();
+        var row = Assert.Single(await db.KapPublicCompanyMaps.ToListAsync());
+        Assert.Equal(OidInCommittedBody(body, "bımas"), row.KapPublicOid);
+        // The stored provenance names the lane, the route and OUR symbol — never a folded variant
+        // of the source's code, because the code is not what the resolver stores.
+        Assert.Contains("kap-public:/tr/api/search/combined", row.KapPublicOidSource, StringComparison.Ordinal);
+        Assert.Contains("keyword=BIMAS", row.KapPublicOidSource, StringComparison.Ordinal);
+
+        // And the bound instrument's own spelling is untouched by the pass.
+        var instrument = await db.Instruments.SingleAsync(row2 => row2.Id == bindings[0].InstrumentId);
+        Assert.Equal("BIMAS", instrument.Symbol);
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (d) — a <b>dotless multi-candidate</b> answer is still
+    /// <c>COMPANY_IDENTITY_AMBIGUOUS</c>, never a pick: two distinct company candidates share the
+    /// folded token (one spelled <c>'bımas'</c>, one ASCII <c>'bimas'</c>), so the fold creates
+    /// candidates but never a tie-break. Named, counted, nothing stored — and a second pass does not
+    /// drift into a pick either (the 091 ambiguity semantics survive the fold unchanged).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_d_a_dotless_multi_candidate_answer_stays_ambiguous_and_is_never_picked()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("BIMAS", "BİM BİRLEŞİK MAĞAZALAR A.Ş.", "TRABIMAS91N1");
+        var bindings = await BindingsAsync("BIMAS");
+
+        var body = AmbiguousDotlessBimasBody();
+        StubIdentityFor("BIMAS", body);
+        var logs = new InMemorySerilogSink();
+
+        await using var provider = BuildIngestion(logs);
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(1, result.Bound);
+        Assert.Equal(0, result.Resolved);
+        Assert.Equal(0, result.Inserted);
+        Assert.Equal(1, result.UnresolvedCount);
+
+        var unresolved = Assert.Single(result.Unresolved);
+        Assert.Equal("BIMAS", unresolved.Symbol);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, unresolved.ReasonCode);
+        // The refusal names both candidates — the dotless one and the ASCII one that shares its
+        // folded token — so an operator can see the choice the resolver declined to make.
+        Assert.Contains("bımas", unresolved.Detail!, StringComparison.Ordinal);
+        Assert.Contains("bimas", unresolved.Detail!, StringComparison.Ordinal);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        Assert.Contains(
+            logs.Events,
+            evt => evt.RenderMessage().Contains("BIMAS", StringComparison.Ordinal)
+                && evt.RenderMessage().Contains(KapPublicReasonCodes.CompanyIdentityAmbiguous, StringComparison.Ordinal));
+
+        var again = await ResolveAsync(provider, bindings);
+        Assert.Equal(1, again.UnresolvedCount);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, again.Unresolved[0].ReasonCode);
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        Assert.Equal(2, _wireMock.RequestsFor(IdentityPath));
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (e) — the fold is exactly <c>ı</c>/<c>İ</c> → <c>i</c> and nothing more. Three
+    /// in-memory mutations of the committed BIMAS answer: (e-1) a token that merely <i>contains</i>
+    /// the symbol (<c>'bımasxyz'</c>) is still not a token match — the fold never becomes a substring
+    /// rule; (e-2) a non-Turkish near-miss (<c>'bımaş'</c>, one letter outside the fold) stays
+    /// unresolved — the fold is not a general transcription/accent-stripping rule; (e-3) the
+    /// uppercase dotted <c>İ</c> in a code (<c>'bİmas'</c>) matches, pinning the second half of the
+    /// fold that no capture happens to exercise.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_e_the_fold_is_exactly_dotless_i_and_never_a_substring_or_accent_rule()
+    {
+        await ResetAsync();
+        await BindSymbolAsync("BIMAS", "BİM BİRLEŞİK MAĞAZALAR A.Ş.", "TRABIMAS91N1");
+        var bindings = await BindingsAsync("BIMAS");
+
+        var committed = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityBimas).Body;
+
+        // (e-1) a longer token that contains the symbol is not a match.
+        var substring = committed.Replace("\"bımas\"", "\"bımasxyz\"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, substring);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("BIMAS", substring);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(0, result.Resolved);
+            Assert.Equal(KapPublicReasonCodes.CompanyIdentityUnresolved, Assert.Single(result.Unresolved).ReasonCode);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        // (e-2) a near-miss outside the fold's two letters stays unresolved.
+        var nearMiss = committed.Replace("\"bımas\"", "\"bımaş\"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, nearMiss);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("BIMAS", nearMiss);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(0, result.Resolved);
+            Assert.Equal(KapPublicReasonCodes.CompanyIdentityUnresolved, Assert.Single(result.Unresolved).ReasonCode);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(0, await db.KapPublicCompanyMaps.CountAsync());
+        }
+
+        // (e-3) the uppercase dotted İ folds to i as well.
+        var dottedUpper = committed.Replace("\"bımas\"", "\"bİmas\"", StringComparison.Ordinal);
+        Assert.NotEqual(committed, dottedUpper);
+        ResetDoubles();
+        await ClearMapsAsync();
+        StubIdentityFor("BIMAS", dottedUpper);
+
+        await using (var provider = BuildIngestion())
+        {
+            var result = await ResolveAsync(provider, bindings);
+            Assert.Equal(1, result.Resolved);
+            Assert.Equal(1, result.Inserted);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(
+                OidInCommittedBody(committed, "bımas"),
+                Assert.Single(await db.KapPublicCompanyMaps.ToListAsync()).KapPublicOid);
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-126 (f) — every 080/091 golden holds under the fold: the committed single-token ASELS
+    /// capture resolves to its oid unchanged, the constructed comma-coded ISCTR answer resolves to
+    /// its company oid (the fund hit spelling the bare token never binds), and the constructed
+    /// GARAN answer with two candidates sharing <c>garan</c> is still <c>COMPANY_IDENTITY_AMBIGUOUS</c>
+    /// — the fold widens nothing and breaks no earlier pin.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_126_f_the_080_and_091_goldens_are_unchanged_by_the_fold()
+    {
+        await ResetAsync();
+        await BindInstrumentsAsync();
+        await BindSymbolAsync("ISCTR", "TÜRKİYE İŞ BANKASI A.Ş.", "TRAISCTR91N2");
+        await BindSymbolAsync("GARAN", "TÜRKİYE GARANTİ BANKASI A.Ş.", "TRAGARAN91N1");
+        var bindings = await BindingsAsync("ASELS", "ISCTR", "GARAN");
+
+        StubIdentityFor("ASELS", RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentity).Body);
+        var isctrBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityIsctrCommaCoded).Body;
+        StubIdentityFor("ISCTR", isctrBody);
+        StubIdentityFor("GARAN", RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityGaranCommaCoded).Body);
+
+        await using var provider = BuildIngestion();
+        var result = await ResolveAsync(provider, bindings);
+
+        Assert.Equal(KapPublicIdentityResolutionOutcome.Ok, result.Outcome);
+        Assert.Equal(3, result.Bound);
+        Assert.Equal(2, result.Resolved);
+        Assert.Equal(2, result.Inserted);
+        Assert.Equal(1, result.UnresolvedCount);
+        Assert.Equal("GARAN", Assert.Single(result.Unresolved).Symbol);
+        Assert.Equal(KapPublicReasonCodes.CompanyIdentityAmbiguous, result.Unresolved[0].ReasonCode);
+
+        await using var db = _postgres.CreateContext();
+        var rows = await db.KapPublicCompanyMaps.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.KapPublicOid == AselsPublicOid);
+        Assert.Contains(rows, row => row.KapPublicOid == OidInCommittedBody(isctrBody, "isctr,isatr"));
+        var garanId = bindings.Single(binding => binding.Symbol == "GARAN").InstrumentId;
+        Assert.DoesNotContain(rows, row => row.InstrumentId == garanId);
+    }
+
+    // =================================================================================
     // Harness
     // =================================================================================
 
@@ -886,6 +1234,31 @@ public sealed class KapPublicIdentityTests : IClassFixture<PostgresFixture>, ICl
         [{"category":"combined","results":[]},{"category":"subjects","results":[]},
          {"category":"companyOrFunds","results":[{{Hit(AselsPublicOid)}},{{Hit("4028e4a1413b7ef401413bc2251e0099")}}]}]
         """;
+    }
+
+    /// <summary>
+    /// A <b>derived</b> dotless identity answer (not a capture, TKT-foundation-099): the committed
+    /// BIMAS hit as committed, plus one further company hit whose code is the ASCII
+    /// <c>'bimas'</c> under a distinct oid — two distinct candidates sharing the <b>folded</b>
+    /// token, so the fold is shown creating candidates without ever becoming a tie-break.
+    /// </summary>
+    private static string AmbiguousDotlessBimasBody()
+    {
+        const string secondHit =
+            """
+            {"searchValue":"BİM BİRLEŞİK MAĞAZALAR A.Ş.","searchType":"C",
+             "actionKey":"companyFundAction","memberOrFundOid":"4028e4a140e95be70140ee1b7b030199",
+             "subjectOid":null,"marketOid":null,"discType":null,"year":-1,"period":-1,
+             "cmpOrFundCode":"bimas","indexList":null}
+            """;
+
+        var committed = RealSourceCatalog.Get(RealSourceCatalog.KapPublicIdentityBimas).Body;
+        var mutated = committed.Replace(
+            "\"cmpOrFundCode\":\"bımas\",\"indexList\":null}",
+            "\"cmpOrFundCode\":\"bımas\",\"indexList\":null}," + secondHit,
+            StringComparison.Ordinal);
+        Assert.NotEqual(committed, mutated);
+        return mutated;
     }
 
     private void StubIdentity(string body) => _wireMock.StubJson(IdentityPath, body, method: "POST");
