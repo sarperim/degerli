@@ -5,6 +5,7 @@ import type {
   StockDividendsResponse,
   StockFinancialsResponse,
   StockGrowthResponse,
+  StockKeyMetricsResponse,
   StockOverviewResponse,
   StockProfitabilityResponse,
   StockValuationResponse,
@@ -28,6 +29,7 @@ export type StockSectionEndpoint =
   | 'growth'
   | 'balanceSheet'
   | 'dividends'
+  | 'keyMetrics'
 
 /** A section payload: the data shape, or the explicit missing-data envelope. */
 export type SectionResponse<T> = T | MissingDataResponse
@@ -42,6 +44,7 @@ export const stockPageQueryKeys = {
   growth: (symbol: string) => ['stocks', symbol, 'growth'] as const,
   balanceSheet: (symbol: string) => ['stocks', symbol, 'balance-sheet'] as const,
   dividends: (symbol: string) => ['stocks', symbol, 'dividends'] as const,
+  keyMetrics: (symbol: string) => ['stocks', symbol, 'key-metrics'] as const,
 }
 
 function sectionPath(symbol: string, section: string): string {
@@ -154,6 +157,23 @@ export function fetchStockDividends(
     sectionPath(symbol, 'dividends'),
     signal,
   )
+}
+
+/**
+ * `GET /api/v1/stocks/{symbol}/key-metrics` — the key value metrics & moat panel
+ * and the capital & dilution tracker (FR-RES-006/007/009/010/027; TKT-foundation-096's
+ * payload, rendered by TKT-foundation-097).
+ *
+ * Every figure is served — the current canonical value, the 5Y company median with
+ * its depth disclosure, and the sector median with its peer/exclusion counts. The
+ * page computes nothing (BR-RES-004); the endpoint always serves its honest
+ * per-metric states, so there is no section-level missing-data branch here.
+ */
+export function fetchStockKeyMetrics(
+  symbol: string,
+  signal?: AbortSignal,
+): Promise<StockKeyMetricsResponse> {
+  return apiGet<StockKeyMetricsResponse>(sectionPath(symbol, 'key-metrics'), signal)
 }
 
 /** True when a section response carries the explicit missing-data envelope. */

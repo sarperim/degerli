@@ -3,9 +3,9 @@ import { expect, test } from '@playwright/test'
 import { catalogValue, loadCatalog } from './helpers/catalog'
 
 /**
- * TC-RES-029 / TC-RES-030 / TC-RES-031 / TC-RES-033 / TC-RES-040 (L4) — the SCR-005
- * stock-page critical flows against the seeded compose.ci stack, end-to-end and
- * anonymous (`.pipeline/testing/stock-research.md`).
+ * TC-RES-029 / TC-RES-030 / TC-RES-031 / TC-RES-033 / TC-RES-040 / TC-RES-041 (L4) —
+ * the SCR-005 stock-page critical flows against the seeded compose.ci stack,
+ * end-to-end and anonymous (`.pipeline/testing/stock-research.md`).
  *
  *   TC-RES-029 — description in preparation (BETA: draft description, numbers populated).
  *   TC-RES-030 — restatement marking visible (REST: restated FY figures).
@@ -15,6 +15,11 @@ import { catalogValue, loadCatalog } from './helpers/catalog'
  *                the Yıllık/Çeyreklik toggle and its honest interim labels, the dash
  *                for rows the surface does not carry, and the basis preserved across
  *                navigation (ALFA is the fixture with served interims).
+ *   TC-RES-041 — the key value metrics & moat panel and the capital & dilution
+ *                tracker (TKT-foundation-097): the served current values, the
+ *                withheld company median's disclosure, the honest dash where the
+ *                fixture world serves no sector median / no input, and the
+ *                share-count N/M (the fixture world runs no medians job).
  *
  * Copy is read from the checked-in catalogs (§8.3) so assertions never hardcode
  * prose that could drift from the product. Assertions use fixture flags/values
@@ -247,6 +252,66 @@ test.describe('TC-RES-033 back-navigation preserves section', () => {
     await expect(page.getByRole('button', { name: balanceSheet })).toHaveAttribute(
       'aria-current',
       'true',
+    )
+  })
+})
+
+test.describe('TC-RES-041 key metrics & capital tracker on the fixture world', () => {
+  test('ALFA renders the served panel and tracker with their honest gaps', async ({
+    page,
+  }) => {
+    await page.goto('/stocks/ALFA')
+
+    const financials = page.getByRole('region', {
+      name: TR('stockPage.sections.financials'),
+    })
+    const panel = financials.getByTestId('key-metrics-panel')
+    await expect(panel).toBeVisible()
+
+    // The served current value (ALFA's CROIC from its own fixture lines, 250/1,200).
+    const croicPercent = new Intl.NumberFormat('tr-TR', {
+      style: 'percent',
+      maximumFractionDigits: 2,
+    }).format(250 / 1200)
+    await expect(
+      panel.locator('[data-metric="croic"]').locator('td').first(),
+    ).toHaveText(croicPercent)
+
+    // The 5Y company median is withheld on the fixture world's one stored day, and
+    // its depth/observation disclosure is rendered beside the dash (never a
+    // fabricated median).
+    await expect(
+      panel
+        .locator('[data-metric="croic"] [data-slot="company-median-disclosure"]')
+        .first(),
+    ).toBeVisible()
+
+    // No medians job runs in the fixture world → every sector median is the honest
+    // dash, never a fabricated comparison.
+    await expect(
+      panel.locator('[data-metric="croic"] [data-slot="sector-median"]'),
+    ).toHaveText('—')
+
+    // A code the fixture statements cannot compute (no TOTAL_ASSETS) is the dash.
+    await expect(
+      panel.locator('[data-metric="roa"] [data-slot="no-value"]').first(),
+    ).toHaveText('—')
+
+    // Basis honesty: the served group-basis ROE is labelled as such, never Parent.
+    await expect(
+      panel.locator('[data-metric="roe"] th').first(),
+    ).toHaveText(TR('stockPage.keyMetrics.rows.roe'))
+    await expect(panel.locator('[data-metric="roe"] th').first()).not.toContainText(
+      'Ana Ortaklık',
+    )
+
+    const tracker = financials.getByTestId('capital-tracker')
+    await expect(tracker).toBeVisible()
+    // No share-count history is stored → the Y/Y change is the honest N/M.
+    const change = tracker.locator('[data-row="shareCountChangeYoy"]')
+    await expect(change.locator('[data-slot="no-value"]')).toHaveText('—')
+    await expect(change).toContainText(
+      TR('stockPage.capitalTracker.noCountHistory'),
     )
   })
 })

@@ -23,6 +23,7 @@ import {
 } from '@/lib/format'
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
+import { KeyMetricsPanel } from '@/screens/stock-page/KeyMetricsPanel'
 import { StatementsView } from '@/screens/stock-page/StatementsView'
 import { servesStatements } from '@/screens/stock-page/statementsView'
 
@@ -328,6 +329,10 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
           </div>
         ) : null}
       </SectionBody>
+      {/* The key value metrics & moat panel and the capital & dilution tracker
+          (TKT-foundation-097) own their own `/key-metrics` query, so this panel
+          loads/fails/retries independently of the statements above (M-5). */}
+      <KeyMetricsPanel symbol={symbol} />
     </SectionShell>
   )
 }
