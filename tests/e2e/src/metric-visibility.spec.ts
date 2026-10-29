@@ -65,8 +65,12 @@ test.describe('TC-SCR-021 — metric visibility panel', () => {
 
     try {
 
-      // The 18 screenable metrics with their state (UXR-MDF-023).
-      await expect(table.getByRole('row')).toHaveCount(19) // header + 18 metrics
+      // The 32 catalog metrics with their state (UXR-MDF-023): the panel lists the whole
+      // catalog, not only the screenable rows — a metric has to be listed to be toggled. The
+      // catalog is the 18 v1 rows plus TKT-foundation-096's 14 panel rows, seeded with
+      // `is_screenable = false` (the screener's offered set is unchanged until a builder flips
+      // them); the old constant was bound to the 18-row catalog.
+      await expect(table.getByRole('row')).toHaveCount(33) // header + 32 metrics
       let roeRow = table.getByRole('row', { name: new RegExp(ROE_LABEL) })
       await expect(roeRow).toContainText(TR('admin.metrics.screenable'))
 
