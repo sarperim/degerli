@@ -14,7 +14,7 @@ scope:
 
 # TKT-foundation-095: The SCR-005 financial-statements view — the user's v0 spec rendered on the stock page, replacing the 5-metric summary (controls bar, EV header, full IS/BS/CF, period toggle)
 
-- Status: in-review
+- Status: done (PR #159 squash-merged 54c3e8e; review rounds 1-2, round-2 verdict MERGEABLE — page-computes-nothing verified by both lanes, advice-gate rewording ruled legitimate, version collision with 099 resolved by last-lander renumber to v1.5.76; routing items R-2/R-3/R-5/R-6 + live criteria recorded for planner)
 - PR: https://github.com/sarperim/degerli/pull/159 (base `dev`)
 - Size: M
 - **Priority: P1 — slice 3 of the 2026-10-28 financial-statements view wave, and its PRIMARY TICKET: the user's spec lives here verbatim. 093 (decode) and 094 (serving) are its supply halves; 096/097 extend it with the metrics panel and capital tracker.**
