@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Security;
+using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
@@ -7,6 +9,9 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Scheduling;
+using Degerli.Persistence;
+using Degerli.Persistence.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -31,8 +36,13 @@ namespace Degerli.Api.IntegrationTests;
 /// <c>kap-public</c> (never the VYK lane's <c>kap</c>), and the public index space
 /// (1643141) is never written where a VYK index (head 1231017) belongs.
 /// </para>
+/// <para>
+/// The walker-level sub-case (c2) additionally uses the <see cref="PostgresFixture"/>: the
+/// statements walk's own cursor/depth stores persist to the real schema, so "the next pass
+/// resumes there" is read back from a stored cursor rather than inferred.
+/// </para>
 /// </summary>
-public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
+public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>, IClassFixture<PostgresFixture>
 {
     private const string ByCriteriaPath = "/tr/api/disclosure/members/byCriteria";
     private const string ReportPath = "/tr/api/notification/export/excel/1643141";
@@ -43,8 +53,13 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     private const string AselsPublicOid = "4028e4a1413b7ef401413bc2251e0047";
 
     private readonly WireMockFixture _wireMock;
+    private readonly PostgresFixture _postgres;
 
-    public KapPublicSourceTests(WireMockFixture wireMock) => _wireMock = wireMock;
+    public KapPublicSourceTests(WireMockFixture wireMock, PostgresFixture postgres)
+    {
+        _wireMock = wireMock;
+        _postgres = postgres;
+    }
 
     // =================================================================================
     // TC-MDF-103 (i) — the configuration contract
@@ -902,6 +917,568 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     }
 
     // =================================================================================
+    // TC-MDF-127 — the durable access fix: quota awareness, the export floor, the TLS shape
+    // (TKT-foundation-100, 01 v1.5.77 §10.9.19)
+    // =================================================================================
+
+    /// <summary>
+    /// TC-MDF-127 (a) — a <c>429</c> is a <b>named</b> outcome with <b>one</b> bounded re-issue,
+    /// never a retry ladder (the 2026-10-28 finding: the export route answers
+    /// "Request Limit Exceeded", empty body, no <c>Retry-After</c>). The request journal proves
+    /// exactly two requests — the refused one and the single re-issue after the wait — and a
+    /// source that stays rate-limited is reported under its own reason, not as a transport
+    /// failure and not as another attempt.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_a_a_429_is_named_with_one_bounded_reissue_and_never_a_ladder()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            waits.Add(wait);
+            return Task.CompletedTask;
+        };
+
+        var reportBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body;
+
+        // The quota is honored, then the source answers: exactly one re-issue after the wait.
+        var attempts = 0;
+        var recovered = new RecordingHandler(_ =>
+        {
+            attempts++;
+            return attempts == 1
+                ? TooManyRequests()
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+                };
+        });
+        var client = BuildClient(recovered, clock, quotaDelay: quotaRecorder);
+        var body = await client.GetDetailStringAsync(ReportPath);
+
+        Assert.Equal(reportBody, body);
+        Assert.Equal(2, recovered.Requests.Count);
+        var wait = Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs), wait);
+
+        // A source that stays rate-limited is named, counted, and asked exactly twice.
+        var refusing = new RecordingHandler(_ => TooManyRequests());
+        var refusingWaits = new List<TimeSpan>();
+        KapPublicDelay refusingRecorder = (delay, _) =>
+        {
+            refusingWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var refusingClient = BuildClient(refusing, clock, quotaDelay: refusingRecorder);
+
+        var quota = await Assert.ThrowsAsync<KapPublicQuotaException>(
+            () => refusingClient.GetDetailStringAsync(ReportPath));
+        Assert.Equal(KapPublicReasonCodes.QuotaRateLimited, quota.ReasonCode);
+        Assert.False(quota.Deferred);
+        Assert.Equal(TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs), quota.RequiredWait);
+        Assert.Equal(KapPublicHttpSourceClient.MaxQuotaAttempts, refusing.Requests.Count);
+        Assert.Equal(2, refusing.Requests.Count);
+        Assert.Single(refusingWaits);
+
+        // …and the reader names it, so the ledger never records it as a plain source-down.
+        var reader = new KapPublicSourceReader(refusingClient, OptionsOf());
+        var read = await reader.ReadReportAsync(1643141);
+        Assert.True(read.IsSourceDown);
+        Assert.False(read.IsQuotaDeferred);
+        Assert.Equal(KapPublicReasonCodes.QuotaRateLimited, read.ReasonCode);
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (b) — a <c>Retry-After</c> the source <b>does</b> send is honored
+    /// <b>verbatim</b>: the delta-seconds form and the HTTP-date form both produce exactly the
+    /// wait the source asked for (never the configured fixed backoff, never a rounded or capped
+    /// value).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_b_a_retry_after_header_is_honored_verbatim()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+        var reportBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body;
+
+        // (b-i) the delta-seconds form.
+        var waits = new List<TimeSpan>();
+        KapPublicDelay recorder = (delay, _) =>
+        {
+            waits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var attempts = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            attempts++;
+            if (attempts > 1)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+                };
+            }
+
+            var response = TooManyRequests();
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                TimeSpan.FromSeconds(7));
+            return response;
+        });
+
+        var client = BuildClient(handler, clock, quotaDelay: recorder);
+        Assert.Equal(reportBody, await client.GetDetailStringAsync(ReportPath));
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(7), Assert.Single(waits));
+
+        // (b-ii) the HTTP-date form: the wait is the distance to the date it names.
+        var dateWaits = new List<TimeSpan>();
+        KapPublicDelay dateRecorder = (delay, _) =>
+        {
+            dateWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var dateAttempts = 0;
+        var dateHandler = new RecordingHandler(_ =>
+        {
+            dateAttempts++;
+            if (dateAttempts > 1)
+            {
+                return JsonResponse("[]");
+            }
+
+            var response = TooManyRequests();
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                clock.GetUtcNow().AddSeconds(5));
+            return response;
+        });
+
+        var datedClient = BuildClient(dateHandler, clock, quotaDelay: dateRecorder);
+        Assert.Equal("[]", await datedClient.GetStringAsync(ProbePath));
+        Assert.Equal(2, dateHandler.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(5), Assert.Single(dateWaits));
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (c) — a backoff that would <b>exceed the caller's per-item bound</b> is never
+    /// slept: the lane refuses to outlive its own caller, reports the walk's truncation reason
+    /// (<c>WALK_QUOTA_BACKOFF</c>, the bounded-pass family that resumes next pass) and issues
+    /// <b>no</b> second request. Both sources of the demanded wait are covered — the source's own
+    /// <c>Retry-After</c> and the configured fixed backoff — because both are bounded by the same
+    /// rule.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_c_a_backoff_past_the_per_item_bound_truncates_instead_of_sleeping()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+
+        // (c-i) the source asks for 120 s on a route whose own bound is 60 s.
+        var waits = new List<TimeSpan>();
+        KapPublicDelay recorder = (delay, _) =>
+        {
+            waits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var handler = new RecordingHandler(_ =>
+        {
+            var response = TooManyRequests();
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                TimeSpan.FromSeconds(120));
+            return response;
+        });
+
+        var client = BuildClient(handler, clock, quotaDelay: recorder);
+        var deferred = await Assert.ThrowsAsync<KapPublicQuotaException>(
+            () => client.GetDetailStringAsync(ReportPath));
+
+        Assert.True(deferred.Deferred);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, deferred.ReasonCode);
+        Assert.Equal(TimeSpan.FromSeconds(120), deferred.RequiredWait);
+        Assert.Contains("per-item bound", deferred.Message, StringComparison.Ordinal);
+        Assert.Single(handler.Requests);   // no re-issue: the wait would outlive the caller
+        Assert.Empty(waits);               // and nothing was slept past the bound
+        Assert.Contains(KapPublicReasonCodes.WalkQuotaBackoff, deferred.Message, StringComparison.Ordinal);
+
+        // The walk's seam sees a truncation, not a skippable source-down.
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var read = await reader.ReadReportAsync(1643141);
+        Assert.True(read.IsQuotaDeferred);
+        Assert.True(read.IsSourceDown);
+        Assert.False(read.IsOk);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, read.ReasonCode);
+
+        // (c-ii) the same rule bounds the *configured* fixed backoff: with a 3 s general bound,
+        // the shipped 8 s backoff is over it, so the general path defers too.
+        var generalWaits = new List<TimeSpan>();
+        KapPublicDelay generalRecorder = (delay, _) =>
+        {
+            generalWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var listHandler = new RecordingHandler(_ => TooManyRequests());
+        var boundedClient = BuildClient(listHandler, clock, quotaDelay: generalRecorder, requestTimeoutMs: 3_000);
+
+        var generalQuota = await Assert.ThrowsAsync<KapPublicQuotaException>(
+            () => boundedClient.GetStringAsync(ProbePath));
+        Assert.True(generalQuota.Deferred);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, generalQuota.ReasonCode);
+        Assert.Equal(TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs), generalQuota.RequiredWait);
+        Assert.Single(listHandler.Requests);
+        Assert.Empty(generalWaits);
+
+        // The contrast that makes it a *bound*, not a blanket refusal: a wait that fits still
+        // re-issues (asserted by (a)/(b)); here the same 8 s backoff under the default 30 s bound
+        // defers nothing — it is slept and the request re-issued exactly once, and the re-issue is
+        // a second request that owes the pace like any other (never back-to-back).
+        var paceWaits = new List<TimeSpan>();
+        KapPublicDelay paceRecorder = (delay, _) =>
+        {
+            paceWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var roomyAttempts = 0;
+        var roomyHandler = new RecordingHandler(_ =>
+        {
+            roomyAttempts++;
+            return roomyAttempts == 1 ? TooManyRequests() : JsonResponse("[]");
+        });
+        var roomy = BuildClient(roomyHandler, clock, delay: paceRecorder, delayMs: 3000, quotaDelay: generalRecorder);
+        Assert.Equal("[]", await roomy.GetStringAsync(ProbePath));
+        Assert.Equal(2, roomyHandler.Requests.Count);
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs),
+            Assert.Single(generalWaits));
+        Assert.Equal(TimeSpan.FromSeconds(3), Assert.Single(paceWaits));
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (c2) — the walker's own half of the deferral (review round 2, DR-2). A deferred
+    /// quota read is not only a client outcome: it must truncate the <b>pass</b> honestly at the
+    /// walker's seam. The pass reports <c>Truncated</c> under <c>WALK_QUOTA_BACKOFF</c>, spends no
+    /// detail budget as a completed unit, closes no window (the watermark stays where the window
+    /// started) and marks nothing done — no tombstone, no skip. The next pass over the same stored
+    /// cursor lists the same window, fetches the report it had to leave behind and finishes it, so
+    /// the resume the reason code promises is asserted, not inferred.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_c2_a_deferred_quota_read_truncates_the_walk_at_its_own_seam_and_resumes()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+        const string symbol = "ASELS";
+        const long deferredIndex = 1643141L;
+        await EnsureWalkInstrumentAsync(symbol);
+
+        // One financial report in the only window the plan asks for.
+        const string listBody =
+            """[{"disclosureIndex":1643141,"disclosureClass":"FR","disclosureType":"FR","disclosureCategory":"FR","publishDate":"25.10.2026 18:00:00","kapTitle":"ASELS"}]""";
+
+        var plan = new KapPublicStatementWalkPlan(
+            new DateOnly(2026, 10, 1),
+            new DateOnly(2026, 10, 31),
+            31);
+
+        // The export route answers 429 asking for 120 s on a 60 s per-item bound: deferred at the
+        // client, never slept, never re-issued.
+        var quotaWaits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            quotaWaits.Add(wait);
+            return Task.CompletedTask;
+        };
+        var deferring = new RecordingHandler(request =>
+        {
+            if (IsByCriteria(request))
+            {
+                return JsonResponse(listBody);
+            }
+
+            var response = TooManyRequests();
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                TimeSpan.FromSeconds(120));
+            return response;
+        });
+
+        await using var db = _postgres.CreateContext();
+        var options = OptionsOf();
+        var cursors = new KapPublicStatementCursorStore(db);
+        var depths = new KapPublicStatementDepthStore(db);
+        var walker = new KapPublicStatementsWalker(
+            new KapPublicSourceReader(BuildClient(deferring, clock, quotaDelay: quotaRecorder), options),
+            cursors,
+            depths,
+            new KapPublicWalkBudget(0, 0, TimeSpan.Zero, clock));
+        var sinkCalls = 0;
+        KapPublicStatementSink sink = (_, _, _) =>
+        {
+            sinkCalls++;
+            return Task.FromResult(new KapPublicStatementWrite(1, 0, 0));
+        };
+
+        var first = await walker.WalkAsync(symbol, PublicCompanyOid.Parse(AselsPublicOid), plan, sink);
+
+        // The seam: an honest bounded pass, not a success and not a source-down.
+        Assert.True(first.Truncated);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, first.TruncationReason);
+        Assert.Null(first.Failure);
+        Assert.Equal(1, first.WindowsListed);
+        Assert.Equal(0, first.WindowsWalked);   // the window was never closed
+        Assert.Equal(1, first.ReportsListed);
+        Assert.Equal(0, first.ReportsFetched);  // nothing was marked done
+        Assert.Empty(first.Skips);              // and nothing was quarantined or skipped
+        Assert.Equal(0, first.Inserted);
+        Assert.Equal(0, sinkCalls);
+        Assert.Null(first.AchievedFrom);
+        Assert.Null(first.AchievedTo);
+        Assert.Empty(quotaWaits);               // the deferred wait was never slept
+
+        // No tombstone spent, no window closed: the stored cursor is exactly the bootstrap start.
+        var persisted = await cursors.GetAsync(symbol);
+        Assert.NotNull(persisted);
+        Assert.Equal(plan.From, persisted!.Watermark);
+        Assert.False(persisted.Contains(deferredIndex));
+        Assert.Empty(persisted.PendingReplay());
+
+        var depthNotes = await db.CoverageMetadata
+            .Where(row => row.DataType == KapPublicStatementDepthStore.DataType)
+            .Select(row => row.Notes)
+            .SingleAsync();
+        Assert.Contains("\"truncated\":true", depthNotes, StringComparison.Ordinal);
+        Assert.Contains(KapPublicReasonCodes.WalkQuotaBackoff, depthNotes, StringComparison.Ordinal);
+
+        // The next pass resumes on the same cursor: the same window, the same report, now answered.
+        var completing = new RecordingHandler(request =>
+            IsByCriteria(request)
+                ? JsonResponse(listBody)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body,
+                        Encoding.UTF8,
+                        "text/html"),
+                });
+        var resuming = new KapPublicStatementsWalker(
+            new KapPublicSourceReader(BuildClient(completing, clock, quotaDelay: quotaRecorder), options),
+            cursors,
+            depths,
+            new KapPublicWalkBudget(0, 0, TimeSpan.Zero, clock));
+
+        var second = await resuming.WalkAsync(symbol, PublicCompanyOid.Parse(AselsPublicOid), plan, sink);
+
+        Assert.False(second.Truncated);
+        Assert.Null(second.TruncationReason);
+        Assert.Equal(1, second.WindowsListed);
+        Assert.Equal(1, second.WindowsWalked);
+        Assert.Equal(1, second.ReportsFetched);
+        Assert.Equal(1, second.Inserted);
+        Assert.Equal(1, sinkCalls);
+
+        var resumed = await cursors.GetAsync(symbol);
+        Assert.True(resumed!.Contains(deferredIndex));
+        Assert.Equal(plan.To, resumed.Watermark);
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (d) — the export pacing knob delays <b>detail</b> fetches and <b>only</b> them:
+    /// on a fake clock the recorded waits are the export floor (12 s) for each export request and
+    /// the unchanged general pace (3 s) for each list/probe request, in the order the journal
+    /// shows the requests. The floor raises the export path, never the others, and a disabled
+    /// general pace disables both (the L2 harness binding).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_d_the_export_pacing_knob_delays_detail_fetches_and_only_them()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay recorder = (delay, _) =>
+        {
+            waits.Add(delay);
+            return Task.CompletedTask;
+        };
+
+        var reportBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body;
+        var handler = new RecordingHandler(request =>
+            request.RequestUri!.AbsolutePath == ReportPath
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+                }
+                : JsonResponse("[]"));
+
+        var options = OptionsOf(o =>
+        {
+            o.RequestDelayMs = 3000;
+            o.ExportRequestDelayMs = 12000;
+        });
+        var pacer = new KapPublicRequestPacer(options, clock, recorder);
+        var client = new KapPublicHttpSourceClient(BuildHttp(handler), options, pacer, clock);
+
+        await client.GetStringAsync(ProbePath);        // 1. list/probe — general pace
+        await client.GetDetailStringAsync(ReportPath); // 2. export — the floor
+        await client.GetStringAsync(ProbePath);        // 3. list/probe — general pace
+        await client.GetDetailStringAsync(ReportPath); // 4. export — the floor
+
+        // Journal-proven order and kind.
+        Assert.Equal(
+            [ProbePath, ReportPath, ProbePath, ReportPath],
+            handler.Requests.Select(request => request.Path).ToArray());
+
+        // Three gaps: export, general, export — the general pace is untouched on the list path.
+        Assert.Equal(
+            [TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(12)],
+            waits);
+
+        // The floor is the pacer's own configured gap, not a literal inside the client.
+        Assert.Equal(12000, pacer.ExportDelayMs);
+        Assert.Equal(3000, pacer.DelayMs);
+
+        // The floor is configuration: with it at 0 the export path keeps the general 3 s pace.
+        var flatWaits = new List<TimeSpan>();
+        KapPublicDelay flatRecorder = (delay, _) =>
+        {
+            flatWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var flatOptions = OptionsOf(o =>
+        {
+            o.RequestDelayMs = 3000;
+            o.ExportRequestDelayMs = 0;
+        });
+        var flatHandler = new RecordingHandler(_ => JsonResponse("[]"));
+        var flat = new KapPublicHttpSourceClient(
+            BuildHttp(flatHandler), flatOptions, new KapPublicRequestPacer(flatOptions, clock, flatRecorder), clock);
+
+        await flat.GetStringAsync(ProbePath);
+        await flat.GetDetailStringAsync(ReportPath);
+        Assert.Equal([TimeSpan.FromSeconds(3)], flatWaits);
+
+        // A disabled general pace (the harness binding) disables the floor too: nothing is slept.
+        var offWaits = new List<TimeSpan>();
+        KapPublicDelay offRecorder = (delay, _) =>
+        {
+            offWaits.Add(delay);
+            return Task.CompletedTask;
+        };
+        var offOptions = OptionsOf(o =>
+        {
+            o.RequestDelayMs = 0;
+            o.ExportRequestDelayMs = 12000;
+        });
+        var offHandler = new RecordingHandler(_ => JsonResponse("[]"));
+        var off = new KapPublicHttpSourceClient(
+            BuildHttp(offHandler), offOptions, new KapPublicRequestPacer(offOptions, clock, offRecorder), clock);
+
+        await off.GetStringAsync(ProbePath);
+        await off.GetDetailStringAsync(ReportPath);
+        Assert.Empty(offWaits);
+    }
+
+    /// <summary>
+    /// TC-MDF-127 (e) — the TLS shape is <b>config-equivalence-pinned</b> (the 091 UA-pin
+    /// discipline applied to the new options): the shipped <c>appsettings.json</c> values equal
+    /// the code defaults, the factory the DI registration uses builds exactly that shape
+    /// (protocol floor, ALPN offer, cipher-suite order where the platform allows one), standing
+    /// the shaping down sets <b>no TLS opinions</b> (the pre-ticket transport shape — the bounded
+    /// pool and cookie-less handler stay unconditional), and the honest User-Agent the shaping
+    /// rides beside is <b>unchanged</b>.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_127_e_the_tls_shape_is_config_equivalence_pinned()
+    {
+        var appsettingsPath = Path.Combine(FindRepositoryRoot(), "src", "Api", "appsettings.json");
+        Assert.True(File.Exists(appsettingsPath), $"appsettings.json missing at {appsettingsPath}");
+        using var document = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
+        var kapPublic = document.RootElement.GetProperty("Ingestion").GetProperty("KapPublic");
+
+        // (e-i) shipped config == code defaults, key by key.
+        Assert.Equal(KapPublicSourceOptions.DefaultExportRequestDelayMs, AsInt(kapPublic, "ExportRequestDelayMs"));
+        Assert.Equal(12000, AsInt(kapPublic, "ExportRequestDelayMs"));
+        Assert.Equal(KapPublicSourceOptions.DefaultQuotaBackoffMs, AsInt(kapPublic, "QuotaBackoffMs"));
+        Assert.Equal(8000, AsInt(kapPublic, "QuotaBackoffMs"));
+        Assert.Equal("true", kapPublic.GetProperty("TlsShapeEnabled").GetString());
+        Assert.Equal(KapPublicSourceOptions.DefaultTlsShapeEnabled, new KapPublicSourceOptions().TlsShapeEnabled);
+        Assert.Equal(KapPublicSourceOptions.DefaultTlsMinimumVersion, kapPublic.GetProperty("TlsMinimumVersion").GetString());
+        Assert.Equal("Tls12", kapPublic.GetProperty("TlsMinimumVersion").GetString());
+        Assert.Equal(KapPublicSourceOptions.DefaultTlsAlpnProtocols, kapPublic.GetProperty("TlsAlpnProtocols").GetString());
+        Assert.Equal("h2,http/1.1", kapPublic.GetProperty("TlsAlpnProtocols").GetString());
+        Assert.Equal(KapPublicSourceOptions.DefaultTlsCipherSuites, kapPublic.GetProperty("TlsCipherSuites").GetString());
+
+        // The shipped general pace is unchanged by this ticket (the export floor raises only the
+        // export path) and so is the honest UA (the 091 pin, frozen input).
+        Assert.Equal(KapPublicSourceOptions.DefaultRequestDelayMs, AsInt(kapPublic, "RequestDelayMs"));
+        var shippedUserAgent = kapPublic.GetProperty("UserAgent").GetString() ?? string.Empty;
+        Assert.Equal(KapPublicSourceOptions.DefaultUserAgent, shippedUserAgent);
+        Assert.Contains("Degerli/0.1", shippedUserAgent, StringComparison.Ordinal);
+        Assert.DoesNotContain("DegerliBot", shippedUserAgent, StringComparison.Ordinal);
+
+        // (e-ii) the shipped values, bound onto the options, build the pinned shape.
+        var shipped = new KapPublicSourceOptions
+        {
+            ExportRequestDelayMs = AsInt(kapPublic, "ExportRequestDelayMs"),
+            QuotaBackoffMs = AsInt(kapPublic, "QuotaBackoffMs"),
+            TlsShapeEnabled = bool.Parse(kapPublic.GetProperty("TlsShapeEnabled").GetString()!),
+            TlsMinimumVersion = kapPublic.GetProperty("TlsMinimumVersion").GetString()!,
+            TlsAlpnProtocols = kapPublic.GetProperty("TlsAlpnProtocols").GetString()!,
+            TlsCipherSuites = kapPublic.GetProperty("TlsCipherSuites").GetString()!,
+        };
+        var codeDefaults = new KapPublicSourceOptions();
+        Assert.Equal(codeDefaults.ExportRequestDelayMs, shipped.ExportRequestDelayMs);
+        Assert.Equal(codeDefaults.QuotaBackoffMs, shipped.QuotaBackoffMs);
+        Assert.Equal(codeDefaults.TlsShapeEnabled, shipped.TlsShapeEnabled);
+        Assert.Equal(codeDefaults.TlsMinimumVersion, shipped.TlsMinimumVersion);
+        Assert.Equal(codeDefaults.TlsAlpnProtocols, shipped.TlsAlpnProtocols);
+        Assert.Equal(codeDefaults.TlsCipherSuites, shipped.TlsCipherSuites);
+
+        var handler = KapPublicHttpHandlerFactory.Create(shipped);
+        // An exact set, not a flag test: TLS 1.2 + 1.3 and nothing else (TLS 1.0/1.1/SSL3 are
+        // never offered — the browser floor).
+        Assert.Equal(SslProtocols.Tls12 | SslProtocols.Tls13, handler.SslOptions.EnabledSslProtocols);
+
+        Assert.Equal(
+            [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11],
+            handler.SslOptions.ApplicationProtocols?.ToArray() ?? []);
+
+        var expectedSuites = KapPublicHttpHandlerFactory.ParseCipherSuites(shipped.TlsCipherSuites);
+        Assert.Equal(11, expectedSuites.Count);
+        if (OperatingSystem.IsWindows())
+        {
+            // Recorded platform fact, never faked: Windows does not let a client order its
+            // cipher suites, so the property stays unset and the platform default stands.
+            Assert.Null(handler.SslOptions.CipherSuitesPolicy);
+        }
+        else
+        {
+            Assert.NotNull(handler.SslOptions.CipherSuitesPolicy);
+            Assert.Equal(expectedSuites, handler.SslOptions.CipherSuitesPolicy!.AllowedCipherSuites.ToArray());
+        }
+
+        // (e-iii) standing the shaping down reproduces the pre-ticket stack: no TLS opinions.
+        var unshaped = KapPublicHttpHandlerFactory.Create(
+            new KapPublicSourceOptions { TlsShapeEnabled = false });
+        Assert.Equal(SslProtocols.None, unshaped.SslOptions.EnabledSslProtocols);
+        Assert.Null(unshaped.SslOptions.CipherSuitesPolicy);
+        Assert.Empty(unshaped.SslOptions.ApplicationProtocols ?? []);
+
+        // (e-iv) the DI registration really builds its client over that handler and agrees with
+        // the ALPN it offers (h2 with the HTTP/1.1 fallback) — composition, not a code fork.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Default"] = "Host=localhost;Database=composition-only",
+                ["Ingestion:KapPublic:BaseUrl"] = "https://www.kap.org.tr",
+                ["Ingestion:KapPublic:AutomatedAccess"] = "Allowed",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMarketDataIngestion(configuration);
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var http = scope.ServiceProvider.GetRequiredKeyedService<HttpClient>(KapPublicSourceOptions.ClientKey);
+        Assert.Equal(HttpVersion.Version20, http.DefaultRequestVersion);
+        Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, http.DefaultVersionPolicy);
+    }
+
+    // =================================================================================
     // helpers
     // =================================================================================
 
@@ -922,6 +1499,10 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         {
             BaseUrl = "http://localhost",
             RequestDelayMs = 0,
+            // The harness binds the export quota floor OFF by default so a case that is about
+            // the general pace keeps measuring the general pace; the floor's own behaviour is
+            // TC-MDF-127 (d)'s subject and is bound explicitly there.
+            ExportRequestDelayMs = 0,
             // L2 harness config: the tests that are not about the posture select the shipped
             // value explicitly. The default (NotVerified) is exercised by its own case.
             AutomatedAccess = KapPublicAccessPosture.Allowed,
@@ -938,12 +1519,15 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         TimeProvider clock,
         KapPublicDelay? delay = null,
         int delayMs = 0,
-        int detailTimeoutMs = KapPublicSourceOptions.DefaultDetailFetchTimeoutMs)
+        int detailTimeoutMs = KapPublicSourceOptions.DefaultDetailFetchTimeoutMs,
+        KapPublicDelay? quotaDelay = null,
+        int requestTimeoutMs = KapPublicSourceOptions.DefaultRequestTimeoutMs)
     {
         var options = OptionsOf(o =>
         {
             o.RequestDelayMs = delayMs;
             o.DetailFetchTimeoutMs = detailTimeoutMs;
+            o.RequestTimeoutMs = requestTimeoutMs;
         });
         // A null handler means "go to the double over the wire" (the WireMock cases); a
         // recording handler is used where the request shape, the pacing or the flight gate is
@@ -952,7 +1536,7 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
         http.BaseAddress = new Uri(_wireMock.BaseUrl);
         http.Timeout = Timeout.InfiniteTimeSpan;
         var pacer = new KapPublicRequestPacer(options, clock, delay);
-        return new KapPublicHttpSourceClient(http, options, pacer, clock);
+        return new KapPublicHttpSourceClient(http, options, pacer, clock, quotaDelay);
     }
 
     /// <summary>An <see cref="HttpClient"/> over a recording handler, addressed at the WireMock double.</summary>
@@ -968,6 +1552,54 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
     };
+
+    /// <summary>
+    /// The observed quota answer (2026-10-28): <c>429</c>, empty body, no <c>Retry-After</c>.
+    /// </summary>
+    private static HttpResponseMessage TooManyRequests() => new(HttpStatusCode.TooManyRequests)
+    {
+        Content = new StringContent(string.Empty, Encoding.UTF8, "text/plain"),
+    };
+
+    /// <summary>True when the request addresses the byCriteria list route (the walk's list half).</summary>
+    private static bool IsByCriteria(HttpRequestMessage request) =>
+        request.RequestUri!.AbsolutePath.EndsWith("/byCriteria", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Binds one instrument (plus no cursor/depth state) so the walker-level (c2) case can drive the
+    /// production stores against the real schema: a fresh instrument, and the two coverage rows this
+    /// case writes cleared so a re-run starts from a bootstrap.
+    /// </summary>
+    private async Task EnsureWalkInstrumentAsync(string symbol)
+    {
+        await using var db = _postgres.CreateContext();
+        var instrument = await db.Instruments.SingleOrDefaultAsync(candidate => candidate.Symbol == symbol);
+        if (instrument is null)
+        {
+            instrument = new Instrument
+            {
+                Symbol = symbol,
+                Isin = $"TRA{symbol}00001",
+                Name = symbol,
+                Status = "active",
+                SourceRef = "test:kap-public-walk",
+                RecordedAt = new DateTimeOffset(2026, 10, 29, 0, 0, 0, TimeSpan.Zero),
+            };
+            db.Instruments.Add(instrument);
+            await db.SaveChangesAsync();
+        }
+
+        var stale = await db.CoverageMetadata
+            .Where(row => row.InstrumentId == instrument.Id
+                && (row.DataType == KapPublicStatementCursorStore.DataType
+                    || row.DataType == KapPublicStatementDepthStore.DataType))
+            .ToListAsync();
+        if (stale.Count > 0)
+        {
+            db.CoverageMetadata.RemoveRange(stale);
+            await db.SaveChangesAsync();
+        }
+    }
 
     private void ResetDoubles()
     {

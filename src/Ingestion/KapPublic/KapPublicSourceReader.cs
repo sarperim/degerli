@@ -67,6 +67,15 @@ public sealed class KapPublicSourceReader
                 exception.Message,
                 Excerpt(exception.Body));
         }
+        catch (KapPublicQuotaException exception)
+        {
+            // The source's request quota answered 429 (TKT-foundation-100, 01 v1.5.77 §10.9.19):
+            // a named outcome with its own reason, never a transport failure in disguise and never
+            // a retry ladder.
+            return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.SourceDown(
+                exception.ReasonCode,
+                exception.Message);
+        }
         catch (KapPublicSourceTimeoutException exception)
         {
             return KapPublicFetchResult<IReadOnlyList<KapPublicDisclosureRow>>.SourceDown(
@@ -104,6 +113,15 @@ public sealed class KapPublicSourceReader
                 KapPublicReasonCodes.SourceFetchFailed,
                 exception.Message,
                 Excerpt(exception.Body));
+        }
+        catch (KapPublicQuotaException exception)
+        {
+            // The export route's quota (the 2026-10-28 live finding): a named outcome. A *deferred*
+            // one (IsQuotaDeferred) is a truncation, not a skip — the walk stops at its last
+            // completed unit instead of marking this report done.
+            return KapPublicFetchResult<KapPublicReportBody>.SourceDown(
+                exception.ReasonCode,
+                exception.Message);
         }
         catch (KapPublicSourceTimeoutException exception)
         {

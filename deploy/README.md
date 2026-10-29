@@ -185,6 +185,18 @@ rogue/on-path host key aborts the deploy instead of being trusted silently (no T
 
 ---
 
+## KAP public-site access: the relay fallback
+
+The KAP public-site lane reaches `https://www.kap.org.tr` through the adapter's own
+browser-shaped TLS handler plus 429-aware pacing (TKT-foundation-100, architecture
+§10.9.19). When the edge refuses that stack at the **transport** level — or enforces its
+export quota harder than the adapter's floor — a local TLS relay can stand in front of the
+source while keeping every politeness rule. It is **ops posture, not a product path**:
+[`kap-relay/README.md`](kap-relay/README.md) states when to use it, the
+`Ingestion:KapPublic:BaseUrl` seam it rides, and the live criterion for standing it down.
+
+---
+
 ## Manual / operational ledger
 
 These acceptance items are **not** automatable from CI and are recorded as builder-run
