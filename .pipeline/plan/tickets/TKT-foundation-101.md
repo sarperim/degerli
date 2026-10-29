@@ -1,0 +1,32 @@
+---
+scope:
+  - src/Ingestion/Statements/StatementsJob.cs
+  - src/Ingestion/Statements/KapPublicReportDecoder.cs
+  - src/Ingestion/Statements/FinancialStatementStore.cs
+  - src/Ingestion/Validation/QuarantineReason.cs
+  - fixtures/Degerli.Fixtures/RealSourceCatalog.cs
+  - tests/Api.IntegrationTests/KapPublicReportDecoderTests.cs
+  - tests/Api.IntegrationTests/KapPublicStatementsIngestTests.cs
+  - .pipeline/testing/market-data-foundation.md
+  - .pipeline/architecture/01-system-architecture.md
+---
+
+# TKT-foundation-101: GUBRF statements SCHEMA_MISMATCH — the observability fix, the diagnosis, and either the decoder gap or the honest refusal
+
+- Status: todo
+- Size: M
+- **Priority: P1 — the user's 2026-10-29 "complete KAP data displayed" criterion needs GUBRF's fetched reports either stored or honestly refused with a reason that names the cause; today they are refused with a bare word and no evidence.**
+- **The finding (live, 2026-10-28/29):** GUBRF's successfully-fetched report bodies (5 × ~1.3 MB, excel export) are refused by the statements job with `SCHEMA_MISMATCH` — the log line "statements: refused public-site payload for GUBRF (SCHEMA_MISMATCH)" (`StatementsJob.cs:578`) carries **no detail**, and the `quarantined_facts` rows since 2026-10-26 carry **NULL payloads** because the refusal path passes `null` evidence (`StatementsJob.cs:576` — `QuarantineAsync(..., null, reasonCode, ...)`). **292 `SCHEMA_MISMATCH` quarantines on 2026-10-28 across companies, some predating the 093 merge (01:00–06:00 UTC under the old decoder) — not a pure regression, but GUBRF is fully refused and undiagnosable from what the system kept.** Hypothesis to verify, never assume: GUBRF may publish a non-standard Excel layout the excel-HTML decoder's shape validation refuses.
+- **What to implement (investigation ticket — diagnosis first, the fix follows the evidence):**
+  1. **The observability fix (lands regardless of the diagnosis):** the refused-payload quarantine path carries its **evidence** — the payload or a bounded excerpt (the ~1.3 MB bodies get a bounded trim, the capture doctrine) — and the log line names the reason's **detail** (which validation refused it), so a future refusal is diagnosable from the system's own record. The NULL-payload gap is closed for this path, not papered over.
+  2. **The capture (orchestrator-owned, paced, quota-gated):** one GUBRF report body committed as a bounded-trim double — captured when the export quota resets (the relay mitigation makes this one paced request; if a body already sits at `/tmp/opencode/captures/`, it is committed from there and no new request is made). No CI test ever calls kap.org.tr.
+  3. **The diagnosis, recorded on the ticket against the committed body:** which shape check refuses it, and whether that refusal is right. Then **one of two outcomes, ruled by the evidence and pinned as the ticket's recorded conclusion:** (a) **a decoder gap fix** — the body is a legitimate FR report shape the decoder should accept (the fix lands with the GUBRF body as a golden double; additive only, no map entry guessed, the 093/098 map and fail-safes frozen input); or (b) **an honest refuse-with-reason** — GUBRF publishes a layout the doctrine genuinely refuses, in which case the bare `SCHEMA_MISMATCH` becomes a **named, specific reason** (a new closed `QuarantineReason`, documented in `01` §10.9.19) that names the shape divergence — never a wrong parse and never a silent hole.
+  4. **The re-walk (the 092 replay doctrine):** once the refusal is fixed or honestly named, the affected quarantines re-walk once, bounded and persisted — the recorded replay rule, no new ladder.
+- **Pinned non-goals:** no map entry, canonical code or fail-safe change beyond what the diagnosed gap requires (the 093/098 decoder surface is frozen input to the diagnosis); no store/schema change beyond the evidence the quarantine row already carries (the payload column exists — this ticket writes it); no serving/UI work; no capture beyond the one GUBRF body; no attempt to make the decoder accept everything (an honest refusal with a specific reason is a valid outcome).
+- Traces to: FR-MDF-003 (statement decode correctness — a full company refused undiagnosed), FR-MDF-012 (named/counted skips — a bare `SCHEMA_MISMATCH` with NULL evidence names nothing), NFR-MDF-001 (no silent ledger hole — the NULL-payload rows are holes in the evidence, not just the data), FR-MDF-016; TKT-foundation-092 (the replay doctrine the re-walk rides), TKT-foundation-093/098 (the decoder surface this diagnoses).
+- Acceptance: **TC-MDF-128** (test plan §39, v1.52 reservation — planner-authored per the lane precedent, test-planner confirmation pending) — L2 doubles only, zero live requests: (a) the observability fix — a refused public-site payload writes a quarantine row **with evidence** (payload non-null, bounded) and the log line names the reason's detail (asserted); (b) the committed GUBRF body produces the **recorded ruled outcome** — the fixed golden decode (case (a) of the diagnosis) or the specific named refusal (case (b)) — whichever the diagnosis ruled, pinned as the case either way, never left as a bare `SCHEMA_MISMATCH`; (c) non-regression — the five committed bodies and every 093/098 decoder golden unchanged; the statements-lane suites re-run green. Red→green recorded (red = the observability gap itself: the current head's refusal row carries NULL and the log names nothing).
+- Architecture refs: `01-system-architecture.md` §10.9.19 (the quarantine/observability rule and — if the diagnosis rules a new reason — the closed reason's entry) + §13.1 **v1.5.77** (soft reservation above the wave's outstanding ones; re-pin at merge); test plan §39 (TC-MDF-128).
+- UX refs: none (ingest lane).
+- Dependencies: TKT-foundation-093/098/094 merged (PR #155/#156/#157 — verified on dev). **No code-scope overlap with any in-flight or queued ticket** (096's PR #158 scope is the metrics lane; 095/097 are Web/UI — verified against their frontmatter). The capture step waits on the orchestrator (quota-gated) — the observability fix and test scaffolding can proceed without it.
+- Parallel group: none.
+- **Live criteria (orchestrator, post-merge, paced, never CI):** GUBRF's five reports written (or honestly refused under the specific named reason), counts verbatim; the affected companies' quarantines re-walked once — replayed/recovered/still-quarantined counts verbatim.

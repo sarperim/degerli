@@ -26,13 +26,16 @@ namespace Degerli.Api.Stocks;
 /// <c>payout_ratio</c> reference.</item>
 /// </list>
 /// <para>
-/// <b>The 5Y company median and the user's own honesty (exclusion #5).</b> The stored
+/// <b>The 5Y company median and the user's own honesty (FR-MDF-014 window honesty).</b> The stored
 /// <c>derived_metrics</c> history is ~3.5 years deep today, so a nominal 5Y window is served
 /// with its <b>actual depth</b> beside it (<c>depthYears</c>) and an observation count. Below
 /// <see cref="MinimumCompanyMedianObservations"/> non-null observations the median is
 /// <b>not served</b> (<c>null</c> + <c>notMeaningful</c>) — a two-observation "median" dressed
 /// as a five-year statistic is exactly the fabrication the spec forbids. Nothing is ever
-/// interpolated or extrapolated, and no window is lengthened to look deeper.
+/// interpolated or extrapolated, and no window is lengthened to look deeper. The user's own
+/// "5Y is marginal" caveat is why the window's actual depth is disclosed rather than assumed;
+/// this is window honesty (FR-MDF-014), not one of the five pinned exclusions (no 10Y window
+/// is exclusion #5, and this family does not offer one).
 /// </para>
 /// <para>
 /// <b>Financial-sector companies are served honestly, never half-computed.</b> A
@@ -245,7 +248,8 @@ public static class StockKeyMetricsEndpoints
     /// <summary>
     /// The served <c>companyMedian5y</c> block: the median (or the honest N/M), the window it
     /// nominally covers, the observations behind it and the depth the history actually reaches
-    /// (the user's own "5Y is marginal" disclosure, exclusion #5).
+    /// (the user's own "5Y is marginal" caveat — window honesty under FR-MDF-014, not one of the
+    /// five pinned exclusions).
     /// </summary>
     private static object CompanyMedianPayload(CompanyMedian? median, int windowYears) => new
     {

@@ -113,6 +113,18 @@ pending the orchestrator/user's confirmation of the fifth-file scope addition at
   (DR-4) — narrow local filters, Docker/Testcontainers: `TC_MDF_124` **9/9**,
   `Seed_is_idempotent_and_rerunnable` + `Migrations_apply_to_a_fresh_container_and_rerun_is_a_noop`
   **2/2**. The full suite stays CI's (the PR's required Backend check).
+- **Review round 2 fix evidence (2026-10-29):** the PR conflicted with `dev` after **PR #157
+  (TKT-foundation-094)** merged behind this branch's fork point — the tickets share the three permanent
+  docs, so this PR takes its last-lander duty: `origin/dev` merged into `tkt-foundation-096`, one real
+  content conflict in `.pipeline/testing/market-data-foundation.md` resolved by **keeping both sides in
+  version order** (#157's §34 / TC-MDF-123 / v1.46 and this PR's §35 / TC-MDF-124 / v1.50+v1.51, with
+  §36 following), while `01`, `02`, `03` and `DegerliDbContextModelSnapshot.cs` auto-merged with both
+  sides' rows present and no duplication. Build after the merge: `dotnet build Degerli.sln`
+  **0 warnings / 0 errors**. The four round-2 nits are recorded in test plan **v1.52** and in
+  `01` v1.5.75's red→green sentence; the only assertion added is `Assert.NotNull` on
+  `bvps_cagr_3y`'s value in the per-family basis case (DR-14 — a strengthening of the plan's own
+  plural "the BVPS CAGRs carry a value", verified against the injected series), re-measured green as
+  `TC_MDF_124` **9/9** on this head.
 - **Red, measured (Docker/Testcontainers available; re-run, not remembered):** with
   `StockKeyMetricsEndpoints.cs` removed and `Program.cs`/`MetricsEngine.cs` reverted to the pre-ticket
   files (the code catalog and formulas kept, so the red is behaviour — never a compile or environment

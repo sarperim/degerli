@@ -272,11 +272,14 @@ public sealed class StockKeyMetricsEndpointsTests : IClassFixture<PostgresFixtur
     /// TC-MDF-124 (b cont.) — the basis marker is computed <b>per family</b> (`02` §6.2 v2): an
     /// instrument whose only corporate-action-adjusted series is the panel's per-share one never
     /// re-stamps its v1 EPS/DPS rows. ZETA has no dividends, and its two EPS years (FY2024,
-    /// FY2025) both fall <em>after</em> the injected 2022-06-01 split, so its EPS series is
-    /// unadjusted — while the injected FY2021–FY2023 equity/share-count rows put the BVPS series
-    /// on the adjusted basis and therefore set the panel family's marker. The one action, one
-    /// instrument: the split alone cannot distinguish the two families, only the per-family
-    /// application can.
+    /// FY2025) both end <em>after</em> the injected 2022-06-01 split, so its EPS series is
+    /// unadjusted — while the injected FY2020–FY2024 equity/share-count rows put the BVPS series
+    /// on the adjusted basis and therefore set the panel family's marker. The factor applies to
+    /// periods ending <em>strictly before</em> the action (<c>FactorAfter</c>), so FY2020 and
+    /// FY2021 are the factor-bearing years: FY2021 is what would have carried an EPS year had one
+    /// existed, and FY2020 is the base of the 5-interval 5Y window (FY2022 is the 3Y base; both
+    /// endpoints are unadjusted, so the CAGRs still have values). The one action, one instrument:
+    /// the split alone cannot distinguish the two families, only the per-family application can.
     /// </summary>
     [Fact]
     public async Task TC_MDF_124_the_basis_marker_is_per_family()
@@ -297,6 +300,9 @@ public sealed class StockKeyMetricsEndpointsTests : IClassFixture<PostgresFixtur
             // still yields its CAGR (the marker is not a blanket swallow).
             Assert.True(rows[MetricCodes.BvpsCagr3y].IsAdjusted, "bvps_cagr_3y lost its adjusted marker");
             Assert.True(rows[MetricCodes.BvpsCagr5y].IsAdjusted, "bvps_cagr_5y lost its adjusted marker");
+            // Both windows carry a value: the 5Y base (FY2020, adjusted) and the 3Y base
+            // (FY2022, unadjusted) are both valued, and FY2025 closes either window.
+            Assert.NotNull(rows[MetricCodes.BvpsCagr3y].Value);
             Assert.NotNull(rows[MetricCodes.BvpsCagr5y].Value);
             // fcf_ps has too few FCF years on this world to compound, but the family's marker
             // still applies to it (`02` §6.2: adjusted basis, no value → honest NULL).
@@ -728,10 +734,13 @@ public sealed class StockKeyMetricsEndpointsTests : IClassFixture<PostgresFixtur
     }
 
     /// <summary>
-    /// Put a panel-only per-share history on ZETA: FY2020–FY2024 equity and share counts (none
-    /// of those statements exist on the L2 world) plus a 2022-06-01 1:5 split. ZETA has no
-    /// dividends and no EPS years before FY2024, so the action reaches only the BVPS series —
-    /// the per-family marker's discriminating case.
+    /// Put a panel-only per-share history on ZETA: FY2020–FY2024 equity lines and share counts for
+    /// the same years, plus a 2022-06-01 1:5 split. The world stores none of those equity lines
+    /// (FY2024's balance sheet exists — the fixture's own — but carries no equity), and only
+    /// FY2020–FY2023 share counts are new: FY2024's 50 M count is the fixture's own line, which the
+    /// upsert rewrites to the same value. ZETA has no dividends and no EPS years before FY2024, so
+    /// the action reaches only the BVPS series — the per-family marker's discriminating case.
+    /// <see cref="RemoveZetaPanelPerShareHistoryAsync"/> gives back exactly what this adds.
     /// </summary>
     private async Task InjectZetaPanelPerShareHistoryAsync()
     {

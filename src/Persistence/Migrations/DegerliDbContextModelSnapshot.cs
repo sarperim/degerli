@@ -601,6 +601,14 @@ namespace Degerli.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<bool?>("Consolidated")
+                        .HasColumnType("boolean")
+                        .HasColumnName("consolidated");
+
+                    b.Property<int?>("DurationMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_months");
+
                     b.Property<int?>("FiscalYear")
                         .HasColumnType("integer")
                         .HasColumnName("fiscal_year");
@@ -612,6 +620,10 @@ namespace Degerli.Persistence.Migrations
                     b.Property<DateOnly>("PeriodEndDate")
                         .HasColumnType("date")
                         .HasColumnName("period_end_date");
+
+                    b.Property<DateOnly?>("PeriodStartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start_date");
 
                     b.Property<string>("PeriodType")
                         .IsRequired()
