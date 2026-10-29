@@ -158,6 +158,11 @@
 - Expected: the active stock-page section (e.g., Balance Sheet) is preserved across in-session navigation and return.
 - Dependencies: —
 
+**TC-RES-039 — Financial-statements view (SCR-005 §3, the user's v0 spec)**
+- Traces: FR-RES-008, FR-RES-013/014/015/016, UC-RES-003, UXR-RES-014 (superseded in breadth by the 2026-10-28 user spec), UXR-RES-019/021/022, UXR-G-006/007/021, BR-RES-004 · Level: L3 · Design: EP — served-payload classes (full line set / null figure / unserved row / spanned interim / unspanned interim / bank layout / pre-094 payload), decision table — filing flag × badge
+- Expected: (a) the served `lines`/`derived` payload renders the full IS/BS/CF tables bound to the served codes, with the filing badges (Konsolide/Solo, TMS 29, KAP Kaynak) and the served EV operands plus their own as-of; (b) a served-null derived row renders the honest dash — the page never computes a margin, ratio, sum or EV total (BR-RES-004); (c) a spec row the serving surface does not carry renders the dash, never a zero; (d) the period toggle filters to FY by default; (e) a cumulative interim is labelled from its served span (`2026 6 Aylık (01.01–30.06)`), and an interim with no served span degrades to the quarter label, never a fabricated range (closes 090 R-1 on the surface); (f) the chosen basis survives navigation (UXR-G-021); (g) each filing badge renders only on its own served evidence (absent flag → no badge); (h) a financial-sector filing renders the layout notice, never half-filled industrial tables; (i) per-share rows render "—" where no served share count exists (exclusion #4); (j) the EV header renders the served operands with their own as-of and no computed total; (k) a pre-094 payload (no served line set) keeps the legacy five-figure summary; (l) TR and EN both label the served row set from the catalogs.
+- Dependencies: TC-RES-009 (the served financials content it restructures).
+
 ### Group F — End-to-end flows (L4)
 
 **TC-RES-028 — Research hand-off (SC-002 research stage)**
@@ -205,6 +210,11 @@
 - Expected: every SCR-002/005 surface and flow above runs anonymous end-to-end; no save prompt or auth wall appears anywhere in the research path.
 - Dependencies: —
 
+**TC-RES-040 — Statements view end-to-end on the fixture world (TC-RES-039's L4 extension)**
+- Traces: FR-RES-008, UXR-RES-014, UXR-RES-021/022, UXR-G-006/021, BR-RES-004 · Level: L4 · Design: EP — served-payload classes on the seeded stack
+- Expected: on the seeded compose.ci world, a company with served statements (ALFA) renders the three statement tables under the annual basis with the served fiscal-year labels; the Çeyreklik toggle shows the served interims labelled honestly (a fixture interim carries no served span, so the quarter label renders — never a fabricated range) and filters the annual column out; a spec row the serving surface does not carry renders the "—" dash; the EV header renders its served operands with no computed total; and the chosen basis survives navigating away and back.
+- Dependencies: TC-RES-039.
+
 ## 3. Test Design Specification — Systematic Case Selection
 
 - **Equivalence partitioning:** list queries — full/filtered/searched/combined/empty (TC-001..004, 022); descriptions — published/draft/none (TC-005/006/016/017/018); figures — meaningful/NULL/not-computable (TC-008/010/011/013); section payloads — data/missing/stale (TC-015); symbols — known/unknown (TC-014); callers — anonymous/builder/non-builder (TC-018/036).
@@ -230,15 +240,15 @@
 | FR-RES-005 | main | TC-005, 026 | planned |
 | FR-RES-006 | main (current + historical) | TC-007 | planned |
 | FR-RES-007 | main | TC-007, 008, 025 | planned |
-| FR-RES-008 | main | TC-009 | planned |
+| FR-RES-008 | main | TC-009, 039, 040 | planned |
 | FR-RES-009 | main | TC-010 | planned |
 | FR-RES-010 | main + window indication | TC-011 | planned |
 | FR-RES-011 | main | TC-012 | planned |
 | FR-RES-012 | main | TC-013 | planned |
 | FR-RES-013 | adjusted disclaimer | TC-024, 032 | planned |
-| FR-RES-014 | restatement marks | TC-009, 024, 030 | planned |
-| FR-RES-015 | per-section as-of/stale | TC-015, 024 | planned |
-| FR-RES-016 | no-data with boundary | TC-011, 013, 015, 031 | planned |
+| FR-RES-014 | restatement marks | TC-009, 024, 030, 039 | planned |
+| FR-RES-015 | per-section as-of/stale | TC-015, 024, 039 | planned |
+| FR-RES-016 | no-data with boundary | TC-011, 013, 015, 031, 039 | planned |
 | FR-RES-017 | disclaimer | XC-006 sweep; TC-028 render | planned |
 | FR-RES-018 | DCF hand-off | TC-028 | planned |
 | FR-RES-019 | pipeline drafts | TC-016 | planned |
@@ -249,7 +259,7 @@
 | FR-RES-027 | book value + BVPS | TC-012 | planned |
 | UC-RES-001 | main; alt a | TC-001..004, 022, 035; TC-003/022 (no-match) | planned |
 | UC-RES-002 | main; alt a | TC-005, 026; TC-006, 029 | planned |
-| UC-RES-003 | main; alt a (stale); alt b (short history) | TC-007..015, 028; TC-015/024 (stale payloads); TC-011, 031 | planned |
+| UC-RES-003 | main; alt a (stale); alt b (short history) | TC-007..015, 028, 039, 040; TC-015/024 (stale payloads); TC-011, 031 | planned |
 | UC-RES-004 | main; alt a (re-draft); alt b (new filings cycle) | TC-016, 018..021, 034; re-draft = CLI re-run (TC-016 variant); alt b → manual/content-cycle ledger note | planned |
 | UC-RES-005 | main | TC-028 | planned |
 | NFR-RES-001 | bilingual | XC parity; publish gate TC-020 | planned |
@@ -266,15 +276,15 @@
 | UXR-RES-011 | preparing | TC-006, 026, 029 | planned |
 | UXR-RES-012 | valuation display | TC-007 | planned |
 | UXR-RES-013 | strip | TC-007, 025 | planned |
-| UXR-RES-014 | financials | TC-009 | planned |
+| UXR-RES-014 | financials (restructured per the 2026-10-28 user spec) | TC-009, 039, 040 | planned |
 | UXR-RES-015 | profitability | TC-010 | planned |
 | UXR-RES-016 | growth windows | TC-011, 031 | planned |
 | UXR-RES-017 | book value | TC-012 | planned |
 | UXR-RES-018 | dividends | TC-013 | planned |
-| UXR-RES-019 | restatement marks | TC-024, 030 | planned |
+| UXR-RES-019 | restatement marks | TC-024, 030, 039 | planned |
 | UXR-RES-020 | adjusted disclaimer | TC-024, 032 | planned |
-| UXR-RES-021 | as-of/stale | TC-015, 024 | planned |
-| UXR-RES-022 | no-data boundary | TC-011, 013, 015, 031 | planned |
+| UXR-RES-021 | as-of/stale | TC-015, 024, 039 | planned |
+| UXR-RES-022 | no-data boundary | TC-011, 013, 015, 031, 039 | planned |
 | UXR-RES-023 | DCF hand-off | TC-028 | planned |
 | UXR-RES-024 | peer count | TC-007, 025 | planned |
 | UXR-RES-025 | not-meaningful | TC-008, 025 | planned |
@@ -293,3 +303,5 @@
 
 ---
 *Change record: v1.0 2026-10-06 — initial RES test plan, batch mode. Approved at the builder's final review 2026-10-07 — §6 interpretations I-RES-1..4 upheld.*
+
+*Change record: v1.1 2026-10-29 — added **TC-RES-039** (L3, the SCR-005 financial-statements view per the user's 2026-10-28 v0 spec) and **TC-RES-040** (its L4 extension on the fixture world), plus their coverage-matrix traces. Rendered by TKT-foundation-095; test-planner confirmation pending (the UXR-RES-014 breadth supersession is a ux flow-back item on the ticket). Note: TC-RES-037/038 were already taken by the dividends-availability lane (TKT-foundation-052), so the statements cases take the next free IDs 039/040.*

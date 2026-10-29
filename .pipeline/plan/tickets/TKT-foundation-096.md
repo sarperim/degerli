@@ -161,9 +161,13 @@ approved at merge (2026-10-29, orchestrator G-2 ruling).
   … `v1.49`, `v1.50` (099), `v1.53`, `v1.54`, `v1.55` (this ticket) — and every self-reference was
   re-pinned with them: `03` §3's endpoint row, test plan §35's section header and its Traces line, the
   §35 case-lettering note (`v1.54`), and this ticket's own architecture/version refs. No row's content
-  changed beyond its number. Both ledgers re-verified after the merge: **no duplicate version on
-  either**, and both strictly increasing (the single out-of-order pair in `01`'s table,
-  `v1.5.52 → v1.5.25`, is dev's own pre-existing ordering and is untouched).
+  changed beyond its number. `dev` then advanced once more mid-pass (**PR #159 / TKT-foundation-095**,
+  landing `01` `v1.5.76`) and was merged again on the same rule: 095's row stays untouched and
+  **`v1.5.78` is still the first free number** on `01` (dev's landed top is `v1.5.76`, with `v1.5.77`
+  still soft-reserved by 101), so this ticket's row keeps it; the test plan needed no further move
+  (dev's landed top there is still `v1.50`). Both ledgers re-verified after the final merge: **no
+  duplicate version on either**, and both strictly increasing (the single out-of-order pair in `01`'s
+  table, `v1.5.52 → v1.5.25`, is dev's own pre-existing ordering, unchanged on dev, and is untouched).
 - **G-2 — the sixth scope file, APPROVED.** `tests/e2e/src/metric-visibility.spec.ts` (the admin
   panel's row-count constant `19 → 33` for the now-32-row catalog) is approved at merge as the sixth
   member of the catalog-size-constant class — the same mechanical class as the four 2026-10-28 files,
