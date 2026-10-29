@@ -100,7 +100,7 @@ Red-on-seed, measured for this job too:
 | web image, baseline with the `expired_at` dates moved into the past | exit **1**, `Total: 7 (HIGH: 7)` — the expiry is really enforced, not decorative |
 | seeded deliberately-vulnerable image (`alpine:3.10`) **with** the real baseline applied | exit **1** (CRITICAL apk-tools CVE-2021-36159) — a Caddy-scoped entry cannot absorb an unrelated image CVE |
 
-**Green evidence for the workflow wiring itself** is the `Security` workflow run on this branch's PR (CI is the runner for workflow changes; the local runs above prove the scanners and the gate logic, not GitHub's scheduling of them).
+**Green evidence for the workflow wiring itself** is the `Security` workflow run on this branch's PR (CI is the runner for workflow changes; the local runs above prove the scanners and the gate logic, not GitHub's scheduling of them). **Measured on PR #165's run [40961404221](https://github.com/sarperim/degerli/actions/runs/40961404221), 2026-10-29:** workflow **success** in **1m25s**, all three checks green — `Secrets (gitleaks)` **6s** (`no leaks found`), `Dependencies (NuGet · npm audit)` **33s** (`NuGet audit clean (0 low/moderate finding(s), none blocking).` + `found 0 vulnerabilities` in both roots), `Containers (Trivy image scan)` **1m20s** (both images built from the shipped Dockerfiles, then scanned; the web image resolved to Alpine **3.23.7** — the `apk upgrade` layer picking up the newer base — and both reported **0** HIGH/CRITICAL findings). All 12 steps executed, none skipped. That is acceptance (iv)'s added wall-clock, recorded rather than estimated.
 
 ## Scope amendment (recorded, not hidden)
 
