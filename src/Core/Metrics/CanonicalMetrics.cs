@@ -25,7 +25,12 @@ public sealed record CanonicalStatement(
     decimal? LtDebt,
     decimal? TotalEquity,
     decimal? CurAssets,
-    decimal? CurLiab);
+    decimal? CurLiab,
+    decimal? TotalAssets = null,
+    decimal? Goodwill = null,
+    decimal? IntangiblesNet = null,
+    decimal? NetMonetaryGl = null,
+    decimal? CashInterest = null);
 
 /// <summary>
 /// Everything the 18 canonical metric concepts need for one instrument at one date
@@ -49,7 +54,11 @@ public sealed record CanonicalMetricsInput(
     bool HasEverPaidDividend,
     bool IsRested,
     bool IsAdjusted,
-    string AccountingProfile = CanonicalMetrics.IndustrialProfile);
+    string AccountingProfile = CanonicalMetrics.IndustrialProfile,
+    IReadOnlyList<FiscalValue>? EbitByFiscalYear = null,
+    IReadOnlyList<FiscalValue>? NiByFiscalYear = null,
+    IReadOnlyList<FiscalValue>? BvpsByFiscalYear = null,
+    IReadOnlyList<FiscalValue>? FcfPsByFiscalYear = null);
 
 /// <summary>One computed metric row: the value and, for CAGRs, the actual window used.</summary>
 /// <param name="Code">Window-suffixed metric code (02 §6.2, Q5).</param>
@@ -100,7 +109,7 @@ public static class CanonicalMetrics
     /// next recompute of that day stamps it. No stamp is ever guessed or back-filled.
     /// </para>
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 2;
 
     /// <summary>
     /// The accounting profiles whose industrial metric concepts are not meaningful
@@ -112,11 +121,16 @@ public static class CanonicalMetrics
         new HashSet<string>(StringComparer.Ordinal) { "bank", "insurance" };
 
     /// <summary>
-    /// The twelve metric codes a financial profile forces to NULL (<c>02</c> §6.2):
+    /// The metric codes a financial profile forces to NULL (<c>02</c> §6.2):
     /// the ten industrial concepts — <c>ev_ebitda</c>, <c>ev_fcf</c>, <c>fcf_yield</c>,
     /// <c>roic</c>, <c>gross_margin</c>, <c>operating_margin</c>,
     /// <c>fcf_cagr_*</c> (×3 windows), <c>net_debt_ebitda</c>, <c>interest_coverage</c>,
-    /// <c>current_ratio</c>. <c>pe</c>/<c>pb</c>/<c>roe</c>/<c>eps_cagr_*</c>/
+    /// <c>current_ratio</c> — plus, since the key-value/moat panel (v2, TKT-foundation-096),
+    /// the industrial-shaped additions: <c>croic</c>, <c>ev_ebit</c>, <c>p_fcf</c>,
+    /// <c>p_tbv</c>, <c>fcf_ni</c>/<c>fcf_ni_3y</c>, <c>cfo_ebit</c>,
+    /// <c>monetary_gain_pretax</c>, <c>cfo_interest</c>, <c>net_debt_fcf</c>,
+    /// <c>ebit_cagr_3y/5y</c> and <c>fcf_ps_cagr_3y/5y</c>.
+    /// <c>pe</c>/<c>pb</c>/<c>roe</c>/<c>roa</c>/<c>eps_cagr_*</c>/<c>bvps_cagr_*</c>/
     /// <c>div_*</c>/<c>payout_ratio</c> keep computing — their inputs are meaningful for
     /// financials.
     /// </summary>
@@ -135,15 +149,38 @@ public static class CanonicalMetrics
             MetricCodes.FcfCagr3y,
             MetricCodes.FcfCagr5y,
             MetricCodes.FcfCagr10y,
+            MetricCodes.Croic,
+            MetricCodes.EvEbit,
+            MetricCodes.PFcf,
+            MetricCodes.PTbv,
+            MetricCodes.FcfNi,
+            MetricCodes.FcfNi3y,
+            MetricCodes.CfoEbit,
+            MetricCodes.MonetaryGainPretax,
+            MetricCodes.CfoInterest,
+            MetricCodes.NetDebtFcf,
+            MetricCodes.EbitCagr3y,
+            MetricCodes.EbitCagr5y,
+            MetricCodes.FcfPsCagr3y,
+            MetricCodes.FcfPsCagr5y,
         };
 
     /// <summary>
     /// Whether a metric code is not-meaningful by accounting profile (<c>02</c> §6.2) —
     /// forced to NULL for <c>bank</c>/<c>insurance</c> regardless of stray mapped lines.
+    /// Public since v2 so the sector-median lane excludes financial-sector peers from a
+    /// gated code's median on the same definition (<c>02</c> §6.3, UXR-RES-024/025).
     /// </summary>
-    private static bool IsProfileGated(string code) => ProfileGatedCodes.Contains(code);
+    public static bool IsProfileGated(string code) => ProfileGatedCodes.Contains(code);
 
-    /// <summary>Computes all 26 metric codes for one instrument.</summary>
+    /// <summary>
+    /// Whether an accounting profile is a financial sector (<c>bank</c>/<c>insurance</c>) —
+    /// the profiles whose industrial metric concepts are not meaningful (<c>02</c> §6.2).
+    /// </summary>
+    public static bool IsFinancialProfile(string? accountingProfile) =>
+        accountingProfile is not null && ProfileGatingProfiles.Contains(accountingProfile);
+
+    /// <summary>Computes all 43 metric codes for one instrument.</summary>
     public static IReadOnlyList<ComputedMetric> Compute(CanonicalMetricsInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -165,6 +202,14 @@ public static class CanonicalMetrics
         var ev = Sum3(mcap, debt, Negate(t.Cash));
         var investedCapital = Sum3(debt, equity, Negate(t.Cash));
         var taxRate = MetricMath.EffectiveTaxRate(t.TaxExp, t.PretaxInc);
+        // P/TBV's denominator (02 §6.2, v2): equity less the intangible block. A component
+        // the statement does not carry contributes nothing (KAP itemizes goodwill and
+        // intangibles only where they exist); an absent TOTAL_EQUITY leaves no book value at
+        // all, so the multiple is honestly not meaningful.
+        var tangibleBook = TangibleBook(equity, t.Goodwill, t.IntangiblesNet);
+        // CFO/cash interest compares a flow with the CF statement's own interest paid line,
+        // whose KAP sign is an outflow — the ratio's denominator is the absolute figure.
+        decimal? cashInterest = t.CashInterest is null ? null : Math.Abs(t.CashInterest.Value);
 
         var metrics = new List<ComputedMetric>(MetricCodes.All.Count)
         {
@@ -178,6 +223,35 @@ public static class CanonicalMetrics
             Add(MetricCodes.Roe, (equity is > 0m && ni is not null) ? ni.Value / equity.Value : null, input),
             Add(MetricCodes.GrossMargin, (rev is > 0m && grossProfit is not null) ? grossProfit.Value / rev.Value : null, input),
             Add(MetricCodes.OperatingMargin, (rev is > 0m && ebit is not null) ? ebit.Value / rev.Value : null, input),
+
+            // ── the key-value & moat panel (02 §6.2, v2; TKT-foundation-096) ──────
+            // ROA: earnings on the whole asset base — TOTAL_ASSETS (093's new line).
+            Add(MetricCodes.Roa, (t.TotalAssets is > 0m && ni is not null) ? ni.Value / t.TotalAssets.Value : null, input),
+            // CROIC: cash return on invested capital — the CFO numerator beside ROIC's EBIT.
+            Add(MetricCodes.Croic, (investedCapital is > 0m && t.Ocf is not null) ? t.Ocf.Value / investedCapital.Value : null, input),
+            // EV/EBIT — the multiple whose denominator is the untaxed operating profit.
+            Add(MetricCodes.EvEbit, (ebit is > 0m && ev is not null) ? ev.Value / ebit.Value : null, input),
+            // P/FCF — market cap over canonical FCF (a positive-FCF multiple only).
+            Add(MetricCodes.PFcf, (fcf is > 0m && Positive(mcap)) ? mcap!.Value / fcf.Value : null, input),
+            // P/TBV — market cap over tangible book (equity less goodwill + intangibles).
+            Add(MetricCodes.PTbv, (tangibleBook is > 0m && Positive(mcap)) ? mcap!.Value / tangibleBook.Value : null, input),
+            // FCF/NI — how much of reported earnings is cash (NI ≤ 0 → not meaningful).
+            Add(MetricCodes.FcfNi, (ni is > 0m && fcf is not null) ? fcf.Value / ni.Value : null, input),
+            Add(MetricCodes.FcfNi3y, FcfNiThreeYearAverage(input.FcfByFiscalYear, input.NiByFiscalYear), input),
+            // CFO/EBIT — the cash conversion of operating profit.
+            Add(MetricCodes.CfoEbit, (ebit is > 0m && t.Ocf is not null) ? t.Ocf.Value / ebit.Value : null, input),
+            // TMS 29 distortion alert: the monetary gain/loss share of pretax income.
+            Add(
+                MetricCodes.MonetaryGainPretax,
+                (t.PretaxInc is > 0m && t.NetMonetaryGl is not null) ? t.NetMonetaryGl.Value / t.PretaxInc.Value : null,
+                input),
+            // CFO / cash interest paid (the CF statement's own interest line, absolute).
+            Add(MetricCodes.CfoInterest, (cashInterest is > 0m && t.Ocf is not null) ? t.Ocf.Value / cashInterest.Value : null, input),
+            // Net debt / FCF — N/M when FCF ≤ 0 (the pinned rule, 02 §6.2).
+            Add(
+                MetricCodes.NetDebtFcf,
+                (fcf is > 0m && debt is not null && t.Cash is not null) ? (debt.Value - t.Cash.Value) / fcf.Value : null,
+                input),
 
             Add(MetricCodes.NetDebtEbitda, (ebitda is > 0m && debt is not null && t.Cash is not null) ? (debt.Value - t.Cash.Value) / ebitda.Value : null, input),
             Add(MetricCodes.InterestCoverage, (t.FinExp is > 0m && ebit is not null) ? ebit.Value / t.FinExp.Value : null, input),
@@ -199,6 +273,16 @@ public static class CanonicalMetrics
         AddCagr(metrics, MetricCodes.DivCagr3y, input.DpsByFiscalYear, 3, nullOnSignChange: false, input);
         AddCagr(metrics, MetricCodes.DivCagr5y, input.DpsByFiscalYear, 5, nullOnSignChange: false, input);
         AddCagr(metrics, MetricCodes.DivCagr10y, input.DpsByFiscalYear, 10, nullOnSignChange: false, input);
+
+        // The panel's growth half (02 §6.2, v2; TKT-foundation-096). No 10Y window exists for
+        // these three families — the user's exclusion #5 (a 10Y window cannot be computed on
+        // the stored ~3.5-year depth and the panel asks for the 3Y and 5Y pair).
+        AddCagr(metrics, MetricCodes.EbitCagr3y, input.EbitByFiscalYear ?? [], 3, nullOnSignChange: false, input);
+        AddCagr(metrics, MetricCodes.EbitCagr5y, input.EbitByFiscalYear ?? [], 5, nullOnSignChange: false, input);
+        AddCagr(metrics, MetricCodes.BvpsCagr3y, input.BvpsByFiscalYear ?? [], 3, nullOnSignChange: false, input);
+        AddCagr(metrics, MetricCodes.BvpsCagr5y, input.BvpsByFiscalYear ?? [], 5, nullOnSignChange: false, input);
+        AddCagr(metrics, MetricCodes.FcfPsCagr3y, input.FcfPsByFiscalYear ?? [], 3, nullOnSignChange: true, input);
+        AddCagr(metrics, MetricCodes.FcfPsCagr5y, input.FcfPsByFiscalYear ?? [], 5, nullOnSignChange: true, input);
 
         // Accounting-profile gating (02 §6.2, v1.3): for `bank`/`insurance` the ten
         // industrial concepts evaluate to NULL even when the underlying lines happen to
@@ -232,6 +316,67 @@ public static class CanonicalMetrics
         }
 
         return ocf.Value - Math.Abs(capex.Value);
+    }
+
+    /// <summary>
+    /// Tangible book value (<c>02</c> §6.2, v2): <c>TOTAL_EQUITY − (GOODWILL +
+    /// INTANGIBLES_NET)</c>, the denominator of <c>p_tbv</c>. Equity is NCI-inclusive
+    /// <b>as stored</b> (the DR-1 fence — never re-aggregated here); a component the
+    /// statement does not carry contributes nothing, and an absent <c>TOTAL_EQUITY</c>
+    /// yields NULL (no book value, never zero-for-missing).
+    /// </summary>
+    public static decimal? TangibleBook(decimal? totalEquity, decimal? goodwill, decimal? intangiblesNet) =>
+        totalEquity is null
+            ? null
+            : totalEquity.Value - (goodwill ?? 0m) - (intangiblesNet ?? 0m);
+
+    /// <summary>
+    /// The pinned length of the <c>fcf_ni_3y</c> window (<c>02</c> §6.2, v2): the arithmetic
+    /// mean of the annual <c>FCF / NI</c> ratios over the trailing three fiscal years.
+    /// </summary>
+    public const int FcfNiAverageYears = 3;
+
+    /// <summary>
+    /// <c>fcf_ni_3y</c> (<c>02</c> §6.2, v2): the mean of the annual <c>FCF / NI</c> ratios over
+    /// the three most recent fiscal years. The window is <b>all-or-nothing</b> — a year whose
+    /// NI is absent or ≤ 0 (the <c>fcf_ni</c> not-meaningful rule) or whose FCF is absent makes
+    /// the three-year average honestly NULL rather than a two-year mean wearing a three-year
+    /// label. A negative annual FCF is a legitimate ratio, not a hole.
+    /// </summary>
+    private static decimal? FcfNiThreeYearAverage(
+        IReadOnlyList<FiscalValue> fcfByFiscalYear,
+        IReadOnlyList<FiscalValue>? niByFiscalYear)
+    {
+        if (fcfByFiscalYear.Count == 0 || niByFiscalYear is null || niByFiscalYear.Count == 0)
+        {
+            return null;
+        }
+
+        var fcf = fcfByFiscalYear
+            .GroupBy(point => point.FiscalYear)
+            .ToDictionary(group => group.Key, group => group.Last().Value);
+        var ni = niByFiscalYear
+            .GroupBy(point => point.FiscalYear)
+            .ToDictionary(group => group.Key, group => group.Last().Value);
+
+        var latestYear = Math.Max(fcf.Keys.Max(), ni.Keys.Max());
+        var ratios = new List<decimal>(FcfNiAverageYears);
+        for (var year = latestYear - FcfNiAverageYears + 1; year <= latestYear; year++)
+        {
+            if (!fcf.TryGetValue(year, out var freeCash) || freeCash is null)
+            {
+                return null;
+            }
+
+            if (!ni.TryGetValue(year, out var netIncome) || netIncome is not > 0m)
+            {
+                return null;
+            }
+
+            ratios.Add(freeCash.Value / netIncome.Value);
+        }
+
+        return ratios.Average();
     }
 
     private static void AddCagr(

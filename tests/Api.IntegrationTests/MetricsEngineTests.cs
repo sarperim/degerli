@@ -47,7 +47,7 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
         var result = await RunMetricsAsync(host, T);
 
         Assert.Equal("succeeded", result.Status);
-        Assert.Equal(16 * 26, result.Written);
+        Assert.Equal(16 * 43, result.Written);
 
         await using var db = _postgres.CreateContext();
         var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
@@ -55,9 +55,10 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
             .Where(m => m.InstrumentId == alfa && m.AsOfDate == T)
             .ToListAsync();
 
-        // One row per (instrument, metric, date), all 26 codes.
-        Assert.Equal(26, rows.Count);
-        Assert.Equal(26, rows.Select(r => r.MetricCode).Distinct().Count());
+        // One row per (instrument, metric, date), all 43 codes (the 26 of v1 plus the
+        // key-value/moat panel's 17 — TKT-foundation-096).
+        Assert.Equal(43, rows.Count);
+        Assert.Equal(43, rows.Select(r => r.MetricCode).Distinct().Count());
         Assert.All(rows, r => Assert.Equal(T, r.AsOfDate));
         var byCode = rows.ToDictionary(r => r.MetricCode, r => r, StringComparer.Ordinal);
 
@@ -212,22 +213,22 @@ public sealed class MetricsEngineTests : IClassFixture<PostgresFixture>
         await using var host = BuildHost();
 
         var first = await RunMetricsAsync(host, T);
-        Assert.Equal(16 * 26, first.Written);
+        Assert.Equal(16 * 43, first.Written);
 
         // A prior trading day is computed and must remain untouched by later runs.
         var prior = T.AddDays(-1);
         var priorRun = await RunMetricsAsync(host, prior);
-        Assert.Equal(16 * 26, priorRun.Written);
+        Assert.Equal(16 * 43, priorRun.Written);
         var priorSnapshot = await SnapshotAsync(prior);
 
         // Second run for the same date: no new rows, no duplicates.
         var second = await RunMetricsAsync(host, T);
         Assert.Equal(0, second.Written);
-        Assert.Equal(16 * 26, second.Unchanged);
+        Assert.Equal(16 * 43, second.Unchanged);
 
         await using var db = _postgres.CreateContext();
-        Assert.Equal(16 * 26, await db.DerivedMetrics.CountAsync(m => m.AsOfDate == T));
-        Assert.Equal(16 * 26 * 2, await db.DerivedMetrics.CountAsync());
+        Assert.Equal(16 * 43, await db.DerivedMetrics.CountAsync(m => m.AsOfDate == T));
+        Assert.Equal(16 * 43 * 2, await db.DerivedMetrics.CountAsync());
 
         var duplicates = await db.DerivedMetrics
             .GroupBy(m => new { m.InstrumentId, m.MetricCode, m.AsOfDate })
