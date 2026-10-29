@@ -10,7 +10,7 @@ scope:
 
 # TKT-foundation-099: Turkish dotless-ı identity resolution — the ı→i fold in `CarriesToken`, so BIMAS/ENKAI/ISCTR/SISE can resolve (the 091 live-criteria residue)
 
-- Status: in-review
+- Status: done (PR #160 squash-merged d591414; review round 1 MERGEABLE — facet-gate missing-tc waived per standing WAIVERS.md ruling, 0 blockers, 4 nits DR-1..DR-4 routed as optional follow-ups)
 - PR: https://github.com/sarperim/degerli/pull/160 (base `dev`)
 - Size: S
 - **Priority: P0 — same-night dispatch (the user's 2026-10-29 deadline: complete KAP data displayed; without this, 4 of 30 XU030 companies can never be walked — the "nothing missing" criterion).**
