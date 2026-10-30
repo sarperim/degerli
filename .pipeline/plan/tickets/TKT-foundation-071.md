@@ -19,7 +19,7 @@ scope:
 
 # TKT-foundation-071: OpenAPI contract codegen — contract drift eliminated at build time
 
-- Status: in-review
+- Status: done — **PR #169 squash-merged 2026-10-30 (`09d9ce1` on dev), round-3 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-071-round-{1,2,3}.md`; 3 passes, 2 fixer rounds — LEAD-1: `DismissQuarantineRequest`/`RenameScenarioRequest` generated but re-declared inline at two call sites, fixed with a recorded scope amendment; round-2 false absolute corrected to the measured six-body set). **Non-blocking open:** SEC-4 low — `kill -0` liveness check in `generate-openapi.sh` proves liveness not socket ownership (squatter race, local-only, two-line fix — candidate for the next touch of the script); SEC-2 — no `securitySchemes` declared (rides the endpoint-typing follow-up); recorded follow-ups: response schemas via `Produces<T>`/`TypedResults`, typed request parameters. Web gains committed generated types + `check:api` drift gate; backend gains served-vs-snapshot drift check in CI.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 7 unparked).**
 - **Evidence (gathered 2026-10-24):**
