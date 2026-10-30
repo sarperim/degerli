@@ -1,12 +1,39 @@
 /**
- * Client-side API contracts mirroring `.pipeline/architecture/03-api-design.md`.
+ * Client-side API contracts. Two sources, one rule: **nothing here re-states a
+ * shape the server generates.**
  *
- * These types are the web app's view of the server contract: the honest-data
- * envelope (`03` §1.2), the RFC 7807 error-code catalog (`03` §7), and a first
- * slice of public payload shapes (`03` §3). Domain tickets extend this module
- * as they implement their endpoints; the shapes here are what MSW handlers in
- * `src/test/msw` are typed against.
+ * 1. **Generated** — `./generated.ts` is produced by `openapi-typescript` from
+ *    the checked-in snapshot `src/Api/openapi.json`, which is the OpenAPI
+ *    document the API actually serves (TKT-foundation-071; `01` §6.1). Where the
+ *    served document carries a shape, this module **aliases** it (the request
+ *    bodies below) instead of re-declaring it, so a served change cannot drift
+ *    from the Web types: `scripts/generate-openapi.sh --check` fails CI on a
+ *    stale snapshot and `npm run check:api` fails it on stale generated types.
+ *    Regenerate with `scripts/generate-openapi.sh --update` then
+ *    `npm --prefix src/Web run generate:api`.
+ * 2. **Curated** — the hand-written response payload shapes below. The served
+ *    document currently declares **no response schemas**: the endpoints return
+ *    untyped `IResult`/`Results.Ok(...)` values, so Microsoft.AspNetCore.OpenApi
+ *    emits bare `200` responses. Every curated shape therefore carries an
+ *    explicit reason (see the note on each block), and they are what the MSW
+ *    handlers in `src/test/msw` are typed against. When the API starts declaring
+ *    response types, the corresponding shape moves to a generated alias.
+ *
+ * The prose design authority stays `.pipeline/architecture/03-api-design.md`
+ * (intent and semantics); the snapshot is the machine contract the Web compiles
+ * against (`03` header note).
  */
+
+// The generated contract, re-exported so consumers can reach a served shape
+// (`ApiComponents['schemas'][...]`, `ApiPaths['/api/v1/...']`) without importing
+// the generated module directly.
+export type {
+  components as ApiComponents,
+  operations as ApiOperations,
+  paths as ApiPaths,
+} from './generated'
+
+import type { components } from './generated'
 
 /** Honest-data envelope carried on every data response (`03` §1.2). */
 export interface HonestDataEnvelope {
@@ -255,12 +282,14 @@ export interface AnonymousSession {
 
 export type SessionResponse = AuthenticatedSession | AnonymousSession
 
-/** `POST /api/v1/auth/register` request body (`03` §6). */
-export interface RegisterRequest {
-  email: string
-  password: string
-  consent: { noticeVersion: string }
-}
+/**
+ * `POST /api/v1/auth/register` request body (`03` §6).
+ *
+ * **Generated** (`components.RegisterRequest`). The served document types every
+ * string as `string | null` — ASP.NET's nullable reference metadata, not a
+ * client-side hypothesis — and the server's validation is what rejects nulls.
+ */
+export type RegisterRequest = components['schemas']['RegisterRequest']
 
 /**
  * `POST /api/v1/auth/register` response (`03` §6) — 201 with the created account
@@ -271,11 +300,8 @@ export interface RegisterResponse {
   email: string
 }
 
-/** `POST /api/v1/auth/login` request body (`03` §6). */
-export interface LoginRequest {
-  email: string
-  password: string
-}
+/** `POST /api/v1/auth/login` request body (`03` §6) — **generated**. */
+export type LoginRequest = components['schemas']['LoginRequest']
 
 /**
  * `POST /api/v1/auth/login` response (`03` §6) — 200 with the session cookie and
@@ -285,10 +311,10 @@ export interface LoginResponse {
   languagePref: LanguagePref
 }
 
-/** `POST /api/v1/auth/verify-email` request body (`03` §6). */
-export interface VerifyEmailRequest {
-  token: string
-}
+/**
+ * `POST /api/v1/auth/verify-email` request body (`03` §6) — **generated**.
+ */
+export type VerifyEmailRequest = components['schemas']['VerifyEmailRequest']
 
 /** `POST /api/v1/auth/resend-verification` response (`03` §6) — 200 `{verified}`. */
 export interface ResendVerificationResponse {
@@ -305,10 +331,8 @@ export interface CsrfTokenResponse {
  * Identity — password reset (`03` §6) — TKT-acc-009 (SCR-009).
  * ------------------------------------------------------------------ */
 
-/** `POST /api/v1/auth/forgot-password` request body (`03` §6). */
-export interface ForgotPasswordRequest {
-  email: string
-}
+/** `POST /api/v1/auth/forgot-password` request body (`03` §6) — **generated**. */
+export type ForgotPasswordRequest = components['schemas']['ForgotPasswordRequest']
 
 /**
  * `POST /api/v1/auth/forgot-password` response (`03` §6) — always a byte-identical
@@ -319,11 +343,8 @@ export interface ForgotPasswordResponse {
   status: string
 }
 
-/** `POST /api/v1/auth/reset-password` request body (`03` §6). */
-export interface ResetPasswordRequest {
-  token: string
-  newPassword: string
-}
+/** `POST /api/v1/auth/reset-password` request body (`03` §6) — **generated**. */
+export type ResetPasswordRequest = components['schemas']['ResetPasswordRequest']
 
 /**
  * `POST /api/v1/auth/reset-password` response (`03` §6) — 200 on success; the
@@ -348,16 +369,24 @@ export interface MeResponse {
   verified: boolean
 }
 
-/** `PATCH /api/v1/me` request body (`03` §6) — the language preference. */
-export interface UpdateLanguagePreferenceRequest {
-  languagePref: LanguagePref
-}
+/**
+ * `PATCH /api/v1/me` request body (`03` §6) — the language preference.
+ *
+ * **Generated + one documented narrowing.** The served schema is
+ * `components.LanguagePreferenceRequest`; it types `languagePref` as a bare
+ * `string` (no enum), while the SPA's stored preference is the `LanguagePref`
+ * union. The intersection keeps every served field (a new body field appears
+ * here automatically) and narrows only that one property.
+ */
+export type UpdateLanguagePreferenceRequest =
+  components['schemas']['LanguagePreferenceRequest'] & {
+    languagePref: LanguagePref
+  }
 
-/** `PATCH /api/v1/me/password` request body (`03` §6). */
-export interface PasswordChangeRequest {
-  current: string
-  newPassword: string
-}
+/**
+ * `PATCH /api/v1/me/password` request body (`03` §6) — **generated**.
+ */
+export type PasswordChangeRequest = components['schemas']['PasswordChangeRequest']
 
 /** `PATCH /api/v1/me/password` response (`03` §6) — the account e-mail. */
 export interface PasswordChangeResponse {

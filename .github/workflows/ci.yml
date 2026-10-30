@@ -3,9 +3,12 @@
 #
 # Three jobs, all on free public-repo GitHub-hosted runners, no secrets required:
 #   1. backend — restore · build · test (xUnit + Testcontainers PostgreSQL 17;
-#      migrations applied; fixture-universe golden values).
-#   2. web     — npm ci · ESLint · tsc --noEmit · Vitest · i18n parity ·
-#      advice-vocabulary · vite build.
+#      migrations applied; fixture-universe golden values) plus the OpenAPI
+#      contract-drift gate: the served document is regenerated and must equal the
+#      committed src/Api/openapi.json snapshot (TKT-foundation-071).
+#   2. web     — npm ci · OpenAPI types current · ESLint · tsc --noEmit · Vitest ·
+#      i18n parity · advice-vocabulary · vite build. The Web compiles against the
+#      committed, generated src/lib/api/generated.ts (TKT-foundation-071).
 #   3. e2e     — compose.ci.yml stack (API + PostgreSQL + seeded fixtures + MailPit)
 #      then the Playwright smoke suite, bounded by its 5-minute budget gate.
 #
@@ -66,6 +69,20 @@ jobs:
       - name: Build
         run: dotnet build Degerli.sln -c Release --no-restore
 
+      # Contract drift gate (TKT-foundation-071, architecture §6.1). The canonical
+      # machine contract is the OpenAPI document the API actually serves; this
+      # starts the freshly built API with a throwaway (never-opened) connection
+      # string, normalises the document (sorted keys, `servers` dropped) and diffs
+      # it against the committed `src/Api/openapi.json`. A served-shape change
+      # that was not committed — a renamed field, a widened type — fails here.
+      # It is never auto-fixed in CI: the regeneration path is
+      # `scripts/generate-openapi.sh --update`, run by the author and reviewed as
+      # a diff (acceptance (i)/(iv)).
+      - name: OpenAPI drift check (served document vs committed snapshot)
+        run: ./scripts/generate-openapi.sh --check
+        env:
+          OPENAPI_SKIP_BUILD: "1"
+
       # Testcontainers spins up postgres:17 per test class; migrations are applied
       # by the harness, so no `services:` block is needed (architecture §6.1).
       - name: Test
@@ -104,6 +121,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # The generated Web types are committed (`src/lib/api/generated.ts`, from the
+      # `src/Api/openapi.json` snapshot — TKT-foundation-071). Re-running the
+      # generator must be a no-op: if the snapshot changed without regenerating,
+      # or the generator output is stale, this fails with the diff. Never silently
+      # rewritten in CI.
+      - name: OpenAPI types are current (openapi-typescript)
+        run: npm run check:api
 
       - name: Lint (ESLint)
         run: npm run lint
