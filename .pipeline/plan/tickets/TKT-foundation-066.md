@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-066: CI hardening — secret scanning, dependency audit and container scanning as required checks
 
-- Status: in-review — PR https://github.com/sarperim/degerli/pull/165
+- Status: done — **PR #165 squash-merged 2026-10-30 (`4321e1f` on dev), round-2 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-066-round-{1,2}.md`; round 1 found a real NuGet-audit fail-open — NU1900 warning-level feed-outage read as clean — closed by the fixer round with 3 riding blockers; DR-1/SEC-1 same-class fail-opens recorded as non-blocking for the next touch of `security.yml`). **BUILDER ACTION OUTSTANDING:** mark the six checks (Backend, Web, E2E, Secrets, Dependencies, Containers — names verbatim in `deploy/README.md` §Security checks) required in repo Settings → Branches for `dev`/`main`; acceptance (ii) is only fully met once done. **Routing items:** S2 — the container gate scans a rebuild, not the published artifact, and `deploy.yml` publishes from floating base tags without gating on Security (worth a follow-up ticket); S1/S5 — CODEOWNERS for gate files + dependabot breadth. Scope amendment (.trivyignore.yaml + deploy/caddy/Dockerfile) self-recorded, justification sound, no product code touched.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 1 unparked).**
 - **Evidence (gathered 2026-10-24, current repo state):**
