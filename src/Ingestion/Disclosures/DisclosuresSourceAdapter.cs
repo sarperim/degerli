@@ -90,7 +90,8 @@ public sealed class DisclosuresSourceOptions
 
     /// <summary>
     /// The shipped public-site lookback: <b>7</b> days before the run day — an <b>eight-day</b>
-    /// inclusive bootstrap span, i.e. two 7-day windows, not one. The feed is a <i>recent</i>-disclosures
+    /// inclusive bootstrap span, i.e. one 7-day window plus a 1-day window, not one 7-day window.
+    /// The feed is a <i>recent</i>-disclosures
     /// feed (FR-MDF-005), and a week is a handful of pages on the first pass and a single day's window
     /// thereafter. A value ≤ 0 is read as 1.
     /// </summary>
@@ -105,7 +106,8 @@ public sealed class DisclosuresSourceOptions
     public int KapPublicWindowDays { get; set; } = DefaultKapPublicWindowDays;
 
     /// <summary>The shipped window width: <b>7</b> days. A bootstrap's span is <c>lookback + 1</c>
-    /// inclusive days (see <see cref="KapPublicLookbackDays"/>), so the shipped 7 + 1 takes two windows.</summary>
+    /// inclusive days (see <see cref="KapPublicLookbackDays"/>), so the shipped 7 + 1 chunked at 7
+    /// takes one 7-day window plus a 1-day window.</summary>
     public const int DefaultKapPublicWindowDays = 7;
 
     /// <summary>
