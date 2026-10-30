@@ -81,16 +81,18 @@ public sealed class DisclosuresSourceOptions
 
     /// <summary>
     /// The public-site feed's <b>bootstrap lookback</b> in days (TKT-foundation-084, 01 v1.5.85
-    /// §10.9.19): how far back a pass with <b>no persisted cursor</b> lists the market. It is a
-    /// <b>request</b>, recorded as such — never a claim that the market published nothing before it
-    /// (the 078/082 provenance rule, one level down).
+    /// §10.9.19): how many days <b>before the run day</b> a pass with <b>no persisted cursor</b>
+    /// starts listing the market. The covered span is therefore <c>lookback + 1</c> inclusive days
+    /// (the start day through the run day). It is a <b>request</b>, recorded as such — never a claim
+    /// that the market published nothing before it (the 078/082 provenance rule, one level down).
     /// </summary>
     public int KapPublicLookbackDays { get; set; } = DefaultKapPublicLookbackDays;
 
     /// <summary>
-    /// The shipped public-site lookback: <b>7</b> days. The feed is a <i>recent</i>-disclosures feed
-    /// (FR-MDF-005), and 7 days is one week of market filings — a handful of pages on the first pass
-    /// and a single day's window thereafter. A value ≤ 0 is read as 1.
+    /// The shipped public-site lookback: <b>7</b> days before the run day — an <b>eight-day</b>
+    /// inclusive bootstrap span, i.e. two 7-day windows, not one. The feed is a <i>recent</i>-disclosures
+    /// feed (FR-MDF-005), and a week is a handful of pages on the first pass and a single day's window
+    /// thereafter. A value ≤ 0 is read as 1.
     /// </summary>
     public const int DefaultKapPublicLookbackDays = 7;
 
@@ -102,7 +104,8 @@ public sealed class DisclosuresSourceOptions
     /// </summary>
     public int KapPublicWindowDays { get; set; } = DefaultKapPublicWindowDays;
 
-    /// <summary>The shipped window width: <b>7</b> days (the lookback's own width, so a bootstrap is one request).</summary>
+    /// <summary>The shipped window width: <b>7</b> days. A bootstrap's span is <c>lookback + 1</c>
+    /// inclusive days (see <see cref="KapPublicLookbackDays"/>), so the shipped 7 + 1 takes two windows.</summary>
     public const int DefaultKapPublicWindowDays = 7;
 
     /// <summary>

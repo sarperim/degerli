@@ -18,7 +18,7 @@ using Xunit;
 namespace Degerli.Api.IntegrationTests;
 
 /// <summary>
-/// <b>TC-MDF-112 (i)–(v)</b> — the market-wide <b>recent-disclosures</b> feed of the KAP public site
+/// <b>TC-MDF-112 (i)–(vi)</b>, plus the two named-refusal paths — the market-wide <b>recent-disclosures</b> feed of the KAP public site
 /// (test plan §25; <c>01</c> v1.5.85 §10.9.19, TKT-foundation-084; FR-MDF-005/008/011/012,
 /// NFR-MDF-001).
 /// <para>
@@ -60,10 +60,14 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
     /// <summary>The public site's own disclosure-page route, as the committed capture spells it.</summary>
     private const string PublicDisclosureOrigin = "https://www.kap.org.tr/Bildirim/";
 
-    /// <summary>The public-site oids the stored identity map holds for the bound companies (080's map).</summary>
-    private const string RodrgPublicOid = "4028e4a1413b7ef401413bc2251e0047";
-    private const string GedzaPublicOid = "4028e4a1413b7ef401413bc2251e0048";
-    private const string KtestPublicOid = "4028e4a1413b7ef401413bc2251e0049";
+    /// <summary>
+    /// The <b>synthetic</b> public-site oids the stored identity map holds for the bound companies
+    /// (080's map). They are test values only — no captured oid is reused for another issuer
+    /// (TKT-foundation-084 review DR-7) — and no assertion depends on the values.
+    /// </summary>
+    private const string RodrgPublicOid = "0dd0c0de000000000000000000000001";
+    private const string GedzaPublicOid = "0dd0c0de000000000000000000000002";
+    private const string KtestPublicOid = "0dd0c0de000000000000000000000003";
 
     // ---------------------------------------------------------------------------------------------
     // The committed market-wide probe body's own rows (2026-10-25 capture, HTTP 200, 12 rows).
@@ -189,7 +193,8 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
             GedzaIndices.Length,
             rows.Count(row => row.InstrumentId == SymbolId("GEDZA")));
 
-        // Out-of-bound rows are counted with the named reason, and the run says so honestly.
+        // Out-of-bound rows are counted in `Skipped`; the out-of-bound reason is logged, not carried
+        // in the result's counters.
         Assert.Equal(OutOfBoundRowCount, result.Skipped);
 
         // No per-disclosure request anywhere: the pass reads list pages only.
@@ -207,6 +212,43 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
 
         // An out-of-bound code (the buy-back notice's MARBL) is never written.
         Assert.DoesNotContain(rows, row => row.SourceUrl == $"{PublicDisclosureOrigin}{1687037}");
+    }
+
+    /// <summary>
+    /// TC-MDF-112 (ii) — <b>a filing that names two bound constituents writes one row per
+    /// constituent</b> (TKT-foundation-084 review DR-1). The committed capture carries no
+    /// multi-code row, so the capture's newest row has its <c>stockCodes</c> widened to the two
+    /// bound codes <i>in memory</i> — a structural variation of the committed body, not an invented
+    /// one. The store's identity must include the instrument: keyed on the shared <c>SourceUrl</c>
+    /// alone, the second constituent's fact was counted <c>unchanged</c> and never written.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_112_ii_a_two_bound_code_row_writes_one_row_per_constituent()
+    {
+        await ResetAsync();
+        await BindAsync(["RODRG", "GEDZA"], boundInIndex: true);
+
+        const string capturedRow = "\"disclosureIndex\":1687047,\"isLate\":false,\"stockCodes\":\"RODRG\"";
+        var body = RealSourceCatalog.Get(RealSourceCatalog.KapPublicMarketProbe).Body
+            .Replace(
+                capturedRow,
+                "\"disclosureIndex\":1687047,\"isLate\":false,\"stockCodes\":\"RODRG,GEDZA\"",
+                StringComparison.Ordinal);
+        Assert.Contains("\"stockCodes\":\"RODRG,GEDZA\"", body, StringComparison.Ordinal);
+        StubJsonArray(body);
+
+        await using var host = BuildIngestion();
+        var result = await RunAsync(host);
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+        Assert.Equal(RodrgIndices.Length + GedzaIndices.Length + 1, result.Written);
+        Assert.Equal(0, result.Unchanged);
+
+        var rows = await ReadDisclosuresAsync();
+        var shared = $"{PublicDisclosureOrigin}{1687047}";
+        Assert.Equal(2, rows.Count(row => row.SourceUrl == shared));
+        Assert.Single(rows, row => row.SourceUrl == shared && row.InstrumentId == SymbolId("RODRG"));
+        Assert.Single(rows, row => row.SourceUrl == shared && row.InstrumentId == SymbolId("GEDZA"));
     }
 
     // =============================================================================================
@@ -391,6 +433,108 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
     }
 
     // =============================================================================================
+    // TC-MDF-112 (vi) — the watermark is a checkpoint, not a walk product (the 069 property)
+    // =============================================================================================
+
+    /// <summary>
+    /// TC-MDF-112 (vi) — the watermark is persisted only <b>after</b> the fact write, so a store
+    /// failure cannot advance it past facts that never landed (069's TC-MDF-130 property, applied
+    /// to this lane; TKT-foundation-084 review DR-3). The failure is injected where it happens in
+    /// production — a PostgreSQL trigger that raises on the <c>kap_disclosures</c> INSERT — so the
+    /// pass really emits its facts before the store refuses them.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_112_vi_a_store_failure_never_advances_the_watermark_past_unwritten_facts()
+    {
+        await ResetAsync();
+        await BindAsync(["RODRG", "GEDZA"], boundInIndex: true);
+        // A persisted cursor, as a second-day pass carries: the failure must leave it exactly here.
+        await SeedCursorAsync(new DateOnly(2026, 10, 22), []);
+        StubMarketProbe();
+
+        await using var host = BuildIngestion();
+
+        await BlockFactWritesAsync();
+        try
+        {
+            // The run fails loudly (an exception, never a fabricated success) — the ledger-posting
+            // posture of this in-flight failure class is 069's recorded observation, not re-pinned.
+            var failure = await Assert.ThrowsAsync<DbUpdateException>(() => RunAsync(host));
+            Assert.Contains(StoreFailureMarker, failure.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            await UnblockFactWritesAsync();
+        }
+
+        // No fact landed, and the watermark never advanced past them.
+        Assert.Empty(await ReadDisclosuresAsync());
+        var held = await ReadCursorAsync();
+        Assert.NotNull(held);
+        Assert.Equal(new DateOnly(2026, 10, 22), held!.Watermark);
+
+        // The clean replay re-lists the same window, writes the facts, and only then moves the cursor.
+        var replay = await RunAsync(host);
+        Assert.Equal(IngestResult.Succeeded, replay.Status);
+        Assert.Equal(RodrgIndices.Length + GedzaIndices.Length, replay.Written);
+
+        var cursor = await ReadCursorAsync();
+        Assert.NotNull(cursor);
+        Assert.Equal(RunDay, cursor!.Watermark);
+        Assert.Equal(RodrgIndices.Length + GedzaIndices.Length, (await ReadDisclosuresAsync()).Count);
+    }
+
+    // =============================================================================================
+    // TC-MDF-112 — the two cheapest named-refusal paths (review DR-4)
+    // =============================================================================================
+
+    /// <summary>
+    /// TC-MDF-112 — an <b>unrecognised <c>Ingestion:Disclosures:Source</c></b> fails the run
+    /// <b>by name</b> and fetches <b>nothing</b>: a typo must never silently run the other source
+    /// under the wrong provenance (review DR-4).
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_112_an_unrecognised_source_fails_by_name_and_fetches_nothing()
+    {
+        await ResetAsync();
+        await BindAsync(["RODRG", "GEDZA"], boundInIndex: true);
+        StubMarketProbe();
+
+        await using var host = BuildIngestion(new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["Ingestion:Disclosures:Source"] = "vyk-typo",
+        });
+        var result = await RunAsync(host);
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Contains(DisclosuresJob.InvalidSourceSelection, result.FailureReason ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(0, result.Written);
+        Assert.Empty(_wireMock.Server.LogEntries);
+        Assert.Empty(await ReadDisclosuresAsync());
+    }
+
+    /// <summary>
+    /// TC-MDF-112 — an <b>empty bound</b> is a named failure (<c>NO_BOUND_CONSTITUENTS</c>), never
+    /// an empty success: a feed over nothing proves nothing (review DR-4). Zero requests are issued.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_112_an_empty_bound_is_a_named_failure_and_fetches_nothing()
+    {
+        await ResetAsync();
+        await BindAsync([], boundInIndex: true);
+        StubMarketProbe();
+
+        await using var host = BuildIngestion();
+        var result = await RunAsync(host);
+
+        Assert.Equal(IngestResult.Failed, result.Status);
+        Assert.Contains(DisclosuresJob.NoBoundConstituents, result.FailureReason ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(0, result.Written);
+        Assert.Empty(_wireMock.Server.LogEntries);
+        Assert.Empty(await ReadDisclosuresAsync());
+    }
+
+    // =============================================================================================
     // The production composition over the Testcontainers database and the committed probe double
     // =============================================================================================
 
@@ -400,7 +544,7 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
     /// because the code default is a refusal; the VYK client pointed at the same double so that any
     /// VYK request would be visible in the journal.
     /// </summary>
-    private IngestionHost BuildIngestion()
+    private IngestionHost BuildIngestion(IReadOnlyDictionary<string, string?>? overrides = null)
     {
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -415,6 +559,14 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
             ["Ingestion:KapPublic:AutomatedAccess"] = nameof(KapPublicAccessPosture.Allowed),
             ["Ingestion:Kap:BaseUrl"] = _wireMock.BaseUrl,
         };
+
+        if (overrides is not null)
+        {
+            foreach (var (key, value) in overrides)
+            {
+                settings[key] = value;
+            }
+        }
 
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
@@ -432,6 +584,38 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
         var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
         return await runner.RunAsync(DisclosuresJob.Code, new IngestionRequest(RunDay));
     }
+
+    /// <summary>Makes every insert into <c>kap_disclosures</c> raise — the injected store failure a
+    /// checkpoint-ordering case needs (the 069 harness pattern, test-local trigger name).</summary>
+    private async Task BlockFactWritesAsync()
+    {
+        const string sql = """
+            CREATE OR REPLACE FUNCTION tkt084_block_kap_disclosures() RETURNS trigger AS $tkt$
+            BEGIN
+                RAISE EXCEPTION 'TKT084_STORE_FAILURE on kap_disclosures';
+            END;
+            $tkt$ LANGUAGE plpgsql;
+            CREATE TRIGGER tkt084_block_kap_disclosures BEFORE INSERT ON kap_disclosures
+                FOR EACH ROW EXECUTE FUNCTION tkt084_block_kap_disclosures();
+            """;
+
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    /// <summary>Removes the injected failure so the same world can be re-run cleanly.</summary>
+    private async Task UnblockFactWritesAsync()
+    {
+        const string sql = """
+            DROP TRIGGER IF EXISTS tkt084_block_kap_disclosures ON kap_disclosures;
+            DROP FUNCTION IF EXISTS tkt084_block_kap_disclosures();
+            """;
+
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    private const string StoreFailureMarker = "TKT084_STORE_FAILURE";
 
     // =============================================================================================
     // Doubles
@@ -523,7 +707,7 @@ public sealed class KapPublicDisclosuresFeedTests : IClassFixture<PostgresFixtur
             {
                 InstrumentId = instrument.Id,
                 KapPublicOid = oids[symbol],
-                KapPublicOidSource = "test: committed kap-public identity capture 2026-10-25",
+                KapPublicOidSource = "test: synthetic public oid (not a capture)",
                 KapPublicOidAsOf = RunDay,
                 RecordedAt = RecordedAt,
             });

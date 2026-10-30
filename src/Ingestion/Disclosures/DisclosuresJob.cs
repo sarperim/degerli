@@ -57,32 +57,6 @@ public sealed class DisclosuresJob : IIngestJob
     private readonly UniverseSyncStore? _universe;
 
     /// <summary>
-    /// The VYK-only composition: the 078 lane's original shape, kept for the callers and tests that
-    /// construct the job without the public-site seams. A public-site selection under this
-    /// composition fails by name rather than pretending it ran.
-    /// </summary>
-    public DisclosuresJob(
-        ISourceAdapter<DisclosuresPayload> adapter,
-        DisclosureStore store,
-        IQuarantineWriter quarantine,
-        TimeProvider clock,
-        ILogger<DisclosuresJob> logger)
-        : this(
-            adapter,
-            store,
-            quarantine,
-            clock,
-            logger,
-            options: null,
-            kapPublicReader: null,
-            kapPublicMaps: null,
-            kapPublicOptions: null,
-            universe: null,
-            db: null)
-    {
-    }
-
-    /// <summary>
     /// The composed shape (01 v1.5.85 §10.9.19, TKT-foundation-084). The public lane's own stores —
     /// its date-watermark cursor and its bound selection — are built from the run's
     /// <see cref="DegerliDbContext"/> here, exactly as the 082 statements lane builds its cursor and
@@ -397,9 +371,10 @@ public sealed class DisclosuresJob : IIngestJob
         if (from > today)
         {
             // A watermark ahead of the clock (a clock change, or a restored database) is never walked
-            // backwards silently: the pass covers the run's own day and says so.
+            // backwards silently: the pass covers the run's own day and re-anchors the watermark at
+            // it, saying so (TKT-foundation-084 review DR-8: this is a pull-back, not "nothing moves").
             _logger.LogWarning(
-                "disclosures: the persisted watermark {Watermark} is ahead of the run's day {Today}; the pass covers {RunDay} and moves nothing backwards",
+                "disclosures: the persisted watermark {Watermark} is ahead of the run's day {Today}; the pass covers {RunDay} and re-anchors the watermark there",
                 from,
                 today,
                 today);
