@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-071: OpenAPI contract codegen — contract drift eliminated at build time
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 7 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -40,5 +40,8 @@ scope:
 - Parallel group: none (touches `01`).
 
 ## Notes
+
+- PR: https://github.com/sarperim/degerli/pull/169 (TKT-foundation-071).
+- Implementation note (2026-10-30): the **start-the-API** mechanism was chosen (not a build-time generator), so the snapshot *is* the runtime document — the only transformation is `servers` dropped (throwaway bind URL) and keys sorted, proven byte-identical across two runs. Generation lives in `scripts/generate-openapi.sh`, which CI runs (`--check` in the backend job, `OPENAPI_SKIP_BUILD=1`); a developer never needs the API running to *pass* the gate, only `--update` (which runs the script) when a contract change is intended. **Recorded honesty limit:** the served document declares no response schemas (endpoints return untyped `IResult`), so response payload types in `contracts.ts` stay curated with stated reasons until endpoints declare response types — flagged on the PR as the follow-up.
 
 - Keep the snapshot generation **inside CI only** (no requirement that a developer runs the API locally). If a build-time generator is chosen instead of start-the-API, record the exact mechanism and prove the output is byte-identical to the runtime document.
