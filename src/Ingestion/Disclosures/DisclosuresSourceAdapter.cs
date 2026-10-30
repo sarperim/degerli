@@ -55,6 +55,90 @@ public sealed class DisclosuresSourceOptions
     /// </summary>
     public string EarlyDisclosureIndex { get; set; } = "0";
 
+    /// <summary>
+    /// The VYK gateway source selector value (01 v1.5 §10.9.11) — the shipped default.
+    /// </summary>
+    public const string VykSource = "vyk";
+
+    /// <summary>
+    /// The KAP <b>public-site</b> source selector value (01 v1.5.85 §10.9.19, TKT-foundation-084).
+    /// </summary>
+    public const string KapPublicSource = "kap-public";
+
+    /// <summary>
+    /// Which source the disclosures lane reads (<c>Ingestion:Disclosures:Source</c>): the VYK gateway
+    /// (<see cref="VykSource"/>, the shipped default) or the KAP public site
+    /// (<see cref="KapPublicSource"/>).
+    /// <para>
+    /// <b>Selecting a source is configuration, never a rewrite</b> (two-source discipline): the VYK
+    /// wiring stays intact, the public feed is opt-in, and an unrecognised value fails the run by
+    /// name (<see cref="TryParseSource"/>) instead of silently running the other source under the
+    /// wrong provenance. The two feeds coexist as separate sources with separate cursors and
+    /// separate evidence classes — switching back is a config change.
+    /// </para>
+    /// </summary>
+    public string Source { get; set; } = VykSource;
+
+    /// <summary>
+    /// The public-site feed's <b>bootstrap lookback</b> in days (TKT-foundation-084, 01 v1.5.85
+    /// §10.9.19): how far back a pass with <b>no persisted cursor</b> lists the market. It is a
+    /// <b>request</b>, recorded as such — never a claim that the market published nothing before it
+    /// (the 078/082 provenance rule, one level down).
+    /// </summary>
+    public int KapPublicLookbackDays { get; set; } = DefaultKapPublicLookbackDays;
+
+    /// <summary>
+    /// The shipped public-site lookback: <b>7</b> days. The feed is a <i>recent</i>-disclosures feed
+    /// (FR-MDF-005), and 7 days is one week of market filings — a handful of pages on the first pass
+    /// and a single day's window thereafter. A value ≤ 0 is read as 1.
+    /// </summary>
+    public const int DefaultKapPublicLookbackDays = 7;
+
+    /// <summary>
+    /// How many days one public-site byCriteria list request covers (TKT-foundation-084). The public
+    /// list is <b>date-windowed</b>, not index-paged, so the window is the unit of bounded listing: a
+    /// narrower window is a smaller answer at the cost of more list requests (each paced at ≥3 s and
+    /// counted against the shared pass page ceiling).
+    /// </summary>
+    public int KapPublicWindowDays { get; set; } = DefaultKapPublicWindowDays;
+
+    /// <summary>The shipped window width: <b>7</b> days (the lookback's own width, so a bootstrap is one request).</summary>
+    public const int DefaultKapPublicWindowDays = 7;
+
+    /// <summary>
+    /// Normalizes <paramref name="source"/> to a known selector. Unset/blank binds the shipped
+    /// default; an unrecognised value is <b>not</b> mapped onto either source (a typo must fail
+    /// loudly instead of reading the wrong source under the right-looking provenance).
+    /// </summary>
+    public static bool TryParseSource(string? source, out string selected)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            selected = VykSource;
+            return true;
+        }
+
+        var trimmed = source.Trim();
+        if (string.Equals(trimmed, VykSource, StringComparison.OrdinalIgnoreCase))
+        {
+            selected = VykSource;
+            return true;
+        }
+
+        if (string.Equals(trimmed, KapPublicSource, StringComparison.OrdinalIgnoreCase))
+        {
+            selected = KapPublicSource;
+            return true;
+        }
+
+        selected = trimmed;
+        return false;
+    }
+
+    /// <summary>True when the configured <see cref="Source"/> selects the public-site feed.</summary>
+    public bool KapPublicSelected => TryParseSource(Source, out var selected)
+        && string.Equals(selected, KapPublicSource, StringComparison.Ordinal);
+
     /// <summary>The market feed's name in <see cref="Feed"/> (TKT-foundation-078).</summary>
     public const string FeedMarket = "market";
 
