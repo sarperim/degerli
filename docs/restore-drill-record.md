@@ -24,9 +24,14 @@ exercise*). This entry is not a claim that the drill has been performed in produ
 | Environment | scratch Docker host, **not** the VPS; Docker 28.3.3 / Compose v2.39.2 |
 | Stack | this repo's `compose.prod.yml`, unmodified, one project per rehearsal |
 | Images | `postgres:17` (as pinned) and the API image built from this tree (`degerli-api-rehearsal:t1`) |
-| Data | **not production data** — a produced-shaped seeded dataset (see *Dataset* below): 100 instruments, 25,000 daily prices, 800 financial statements with 16,000 line items, 2,088 macro values, one index with 250 levels and 100 constituents, 250 market snapshots, 20 ingest-run rows, 12 EF migrations applied |
+| Data | **not production data** — a production-shaped seeded dataset: 100 instruments, 25,000 daily prices, 800 financial statements with 16,000 line items, 2,088 macro values, one index with 250 levels and 100 constituents, 250 market snapshots, 20 ingest-run rows, 12 EF migrations applied |
 | Encryption | the real path: GnuPG symmetric AES-256, passphrase via fd 3, exactly as `pg-backup.sh` writes it |
 | Remote | **a local-directory rclone remote standing in for Backblaze B2** (no B2 credentials in this environment) |
+
+The harness — seed SQL, the per-table fingerprint queries, the timed runner — was
+**throwaway, written in `/tmp` and not committed**: this ticket's scope is the deploy
+scripts plus this record. The dataset's shape is described above so the exercise can be
+repeated in kind; there is deliberately no reusable drill harness in the repo.
 
 ### The archive
 
