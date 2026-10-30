@@ -262,17 +262,30 @@ describe('TC-MOV-016 every macro as-of marker explains itself', () => {
     )
   })
 
-  it('explains the as-of marker of an unavailable series too', async () => {
+  /**
+   * Review round 1 (DR-1): an unavailable series has no served value, so nothing
+   * licenses the recency sentence — "it is the latest date the source has
+   * published for this data" would be a claim about freshness the strip does not
+   * know. The marker keeps the neutral sentence and makes no recency claim.
+   */
+  it('explains the as-of marker of an unavailable series without claiming recency', async () => {
     server.use(marketMacroHandler(MACRO_STRIP_DEGRADED_FIXTURE))
     renderStrip()
 
     const independent = await screen.findByTestId('macro-INDEP_CPI')
     expect(independent).toHaveTextContent(tr('honestData.unavailableTitle'))
-    // No surface renders a bare date: the marker carries its own explanation.
+    // No surface renders a bare date: the marker carries its neutral explanation.
     expect(asOfMarker(independent)).toHaveAttribute(
       'title',
-      `${tr('honestData.asOfExplanation')} ${tr('honestData.asOfRecencyExplanation')}`,
+      tr('honestData.asOfExplanation'),
     )
+    expect(asOfMarker(independent)).not.toHaveTextContent(
+      tr('honestData.asOfRecencyExplanation'),
+    )
+    // The cadence note's "latest published value" is the same claim — suppressed too.
+    expect(
+      independent.querySelector('[data-slot="macro-cadence"]'),
+    ).toBeNull()
   })
 })
 

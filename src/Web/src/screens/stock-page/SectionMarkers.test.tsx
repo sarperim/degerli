@@ -156,15 +156,17 @@ describe('TC-RES-024 honest-data markers', () => {
           `${catalogValue(language, 'honestData.stale')} — ${catalogValue(language, 'honestData.staleExplanation')}`,
         )
 
-        // The as-of marker still explains itself, and it claims no recency.
+        // The as-of marker still explains itself.
         const marker = asOfSlot(asOf)
         expect(marker).toHaveAttribute(
           'title',
           catalogValue(language, 'honestData.asOfExplanation'),
         )
-        expect(marker).not.toHaveTextContent(
-          catalogValue(language, 'honestData.asOfRecencyExplanation'),
-        )
+        // No recency assertion belongs here yet: `SectionMarkers` does not thread
+        // `stale` into `AsOfDate` (it never passes `fresh`), so a recency check
+        // would pass identically fresh or stale — vacuous, not a suppression test
+        // (review round 1, DR-5). Threading freshness through is a recorded
+        // follow-up, outside TKT-foundation-073's pinned behaviour.
       })
     }
 
