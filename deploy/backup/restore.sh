@@ -45,7 +45,7 @@ on_exit() {
     echo "restore: FAILED — scratch database '${RESTORE_DB}' was created and may be" >&2
     echo "restore: partially restored. It is NOT a valid restore point; drop it before" >&2
     echo "restore: re-running:" >&2
-    echo "restore:   docker compose -f $COMPOSE_FILE exec postgres dropdb --if-exists $RESTORE_DB" >&2
+    echo "restore:   docker compose -f $COMPOSE_FILE exec postgres sh -c 'dropdb --if-exists -U \"\$POSTGRES_USER\" \"${RESTORE_DB}\"'" >&2
   fi
   exit "$rc"
 }
@@ -195,5 +195,5 @@ SQL
 elapsed=$(( $(date +%s) - started_at ))
 echo "restore: verified $(echo "$verify" | tr '\n' ' ')ef_migrations=${migrations} — elapsed ${elapsed}s (RTO target ≤ 4h)"
 echo "restore: done. Inspect with:"
-echo "  docker compose -f $COMPOSE_FILE exec postgres psql -d $RESTORE_DB -c '\\dt'"
-echo "  docker compose -f $COMPOSE_FILE exec postgres dropdb --if-exists $RESTORE_DB   # when finished"
+echo "  docker compose -f $COMPOSE_FILE exec postgres sh -c 'psql -U \"\$POSTGRES_USER\" -d \"${RESTORE_DB}\" -c \"\\dt\"'"
+echo "  docker compose -f $COMPOSE_FILE exec postgres sh -c 'dropdb --if-exists -U \"\$POSTGRES_USER\" \"${RESTORE_DB}\"'   # when finished"
