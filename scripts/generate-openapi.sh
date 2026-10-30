@@ -22,7 +22,9 @@
 #
 # The port is pre-flighted: if anything already answers on `$OPENAPI_PORT` the
 # script fails immediately instead of letting a stale server satisfy the check
-# with an old document (a false "matches").
+# with an old document (a false "matches"). The fetch is followed by a liveness
+# assertion on `$api_pid`: a document is accepted only from this run's own
+# process, so a responder that won the port cannot be believed (SEC-4).
 #
 # Determinism (`01` §6.1, acceptance (iv) of TKT-foundation-071): the snapshot is
 # normalised — `servers` is dropped (it carries the throwaway bind URL, not a
@@ -150,6 +152,16 @@ until curl -fsS -o "$raw_json" "${base_url}/api/v1/openapi.json" 2>/dev/null; do
   fi
   sleep 1
 done
+
+# SEC-4: a successful fetch proves *something* answered on the port, not that it
+# was this run's API — the liveness check inside the loop only runs when a fetch
+# fails, so a server that won the port and answered would exit the loop green. Once
+# the API cannot bind it exits, so a live `$api_pid` proves the responder is ours.
+kill -0 "$api_pid" 2>/dev/null || {
+  echo "generate-openapi: the served document did not come from this run's API" >&2
+  cat "$api_log" >&2
+  exit 1
+}
 
 python3 - "$raw_json" "$normalized_json" <<'PY'
 import json

@@ -21,11 +21,18 @@
  *      interface cites the `03` section it mirrors. When the API starts
  *      declaring response types, the corresponding shape moves to a generated
  *      alias.
- *    - **Request bodies the document does not model**: `ScreenerRunRequest`,
- *      `SaveScreenRequest` and `DcfComputeRequest` (their handlers parse the
- *      body by hand, which ASP.NET does not model) and `SaveScenarioRequest` /
- *      `IngestTriggerRequest` (the document models them too loosely). Each block
- *      states its own reason.
+ *    - **Request bodies the document does not model** — every body a
+ *      hand-parsing handler reads, six paths on the snapshot this head carries:
+ *      `ScreenerRunRequest`, `SaveScreenRequest` and `DcfComputeRequest` here
+ *      (their handlers parse the body by hand, which ASP.NET does not model),
+ *      plus three inline call-site bodies on paths the document also declares no
+ *      `requestBody` for — `PATCH /admin/descriptions/{id}` (`screens/admin/api.ts`),
+ *      `PATCH /admin/screener-metrics/{code}` (`screens/admin/api.ts`) and
+ *      `PATCH /me/screens/{id}` (`screens/savedScreens/api.ts`), the same
+ *      hand-parse pattern. The four requestBody-less paths the Web calls with no
+ *      body or an empty `{}` carry no fields to drift and need no shape here.
+ *      `SaveScenarioRequest` / `IngestTriggerRequest` sit in this group too (the
+ *      document models them too loosely). Each block states its own reason.
  *
  * The prose design authority stays `.pipeline/architecture/03-api-design.md`
  * (intent and semantics); the snapshot is the machine contract the Web compiles
