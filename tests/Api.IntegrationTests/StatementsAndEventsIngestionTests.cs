@@ -2644,6 +2644,211 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
             await db.IngestRuns.CountAsync(r => r.Status == IngestResult.Failed && r.JobCode != "corporate-actions"));
     }
 
+    // ---------------------------------------------------------------------------------
+    // TKT-foundation-069 — the VYK cursor is a checkpoint, not a walk product (TC-MDF-130)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The marker the injected store failure raises, so a test can prove the failure it caught is
+    /// the injected one — never a coincidence of some other error class.
+    /// </summary>
+    private const string StoreFailureMarker = "TKT-foundation-069 injected store failure";
+
+    /// <summary>
+    /// TC-MDF-130 (acceptance (i), (iii), (iv)) — a <b>store failure after the walk emitted
+    /// facts</b> leaves the family cursor not advanced past them. The walk collects each company's
+    /// next cursor and the job persists it only after the fact write succeeded (the 063/statements
+    /// shape), so a blocked store leaves no cursor row at all, the run fails loudly (an exception,
+    /// never a fabricated success), and the next run re-walks the same indexes and writes the
+    /// facts. A rewind then proves the replay is idempotent: the same facts are reported
+    /// <c>unchanged</c> and no duplicate row is written.
+    /// <para>
+    /// The failure is injected where it actually happens in production — a PostgreSQL trigger that
+    /// raises on the fact table's insert — so the adapter's walk really emits its facts before the
+    /// store refuses them; it is the window the residual described, not a stand-in for it.
+    /// </para>
+    /// <para>
+    /// <b>Measured failure posture (recorded, deliberately not pinned).</b> The exception surfaces
+    /// out of the runner — the run is never reported as a success — but no <c>ingest_runs</c> row
+    /// is written for it: the runner's own record write re-attempts the inserts EF still tracks
+    /// from the failed save and hits the same injected error. That is the pre-existing
+    /// <c>Jobs.cs</c> posture (TKT-foundation-044's active scope, untouched here), so this case
+    /// asserts the honesty of the outcome — a thrown failure, no facts, no cursor — and leaves the
+    /// ledger question to that lane rather than pinning today's gap as expected behaviour.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("dividends", "dividends", "kap-dividends-cursor", 2)]
+    [InlineData("corporate-actions", "corporate_actions", "kap-corporate-actions-cursor", 1)]
+    [InlineData("disclosures", "kap_disclosures", "kap-disclosures-cursor", 1)]
+    public async Task TC_MDF_130_a_store_failure_never_advances_a_family_cursor(
+        string jobCode,
+        string table,
+        string cursorDataType,
+        int expectedFacts)
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        StubFamilyDetailFor(jobCode, "1138986");
+        await using var provider = BuildIngestion(vyk: true);
+
+        await BlockFactWritesAsync(table);
+        try
+        {
+            var failure = await Assert.ThrowsAsync<DbUpdateException>(() => RunAsync(provider, jobCode));
+            Assert.Contains(StoreFailureMarker, failure.ToString(), StringComparison.Ordinal);
+
+            await using (var db = _postgres.CreateContext())
+            {
+                // No fact landed, and — the ticket's whole point — no cursor row advanced past them.
+                Assert.Equal(0, await CountRowsAsync(db, table));
+                Assert.Equal(0, await db.CoverageMetadata.CountAsync(c => c.DataType == cursorDataType));
+            }
+        }
+        finally
+        {
+            await UnblockFactWritesAsync(table);
+        }
+
+        // The next run re-walks the same indexes (the cursor never moved) and writes the facts.
+        var replay = await RunAsync(provider, jobCode);
+        Assert.Equal(IngestResult.Succeeded, replay.Status);
+        Assert.Equal(expectedFacts, replay.Written);
+        Assert.Equal(0, replay.Unchanged);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(expectedFacts, await CountRowsAsync(db, table));
+            var cursor = await db.CoverageMetadata.SingleAsync(c => c.DataType == cursorDataType);
+            Assert.Equal("1138986", cursor.Notes);
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM coverage_metadata WHERE data_type = {0}",
+                cursorDataType);
+        }
+
+        // A rewind re-walks the identical indexes: the idempotent store reports every re-emitted
+        // fact `unchanged` and writes no duplicate row (acceptance (iv)).
+        var rewind = await RunAsync(provider, jobCode);
+        Assert.Equal(IngestResult.Succeeded, rewind.Status);
+        Assert.Equal(0, rewind.Written);
+        Assert.Equal(expectedFacts, rewind.Unchanged);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            Assert.Equal(expectedFacts, await CountRowsAsync(db, table));
+        }
+    }
+
+    /// <summary>
+    /// TC-MDF-130 (acceptance (i), the incremental half) — with a <b>persisted</b> cursor, a store
+    /// failure leaves the cursor at the index of the last facts that were durably written, never at
+    /// the index the failed run had reached. The next run therefore resumes there (re-reading only
+    /// the row it already handled, which the walk skips) and stores the facts that were lost.
+    /// </summary>
+    [Fact]
+    public async Task TC_MDF_130_b_a_store_failure_holds_a_persisted_cursor_at_its_last_written_index()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1138986", "CA"));
+        StubDetail("1138986", DividendDetailBody());
+        await using var provider = BuildIngestion(vyk: true);
+
+        var first = await RunAsync(provider, "dividends");
+        Assert.Equal(IngestResult.Succeeded, first.Status);
+        Assert.Equal(2, first.Written);
+
+        // A second disclosure appears at 1138987; the walk from the persisted cursor emits it.
+        StubDisclosureList("1001", 1138986, ("1138986", "CA"), ("1138987", "CA"));
+        StubDisclosureList("1001", 1138987, ("1138987", "CA"));
+        StubDetail("1138987", DividendDetailBodyAt("1138987", "4.0000000", "5.0000000", "9.0000000"));
+
+        await BlockFactWritesAsync("dividends");
+        try
+        {
+            var failure = await Assert.ThrowsAsync<DbUpdateException>(() => RunAsync(provider, "dividends"));
+            Assert.Contains(StoreFailureMarker, failure.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            await UnblockFactWritesAsync("dividends");
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            // Exactly where the last durable write left it — not at 1138987, whose facts never
+            // reached the database.
+            var cursor = await db.CoverageMetadata.SingleAsync(c => c.DataType == "kap-dividends-cursor");
+            Assert.Equal("1138986", cursor.Notes);
+            Assert.Equal(2, await db.Dividends.CountAsync());
+        }
+
+        var replay = await RunAsync(provider, "dividends");
+        Assert.Equal(IngestResult.Succeeded, replay.Status);
+        Assert.Equal(2, replay.Written);
+        Assert.Equal(0, replay.Unchanged);
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var cursor = await db.CoverageMetadata.SingleAsync(c => c.DataType == "kap-dividends-cursor");
+            Assert.Equal("1138987", cursor.Notes);
+            Assert.Equal(4, await db.Dividends.CountAsync());
+        }
+    }
+
+    /// <summary>Makes every insert into <paramref name="table"/> raise — the injected store
+    /// failure the ticket's window is about (a genuine database error at write time, after the
+    /// adapter has already walked and emitted its facts).</summary>
+    private async Task BlockFactWritesAsync(string table)
+    {
+        // Built by substitution rather than interpolation: the table identifier cannot be a
+        // parameter (EF1002), and a caller may not smuggle SQL into it — every caller passes one
+        // of this suite's own fact-table names.
+        var sql = """
+            CREATE OR REPLACE FUNCTION tkt069_block_TABLE() RETURNS trigger AS $tkt$
+            BEGIN
+                RAISE EXCEPTION 'MARKER on TABLE';
+            END;
+            $tkt$ LANGUAGE plpgsql;
+            CREATE TRIGGER tkt069_block_TABLE BEFORE INSERT ON TABLE
+                FOR EACH ROW EXECUTE FUNCTION tkt069_block_TABLE();
+            """
+            .Replace("TABLE", table, StringComparison.Ordinal)
+            .Replace("MARKER", StoreFailureMarker, StringComparison.Ordinal);
+
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    /// <summary>Removes the injected failure so the same world can be re-run.</summary>
+    private async Task UnblockFactWritesAsync(string table)
+    {
+        var sql = """
+            DROP TRIGGER IF EXISTS tkt069_block_TABLE ON TABLE;
+            DROP FUNCTION IF EXISTS tkt069_block_TABLE();
+            """.Replace("TABLE", table, StringComparison.Ordinal);
+
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    /// <summary>
+    /// The dividend detail double for a different disclosure: the committed body with its index and
+    /// its two installment amounts replaced, so the walk emits facts that are genuinely new against
+    /// the first disclosure's (the store's identity is instrument + ex-date + amount).
+    /// </summary>
+    private static string DividendDetailBodyAt(
+        string disclosureIndex,
+        string firstGross,
+        string secondGross,
+        string sumGross) =>
+        DividendDetailBody()
+            .Replace("\"disclosureIndex\": \"1138986\"", $"\"disclosureIndex\": \"{disclosureIndex}\"", StringComparison.Ordinal)
+            .Replace("\"2.0000000\"", $"\"{firstGross}\"", StringComparison.Ordinal)
+            .Replace("\"3.0000000\"", $"\"{secondGross}\"", StringComparison.Ordinal)
+            .Replace("\"5.0000000\"", $"\"{sumGross}\"", StringComparison.Ordinal);
+
     /// <summary>The family-appropriate detail double for one disclosure index.</summary>
     private void StubFamilyDetailFor(string jobCode, string disclosureIndex) => StubDetail(
         disclosureIndex,

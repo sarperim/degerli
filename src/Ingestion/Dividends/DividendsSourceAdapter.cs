@@ -95,9 +95,16 @@ public sealed class DividendsSourceOptions
 /// names it <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/> and continues, and the
 /// job records it in the run's per-symbol stats (01 v1.5 §10.9.15, the §10.9.10/§10.9.11
 /// per-company isolation doctrine, FR-MDF-012; see
-/// <see cref="IVykIdentityIsolationReporter"/>) — never a whole-run fail-stop. Cursors are
-/// persisted at the end of the adapter loop, before the job's store write (§10.9.15's accepted
-/// residual: a post-fetch store failure can skip the indexes the cursor covers).
+/// <see cref="IVykIdentityIsolationReporter"/>) — never a whole-run fail-stop.
+/// </para>
+/// <para>
+/// <b>The cursor is a checkpoint, not a walk product (TKT-foundation-069, §10.9.15).</b> The walk
+/// <b>collects</b> each company's next cursor and stops there; the job persists it through
+/// <see cref="PersistCursorsAsync"/> only <b>after</b> its fact write (and the skip evidence)
+/// succeeded — the 063/statements shape. A store failure therefore leaves every cursor exactly
+/// where the last durable write left it, so the next run re-walks the same indexes and re-emits
+/// their facts (the idempotent store reports them <c>unchanged</c>). No run can advance a cursor
+/// past facts that were never written; the accepted residual this replaces is closed.
 /// </para>
 /// </summary>
 public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter
@@ -122,6 +129,7 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
     private readonly ILogger<DividendsSourceAdapter>? _logger;
     private readonly List<string> _unresolvedSymbols = [];
     private readonly List<VykDetailSkip> _detailSkips = [];
+    private readonly List<(string Symbol, string Cursor)> _pendingCursors = [];
 
     public DividendsSourceAdapter(IKapSourceClient client, IOptions<DividendsSourceOptions> options)
         : this(client, options, kapOptions: null, directory: null, pacer: null, universe: null, db: null, logger: null)
@@ -163,6 +171,33 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
     /// (TKT-foundation-061).
     /// </summary>
     public IReadOnlyList<VykDetailSkip> DetailSkips => _detailSkips;
+
+    /// <summary>
+    /// True when the last walk collected cursor work that is not yet durably persisted
+    /// (TKT-foundation-069): the job calls <see cref="PersistCursorsAsync"/> after its fact write.
+    /// </summary>
+    public bool HasPendingCursors => _pendingCursors.Count > 0;
+
+    /// <summary>
+    /// Persists the walk's per-instrument cursors (01 v1.5 §10.9.11, TKT-foundation-069) —
+    /// <b>called by the job after the fact write succeeded</b>, never by the walk. The pending set
+    /// is taken and cleared before the writes, so a second call is a no-op; a failure surfaces out
+    /// of the job and fails the run, and the cursors it did not reach stay where they were — the
+    /// next run re-walks those indexes and the already-written facts come back `unchanged`. An
+    /// unresolvable symbol is a no-op in the setter.
+    /// </summary>
+    public async Task PersistCursorsAsync(CancellationToken cancellationToken = default)
+    {
+        // Copied so the field can be cleared before the awaits: the walk's facts are already
+        // written at this point, and a re-entrant persist must never re-apply a stale set.
+        var pending = _pendingCursors.ToList();
+        _pendingCursors.Clear();
+
+        foreach (var (symbol, cursor) in pending)
+        {
+            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <inheritdoc />
     public async Task<SourcePayload<DividendsPayload>> FetchAsync(
@@ -206,9 +241,9 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
 
         var dividends = new List<DividendFact>();
         var raw = new StringBuilder();
-        var cursors = new List<(string Symbol, string Cursor)>();
         _unresolvedSymbols.Clear();
         _detailSkips.Clear();
+        _pendingCursors.Clear();
 
         foreach (var symbol in symbols)
         {
@@ -230,14 +265,12 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
             raw.Append(companyRaw);
             if (nextCursor is not null)
             {
-                cursors.Add((symbol, nextCursor));
+                _pendingCursors.Add((symbol, nextCursor));
             }
         }
 
-        foreach (var (symbol, cursor) in cursors)
-        {
-            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
-        }
+        // No cursor is persisted here (TKT-foundation-069): the job writes the facts first and
+        // only then calls PersistCursorsAsync, so a store failure can never skip an index.
 
         var payload = new DividendsPayload(SourceName, dividends);
         return new SourcePayload<DividendsPayload>(SourceName, payload, raw.ToString());

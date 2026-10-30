@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-069: VYK cursor/fact transaction window — a store failure must not advance the cursor past unwritten facts
 
-- Status: todo
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/167 (branch `TKT-foundation-069`)
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 4 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -42,3 +42,10 @@ scope:
 
 - Do **not** touch `src/Ingestion/Jobs/Jobs.cs` — it is TKT-foundation-044's active scope. The run-stat fold-in, if needed, goes through the existing adapter/job channels, not `Jobs.cs`.
 - `StatementsJob`/`KapDisclosureCursorStore` are already correct (063); this ticket is the three families only.
+
+## Implementation record (2026-10-30, branch `TKT-foundation-069`, PR #167)
+
+- **Option chosen: (a), return-and-persist-after-write** — the ticket's recorded default. Each adapter's walk now only collects its cursor work (`HasPendingCursors` / `PersistCursorsAsync`: per-instrument advances for all three families, the `disclosures` market-wide row, and the clears of a reset whose re-walk was honestly empty); each job persists it **after** its fact write **and** its skip/unknown-symbol evidence, the 063/statements order. No `Jobs.cs` edit (044's scope), no schema, migration, cursor data type, config key, job code or request path.
+- **Acceptance evidence:** TC-MDF-130 (test plan §15, v1.57) — 4 cases: the failure injected by a PostgreSQL trigger on the fact table's `INSERT` (a genuine store failure after the walk emitted its facts), a theory over all three families ((i), (iii)) plus the incremental half ((i) with a persisted cursor), and a cursor-rewind replay proving the idempotent `unchanged` reporting ((iv)). The 063 ER005 reset re-runs green unchanged ((ii)). Red measured, not remembered: **4 failed / 0 passed** with only the six product files reverted (cursor row present — `Expected: 0, Actual: 1` — in all three families; incremental cursor `Expected: "1138986", Actual: "1138987"`), **4/4 green** with the fix. Non-regression: `StatementsAndEventsIngestionTests` 64/64, `StockFundamentalsEndpointsTests` 18/18, `EodChainTests | MorningChainTests | VykCompanyDirectoryTests` 13/13; build 0 warnings / 0 errors.
+- **Docs:** `01` §10.9.15's residual paragraph replaced (window **closed**, ER005 reset restated as the ER005 path only), §10.9.10's fail-fast rationale re-worded to the new shape (it reasoned from the closed one), §13.1 **v1.5.84** appended.
+- **Flagged item (recorded, not fixed — out of scope):** a failed run of this class surfaces as a thrown exception but writes **no `ingest_runs` row**, because `IngestionJobRunner`'s own record write re-attempts the inserts EF still tracks from the failed save and fails identically. That is `Jobs.cs` (TKT-foundation-044's active scope); TC-MDF-130 records the observation in prose and pins nothing about the ledger, so a later fix there cannot turn the case red. Routed to the orchestrator as a candidate follow-up.
