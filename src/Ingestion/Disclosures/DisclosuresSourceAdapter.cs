@@ -239,9 +239,18 @@ public sealed class DisclosuresSourceOptions
 /// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): the loop names it
 /// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>, skips it and continues, and the
 /// job records it in the run's per-symbol stats (see <see cref="IVykIdentityIsolationReporter"/>) —
-/// never written under a fabricated identity, never a whole-run fail-stop. Cursors are
-/// persisted at the end of the adapter loop, before the job's store write (§10.9.15's accepted
-/// residual: a post-fetch store failure can skip the indexes the cursor covers).
+/// never written under a fabricated identity, never a whole-run fail-stop.
+/// </para>
+/// <para>
+/// <b>Every cursor is a checkpoint, not a walk product (TKT-foundation-069, §10.9.15).</b> Both
+/// feeds <b>collect</b> their cursor work — the per-instrument advances and clears of the
+/// company-scoped pass, the single market-wide row of the market pass — and stop there; the job
+/// persists it through <see cref="PersistCursorsAsync"/> only <b>after</b> its fact write (and the
+/// skip evidence) succeeded, the 063/statements shape. A store failure therefore leaves every
+/// cursor exactly where the last durable write left it, so the next run re-walks the same indexes
+/// and re-emits their facts (the idempotent store reports them <c>unchanged</c>). No run can
+/// advance a cursor past facts that were never written; the accepted residual this replaces is
+/// closed.
 /// </para>
 /// </summary>
 public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter, IDisclosureBootstrapReporter
@@ -291,6 +300,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     private readonly List<string> _unresolvedSymbols = [];
     private readonly List<VykDetailSkip> _detailSkips = [];
     private readonly List<string> _bootstrapped = [];
+    private readonly List<(string Symbol, string Cursor)> _pendingCursors = [];
+    private readonly List<string> _pendingClearedCursors = [];
+    private string? _pendingMarketCursor;
     private int _outOfBoundRows;
     private int _listPages;
     private bool _truncated;
@@ -349,6 +361,47 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
     /// <inheritdoc />
     public bool Truncated => _truncated;
 
+    /// <summary>
+    /// True when the last walk collected cursor work that is not yet durably persisted
+    /// (TKT-foundation-069): the job calls <see cref="PersistCursorsAsync"/> after its fact write.
+    /// Both feeds' work counts — the per-instrument advances, the clears and the market row.
+    /// </summary>
+    public bool HasPendingCursors =>
+        _pendingCursors.Count > 0 || _pendingClearedCursors.Count > 0 || _pendingMarketCursor is not null;
+
+    /// <summary>
+    /// Persists the walk's cursor work (01 v1.5 §10.9.11, TKT-foundation-069) —
+    /// <b>called by the job after the fact write succeeded</b>, never by the walk: the market row,
+    /// then the company-scoped advances, then the clears of the resets whose re-walk was honestly
+    /// empty. The pending sets are taken and cleared before the writes, so a second call is a
+    /// no-op; a failure surfaces out of the job and fails the run, and the cursor work it did not
+    /// reach stays where it was — the next run re-walks those indexes and the already-written facts
+    /// come back `unchanged`.
+    /// </summary>
+    public async Task PersistCursorsAsync(CancellationToken cancellationToken = default)
+    {
+        var market = _pendingMarketCursor;
+        _pendingMarketCursor = null;
+        if (market is not null)
+        {
+            await SetMarketCursorAsync(market, cancellationToken).ConfigureAwait(false);
+        }
+
+        var pending = _pendingCursors.ToList();
+        _pendingCursors.Clear();
+        foreach (var (symbol, cursor) in pending)
+        {
+            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
+        }
+
+        var cleared = _pendingClearedCursors.ToList();
+        _pendingClearedCursors.Clear();
+        foreach (var symbol in cleared)
+        {
+            await ClearCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <inheritdoc />
     public async Task<SourcePayload<DisclosuresPayload>> FetchAsync(
         DateOnly date,
@@ -389,6 +442,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         _unresolvedSymbols.Clear();
         _detailSkips.Clear();
         _bootstrapped.Clear();
+        _pendingCursors.Clear();
+        _pendingClearedCursors.Clear();
+        _pendingMarketCursor = null;
         _outOfBoundRows = 0;
         _listPages = 0;
         _truncated = false;
@@ -507,7 +563,9 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
 
         if (walk.NextCursor is not null)
         {
-            await SetMarketCursorAsync(walk.NextCursor, cancellationToken).ConfigureAwait(false);
+            // Collected, not persisted (TKT-foundation-069): the job writes the facts first and
+            // then calls PersistCursorsAsync, so a store failure cannot skip these indexes.
+            _pendingMarketCursor = walk.NextCursor;
         }
 
         if (_logger is not null)
@@ -543,8 +601,6 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
         var anchor = ParseIndex(snapshot.LastDisclosureIndex);
         var disclosures = new List<DisclosureFact>();
         var raw = new StringBuilder();
-        var cursors = new List<(string Symbol, string Cursor)>();
-        var clearedCursors = new List<string>();
 
         foreach (var symbol in symbols)
         {
@@ -557,7 +613,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 _logger?.LogWarning(
                     "disclosures: company pass reached its {Duration} wall-clock bound after {Completed} cursor(s); the remaining constituents resume next run (TKT-foundation-078)",
                     _options.MaxWalkDuration,
-                    cursors.Count);
+                    _pendingCursors.Count);
                 break;
             }
 
@@ -613,7 +669,7 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
             raw.Append(companyRaw);
             if (nextCursor is not null)
             {
-                cursors.Add((symbol, nextCursor));
+                _pendingCursors.Add((symbol, nextCursor));
             }
             else if (reset is not null)
             {
@@ -621,19 +677,12 @@ public sealed class DisclosuresSourceAdapter : ISourceAdapter<DisclosuresPayload
                 // too). Leaving the stale value would repeat the identical two-call reset on every
                 // run — the ticket's "must not trigger an infinite or repeated reset" pin. The
                 // statements lane (063) clears the row; this lane does the same (review DR-5).
-                clearedCursors.Add(symbol);
+                _pendingClearedCursors.Add(symbol);
             }
         }
 
-        foreach (var (symbol, cursor) in cursors)
-        {
-            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
-        }
-
-        foreach (var symbol in clearedCursors)
-        {
-            await ClearCursorAsync(symbol, cancellationToken).ConfigureAwait(false);
-        }
+        // No cursor is persisted here (TKT-foundation-069): the job writes the facts first and
+        // only then calls PersistCursorsAsync, so a store failure can never skip an index.
 
         var payload = new DisclosuresPayload(SourceName, disclosures);
         return new SourcePayload<DisclosuresPayload>(SourceName, payload, raw.ToString());

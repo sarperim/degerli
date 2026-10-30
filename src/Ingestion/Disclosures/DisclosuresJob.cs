@@ -173,6 +173,18 @@ public sealed class DisclosuresJob : IIngestJob
             outOfBound,
             truncated);
 
+        // The cursor checkpoint (TKT-foundation-069, 01 §10.9.15): both feeds hand back their
+        // cursor work — the market row, the per-instrument advances and the clears — and persist
+        // nothing themselves. It is written only now, after the facts above were stored and the
+        // skip evidence was recorded, so a store failure leaves every cursor where the last
+        // durable write left it and the next run re-walks those indexes (the idempotent store
+        // reports the re-emitted facts `unchanged`). A cursor can therefore never advance past
+        // facts that were never written.
+        if (_adapter is DisclosuresSourceAdapter vyk && vyk.HasPendingCursors)
+        {
+            await vyk.PersistCursorsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         // Per-symbol stats carry both isolation classes additively: the 046 identity isolation
         // (failed), this ticket's per-disclosure skips (quarantined) and — new here — the bootstrap
         // provenance (written 0, not failed: the symbol's walk is bounded, not empty).

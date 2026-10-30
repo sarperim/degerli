@@ -131,6 +131,17 @@ public sealed class CorporateActionsJob : IIngestJob
             quarantined++;
         }
 
+        // The cursor checkpoint (TKT-foundation-069, 01 §10.9.15): the walk hands back each
+        // company's next cursor and persists nothing itself. It is written only now — after the
+        // facts above were stored and the skip evidence was recorded — so a store failure leaves
+        // every cursor where the last durable write left it and the next run re-walks those
+        // indexes (the idempotent store reports the re-emitted facts `unchanged`). A cursor can
+        // therefore never advance past facts that were never written.
+        if (_adapter is CorporateActionsSourceAdapter vyk && vyk.HasPendingCursors)
+        {
+            await vyk.PersistCursorsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         // Per-symbol stats carry both isolation classes additively: the 046 identity isolation
         // (failed) and this ticket's per-disclosure skips (quarantined) — the 046 shape plus the
         // skip count, so the pre-061 family-lane goldens only see new fields/rows.

@@ -96,11 +96,16 @@ public sealed class CorporateActionsSourceOptions
 /// §10.9.10/§10.9.11 per-company isolation doctrine, FR-MDF-012): the loop names it
 /// <see cref="VykCompanyDirectory.CompanyIdentityUnresolved"/>, skips it and continues, and the
 /// job records it in the run's per-symbol stats (see <see cref="IVykIdentityIsolationReporter"/>) —
-/// never written under a fabricated identity, never a whole-run fail-stop. Per-company cursors are
-/// persisted <b>at the end of the adapter loop, before the job's store write</b>: a failed fetch
-/// never advances a cursor, but a
-/// post-fetch store failure can skip the indexes that cursor covers (accepted residual, §10.9.15;
-/// the next run's stale-cursor reset recovers it).
+/// never written under a fabricated identity, never a whole-run fail-stop.
+/// </para>
+/// <para>
+/// <b>The cursor is a checkpoint, not a walk product (TKT-foundation-069, §10.9.15).</b> The walk
+/// <b>collects</b> each company's next cursor and stops there; the job persists it through
+/// <see cref="PersistCursorsAsync"/> only <b>after</b> its fact write (and the skip evidence)
+/// succeeded — the 063/statements shape. A store failure therefore leaves every cursor exactly
+/// where the last durable write left it, so the next run re-walks the same indexes and re-emits
+/// their facts (the idempotent store reports them <c>unchanged</c>). No run can advance a cursor
+/// past facts that were never written; the accepted residual this replaces is closed.
 /// </para>
 /// </summary>
 public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActionsPayload>, IVykIdentityIsolationReporter, IDisclosureIsolationReporter
@@ -120,6 +125,7 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     private readonly ILogger<CorporateActionsSourceAdapter>? _logger;
     private readonly List<string> _unresolvedSymbols = [];
     private readonly List<VykDetailSkip> _detailSkips = [];
+    private readonly List<(string Symbol, string Cursor)> _pendingCursors = [];
 
     public CorporateActionsSourceAdapter(
         IKapSourceClient client,
@@ -167,6 +173,31 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
     /// with the gateway's error, never a failed run (TKT-foundation-061).
     /// </summary>
     public IReadOnlyList<VykDetailSkip> DetailSkips => _detailSkips;
+
+    /// <summary>
+    /// True when the last walk collected cursor work that is not yet durably persisted
+    /// (TKT-foundation-069): the job calls <see cref="PersistCursorsAsync"/> after its fact write.
+    /// </summary>
+    public bool HasPendingCursors => _pendingCursors.Count > 0;
+
+    /// <summary>
+    /// Persists the walk's per-instrument cursors (01 v1.5 §10.9.11, TKT-foundation-069) —
+    /// <b>called by the job after the fact write succeeded</b>, never by the walk. The pending set
+    /// is taken and cleared before the writes, so a second call is a no-op; a failure surfaces out
+    /// of the job and fails the run, and the cursors it did not reach stay where they were — the
+    /// next run re-walks those indexes and the already-written facts come back `unchanged`. An
+    /// unresolvable symbol is a no-op in the setter.
+    /// </summary>
+    public async Task PersistCursorsAsync(CancellationToken cancellationToken = default)
+    {
+        var pending = _pendingCursors.ToList();
+        _pendingCursors.Clear();
+
+        foreach (var (symbol, cursor) in pending)
+        {
+            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <inheritdoc />
     public async Task<SourcePayload<CorporateActionsPayload>> FetchAsync(
@@ -216,9 +247,9 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
 
         var actions = new List<CorporateActionFact>();
         var raw = new StringBuilder();
-        var cursors = new List<(string Symbol, string Cursor)>();
         _unresolvedSymbols.Clear();
         _detailSkips.Clear();
+        _pendingCursors.Clear();
 
         foreach (var symbol in symbols)
         {
@@ -240,16 +271,12 @@ public sealed class CorporateActionsSourceAdapter : ISourceAdapter<CorporateActi
             raw.Append(companyRaw);
             if (nextCursor is not null)
             {
-                cursors.Add((symbol, nextCursor));
+                _pendingCursors.Add((symbol, nextCursor));
             }
         }
 
-        // Cursor persistence is deliberately last: the job writes the facts only after this method
-        // returns, so advancing a cursor on a partial walk could skip unwritten rows forever.
-        foreach (var (symbol, cursor) in cursors)
-        {
-            await SetCursorAsync(symbol, cursor, cancellationToken).ConfigureAwait(false);
-        }
+        // No cursor is persisted here (TKT-foundation-069): the job writes the facts first and
+        // only then calls PersistCursorsAsync, so a store failure can never skip an index.
 
         var payload = new CorporateActionsPayload(SourceName, actions);
         return new SourcePayload<CorporateActionsPayload>(SourceName, payload, raw.ToString());
