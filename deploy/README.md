@@ -227,10 +227,11 @@ and both are standing policy (`01` §6.2/§10.8):
    more — recovery is a fix-forward migration or a restore.
 2. **Restore-based recovery is the last resort, and it is lossy.** If the schema moved
    incompatibly and no fix-forward is possible, restore the pre-deploy restore point
-   (`deploy/backup/restore.sh` restores into a scratch database — a live restore is a
-   deliberate, documented operation). Everything written since that archive is lost:
-   the RPO is **24 h** (`01` §10.8). This is why the deploy refuses to run a forward-only
-   migration without a restore point younger than the RPO (phase 3 above).
+   (`deploy/backup/restore.sh` restores into a scratch database and refuses this stack's
+   live database name unless `ALLOW_LIVE_RESTORE=1` says so explicitly — restore →
+   verify → promote, with the `api` stopped). Everything written since that archive is
+   lost: the RPO is **24 h** (`01` §10.8). This is why the deploy refuses to run a
+   forward-only migration without a restore point younger than the RPO (phase 3 above).
 
 **What the deploy does *not* do:** it never rolls back automatically. A migration
 failure and a readiness failure have opposite recovery paths — the first is fix-forward
@@ -270,6 +271,13 @@ sudo editor /etc/degerli/backup.env      # from backup.env.example
 0 3 * * * set -a; . /etc/degerli/backup.env; set +a; /opt/degerli/deploy/backup/pg-backup.sh >> /var/log/degerli-backup.log 2>&1
 ```
 
+The upload runs `rclone copy` with **no progress flag** — rclone prints nothing unless
+`-P/--progress` is asked for, and the `--no-progress` flag older documentation used was
+removed upstream: a current rclone rejects it as an unknown flag and the upload never
+happens, while the local `.dump.gpg` still lands (so the job looks like it ran). Found by
+the 2026-10-30 restore drill, fixed in `pg-backup.sh`; if you ever see
+`Fatal error: unknown flag`, that is the shape.
+
 ### Restore drill (run once before launch — manual ledger §5.6)
 
 [`deploy/backup/restore.sh`](backup/restore.sh) restores a chosen archive into a
@@ -280,9 +288,60 @@ set -a; . /etc/degerli/backup.env; set +a
 /opt/degerli/deploy/backup/restore.sh /opt/degerli/backups/degerli-<timestamp>.dump.gpg
 ```
 
-Then confirm row counts / spot rows in `degerli_restore`, record the elapsed time, and
-drop the scratch DB. **Execution before launch is a builder-executed manual-ledger
-item** (test strategy §5.6) — it cannot be automated from CI.
+It decrypts → recreates the scratch database → `pg_restore`s into it, and then **prints
+the two numbers the drill exists for**:
+
+```text
+restore: archive degerli-20261030T143654Z.dump.gpg — 280K, 0.0h old (RPO target ≤ 24h)
+restore: verified db_size=15 MB tables=41 rows=44766 ef_migrations=12 — elapsed 3s (RTO target ≤ 4h)
+```
+
+- **elapsed** is the RTO measurement: decrypt → restore → verified counts. Target ≤ 4 h
+  (architecture §10.8).
+- **archive age** is the RPO exposure of the archive you picked. Target ≤ 24 h; an older
+  archive still restores (it just loses more than the RPO allows) and the script says so
+  in a `WARNING` line instead of refusing — the refusal lives in the deploy's
+  restore-point marker below, which will not let a stale archive near a migration.
+- **tables / rows / ef_migrations** are exact `count(*)`s over every public table, not
+  `pg_stat` estimates — a restore can only be called good if the counts are the ones you
+  expect, so they are printed rather than left to a hand-written query.
+
+`--exit-on-error` is on: a failing object stops the restore where it broke (measured:
+1 error line instead of 182 on a duplicate-object restore) instead of writing over a
+database already known to be bad.
+
+**A failure is loud, and never looks like a restore.** If anything fails after the
+scratch database was created, the script prints the leftover database's name and the
+`dropdb` line to clean it up before re-running — a half-restored database that reads as
+"restored" is exactly the lie this drill is supposed to prevent.
+
+**The scratch target is enforced.** Restoring into this stack's live database name
+(`POSTGRES_DB`, read from the running container) is refused with exit 2, because the
+script drops and recreates whatever it is pointed at. A deliberate live recovery — the
+last-resort, lossy-to-the-RPO path of §Rollback posture — is restore → verify →
+promote, and the promote step is explicit:
+
+```bash
+ALLOW_LIVE_RESTORE=1 /opt/degerli/deploy/backup/restore.sh <archive> "$POSTGRES_DB"
+```
+
+Stop the `api` first. Afterwards **drop the scratch database** — a drill that leaves a
+second copy of production on the disk is a finding in itself:
+
+```bash
+docker compose -f compose.prod.yml exec postgres dropdb -U degerli degerli_restore
+```
+
+**Status: rehearsed, not yet run on the VPS.** The drill was executed on 2026-10-30
+against this repo's `compose.prod.yml` on a scratch Docker host, with a
+production-shaped seeded dataset and a local-directory rclone remote standing in for B2 —
+the archive round-tripped byte-identically and the restored database served the shipped
+API image. What that rehearsal does **not** cover (no VPS, no B2 credentials here) is
+listed in [`docs/restore-drill-record.md`](../docs/restore-drill-record.md), which is the
+dated record. The pre-launch item therefore stays open in one narrow form: **run the same
+command once on the box with a real B2 archive**, fill in the record and drop the scratch
+DB. Execution before launch remains a builder-executed manual-ledger item (test strategy
+§5.6) — it cannot be automated from CI.
 
 ### The pre-deploy restore-point marker
 
