@@ -12,6 +12,12 @@
 # This workflow must NOT push to or merge into `main` (deploy.yml / TKT-int-006 owns
 # CD). `main` is protected; the integration branch for this run is `dev`, so the
 # workflow runs on pushes to and PRs targeting both `dev` and `main`.
+#
+# Security gates are NOT jobs here: they live in .github/workflows/security.yml
+# (`Secrets (gitleaks)`, `Dependencies (NuGet · npm audit)`, `Containers (Trivy image
+# scan)`) — three further required checks on the same triggers, so a red security
+# check blocks a PR without lengthening this file's job graph (TKT-foundation-066,
+# architecture §6.1 job 4 / §6.3).
 
 name: CI
 

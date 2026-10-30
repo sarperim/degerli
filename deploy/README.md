@@ -165,6 +165,117 @@ is healthy, which the on-box smoke-check cannot prove.
 
 ---
 
+## Security checks (required CI gates)
+
+Three checks guard this **public** repo and its **public** GHCR images
+(architecture §6.1 job 4 / §6.3; ticket **TKT-foundation-066**). They live in
+[`.github/workflows/security.yml`](../.github/workflows/security.yml) and run on every
+push to and every PR targeting `dev` and `main`.
+
+| Required check name | Job | What it does | Fails on |
+|---|---|---|---|
+| **`Secrets (gitleaks)`** | `secrets` | gitleaks over the **full commit history** on push, over the **PR's own commits** (`base..head`) on `pull_request`; `--redact` always | any unreviewed finding |
+| **`Dependencies (NuGet · npm audit)`** | `dependencies` | `dotnet list Degerli.sln package --vulnerable --include-transitive` (JSON parsed) + `npm audit --audit-level=high` in `src/Web` and `tests/e2e` | any high/critical (or unrated) advisory |
+| **`Containers (Trivy image scan)`** | `containers` | builds `src/Api/Dockerfile` and `deploy/caddy/Dockerfile` — the exact images `deploy.yml` ships — and scans each with Trivy `--severity HIGH,CRITICAL --exit-code 1` | any high/critical OS/library CVE in an image (minus a live `.trivyignore.yaml` entry) |
+
+### They are required, not advisory
+
+- **No `continue-on-error`** anywhere in `security.yml`. A scanner that cannot run
+  (network, download, config error) is a **red check**, never a skipped one.
+- **Scan the shipped artifact.** Container scanning is an *image* scan, not
+  `trivy fs`: the base OS layers only exist in the built image, and those are most of
+  what a CVE lands in.
+- **Pinned, checksum-verified tools.** gitleaks and Trivy are installed from their
+  GitHub releases and their tarball's SHA-256 is verified before execution, so a
+  re-tagged release cannot silently change what runs. Action pins are full commit SHAs.
+- **No secret material leaves the job.** gitleaks runs `--redact`; the JSON report is
+  printed on failure only, from `$RUNNER_TEMP`. No artifact upload exists in this
+  workflow at all.
+
+### Marking them required (builder action, repo settings)
+
+Branch protection is a repository setting, not a file — so it is a builder step to
+perform alongside the merge of this ticket. On GitHub: *Settings → Branches → dev /
+main → Require status checks*, and add these six names, copied verbatim from the job
+names above and in `ci.yml`:
+
+```
+Backend (restore · build · test)
+Web (lint · typecheck · test · i18n · build)
+E2E (compose · Playwright · MailPit)
+Secrets (gitleaks)
+Dependencies (NuGet · npm audit)
+Containers (Trivy image scan)
+```
+
+The E2E job depends on the other two CI jobs, so a full PR run keeps its existing
+ordering; the security jobs are independent and run in parallel.
+
+### Allowlist policy (`.gitleaks.toml`)
+
+The scan uses gitleaks' built-in rule pack unchanged (`[extend] useDefault = true`).
+The config file exists **only** to record reviewed false positives:
+
+- one entry per finding — an exact file path **and** an exact literal, joined by
+  `condition = "AND"`, so loosening either half is a visible diff;
+- **no** `[allowlist].commits`, no bare `paths` entry, no rule-wide exclusion, no
+  blanket "generic-api-key is noisy" switch;
+- every entry carries a date, an owner and the reason it is not a secret;
+- a **real** credential is never allowlisted — it is rotated and removed from history,
+  and the allowlist is not the place to paper over it.
+
+Baseline at the config's creation (2026-10-29, gitleaks 8.30.1, full history of 754
+commits): **two findings, both false positives** — the empty
+`Ingestion__Kap__ApiKey=`/`ApiSecret=` template lines in `.env.example`, and the
+deterministic L2 fixture password constant in
+`tests/Api.IntegrationTests/Harness/FixtureBuilder.cs`. Both are recorded in the file
+with their pinning regexes. Nothing else is allowlisted.
+
+**Dependency-audit baselines** need no allowlist today: `dotnet list … --vulnerable`
+and both `npm audit` runs are clean on the current tree (one *moderate* Vite advisory
+in `src/Web` is below the `high` gate). If a future advisory has to be accepted, it is
+recorded here dated and owned, with the advisory URL and the reason — never by
+lowering `--audit-level`.
+
+### Container baseline (`.trivyignore.yaml`)
+
+The image scan's allowlist is separate from the secret one, and `.trivyignore.yaml` is
+**empty by default** — the point of a scan is that what it finds gets fixed. An entry
+exists only when the fix genuinely cannot be made in this repository, and it carries
+four properties that make it a gate rather than a mute button:
+
+1. **Per-finding** — an exact CVE id scoped to an exact target path (`usr/bin/caddy`),
+   never a bare id, never a wildcard.
+2. **Dated and owned** — a `statement` with the owner and why the CVE is not fixable
+   here, next to a review date.
+3. **Self-expiring** — Trivy enforces `expired_at`: the day it passes, the entry stops
+   applying and the CVE fails the check again. Silence is temporary by design.
+4. **Never for a fixable finding** — if a one-line change clears it, the change lands
+   and no entry is written.
+
+Baseline at this ticket's landing (2026-10-29/30, Trivy 0.76.1, both images fresh):
+**zero entries for the API image.** The web image first came back red with **three
+fixable Alpine findings** — a CRITICAL `brotli` out-of-bounds write and a HIGH `curl`
+use-after-free among them — which were **fixed in `deploy/caddy/Dockerfile`** with
+`RUN apk upgrade --no-cache` (the `caddy:2` base layer lags the Alpine security repo
+between upstream rebuilds), not baselined. What remains is **seven HIGH findings inside
+the prebuilt Caddy binary itself** (Go stdlib 1.26.8 `crypto/x509`, `net/http`,
+`crypto/tls`, `golang.org/x/net`, `go-jose`), which needs an upstream Caddy rebuild on
+Go 1.26.10+/1.27.3+ and cannot be changed from here — those five CVE ids are the only
+entries, expiring **2026-12-31**, after which the check goes red again until Caddy
+ships the rebuild.
+
+Re-check procedure: `docker pull caddy:2`, rebuild, scan, and delete every entry that
+no longer reports.
+
+**Monitoring the other direction:** [`.github/dependabot.yml`](../.github/dependabot.yml)
+opens weekly upgrade PRs for NuGet, both npm roots and the workflow actions, so an
+advisory against an already-pinned package arrives as a reviewable PR instead of
+waiting for someone to open a branch. Note it does not manage base-image tags; the
+`apk upgrade` layer above is what keeps the pinned `caddy:2` current between rebuilds.
+
+---
+
 ## Secrets
 
 All secrets live **only** on the VPS (`.env`) and in GitHub Actions secrets — never in

@@ -1,0 +1,53 @@
+# Secret-scanning policy for the Değerli repository.
+#
+# Owner: TKT-foundation-066 (CI hardening; architecture 01-system-architecture.md
+# §6.1 job 4 and §6.3 policies; .github/workflows/security.yml job `secrets`).
+#
+# The detector is gitleaks' built-in rule pack (`extend.useDefault`) — this file does
+# not weaken it. It exists for exactly one purpose: to record a REVIEWED, PER-FINDING
+# allowlist for the false positives the full-history scan returns on this tree.
+#
+# Rules for this file (mirrored in prose in deploy/README.md §"Security checks"):
+#   * never a blanket path or rule exclusion — an entry names one exact file and one
+#     exact literal, with `condition = "AND"` so both must match;
+#   * never `[allowlist].commits`, never a `paths` entry without a `regexes` pin;
+#   * every entry states why the match is not a secret, and is dated and owned;
+#   * no entry is ever added to silence a real credential — a real finding is rotated
+#     and removed from history, not allowlisted.
+#
+# Baseline at this file's creation (2026-10-29, gitleaks 8.30.1, `gitleaks git
+# --log-opts=--all` over 754 commits): exactly two findings, both false positives,
+# both recorded below. Nothing else is allowlisted.
+
+[extend]
+useDefault = true
+
+# --- entry 1/2 — 2026-10-29, owner: builder (sarperim) ------------------------------
+# File: .env.example (lines 70–71). The generic-api-key rule matches the *empty* KAP
+# template keys and, because the match spans the line break, reports the next line's
+# key name (`Ingestion__Kap__ApiSecret=`) as the "secret". Both values are empty by
+# design: .env.example is the template, and the real credentials live only on the VPS
+# `.env` / in GitHub Actions secrets (§6.3). The regex pins the empty form only, so a
+# real key typed onto either line is still a finding (measured 2026-10-30, gitleaks
+# 8.30.1: a value on line 70 alone, and on line 71 alone, each report
+# `generic-api-key` at that line and exit 1).
+[[allowlists]]
+description = ".env.example — empty Ingestion__Kap__ApiKey= / ApiSecret= template lines (no value)"
+condition = "AND"
+paths = ['''^\.env\.example$''']
+regexTarget = "match"
+regexes = ['''(?m)^Ingestion__Kap__Api(?:Key|Secret)=$''']
+
+# --- entry 2/2 — 2026-10-29, owner: builder (sarperim) ------------------------------
+# File: tests/Api.IntegrationTests/Harness/FixtureBuilder.cs (line 29). The
+# deterministic L2 fixture password (`Degerli-Test-2026`) seeded for throwaway test
+# users inside one Testcontainers PostgreSQL instance. It is a test constant, not a
+# credential, and protects nothing that outlives the test run. The regex is pinned to
+# the exact assignment, so any other password-shaped literal in this file — or a change
+# to this default — is still reported.
+[[allowlists]]
+description = "FixtureBuilder.cs — deterministic L2 fixture password Degerli-Test-2026 (test constant, not a credential)"
+condition = "AND"
+paths = ['''^tests/Api\.IntegrationTests/Harness/FixtureBuilder\.cs$''']
+regexTarget = "match"
+regexes = ['''password = "Degerli-Test-2026"''']

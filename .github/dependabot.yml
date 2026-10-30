@@ -1,0 +1,79 @@
+# Dependabot (architecture 01-system-architecture.md §6.3; ticket TKT-foundation-066).
+#
+# The `Dependencies (NuGet · npm audit)` check in .github/workflows/security.yml fails
+# a PR that introduces a high/critical advisory — but that only fires when someone
+# happens to open a PR. Dependabot is the other half: it opens the upgrade PRs on a
+# schedule, so an advisory published against an already-pinned package arrives as a
+# reviewable change instead of sitting red until the next feature branch.
+#
+# Every ecosystem this repo actually ships from is covered:
+#   * nuget        — the solution's PackageReference graph (src/, tests/, fixtures/);
+#   * npm  src/Web — the SPA's build + runtime dependencies;
+#   * npm  tests/e2e — the Playwright harness.
+#   * github-actions — the workflow files pin actions by SHA; this keeps the pins
+#                      moving without a human remembering to bump them.
+#
+# Grouped by kind so a routine patch wave is one PR, never a dozen. Security updates
+# are never grouped behind a schedule: they open as their own PRs immediately.
+
+version: 2
+
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      nuget-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "nuget"]
+
+  - package-ecosystem: "npm"
+    directory: "/src/Web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      web-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "npm", "web"]
+
+  - package-ecosystem: "npm"
+    directory: "/tests/e2e"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      e2e-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "npm", "e2e"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "ci"]
