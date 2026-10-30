@@ -272,11 +272,12 @@ sudo editor /etc/degerli/backup.env      # from backup.env.example
 ```
 
 The upload runs `rclone copy` with **no progress flag** — rclone prints nothing unless
-`-P/--progress` is asked for, and the `--no-progress` flag older documentation used was
-removed upstream: a current rclone rejects it as an unknown flag and the upload never
-happens, while the local `.dump.gpg` still lands (so the job looks like it ran). Found by
-the 2026-10-30 restore drill, fixed in `pg-backup.sh`; if you ever see
-`Fatal error: unknown flag`, that is the shape.
+`-P/--progress` is asked for, and rclone has no `--no-progress` flag at all (only
+`-P/--progress`). An older version of this script passed `--no-progress`; a current rclone
+(v1.75.2) rejects it as an unknown flag and exits 2, so the upload never happens while the
+local `.dump.gpg` still lands (so the job looked like it ran). Found by the 2026-10-30
+restore drill, fixed in `pg-backup.sh`; if you ever see `Fatal error: unknown flag`, that
+is the shape.
 
 ### Restore drill (run once before launch — manual ledger §5.6)
 
@@ -298,10 +299,13 @@ restore: verified db_size=15 MB tables=41 rows=44766 ef_migrations=12 — elapse
 
 - **elapsed** is the RTO measurement: decrypt → restore → verified counts. Target ≤ 4 h
   (architecture §10.8).
-- **archive age** is the RPO exposure of the archive you picked. Target ≤ 24 h; an older
-  archive still restores (it just loses more than the RPO allows) and the script says so
-  in a `WARNING` line instead of refusing — the refusal lives in the deploy's
-  restore-point marker below, which will not let a stale archive near a migration.
+- **archive age** is the RPO exposure of the archive you picked. It is computed from the
+  creation time in the archive's own name (`degerli-%Y%m%dT%H%M%SZ`), not from the file's
+  mtime — the copy onto a rebuilt host (`scp`/`curl`/`cp`) has a fresh mtime, which would
+  report a stale archive as minutes old. Target ≤ 24 h; an older archive still restores (it
+  just loses more than the RPO allows) and the script says so in a `WARNING` line instead
+  of refusing — the refusal lives in the deploy's restore-point marker below, which will
+  not let a stale archive near a migration.
 - **tables / rows / ef_migrations** are exact `count(*)`s over every public table, not
   `pg_stat` estimates — a restore can only be called good if the counts are the ones you
   expect, so they are printed rather than left to a hand-written query.

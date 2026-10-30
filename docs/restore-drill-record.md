@@ -132,14 +132,20 @@ and `pg_restore` throughput on indexes does not scale perfectly linearly.
 ### Gaps and defects this drill found
 
 1. **The nightly backup never uploaded on a current rclone — fixed.** `pg-backup.sh`
-   passed `--no-progress` to `rclone copy`; that flag was **removed upstream**, so a
-   current rclone (v1.75.2 here) exits 2 with `unknown flag: --no-progress` *after*
-   encrypting, leaving the archive on the host only and nothing in B2. The deploy's
-   restore-point marker would then refuse every deploy for having no archive, and a
-   restore would be attempted from a host-local file that a rebuilt box does not have.
-   This is a backup-path defect (worse than a restore-path one: it makes the RPO claim
-   false in the direction that matters). Fixed in the same PR by dropping the flag —
-   rclone prints no progress unless `-P` is asked for, so nothing is lost.
+   passed `--no-progress` to `rclone copy`; rclone has no such flag (only `-P/--progress`),
+   so a current rclone (v1.75.2 here) rejects it as an unknown flag and exits 2 *after*
+   encrypting, leaving the archive on the host only and nothing in B2. Nothing downstream
+   noticed: `pg-backup.sh` writes the `.dump.gpg` locally before it uploads and does not
+   remove it when the upload fails, and the deploy's restore-point marker globs that
+   **local** directory for `degerli-*.dump.gpg` and tests only non-empty + mtime
+   (`deploy.yml`, phase 3) — so every later deploy passed on the fresh host-local file
+   while the remote held nothing. The first symptom of "nothing in B2" would have been a
+   rebuild with no off-host restore point, and a restore attempted from a host-local file
+   that a rebuilt box does not have. This is a backup-path defect (worse than a
+   restore-path one: it makes the RPO claim false in the direction that matters). Fixed in
+   the same PR by dropping the flag — rclone prints no progress unless `-P` is asked for,
+   so nothing is lost. (The marker not checking the remote upload is a `deploy.yml`
+   concern, outside this ticket — routed, see below.)
 2. **The restore gave no verification and no numbers — fixed.** The old script restored
    and then told the operator to go count rows by hand, so a drill record could not be
    produced from its output. It now prints the archive's size and age, and after the
@@ -178,6 +184,16 @@ and `pg_restore` throughput on indexes does not scale perfectly linearly.
    failure path reports — so a size heuristic in the script would add a guess (dump ratio)
    without adding a guarantee. Recorded here as a considered non-change rather than an
    omission.
+
+### Routed, not done here
+
+- **The deploy's restore-point marker does not verify the remote upload.** Phase 3
+  (`deploy.yml`) proves only that a `degerli-*.dump.gpg` exists in the local backup
+  directory, is non-empty and is recent; it never asks whether that archive reached B2.
+  That is how defect 1 stayed invisible for as long as it did, and it is a **deploy
+  workflow** concern (`deploy.yml`, a file outside this ticket's scope) rather than a
+  backup- or restore-script one. Not fixed here; recorded so the next owner does not have
+  to rediscover it.
 
 ### What this drill did **not** exercise (never inferred from a passing rehearsal)
 

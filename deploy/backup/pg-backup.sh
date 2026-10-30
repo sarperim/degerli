@@ -62,10 +62,10 @@ gpg --batch --yes --quiet \
 rm -f "$dump"
 
 echo "pg-backup: uploading to ${RCLONE_REMOTE}"
-# No --no-progress: rclone prints no progress unless -P/--progress is given, and the old
-# `--no-progress` flag was removed upstream — a modern rclone rejects it as an unknown
-# flag and the upload never happens (found by the TKT-foundation-076 restore drill: exit 2
-# on rclone v1.75.2, archive left on the host only). A cron log is not a terminal anyway.
+# No progress flag: rclone prints no progress unless -P/--progress is given, and it has no
+# `--no-progress` flag at all — a current rclone rejects that as an unknown flag, exits 2
+# and never uploads (found by the TKT-foundation-076 restore drill: exit 2 on rclone
+# v1.75.2, archive left on the host only). A cron log is not a terminal anyway.
 rclone --config "$RCLONE_CONFIG" copy "$archive" "$RCLONE_REMOTE"
 
 echo "pg-backup: enforcing ${BACKUP_RETENTION_DAYS}-day retention"

@@ -4,7 +4,7 @@ scope:
   - deploy/README.md
   - docs/restore-drill-record.md
   # Added by this ticket's implementation (recorded, not hidden): the drill's headline
-  # defect is in the backup job's upload leg (rclone `--no-progress`, removed upstream —
+  # defect is in the backup job's upload leg (rclone `--no-progress` is not a real flag —
   # exit 2, nothing reaches B2), and acceptance (iii) requires a found defect fixed in the
   # same PR. A planner could not have seen it before the drill ran. See the Status line.
   - deploy/backup/pg-backup.sh
@@ -12,7 +12,7 @@ scope:
 
 # TKT-foundation-076: Restore drill — exercise the backup restore for real (LOW priority)
 
-- Status: in-review — **PR #171** (`TKT-foundation-076` → `dev`). Drilled 2026-10-30 on a **scratch compose host** (production `compose.prod.yml`, production-shaped seeded dataset, local-directory rclone remote standing in for B2 — **no VPS or B2 credentials in this environment**), so this is a **labelled rehearsal**, not the pre-launch VPS run (067's precedent). Record: `docs/restore-drill-record.md`. Measured: archive `degerli-20261030T143654Z.dump.gpg`, 278 KiB of a 15 MB DB, 0.0 h old, restore **1–5 s** (clean run 1 s), all 40 application tables identical on count + content md5 (44,754 rows), schema identical (41 tables / 25 indexes / 75 constraints), 12 EF migrations, `api migrate` → up to date, spot rows and identity sequences equal, and a fresh empty project serving the shipped API image off the restored DB **22 s** after start (`/health`, 100 instruments, restored TST001 price). **Four defects fixed here:** (1) `pg-backup.sh` passed rclone `--no-progress` — removed upstream, so a current rclone exits 2 *after* encrypting and **nothing reaches B2** (the RPO claim was false in the direction that matters; this file is the ticket's one **scope amendment**, recorded in the frontmatter and PR body); (2) `restore.sh` verified nothing → now prints archive size/age and exact db_size/tables/rows/ef_migrations + elapsed; (3) a failed restore left a partially-restored DB silently → now named with its `dropdb` line, plus `pg_restore --exit-on-error`; (4) `restore.sh <archive> degerli` would drop and recreate the live DB → refused (exit 2) unless `ALLOW_LIVE_RESTORE=1`. Failure shapes exercised: truncated, wrong passphrase (no DB created), empty, missing, unset passphrase, 26 h-old archive (RPO WARNING), 20 h-old (silent), custom target, production-name target. **Still open, stated honestly:** the on-VPS run with a real B2 archive (VPS, B2 credentials, 24 h cadence, 1–5 GB scale, Caddy/TLS all unexercised — the ≈11 min @ 5 GB figure is a labelled extrapolation); `01` §10.8's pointer to this record is a routed follow-up (out of scope; no architecture amendment needed — its claims were not contradicted, max landed §13.1 is v1.5.86 from 071); 067's open "restore.sh into the scratch DB" evidence item is now half-closed by this drill.
+- Status: in-review — **PR #171** (`TKT-foundation-076` → `dev`). Drilled 2026-10-30 on a **scratch compose host** (production `compose.prod.yml`, production-shaped seeded dataset, local-directory rclone remote standing in for B2 — **no VPS or B2 credentials in this environment**), so this is a **labelled rehearsal**, not the pre-launch VPS run (067's precedent). Record: `docs/restore-drill-record.md`. Measured: archive `degerli-20261030T143654Z.dump.gpg`, 278 KiB of a 15 MB DB, 0.0 h old, restore **1–5 s** (clean run 1 s), all 40 application tables identical on count + content md5 (44,754 rows), schema identical (41 tables / 25 indexes / 75 constraints), 12 EF migrations, `api migrate` → up to date, spot rows and identity sequences equal, and a fresh empty project serving the shipped API image off the restored DB **22 s** after start (`/health`, 100 instruments, restored TST001 price). **Four defects fixed here:** (1) `pg-backup.sh` passed rclone `--no-progress` — not a real rclone flag, so a current rclone exits 2 *after* encrypting and **nothing reaches B2** (the RPO claim was false in the direction that matters; the deploy's restore-point marker inspected only the local backup dir, so it kept passing on the leftover archive — this file is the ticket's one **scope amendment**, recorded in the frontmatter and PR body); (2) `restore.sh` verified nothing → now prints archive size/age and exact db_size/tables/rows/ef_migrations + elapsed, and an incomplete verification (a count that failed) fails the run instead of printing `verified`; (3) a failed restore left a partially-restored DB silently → now named with its `dropdb` line, plus `pg_restore --exit-on-error`; (4) `restore.sh <archive> degerli` would drop and recreate the live DB → refused (exit 2) unless `ALLOW_LIVE_RESTORE=1`. Failure shapes exercised: truncated, wrong passphrase (no DB created), empty, missing, unset passphrase, 26 h-old archive (RPO WARNING), 20 h-old (silent), custom target, production-name target. **Still open, stated honestly:** the on-VPS run with a real B2 archive (VPS, B2 credentials, 24 h cadence, 1–5 GB scale, Caddy/TLS all unexercised — the ≈11 min @ 5 GB figure is a labelled extrapolation); `01` §10.8's pointer to this record is a routed follow-up (out of scope; no architecture amendment needed — its claims were not contradicted, max landed §13.1 is v1.5.86 from 071); 067's open "restore.sh into the scratch DB" evidence item is now half-closed by this drill.
 - Size: S
 - **Priority: P3 — LOW (USER DECISION D6, 2026-10-24: 056 item 13 unparked, explicitly low priority).**
 - **Evidence (gathered 2026-10-24):**
@@ -50,14 +50,17 @@ real `restore.sh`, and the restored database served the shipped API image. The f
 not-exercised list lives in `docs/restore-drill-record.md` and is not softened here.
 
 **Scope amendment (one file).** `deploy/backup/pg-backup.sh` was added to the frontmatter
-`scope:` after the drill found the upload defect there (rclone `--no-progress`, removed
-upstream → exit 2, nothing reaches B2; the archive stays host-local and every later deploy
-is refused for having no restore point). Acceptance (iii) says a found defect is fixed in
-the same PR; leaving it routed would have left the RPO claim false. Recorded in the
+`scope:` after the drill found the upload defect there (rclone has no `--no-progress` flag →
+unknown flag, exit 2, nothing reaches B2; the archive stays host-local and the deploy's
+restore-point marker, which only inspects that local directory, kept passing on it — so
+nothing surfaced the empty remote until a rebuild). Acceptance (iii) says a found defect is
+fixed in the same PR; leaving it routed would have left the RPO claim false. Recorded in the
 frontmatter and the PR body, not only in code.
 
 **Routed, not done here:** pointing `01` §10.8 at `docs/restore-drill-record.md` (the
 architecture file is outside this ticket's scope, and no claim in it was contradicted, so
-no amendment is owed); the on-VPS run with a real B2 archive (builder manual-ledger item,
-test strategy §5.6) — narrowed by this ticket from "never executed" to "executed on a
-rehearsal stack, one confirmation run left on the box".
+no amendment is owed); the deploy's restore-point marker does not verify that the archive
+reached the remote — a `deploy.yml` (phase 3) concern, outside this ticket's scope, recorded
+in the drill record's *Routed, not done here*; the on-VPS run with a real B2 archive
+(builder manual-ledger item, test strategy §5.6) — narrowed by this ticket from "never
+executed" to "executed on a rehearsal stack, one confirmation run left on the box".
