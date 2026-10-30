@@ -95,8 +95,15 @@ public sealed class DisclosureStore
             : Path.Combine(root, $"{disclosureId}.pdf");
     }
 
+    /// <summary>
+    /// A row's natural key. A disclosure's <c>SourceUrl</c> is the source's own identity for the
+    /// <i>filing</i>, not for the instrument it concerns: one filing may name several bound
+    /// constituents, so each of their facts carries the same URL. The instrument therefore belongs
+    /// in the key — keying on the URL alone would report the second constituent's row as
+    /// <c>unchanged</c> and write nothing for it.
+    /// </summary>
     private static string Key(long instrumentId, DateOnly? publishDate, string? title, string? sourceUrl) =>
         !string.IsNullOrWhiteSpace(sourceUrl)
-            ? sourceUrl
+            ? string.Join('|', instrumentId, sourceUrl)
             : string.Join('|', instrumentId, publishDate?.ToString("yyyy-MM-dd") ?? string.Empty, title ?? string.Empty);
 }
