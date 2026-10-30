@@ -204,9 +204,11 @@ jobs:
 
             COMPOSE="docker compose -f compose.prod.yml"
 
-            # Tunables (override in the VPS .env if this box differs). The backup age
-            # bound is the documented RPO (01 §10.8): the restore point a forward-only
-            # migration relies on may not be older than that.
+            # Fixed tunables. This body is a quoted heredoc over `ssh … bash -s` and it
+            # never sources the VPS `.env`, so setting these there has NO effect — change
+            # them here (deploy/README.md §Backups says so too). The backup age bound is
+            # the documented RPO (01 §10.8): the restore point a forward-only migration
+            # relies on may not be older than that.
             : "${PRE_DEPLOY_BACKUP_DIR:=${DEPLOY_PATH}/backups}"
             : "${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS:=24}"
             : "${READINESS_TIMEOUT_SECONDS:=180}"
@@ -232,12 +234,15 @@ jobs:
                   echo "    Fix the cause and re-run the Deploy workflow."
                   ;;
                 migrate)
-                  echo "    The migration failed, so the stack was never replaced: the old stack is still serving${previous_tag:+ (tag ${previous_tag})} on the previous schema."
-                  echo "    Migrations are forward-only — fix forward with a corrective migration, or restore the pre-deploy restore point (deploy/README.md §Backups)."
+                  echo "    The migration FAILED. The serving stack was not replaced${previous_tag:+ — the old image (tag ${previous_tag}) is still running} — but the schema may have PARTIALLY moved:"
+                  echo "    `api migrate` applies EVERY pending migration in one run, each committed in its own transaction, so every migration before the failing one is already committed."
+                  echo "    Check __EFMigrationsHistory before choosing: fix forward with a corrective migration (the normal path), or restore the pre-deploy restore point (lossy to the RPO, deploy/README.md §Backups)."
+                  echo "    Re-deploying the previous tag does NOT undo those committed migrations."
                   ;;
                 ready|smoke)
                   echo "    The schema IS migrated and the stack was replaced, but the new one did not become ready or did not serve."
-                  echo "    Re-deploy the previous tag${previous_tag:+ (${previous_tag})} ONLY if this release's change is still expand-phase (backward compatible)."
+                  echo "    THE PUBLIC ENTRYPOINT IS NOT SERVING — this is a full outage, not a paused deploy. Recover now:"
+                  echo "    re-deploy the previous tag${previous_tag:+ (${previous_tag})} ONLY if this release's change is still expand-phase (backward compatible)."
                   echo "    Otherwise restore the pre-deploy restore point — an image rollback cannot undo a schema change."
                   ;;
               esac
@@ -250,10 +255,22 @@ jobs:
             previous_tag=""
             running_container="$(${COMPOSE} ps -q api 2>/dev/null | head -n1 || true)"
             if [ -n "${running_container}" ]; then
-              previous_tag="$(docker inspect --format '{{.Config.Image}}' "${running_container}" 2>/dev/null | sed 's/.*://' || true)"
+              previous_image="$(docker inspect --format '{{.Config.Image}}' "${running_container}" 2>/dev/null || true)"
+              # Only a tag on the last path segment is a usable rollback target. A
+              # digest-pinned ref (`repo@sha256:…`) has no tag, and a registry-port ref
+              # (`host:5000/repo`) must not be truncated into "5000/repo" — this value
+              # ends up inside the rollback instruction, so a mangled one is worse than none.
+              case "${previous_image}" in
+                *@*) : ;;
+                *)
+                  last_segment="${previous_image##*/}"
+                  case "${last_segment}" in
+                    *:*) previous_tag="${last_segment##*:}" ;;
+                  esac
+                  ;;
+              esac
             fi
 
-            phase="preflight"
             echo "==> [preflight] deploying ${IMAGE_TAG} (serving now: ${previous_tag:-none}) from ${DEPLOY_PATH}"
             case "${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}" in
               ''|*[!0-9]*) echo "::error::PRE_DEPLOY_MAX_BACKUP_AGE_HOURS must be a whole number of hours, got '${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}'"; false ;;
@@ -267,6 +284,26 @@ jobs:
             # `up --wait` (the readiness gate) needs Compose v2.
             ${COMPOSE} config -q
 
+            # DEGERLI_BUILDER_PASSWORD is required by the seed SQL the `migrate` step
+            # generates (src/Persistence/Seed/DegerliSeed) and by nothing at request time,
+            # so it is NOT in the serving container's environment (compose.prod.yml) and
+            # therefore not in `compose config`. Required here instead — presence AND the
+            # same 12-char minimum the seed enforces (DegerliSeed.MinimumBuilderPasswordLength)
+            # — so a missing or too-short value fails at preflight, never mid-migration.
+            # Parsed the way Compose reads `.env` (last assignment wins, optional quotes);
+            # the script never sources `.env`.
+            builder_password="$(sed -n 's/^[[:space:]]*DEGERLI_BUILDER_PASSWORD[[:space:]]*=[[:space:]]*//p' .env | tail -n1 | tr -d '\r')"
+            builder_password="${builder_password%\"}"; builder_password="${builder_password#\"}"
+            builder_password="${builder_password%\'}"; builder_password="${builder_password#\'}"
+            if [ -z "${builder_password}" ]; then
+              echo "::error::DEGERLI_BUILDER_PASSWORD is missing from ${DEPLOY_PATH}/.env — the migrate step seeds the builder bootstrap account and in a deployed environment it has no default (CWE-798)."
+              false
+            fi
+            if [ "${#builder_password}" -lt 12 ]; then
+              echo "::error::DEGERLI_BUILDER_PASSWORD is ${#builder_password} chars but the enforced minimum is 12 (DegerliSeed.MinimumBuilderPasswordLength) — migrate would abort mid-run. Fix .env and re-run."
+              false
+            fi
+
             phase="pull"
             echo "==> [pull] pulling images for tag ${IMAGE_TAG}"
             ${COMPOSE} pull
@@ -277,41 +314,81 @@ jobs:
             # RPO; it takes no new backup itself (that is deploy/backup/pg-backup.sh,
             # TKT-foundation-076's drill) and it records what it verified, so the deploy
             # log carries the restore point it relied on.
+            #
+            # Bootstrap carve-out (first deploy on a blank host): there is nothing to
+            # restore yet, and pg-backup.sh dumps out of a RUNNING postgres container that
+            # does not exist until the stack has been brought up once — so requiring an
+            # archive here would deadlock the very first deploy (deploy/README.md
+            # §First-time VPS setup). Bootstrap is detected from the absence of the compose
+            # project's `postgres-data` volume, the only durable marker of "this host has
+            # never held a database". As soon as that volume exists — every later deploy,
+            # including a box whose stack is currently down — the no-override gate below
+            # applies unchanged.
             phase="backup-marker"
-            echo "==> [backup-marker] requiring a restore point in ${PRE_DEPLOY_BACKUP_DIR} no older than ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h"
+            compose_project="${COMPOSE_PROJECT_NAME:-degerli}"   # compose.prod.yml pins `name: degerli`
+            volume_list=""
+            if ! volume_list="$(docker volume ls -q \
+                 --filter "label=com.docker.compose.project=${compose_project}" \
+                 --filter 'label=com.docker.compose.volume=postgres-data')"; then
+              echo "::error::could not inspect docker volumes to decide bootstrap vs restore-point gate — refusing to guess"
+              false
+            fi
+            postgres_volume="$(printf '%s\n' "${volume_list}" | head -n1)"
+            bootstrap=false
             newest=""
-            newest_mtime=0
-            for candidate in "${PRE_DEPLOY_BACKUP_DIR}"/degerli-*.dump.gpg; do
-              [ -f "${candidate}" ] || continue
-              mtime="$(stat -c %Y "${candidate}")"
-              if [ "${mtime}" -gt "${newest_mtime}" ]; then
-                newest="${candidate}"
-                newest_mtime="${mtime}"
+            age_hours="n/a"
+            if [ -z "${postgres_volume}" ]; then
+              bootstrap=true
+              restore_point_label="none (bootstrap)"
+              echo "==> [backup-marker] bootstrap deploy: no postgres data volume on this host yet — nothing to restore, no archive required (marker records bootstrap=true)"
+            else
+              restore_point_label=""
+              echo "==> [backup-marker] requiring a restore point in ${PRE_DEPLOY_BACKUP_DIR} no older than ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h"
+              newest_mtime=0
+              for candidate in "${PRE_DEPLOY_BACKUP_DIR}"/degerli-*.dump.gpg; do
+                [ -f "${candidate}" ] || continue
+                mtime="$(stat -c %Y "${candidate}")"
+                if [ "${mtime}" -gt "${newest_mtime}" ]; then
+                  newest="${candidate}"
+                  newest_mtime="${mtime}"
+                fi
+              done
+              if [ -z "${newest}" ]; then
+                echo "::error::no backup archive (degerli-*.dump.gpg) in ${PRE_DEPLOY_BACKUP_DIR} — refusing to run a forward-only migration with no restore point. Run deploy/backup/pg-backup.sh first (deploy/README.md §Backups). Its BACKUP_DIR (from /etc/degerli/backup.env) must be the same directory as PRE_DEPLOY_BACKUP_DIR; both default to /opt/degerli/backups."
+                false
               fi
-            done
-            if [ -z "${newest}" ]; then
-              echo "::error::no backup archive (degerli-*.dump.gpg) in ${PRE_DEPLOY_BACKUP_DIR} — refusing to run a forward-only migration with no restore point. Run deploy/backup/pg-backup.sh first (deploy/README.md §Backups)."
-              false
+              if [ ! -s "${newest}" ]; then
+                echo "::error::newest backup archive ${newest} is empty — it is not a restore point"
+                false
+              fi
+              age_seconds=$(( $(date -u +%s) - newest_mtime ))
+              age_hours=$(( age_seconds / 3600 ))
+              if [ "${age_seconds}" -gt $(( PRE_DEPLOY_MAX_BACKUP_AGE_HOURS * 3600 )) ]; then
+                echo "::error::newest restore point ${newest} is ${age_hours}h old (> ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h RPO) — run deploy/backup/pg-backup.sh first. Its BACKUP_DIR (from /etc/degerli/backup.env) must be the same directory as PRE_DEPLOY_BACKUP_DIR; both default to /opt/degerli/backups."
+                false
+              fi
+              restore_point_label="$(basename "${newest}")"
             fi
-            if [ ! -s "${newest}" ]; then
-              echo "::error::newest backup archive ${newest} is empty — it is not a restore point"
-              false
-            fi
-            age_seconds=$(( $(date -u +%s) - newest_mtime ))
-            age_hours=$(( age_seconds / 3600 ))
-            if [ "${age_seconds}" -gt $(( PRE_DEPLOY_MAX_BACKUP_AGE_HOURS * 3600 )) ]; then
-              echo "::error::newest restore point ${newest} is ${age_hours}h old (> ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h RPO) — run deploy/backup/pg-backup.sh first."
-              false
-            fi
+            # `outcome` is the ATTEMPT; it is flipped to `success` only after the
+            # smoke-check passes (see the end of this script), so a marker left at
+            # `attempt` means the tag may never have served.
+            mkdir -p "${PRE_DEPLOY_BACKUP_DIR}"
             marker="${PRE_DEPLOY_BACKUP_DIR}/predeploy-${IMAGE_TAG}-$(date -u +%Y%m%dT%H%M%SZ).marker"
-            printf 'deploy_tag=%s\nrestore_point=%s\nrestore_point_age_hours=%s\nverified_at=%s\n' \
-              "${IMAGE_TAG}" "$(basename "${newest}")" "${age_hours}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker}"
-            echo "    restore point: $(basename "${newest}") (${age_hours}h old); marker: $(basename "${marker}")"
+            printf 'deploy_tag=%s\nrestore_point=%s\nrestore_point_age_hours=%s\nbootstrap=%s\noutcome=attempt\nverified_at=%s\n' \
+              "${IMAGE_TAG}" "${restore_point_label}" "${age_hours}" "${bootstrap}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker}"
+            echo "    restore point: ${restore_point_label} (${age_hours}h old); marker: $(basename "${marker}")"
 
             # --- migrate (one-shot, the running stack is untouched) ------------------
+            # The builder password is passed to this one-shot container only: it is a
+            # seed input, not a serving-time setting (compose.prod.yml keeps it out of the
+            # long-lived `api` environment). `-e VAR` (no value) copies it from this shell's
+            # environment, so the credential never lands in the host's argument list.
             phase="migrate"
             echo "==> [migrate] applying forward-only EF migrations in a one-shot container"
-            ${COMPOSE} run --rm api migrate
+            export DEGERLI_BUILDER_PASSWORD="${builder_password}"
+            unset builder_password
+            ${COMPOSE} run --rm -e DEGERLI_BUILDER_PASSWORD api migrate
+            unset DEGERLI_BUILDER_PASSWORD
 
             # --- readiness gate -----------------------------------------------------
             # `--wait` makes this block until every service reports running/healthy or
@@ -325,9 +402,12 @@ jobs:
             # --- smoke-check through the public entrypoint --------------------------
             phase="smoke"
             echo "==> [smoke] checking ${PUBLIC_URL}/health through Caddy"
+            # Per-attempt timeouts (5 s total, 3 s to connect) so a Caddy upstream that
+            # accepts and then stalls cannot hang one attempt indefinitely: every attempt
+            # is bounded, so the 30-attempt ceiling is a real bound and not the job timeout.
             code=""
             for attempt in $(seq 1 30); do
-              code="$(curl -s -o /dev/null -w '%{http_code}' "${PUBLIC_URL}/health" || true)"
+              code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --connect-timeout 3 "${PUBLIC_URL}/health" || true)"
               if [ "${code}" = "200" ]; then
                 echo "    ${PUBLIC_URL}/health answered 200 on attempt ${attempt}"
                 break
@@ -335,10 +415,19 @@ jobs:
               sleep 5
             done
             if [ "${code}" != "200" ]; then
-              echo "::error::smoke-check FAILED: ${PUBLIC_URL}/health returned '${code:-none}' within 150s"
+              echo "::error::smoke-check FAILED: ${PUBLIC_URL}/health returned '${code:-none}' after 30 attempts (each bounded at 5 s)"
               false
             fi
 
-            echo "==> deploy complete: tag ${IMAGE_TAG} (was ${previous_tag:-none}), restore point $(basename "${newest}")"
-            ${COMPOSE} ps
+            # The marker was written at phase 3, i.e. it records the ATTEMPT. Flip it to
+            # the outcome now that this tag has actually served traffic, so "the last good
+            # tag" can be read straight from the markers (deploy/README.md §Rollback posture).
+            sed -i 's/^outcome=attempt$/outcome=success/' "${marker}"
+            printf 'smoke_ok_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${marker}"
+
+            phase="done"
+            echo "==> deploy complete: tag ${IMAGE_TAG} (was ${previous_tag:-none}), restore point ${restore_point_label:-none}"
+            # Informational only: the deploy already succeeded, so a `ps` hiccup must not
+            # be reported as a deploy failure (phase is `done`).
+            ${COMPOSE} ps || true
           REMOTE

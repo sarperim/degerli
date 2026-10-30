@@ -3,8 +3,12 @@
 #
 #   docker compose -f compose.prod.yml pull
 #   # ... pre-deploy restore-point marker (deploy/README.md §Deploying) ...
-#   docker compose -f compose.prod.yml run --rm api migrate
+#   docker compose -f compose.prod.yml run --rm -e DEGERLI_BUILDER_PASSWORD api migrate
 #   docker compose -f compose.prod.yml up -d --wait --wait-timeout 180
+#
+# The builder password is a `migrate`-only input, exported from the VPS `.env` and passed
+# to that one-shot run by name (-e VAR, no value) rather than kept in the long-lived `api`
+# environment (see the anchor comment below).
 #
 # The order is the contract: images pulled, the restore point verified, the schema
 # migrated by a one-shot container, and only then the running stack replaced. `--wait`
@@ -29,12 +33,13 @@ x-api-environment: &api-environment
   ASPNETCORE_ENVIRONMENT: Production
   ASPNETCORE_URLS: http://+:8080
   ConnectionStrings__Default: ${ConnectionStrings__Default:?set ConnectionStrings__Default in .env}
-  # Read by the schema seed the `migrate` step runs (the builder bootstrap account in
-  # `src/Persistence/Seed/DegerliSeed`). In a deployed environment it has no default by
-  # design (CWE-798), so without it `migrate` aborts — a deploy precondition, failed at
-  # `compose config` time (preflight) rather than mid-migration. Surfaced by
-  # TKT-foundation-067's compose-level rehearsal.
-  DEGERLI_BUILDER_PASSWORD: ${DEGERLI_BUILDER_PASSWORD:?set DEGERLI_BUILDER_PASSWORD in .env}
+  # DEGERLI_BUILDER_PASSWORD is deliberately NOT part of this shared anchor: its only
+  # consumer is the seed SQL the one-shot `migrate` run generates (src/Persistence/Seed/
+  # DegerliSeed — in a deployed environment it has no default by design, CWE-798). The
+  # serving API never reads it, so it must not sit in the long-lived, internet-exposed
+  # `api` container's environment (docker inspect / /proc/1/environ). deploy.yml reads it
+  # from the VPS `.env`, enforces the 12-char minimum at `preflight`, and passes it only
+  # to `run --rm -e … api migrate`. Surfaced by TKT-foundation-067's review round 1.
   Smtp__Host: ${Smtp__Host:?set Smtp__Host in .env}
   Smtp__Port: ${Smtp__Port:-587}
   Smtp__User: ${Smtp__User}
