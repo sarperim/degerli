@@ -82,6 +82,86 @@ describe('honest-data markers', () => {
     )
   })
 
+  /**
+   * TKT-foundation-073 (TC-RES-024): the as-of date is itself a claim, so it
+   * explains what it means on every surface — the same doctrine 039 applied to
+   * the stale badge. The neutral sentence is true in every state ("the point in
+   * time the data describes"); the recency sentence is only rendered when the
+   * caller has established that this row IS the latest publication, because on a
+   * stale row that sentence would be false (039 review round 1, DR-1).
+   */
+  describe('TC-RES-024 as-of marker explains itself', () => {
+    const asOfSlot = (text: string) =>
+      screen.getByText(text).closest('[data-slot="as-of-date"]')
+
+    function asOfText(language: 'tr' | 'en') {
+      return catalogValue(language, 'honestData.asOf').replace(
+        '{{date}}',
+        formatAsOfDate(language, AS_OF),
+      )
+    }
+
+    it('carries the catalog explanation in Turkish and English', () => {
+      for (const language of ['tr', 'en'] as const) {
+        const { unmount } = renderWithProviders(<AsOfDate asOf={AS_OF} />, {
+          language,
+        })
+        try {
+          const marker = asOfSlot(asOfText(language))
+          expect(marker).not.toBeNull()
+          expect(marker).toHaveAttribute(
+            'title',
+            catalogValue(language, 'honestData.asOfExplanation'),
+          )
+          // Accessible as text, not only as a hover tooltip (UXR-G-009 spirit).
+          expect(marker).toHaveTextContent(
+            catalogValue(language, 'honestData.asOfExplanation'),
+          )
+        } finally {
+          unmount()
+        }
+      }
+    })
+
+    it('adds the recency sentence only when the caller establishes freshness', () => {
+      renderWithProviders(<AsOfDate asOf={AS_OF} fresh />)
+
+      const marker = asOfSlot(asOfText('tr'))
+      const neutral = catalogValue('tr', 'honestData.asOfExplanation')
+      const recency = catalogValue('tr', 'honestData.asOfRecencyExplanation')
+
+      expect(marker).toHaveAttribute('title', `${neutral} ${recency}`)
+      // A bare recency claim is not an explanation: the two are distinct strings.
+      expect(recency).not.toBe(neutral)
+    })
+
+    it('makes no recency claim when freshness is not established', () => {
+      renderWithProviders(<AsOfDate asOf={AS_OF} />)
+
+      const marker = asOfSlot(asOfText('tr'))
+      expect(marker).not.toBeNull()
+      expect(marker).not.toHaveTextContent(
+        catalogValue('tr', 'honestData.asOfRecencyExplanation'),
+      )
+      // Unknown is not fresh: the neutral explanation still stands.
+      expect(marker).toHaveTextContent(
+        catalogValue('tr', 'honestData.asOfExplanation'),
+      )
+    })
+
+    it('makes no recency claim in English either when freshness is not established', () => {
+      renderWithProviders(<AsOfDate asOf={AS_OF} />, { language: 'en' })
+
+      const marker = asOfSlot(asOfText('en'))
+      expect(marker).not.toHaveTextContent(
+        catalogValue('en', 'honestData.asOfRecencyExplanation'),
+      )
+      expect(marker).toHaveTextContent(
+        catalogValue('en', 'honestData.asOfExplanation'),
+      )
+    })
+  })
+
   it('renders an explicit not-meaningful state, not a value (UXR-RES-025)', () => {
     renderWithProviders(<NotMeaningful />)
     const node = screen.getByText(catalogValue('tr', 'honestData.notMeaningful'))

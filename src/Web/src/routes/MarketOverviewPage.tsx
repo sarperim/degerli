@@ -542,7 +542,18 @@ export function MarketOverviewPage() {
               showStale={false}
             />
             <div className="flex flex-wrap items-center gap-3">
-              <AsOfDate asOf={envelope.asOf} />
+              {/* TKT-foundation-073: the as-of marker carries its own explanation,
+                  and the recency half only while the row really is the latest
+                  publication — suppressed on a stale envelope and while an intraday
+                  price stands in for the completed close (the same two conditions
+                  the paragraph below uses). */}
+              <AsOfDate
+                asOf={envelope.asOf}
+                fresh={
+                  !envelope.stale &&
+                  envelope.priceState?.state !== 'intraday'
+                }
+              />
               {envelope.stale ? <StaleBadge /> : null}
             </div>
             {/* TKT-foundation-039 (finding B3): the as-of date means "the latest

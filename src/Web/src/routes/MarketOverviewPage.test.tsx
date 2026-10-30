@@ -92,6 +92,16 @@ function headerStaleBadge(): Element | null {
   )
 }
 
+/** The header's as-of marker — same scoping rationale as `headerStaleBadge`. */
+function headerAsOf(): Element | null {
+  return (
+    screen
+      .getByRole('heading', { level: 1 })
+      .closest('header')
+      ?.querySelector('[data-slot="as-of-date"]') ?? null
+  )
+}
+
 function renderPage(language: 'tr' | 'en' = 'tr') {
   return renderWithProviders(
     <MemoryRouter initialEntries={['/']}>
@@ -263,6 +273,81 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
     expect(headerStaleBadge()).toHaveAccessibleName(
       `${catalogValue('en', 'honestData.stale')} — ${catalogValue('en', 'honestData.staleExplanation')}`,
+    )
+  })
+})
+
+/**
+ * TKT-foundation-073 (TC-MOV-016/TC-MOV-024): the header's as-of marker explains
+ * itself on this surface too. The neutral sentence ("the point in time the data
+ * describes") holds in every state; the recency sentence is a claim the screen may
+ * only make when the row really is the latest publication — so it is absent on a
+ * stale envelope and while an intraday price is on the screen (the same two
+ * suppressions 039 pinned for the visible paragraph).
+ */
+describe('TKT-foundation-073 the header as-of marker explains itself', () => {
+  it('explains the as-of date and claims recency when the envelope is fresh', async () => {
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(headerAsOf()).not.toBeNull()
+    })
+    expect(headerAsOf()).toHaveAttribute(
+      'title',
+      `${tr('honestData.asOfExplanation')} ${tr('honestData.asOfRecencyExplanation')}`,
+    )
+  })
+
+  it('explains the as-of date in English and claims recency when fresh', async () => {
+    renderPage('en')
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(headerAsOf()).not.toBeNull()
+    })
+    expect(headerAsOf()).toHaveAttribute(
+      'title',
+      `${catalogValue('en', 'honestData.asOfExplanation')} ${catalogValue('en', 'honestData.asOfRecencyExplanation')}`,
+    )
+  })
+
+  it('keeps the explanation but drops the recency claim on a stale envelope', async () => {
+    server.use(marketOverviewHandler(STALE_OVERVIEW))
+    renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await waitFor(() => {
+      expect(headerAsOf()).not.toBeNull()
+    })
+    expect(headerAsOf()).toHaveAttribute(
+      'title',
+      tr('honestData.asOfExplanation'),
+    )
+    expect(headerAsOf()).not.toHaveTextContent(
+      tr('honestData.asOfRecencyExplanation'),
+    )
+  })
+
+  it('drops the recency claim while an intraday price is shown', async () => {
+    server.use(
+      marketOverviewHandler({
+        ...MARKET_OVERVIEW_FIXTURE,
+        priceState: MARKET_PRICE_STATE_INTRADAY,
+      }),
+    )
+    renderPage()
+
+    await screen.findByTestId('price-state')
+    await waitFor(() => {
+      expect(headerAsOf()).not.toBeNull()
+    })
+    expect(headerAsOf()).toHaveAttribute(
+      'title',
+      tr('honestData.asOfExplanation'),
+    )
+    expect(headerAsOf()).not.toHaveTextContent(
+      tr('honestData.asOfRecencyExplanation'),
     )
   })
 })

@@ -45,6 +45,15 @@
 | UXR-G-011 | For the same stock, metric, and date, the identical value is rendered on every surface that shows it (dashboard, screener results, stock page, DCF). | BR-MDF-009; NFR-SCR-003; NFR-RES-003; NFR-VAL-003 | Must |
 | UXR-G-012 | No surface implies real-time data: no "live" language, no auto-refresh countdowns; freshness is framed as daily end-of-day with the as-of date. **Recorded exception (builder decision 2026-10-06, flag ruling 4):** the SCR-012 run ledger auto-refreshes while a run is in progress (UXR-MDF-015) — operational job monitoring, not market data; the rule's force for market-data-bearing surfaces is unchanged. | BR-MDF-003; brief §6 (permanent exclusions) | Must |
 
+**Explanatory freshness copy — interim implementation, final wording flows back (TKT-foundation-073, recorded 2026-10-30).** UXR-G-007/UXR-G-008 already require the as-of date and the stale marker on every display; the shipped implementation now also *explains* them, because the user's recurring confusion is an expectation gap (the platform is EOD-by-design) rather than arithmetic. TKT-foundation-039 introduced the pattern on SCR-001; TKT-foundation-073 extends it through the shared honest-data primitives (`AsOfDate`, `StaleBadge`) so every surface that renders a marker inherits its explanation:
+
+- **as-of marker** — the neutral sentence ("the as-of date is the point in time the data describes") is true in every state and always rendered, as `title` for sighted users and as visually-hidden text for assistive tech;
+- **recency sentence** ("it is the latest date the source has published") — rendered only where the caller has established that the row *is* the latest publication: suppressed on a stale row (the badge beside it already states that a newer completed session or publication has not arrived — 039 DR-1) and while an intraday price stands in for the completed close (049). Where freshness is unknown, no claim is made (039 DR-2: no claim beats a false one);
+- **stale badge** — last-known-good, never a recency claim (039);
+- **absence claims** — the dividends "never paid" state now states the period it is made over (its coverage), so it cannot be read as full history (SCR-005 §7).
+
+**Flow-back / routing item UX-073-1 (owner: ux-designer, not a gate on the implemented behaviour):** the *surface inventory* and the *final prose* are the ux-designer's — SCR-005 section markers (UXR-RES-019/020/021 markers), SCR-002 screener-result freshness and the dividends never-paid/coverage wording. TKT-foundation-073 pins the behaviour only (explanation present, programmatically determinable, suppressed where the opposite claim would be false), per the 057 precedent: minimal honest copy now, final wording on flow-back. No architecture change and no new UXR IDs are created here — new IDs are the ux-designer's to allocate.
+
 ### 1.5 Language
 
 | ID | Rule | Traces to | MoSCoW |

@@ -219,6 +219,63 @@ describe('TC-MOV-024 stale marker component', () => {
   })
 })
 
+/**
+ * TKT-foundation-073 (TC-MOV-016/TC-MOV-024): every as-of marker on the strip
+ * explains what it is. A fresh series' marker may add the recency sentence (its
+ * as-of IS the latest published value); a stale series' marker keeps only the
+ * neutral sentence, because recency there would contradict the badge beside it.
+ * An unmapped series code renders the explanation and NO cadence note — an unknown
+ * state never invents a claim (039 DR-2, extended).
+ */
+describe('TC-MOV-016 every macro as-of marker explains itself', () => {
+  const asOfMarker = (indicator: Element) =>
+    indicator.querySelector('[data-slot="as-of-date"]')
+
+  it('explains a fresh series and claims recency, in Turkish and English', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+
+    for (const language of ['tr', 'en'] as const) {
+      const { unmount } = renderStrip(language)
+      try {
+        const usd = await screen.findByTestId('macro-USD_TRY')
+        expect(asOfMarker(usd)).toHaveAttribute(
+          'title',
+          `${catalogValue(language, 'honestData.asOfExplanation')} ${catalogValue(language, 'honestData.asOfRecencyExplanation')}`,
+        )
+      } finally {
+        unmount()
+      }
+    }
+  })
+
+  it('keeps the explanation and drops the recency claim on a stale series', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_STALE_FIXTURE))
+    renderStrip()
+
+    const gold = await screen.findByTestId('macro-GOLD')
+    expect(asOfMarker(gold)).toHaveAttribute(
+      'title',
+      tr('honestData.asOfExplanation'),
+    )
+    expect(asOfMarker(gold)).not.toHaveTextContent(
+      tr('honestData.asOfRecencyExplanation'),
+    )
+  })
+
+  it('explains the as-of marker of an unavailable series too', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_DEGRADED_FIXTURE))
+    renderStrip()
+
+    const independent = await screen.findByTestId('macro-INDEP_CPI')
+    expect(independent).toHaveTextContent(tr('honestData.unavailableTitle'))
+    // No surface renders a bare date: the marker carries its own explanation.
+    expect(asOfMarker(independent)).toHaveAttribute(
+      'title',
+      `${tr('honestData.asOfExplanation')} ${tr('honestData.asOfRecencyExplanation')}`,
+    )
+  })
+})
+
 describe('macro strip failure domain', () => {
   it('renders an independent plain-language error with retry, recovering when restored', async () => {
     const user = userEvent.setup()
