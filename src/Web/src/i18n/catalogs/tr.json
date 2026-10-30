@@ -317,6 +317,7 @@
       "ttm": "Son 12 ay hisse başına temettü",
       "neverPaidTitle": "Temettü ödenmedi",
       "neverPaidBody": "Bu şirket hiç temettü ödemedi.",
+      "neverPaidCoverage": "Bu, temettü verimizin kapsadığı dönem için geçerlidir; bu dönemden önceki ödemeler burada görünmez.",
       "unavailableTitle": "Temettü verisi yok",
       "unavailableBody": "Bu şirket için temettü verisi henüz yüklenmedi."
     },
@@ -600,6 +601,8 @@
   },
   "honestData": {
     "asOf": "Veri {{date}} itibarıyla",
+    "asOfExplanation": "As-of tarihi, verinin tanımladığı zaman noktasıdır.",
+    "asOfRecencyExplanation": "Bu, kaynağın bu veri için yayımladığı en güncel tarihtir.",
     "stale": "Bayat",
     "staleExplanation": "Bu değer en son bilinen geçerli veridir; daha güncel bir tamamlanmış seans veya yayım henüz ulaşmadı. Değerin kendisi hatalı değildir.",
     "restated": "Yeniden düzenlendi",

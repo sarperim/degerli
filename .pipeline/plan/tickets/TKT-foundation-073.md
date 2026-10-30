@@ -15,7 +15,7 @@ scope:
 
 # TKT-foundation-073: Stale-"why" extensions — the explanatory freshness copy reaches every surface, not just SCR-001
 
-- Status: todo
+- Status: in-review
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 9 unparked).**
 - **Evidence (gathered 2026-10-24):**
@@ -37,3 +37,11 @@ scope:
 - UX refs: SCR-001 (existing), SCR-002 (screener freshness), SCR-005 (section markers); UXR-MOV-008/009/010, UXR-RES-019/021, UXR-SCR-0xx — the ux-designer confirms the exact entries.
 - Dependencies: none (039 landed).
 - Parallel group: none (shares the i18n catalogs with 072).
+
+## Notes
+
+- PR: https://github.com/sarperim/degerli/pull/170 (TKT-foundation-073, base `dev`).
+- Implementation note (2026-10-30): the pattern is extended **through the shared primitives**, not per page — `AsOfDate` (in the audited `markers.tsx`) now carries a catalog explanation, so every surface that renders an as-of marker inherits it, including the screener result list, the stock list, the DCF price marker and the price header, which are outside this ticket's file list and needed no edit. Two sentences, deliberately separate: the neutral one ("the as-of date is the point in time the data describes") is true in every state and always rendered (`title` + visually-hidden text); the recency one ("the latest date the source has published for this data") is a claim the caller licenses via a new `fresh` prop — absent when freshness is unknown, on a stale row (039 DR-1) and wherever an intraday price stands in for the completed close. SCR-001 passes `fresh` under exactly the two conditions it already used for its visible paragraph; the macro strip passes `fresh={!series.stale}`; **SCR-005 section markers inherit the neutral explanation only**, because `SectionMarkers.tsx` is not in this ticket's audited scope and stock-section freshness is not a session-recency fact — threading `stale` into `SectionMarkers` for a fresh-side claim is a recorded follow-up, not a defect (no claim beats a false one). Dividends' absence claim now states the period it is made over (`stockPage.dividends.neverPaidCoverage`) beside the existing coverage boundary. Three additive catalog keys per language; no existing copy or layout changed.
+- **Red→green, measured (the red run, not remembered):** with the implementation absent the four touched suites read **17 failed / 59 passed** (every failure a missing catalog key or an unexplained marker — behaviour, not environment), and **76/76 green** with it; the full Web suite is **59 files / 411 tests** (394 before this branch, +17). `tsc --noEmit`, ESLint, `check:i18n` (846 keys, was 843) and `check:advice` all clean. `tests/e2e` reads `[data-slot="as-of-date"]` by visibility only, so the added visually-hidden copy cannot move those specs.
+- Acceptance (iv), recorded as routed rather than invented: `.pipeline/ux/01-interaction-rules.md` §1.4 gains an interim-copy note and the flow-back item **UX-073-1** (owner: ux-designer) for the final wording and the per-surface inventory (SCR-005 markers, SCR-002 screener freshness, dividends wording). No new UXR IDs are created here — allocating them is the ux-designer's, per the 057 precedent. No architecture change; the landed §13.1 max is **v1.5.86** (071), so this ticket adds no row.
+- Flagged, not hidden: (1) the primitive change intentionally reaches out-of-list surfaces (item above); (2) `ScreenerScreen.tsx` is untouched because it is outside the audited `scope:` — it inherits the explanation through `AsOfDate`; (3) an unmapped macro series is not rendered by the strip at all (its six-code set is contract-fixed) and an unmapped cadence renders no cadence note — the ticket's "renders nothing at all" gap is closable only to that extent without an API/UX decision.

@@ -21,22 +21,53 @@ import { cn } from '@/lib/utils'
 /** The three explicit missing-data states (architecture §10.7). */
 export type DataState = 'no-data' | 'preparing' | 'unavailable'
 
-/** Data-as-of date for any data-bearing display (UXR-G-007). */
+/**
+ * Data-as-of date for any data-bearing display (UXR-G-007).
+ *
+ * TKT-foundation-073 (the 039 doctrine extended): an as-of date is itself a claim,
+ * so it explains what it means instead of leaving the reader to infer it — a bare
+ * "Veri … itibarıyla" beside a number the user expected to be today's is exactly
+ * the expectation gap that reads as a data error. Two sentences, deliberately
+ * separate:
+ *
+ * - the neutral one is true in every state ("the point in time the data describes")
+ *   and is always rendered — to sighted users via `title` and to assistive tech as
+ *   visually-hidden text, since a `title` alone is hover-only (UXR-G-009 spirit);
+ * - the recency one ("the latest date the source has published") is a claim only
+ *   the caller can license, through `fresh`. It is therefore rendered only when
+ *   `fresh` is set: on a stale row it would contradict the stale badge beside it,
+ *   and where freshness is unknown no claim beats a false one (039 review round 1
+ *   DR-1, 039 DR-2).
+ */
 export function AsOfDate({
   asOf,
   className,
+  fresh = false,
 }: {
   asOf: string
   className?: string
+  /**
+   * The caller has established that this row IS the latest publication (not stale,
+   * no intraday state standing in for it). Only then may the marker claim recency.
+   */
+  fresh?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
+  const explanation = [
+    t('honestData.asOfExplanation'),
+    fresh ? t('honestData.asOfRecencyExplanation') : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
     <span
       data-slot="as-of-date"
+      title={explanation}
       className={cn('text-xs text-muted-foreground', className)}
     >
       {t('honestData.asOf', { date: formatAsOfDate(locale, asOf) })}
+      <span className="sr-only"> ({explanation})</span>
     </span>
   )
 }

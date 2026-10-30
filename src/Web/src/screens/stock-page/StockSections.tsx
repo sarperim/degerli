@@ -689,7 +689,13 @@ export function DividendsSection({ symbol }: { symbol: string }) {
               data-testid="dividends-never-paid"
               data-state={missingData.state}
               title={t('stockPage.dividends.neverPaidTitle')}
-              description={[t('stockPage.dividends.neverPaidBody'), coverageBoundary]
+              description={[
+                t('stockPage.dividends.neverPaidBody'),
+                // TKT-foundation-073: an absence claim states the period it is
+                // made over, so "never paid" cannot be read as full history.
+                t('stockPage.dividends.neverPaidCoverage'),
+                coverageBoundary,
+              ]
                 .filter(Boolean)
                 .join(' ')}
             />

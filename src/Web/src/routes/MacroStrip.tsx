@@ -131,13 +131,21 @@ function MacroIndicator({ series }: { series: MacroSeries }) {
         ) : null}
         {series.asOf ? (
           <span className="flex flex-col gap-0.5">
-            <AsOfDate asOf={series.asOf} />
+            {/* TKT-foundation-073: the as-of marker explains itself. Only a series
+                with a served value that is not stale may add the recency sentence
+                (its as-of IS the latest published value, as the cadence note below
+                states); a stale one must not, since the badge beside it says a newer
+                publication has not arrived — and an unavailable one has no freshness
+                to license the claim at all (review round 1, DR-1). */}
+            <AsOfDate asOf={series.asOf} fresh={!series.stale && !unavailable} />
             {/* The as-of date says what it qualifies: this cadence's latest
                 published value (TKT-foundation-039, UXR-MOV-010). A stale series
                 suppresses the recency claim, because the sibling stale badge
                 states that a newer completed session/publication has not
-                arrived — both cannot be true (review round 1, DR-1). */}
-            {!series.stale && cadence ? (
+                arrived — both cannot be true (review round 1, DR-1). An
+                unavailable series has no published value to be the latest of, so
+                it gets the same suppression. */}
+            {!series.stale && !unavailable && cadence ? (
               <span
                 data-slot="macro-cadence"
                 className="text-xs text-muted-foreground"

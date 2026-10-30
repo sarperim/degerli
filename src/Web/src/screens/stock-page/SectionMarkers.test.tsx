@@ -6,7 +6,9 @@ import {
   renderStockPage,
   resetStockPageTest,
   RESTATED_FINANCIALS_FIXTURE,
+  stockDividendsHandler,
   stockFinancialsHandler,
+  ZERO_DIVIDENDS_FIXTURE,
 } from '@/screens/stock-page/testSupport'
 import { server } from '@/test/msw/server'
 import { catalogValue } from '@/test/i18n'
@@ -102,6 +104,118 @@ describe('TC-RES-024 honest-data markers', () => {
     expect(
       container.querySelector('[data-slot="as-of-date"]'),
     ).not.toBeInTheDocument()
+  })
+
+  /**
+   * TKT-foundation-073 (TC-RES-024): a stock-page section marker never renders a
+   * bare date or a bare "Bayat" — every marker explains itself in the active
+   * language. The as-of marker keeps to what the section can prove: the neutral
+   * "this is the point in time the data describes" sentence. `SectionMarkers` does
+   * not know whether a section is the latest publication, so it makes no recency
+   * claim (no claim beats a false one — 039 DR-2 doctrine, extended here).
+   */
+  describe('TC-RES-024 section markers explain themselves', () => {
+    const asOfSlot = (text: string) =>
+      screen.getByText(text).closest('[data-slot="as-of-date"]')
+
+    for (const language of ['tr', 'en'] as const) {
+      it(`explains a fresh section's as-of date in ${language}`, () => {
+        const asOf = catalogValue(language, 'honestData.asOf').replace(
+          '{{date}}',
+          formatAsOfDate(language, AS_OF),
+        )
+        renderWithProviders(<SectionMarkers asOf={AS_OF} />, { language })
+
+        const marker = asOfSlot(asOf)
+        expect(marker).toHaveAttribute(
+          'title',
+          catalogValue(language, 'honestData.asOfExplanation'),
+        )
+        expect(marker).not.toHaveTextContent(
+          catalogValue(language, 'honestData.asOfRecencyExplanation'),
+        )
+      })
+
+      it(`keeps the explanation and the stale meaning in ${language}`, () => {
+        const asOf = catalogValue(language, 'honestData.asOf').replace(
+          '{{date}}',
+          formatAsOfDate(language, AS_OF),
+        )
+        const { container } = renderWithProviders(
+          <SectionMarkers asOf={AS_OF} stale />,
+          { language },
+        )
+
+        const badge = container.querySelector('[data-slot="stale-badge"]')
+        expect(badge).not.toBeNull()
+        expect(badge).toHaveAttribute(
+          'title',
+          catalogValue(language, 'honestData.staleExplanation'),
+        )
+        expect(badge).toHaveAccessibleName(
+          `${catalogValue(language, 'honestData.stale')} — ${catalogValue(language, 'honestData.staleExplanation')}`,
+        )
+
+        // The as-of marker still explains itself.
+        const marker = asOfSlot(asOf)
+        expect(marker).toHaveAttribute(
+          'title',
+          catalogValue(language, 'honestData.asOfExplanation'),
+        )
+        // No recency assertion belongs here yet: `SectionMarkers` does not thread
+        // `stale` into `AsOfDate` (it never passes `fresh`), so a recency check
+        // would pass identically fresh or stale — vacuous, not a suppression test
+        // (review round 1, DR-5). Threading freshness through is a recorded
+        // follow-up, outside TKT-foundation-073's pinned behaviour.
+      })
+    }
+
+    it('renders no as-of marker on the stock page without its explanation', async () => {
+      renderStockPage()
+
+      const financials = await screen.findByRole('region', {
+        name: TR('stockPage.sections.financials'),
+      })
+      await within(financials).findByText(
+        TR('stockPage.financials.columns.revenue'),
+      )
+
+      const markers = financials.querySelectorAll('[data-slot="as-of-date"]')
+      expect(markers.length).toBeGreaterThan(0)
+      for (const marker of markers) {
+        expect(marker).toHaveAttribute(
+          'title',
+          TR('honestData.asOfExplanation'),
+        )
+      }
+    })
+
+    /**
+     * The dividends "never paid" state is an absence claim, so it states the period
+     * it is made over — the coverage boundary alone ("available from …") does not
+     * say that an older payment would not have been seen.
+     */
+    it('bounds the dividends never-paid claim with its coverage period', async () => {
+      server.use(stockDividendsHandler(ZERO_DIVIDENDS_FIXTURE))
+      renderStockPage(['/stocks/NEWP'])
+
+      const dividends = await screen.findByRole('region', {
+        name: TR('stockPage.sections.dividends'),
+      })
+      await within(dividends).findByText(
+        TR('stockPage.dividends.neverPaidTitle'),
+      )
+
+      const state = dividends.querySelector('[data-testid="dividends-never-paid"]')
+      expect(state).not.toBeNull()
+      expect(state).toHaveTextContent(TR('stockPage.dividends.neverPaidBody'))
+      expect(state).toHaveTextContent(TR('stockPage.dividends.neverPaidCoverage'))
+      expect(state).toHaveTextContent(
+        fill(TR('honestData.coverageBoundary'), {
+          date: formatAsOfDate('tr', '2016-04-12'),
+        }),
+      )
+    })
   })
 
   it('places the restatement asterisk on the affected figures of a section', async () => {
