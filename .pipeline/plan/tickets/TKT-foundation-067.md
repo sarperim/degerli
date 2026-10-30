@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-067: Deploy migration safety — a real readiness gate and a defined rollback posture
 
-- Status: in-progress
+- Status: in-review — PR https://github.com/sarperim/degerli/pull/166
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 2 unparked).**
 - **Evidence (gathered 2026-10-24):**
