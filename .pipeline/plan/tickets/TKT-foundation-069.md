@@ -13,7 +13,7 @@ scope:
 
 # TKT-foundation-069: VYK cursor/fact transaction window — a store failure must not advance the cursor past unwritten facts
 
-- Status: in-review — PR https://github.com/sarperim/degerli/pull/167 (branch `TKT-foundation-069`)
+- Status: done — **PR #167 squash-merged 2026-10-30 (`7bcb9f3` on dev), round-1 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-069-round-1.md` — zero blockers, no fixer round; the cursor/fact window verified closed for all three families, store failure injected with a real PostgreSQL trigger). **Non-blocking findings recorded (DR-1..DR-5):** §10.9.15 stale two-passage walk-persistence wording; §10.9.10 rationale no longer load-bearing; `DividendDetailBodyAt` fixture chain self-defeating; disclosures market-wide/reset-clear paths untested; `is ConcreteAdapter` seam reach. **Routing item:** `Jobs.cs` `RecordAsync` ledger gap (failed runs of the store-failure class write no `ingest_runs` row) — pre-existing, in 044's scope, candidate 044 follow-up. 084's serialization gate is now released.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 4 unparked).**
 - **Evidence (gathered 2026-10-24):**
