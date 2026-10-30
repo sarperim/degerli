@@ -24,7 +24,7 @@ Everything runs from [`compose.prod.yml`](../compose.prod.yml) on one Hetzner VP
 | Service | Image | Notes |
 |---|---|---|
 | `caddy` | `ghcr.io/sarperim/degerli/web` | public entrypoint; auto-TLS, HTTPS redirect, SPA + `/api` proxy |
-| `api` | `ghcr.io/sarperim/degerli/api` | API + hosted ingestion workers (AD-04); also the `migrate` entrypoint |
+| `api` | `ghcr.io/sarperim/degerli/api` | API + hosted ingestion workers (AD-04); also the `migrate` entrypoint; `healthcheck: /health` is the readiness gate |
 | `postgres` | `postgres:17` | private; backed up nightly |
 
 **Images are public on GHCR** (portfolio artifact, architecture §5). The VPS pulls
@@ -47,14 +47,20 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
    ```bash
    cd /opt/degerli
    cp .env.example .env
-   # edit .env: POSTGRES_PASSWORD, ConnectionStrings__Default, Smtp__*, Evren__ApiKey,
-   #            APP_URL, ALERT_EMAIL, DOMAIN
+   # edit .env: POSTGRES_PASSWORD, ConnectionStrings__Default, DEGERLI_BUILDER_PASSWORD,
+   #            Smtp__*, Evren__ApiKey, APP_URL, ALERT_EMAIL, DOMAIN
    ```
+   `DEGERLI_BUILDER_PASSWORD` is required (≥ 10 chars): the `migrate` step seeds the
+   builder bootstrap account, and in a deployed environment that password has no
+   default by design (CWE-798). Compose refuses to interpolate the file without it, so
+   it fails at `preflight` with a named message rather than mid-migration.
 5. **Make the GHCR packages public** — once, in the GitHub UI: *Packages → degerli/api*
    and *degerli/web* → *Package settings* → *Change visibility → Public*. The deploy
    host has no registry login, so it relies on public images.
-6. **First deploy** — either push to `main` (CI green → CD runs) or run the `Deploy`
-   workflow manually from the Actions tab.
+6. **First deploy** — before the very first run, produce a restore point (the deploy
+   refuses to migrate without one — see §Backups): `deploy/backup/pg-backup.sh` with
+   `backup.env` sourced. Then either push to `main` (CI green → CD runs) or run the
+   `Deploy` workflow manually from the Actions tab.
 
 ---
 
@@ -67,19 +73,60 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
 
 1. builds + pushes `ghcr.io/sarperim/degerli/api` and `.../web`, tagged `:<short-sha>`
    and `:latest`;
-2. SSHes to the VPS and runs, in the deploy directory:
-   ```bash
-   docker compose -f compose.prod.yml pull
-   docker compose -f compose.prod.yml run --rm api migrate   # forward-only EF migrations
-   docker compose -f compose.prod.yml up -d
-   curl -fsS "$PUBLIC_URL/health"                            # must be 200
-   ```
-3. fails the job if `/health` never returns `200` within ~150 s. There is no
-   in-workflow alert step; runtime alerting is handled by the UptimeRobot monitor
-   (see [Monitoring](#monitoring--uptimerobot)).
+2. SSHes to the VPS and runs the deploy **in this order**, in the deploy directory
+   (`TKT-foundation-067`). Each phase runs only if the previous one succeeded, so a
+   failure stops the deploy *there* — the later, more destructive phase never starts:
+
+   | # | Phase | What it does | Fails the deploy when |
+   |---|---|---|---|
+   | 1 | `preflight` | reads the tag currently serving (the rollback target), checks `compose.prod.yml`/`.env`/`docker`/`curl`, validates the compose file | anything required is missing or the compose file does not validate |
+   | 2 | `pull` | `docker compose -f compose.prod.yml pull` | an image cannot be pulled |
+   | 3 | `backup-marker` | verifies the newest `degerli-*.dump.gpg` restore point is non-empty and **no older than the RPO (24 h)**, then records the tag + restore point in a `predeploy-<tag>-<utc>.marker` file beside it | there is no restore point, it is empty, or it is older than the RPO |
+   | 4 | `migrate` | `docker compose -f compose.prod.yml run --rm api migrate` — a **one-shot** container; the serving stack is untouched | the migration fails |
+   | 5 | `ready` | `docker compose -f compose.prod.yml up -d --wait --wait-timeout 180` — the readiness gate (below) | a service does not report running/healthy within 180 s |
+   | 6 | `smoke` | `GET ${PUBLIC_URL}/health` through Caddy, 30 × 5 s | `/health` never answers 200 |
+
+3. on failure prints the phase, `compose ps`, and the recovery path for **that** phase
+   (`§Rollback posture`). Nothing is rolled back automatically — see below.
+4. There is no in-workflow alert step; runtime alerting is handled by the UptimeRobot
+   monitor (see [Monitoring](#monitoring--uptimerobot)).
+
+From the box, the same sequence, by hand:
+
+```bash
+cd /opt/degerli
+export IMAGE_TAG=<sha>
+docker compose -f compose.prod.yml pull
+# phase 3 — see §Backups for what the marker checks
+ls -1t backups/degerli-*.dump.gpg | head -1
+docker compose -f compose.prod.yml run --rm api migrate   # forward-only EF migrations
+docker compose -f compose.prod.yml up -d --wait --wait-timeout 180
+curl -fsS "$PUBLIC_URL/health"
+```
 
 > `workflow_run` requires `deploy.yml` to be on the **default branch** (`main`), so CD
 > is inert until this workflow is merged to `main`.
+
+### The readiness gate, and what it does *not* buy
+
+`compose.prod.yml` gives the `api` service a `healthcheck:` on `/health` — the liveness
+**and database** probe (`01` §10.3). That block is what makes Caddy's
+`depends_on: api: condition: service_healthy` satisfiable: before it existed, the
+condition could never become true and `up -d` was not a gate at all. With it,
+`up -d --wait` blocks until the API reports healthy (bounded: ~30 s start period plus
+6 × 10 s checks, under the 180 s `--wait-timeout`) and **fails** instead of returning
+success on a stack that is still starting. A container that cannot reach Postgres is
+therefore never reported as deployed.
+
+**Honest limit — stated, not papered over:** this is a single-node stack with in-place
+container replacement, so the *traffic switch* is the same `up -d` that stops the old
+API container. The gate guarantees Caddy is never (re)started against an unready API,
+and it bounds how long a bad release can sit there, but it cannot keep the old API
+serving after `up -d` has begun — there is no second API behind a load balancer. A
+migration failure (phase 4) *is* the safe class: it happens before anything is
+replaced, so the old stack keeps serving the previous schema. Zero-downtime switching
+needs a blue/green pair (second API + Caddy upstream switching) and is a recorded
+follow-up, not something this gate claims.
 
 ### Manual (same thing, on demand)
 
@@ -87,26 +134,63 @@ Actions → **Deploy** → *Run workflow*. This is also the rollback path.
 
 ---
 
-## Rollback
+## Rollback posture
 
-Images are **tag-pinned** by SHA, so rollback is a re-deploy of the previous tag —
-no rebuild:
+Images are **tag-pinned** by SHA, so a code rollback is a re-deploy of the previous
+tag — no rebuild:
 
-1. Find the last good short SHA (Actions run history, or `gh api .../packages`).
+1. Find the last good short SHA (Actions run history, the `predeploy-*.marker` files,
+   or `gh api .../packages`).
 2. Actions → **Deploy** → *Run workflow* → set **image_tag** to that SHA.
-3. The job runs `compose pull` (fetches that tag) → `migrate` → `up -d` → smoke-check.
+3. The job runs the full ordered sequence again: `pull` → `backup-marker` → `migrate`
+   → readiness gate → smoke-check.
 
 From the box, equivalently:
 
 ```bash
 cd /opt/degerli
 IMAGE_TAG=<previous-sha> docker compose -f compose.prod.yml pull
-IMAGE_TAG=<previous-sha> docker compose -f compose.prod.yml up -d
+IMAGE_TAG=<previous-sha> docker compose -f compose.prod.yml run --rm api migrate
+IMAGE_TAG=<previous-sha> docker compose -f compose.prod.yml up -d --wait --wait-timeout 180
 curl -fsS "$PUBLIC_URL/health"
 ```
 
-Migrations are **forward-only** (`02-data-model.md` §8): a rollback that needs a schema
-change must ship a new forward migration, not a down-migration.
+### What an image rollback covers — and what it cannot
+
+**An image re-deploy rolls back code. It cannot roll back a schema.** Migrations are
+forward-only with no down-migrations (`02-data-model.md` §8), so a release that changed
+the schema leaves the schema changed no matter which image runs next. Two rules follow,
+and both are standing policy (`01` §6.2/§10.8):
+
+1. **Backward-incompatible schema changes follow expand → migrate → contract.** The
+   *expand* migration adds the new shape and nothing depends on it yet, so the previous
+   image still works against the migrated schema and an image rollback is safe. Only
+   once the new code has run for a full deploy cycle does a later release *contract*
+   (drop the old column/table). One release never expands and contracts at once.
+   **Consequence, stated plainly:** roll back the image freely *inside* the expand
+   window; after a contract migration the previous image is not a rollback target any
+   more — recovery is a fix-forward migration or a restore.
+2. **Restore-based recovery is the last resort, and it is lossy.** If the schema moved
+   incompatibly and no fix-forward is possible, restore the pre-deploy restore point
+   (`deploy/backup/restore.sh` restores into a scratch database — a live restore is a
+   deliberate, documented operation). Everything written since that archive is lost:
+   the RPO is **24 h** (`01` §10.8). This is why the deploy refuses to run a forward-only
+   migration without a restore point younger than the RPO (phase 3 above).
+
+**What the deploy does *not* do:** it never rolls back automatically. A migration
+failure and a readiness failure have opposite recovery paths — the first is fix-forward
+or restore, the second *may* be a plain image rollback — and the job cannot tell whether
+a release's change was expand-phase or contract-phase. So it stops, names the phase and
+the tag that was serving, and leaves the decision to the operator, who has the release
+context. An automatic revert over a migrated schema is exactly the half-migrated stack
+the ordered deploy exists to prevent.
+
+**Recorded, not hidden:** the previous half of this posture — "rollback = re-deploy the
+previous image tag" — was true only for code. Before TKT-foundation-067 there was no
+expand/contract rule, so a backward-incompatible migration made the previous image
+silently unsafe. The rule is now the standing one (`01` §6.2/§10.8); a future release
+that needs a breaking change plans it as an expand/contract pair instead of relying on
+a rollback that cannot work.
 
 ---
 
@@ -144,6 +228,31 @@ set -a; . /etc/degerli/backup.env; set +a
 Then confirm row counts / spot rows in `degerli_restore`, record the elapsed time, and
 drop the scratch DB. **Execution before launch is a builder-executed manual-ledger
 item** (test strategy §5.6) — it cannot be automated from CI.
+
+### The pre-deploy restore-point marker
+
+Every deploy verifies one thing about these archives before it touches anything
+(phase 3 of §Deploying, `TKT-foundation-067`): that the newest
+`/opt/degerli/backups/degerli-*.dump.gpg` is **non-empty** and **no older than the RPO
+(24 h)**, and then writes a small `predeploy-<tag>-<utc>.marker` beside it recording the
+tag, the archive it relied on, the archive's age and the verification time.
+
+It is a gate, not a formality — a forward-only migration has no down path, so a restore
+point is the only honest undo. The deploy **stops before it migrates** when:
+
+- there is no archive at all — `no backup archive … refusing to run a forward-only
+  migration with no restore point`;
+- the newest archive is empty (an aborted dump is not a restore point);
+- the newest archive is older than `PRE_DEPLOY_MAX_BACKUP_AGE_HOURS` (default 24) —
+  i.e. the nightly job has been failing and the RPO claim would be a lie.
+
+The remedy is the same in all three cases and it is deliberately manual: source
+`/etc/degerli/backup.env` and run `deploy/backup/pg-backup.sh`, then re-run the deploy.
+There is **no override switch** — an "I know what I'm doing" flag on this check would
+turn the only real undo into an optional one, which is exactly what the ordered deploy
+exists to prevent. The marker does not take a backup itself, and it does not verify the
+archive restores; the drill above is the thing that proves that, and it stays in the
+manual ledger.
 
 ---
 
@@ -285,7 +394,7 @@ the repo or the images (`.env.example` is the template; architecture §6.3).
 |---|---|
 | GitHub Actions secrets | `SSH_PRIVATE_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_HOST_KEY` |
 | GitHub Actions variables | `DEPLOY_PATH`, `PUBLIC_URL` |
-| VPS `.env` (compose) | `DOMAIN`, `POSTGRES_*`, `ConnectionStrings__Default`, `Smtp__*`, `Evren__ApiKey`, `APP_URL`, `ALERT_EMAIL` |
+| VPS `.env` (compose) | `DOMAIN`, `POSTGRES_*`, `ConnectionStrings__Default`, `DEGERLI_BUILDER_PASSWORD`, `Smtp__*`, `Evren__ApiKey`, `APP_URL`, `ALERT_EMAIL` |
 | VPS `/etc/degerli/backup.env` | `BACKUP_PASSPHRASE`, `RCLONE_REMOTE` |
 
 `DEPLOY_HOST_KEY` is the deploy host's public host-key line exactly as it appears in
@@ -314,6 +423,11 @@ These acceptance items are **not** automatable from CI and are recorded as build
 checklists (test strategy §5.6/§9.4):
 
 - first production deploy + `/health` smoke on the real VPS (per release);
+- **ordered-deploy rehearsal** on any change to the deploy path: load
+  `compose.prod.yml` on a local Docker host and run the phases by hand (restore-point
+  marker → migrate → readiness gate → smoke), including one deliberately failing
+  migration to confirm the deploy stops before the stack is replaced (last run
+  2026-10-30, TKT-foundation-067 — see the ticket);
 - backup restore drill (once before launch);
 - UptimeRobot monitor live and green (once before launch);
 - README quickstart verified on a clean machine (≤ 10 commands, NFR-MDF-005).

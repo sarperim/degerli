@@ -1,15 +1,25 @@
 # Continuous deployment (architecture 01-system-architecture.md §6.2, §6.3;
-# TKT-int-006).
+# TKT-int-006; ordered deploy + pre-deploy marker + readiness gate,
+# TKT-foundation-067).
 #
 # Fires only after the CI workflow completes successfully on `main`, then:
 #   1. builds + pushes the production images to public GHCR
 #      (ghcr.io/sarperim/degerli/api + .../web, tagged :<sha> and :latest);
-#   2. SSHs to the VPS and runs compose pull → `api migrate` → `up -d`;
-#   3. smoke-checks `GET /health` and fails the job on any non-200.
+#   2. SSHs to the VPS and runs the deploy in a fixed, fail-stop order:
+#      preflight → pull → pre-deploy restore-point marker → `api migrate` (one-shot)
+#      → readiness gate (`up -d --wait`, Caddy starts only against a healthy API)
+#      → smoke-check `GET /health` through Caddy.
+#
+# Any phase failing aborts the deploy *there*, before the next one starts, and the job
+# prints the recovery path for that phase. Nothing is rolled back automatically: the
+# migrations are forward-only (02-data-model.md §8), so the correct recovery depends on
+# whether the schema moved — see deploy/README.md §Rollback posture (the standing rule
+# is expand → migrate → contract).
 #
 # Rollback is a re-deploy of the previous image tag: run this workflow manually
 # (workflow_dispatch) with the prior short SHA — compose.prod.yml is tag-pinned, so
-# `up -d` pulls and restarts exactly that image. See deploy/README.md.
+# `up -d` pulls and restarts exactly that image — and that is safe only while the
+# release's schema change is still in its expand phase. See deploy/README.md.
 #
 # NOTE: `workflow_run` requires this file to exist on the default branch, so CD only
 # becomes active once this workflow is merged to `main`.
@@ -115,7 +125,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
-  # Pull, migrate and (re)start the stack on the VPS, then smoke-check /health.
+  # Pull → verify a restore point → migrate → readiness gate → smoke-check.
+  # Every phase aborts the deploy before the next one runs (TKT-foundation-067).
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy over SSH
@@ -191,26 +202,143 @@ jobs:
 
             cd "$DEPLOY_PATH"
 
-            echo "==> Pulling images for tag ${IMAGE_TAG}"
-            docker compose -f compose.prod.yml pull
+            COMPOSE="docker compose -f compose.prod.yml"
 
-            echo "==> Applying forward-only EF migrations"
-            docker compose -f compose.prod.yml run --rm api migrate
+            # Tunables (override in the VPS .env if this box differs). The backup age
+            # bound is the documented RPO (01 §10.8): the restore point a forward-only
+            # migration relies on may not be older than that.
+            : "${PRE_DEPLOY_BACKUP_DIR:=${DEPLOY_PATH}/backups}"
+            : "${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS:=24}"
+            : "${READINESS_TIMEOUT_SECONDS:=180}"
 
-            echo "==> Starting the stack"
-            docker compose -f compose.prod.yml up -d
+            phase="preflight"
 
-            echo "==> Smoke-checking ${PUBLIC_URL}/health"
+            # --- failure posture ----------------------------------------------------
+            # Each phase runs only after the previous one succeeded, so a failure stops
+            # the deploy *there* — before the next (more destructive) step. Nothing is
+            # rolled back automatically: migrations are forward-only (02 §8), which
+            # makes the correct recovery depend on whether the schema already moved.
+            # The message therefore names the phase, the tag still serving, and the
+            # recorded recovery path (deploy/README.md §Rollback posture).
+            on_failure() {
+              rc=$?
+              echo "::error::deploy FAILED in phase '${phase}' (exit ${rc})."
+              ${COMPOSE} ps || true
+              echo ""
+              echo "==> RECOVERY — nothing was rolled back automatically."
+              case "${phase}" in
+                preflight|pull|backup-marker)
+                  echo "    The running stack was not touched; the old stack is still serving${previous_tag:+ (tag ${previous_tag})}."
+                  echo "    Fix the cause and re-run the Deploy workflow."
+                  ;;
+                migrate)
+                  echo "    The migration failed, so the stack was never replaced: the old stack is still serving${previous_tag:+ (tag ${previous_tag})} on the previous schema."
+                  echo "    Migrations are forward-only — fix forward with a corrective migration, or restore the pre-deploy restore point (deploy/README.md §Backups)."
+                  ;;
+                ready|smoke)
+                  echo "    The schema IS migrated and the stack was replaced, but the new one did not become ready or did not serve."
+                  echo "    Re-deploy the previous tag${previous_tag:+ (${previous_tag})} ONLY if this release's change is still expand-phase (backward compatible)."
+                  echo "    Otherwise restore the pre-deploy restore point — an image rollback cannot undo a schema change."
+                  ;;
+              esac
+              exit "${rc}"
+            }
+            trap on_failure ERR
+
+            # The tag that is serving right now, read *before* anything is replaced, so a
+            # failure names the exact rollback target instead of "some previous SHA".
+            previous_tag=""
+            running_container="$(${COMPOSE} ps -q api 2>/dev/null | head -n1 || true)"
+            if [ -n "${running_container}" ]; then
+              previous_tag="$(docker inspect --format '{{.Config.Image}}' "${running_container}" 2>/dev/null | sed 's/.*://' || true)"
+            fi
+
+            phase="preflight"
+            echo "==> [preflight] deploying ${IMAGE_TAG} (serving now: ${previous_tag:-none}) from ${DEPLOY_PATH}"
+            case "${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}" in
+              ''|*[!0-9]*) echo "::error::PRE_DEPLOY_MAX_BACKUP_AGE_HOURS must be a whole number of hours, got '${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}'"; false ;;
+            esac
+            for required in compose.prod.yml .env; do
+              if [ ! -f "${required}" ]; then echo "::error::${DEPLOY_PATH}/${required} is missing"; false; fi
+            done
+            command -v docker >/dev/null || { echo "::error::docker is required on the deploy host"; false; }
+            command -v curl >/dev/null || { echo "::error::curl is required for the smoke-check"; false; }
+            # Validates the file (and the required .env variables) before anything moves;
+            # `up --wait` (the readiness gate) needs Compose v2.
+            ${COMPOSE} config -q
+
+            phase="pull"
+            echo "==> [pull] pulling images for tag ${IMAGE_TAG}"
+            ${COMPOSE} pull
+
+            # --- pre-deploy restore-point marker ------------------------------------
+            # A forward-only migration has no down path, so the only honest undo is a
+            # restore point. This step REFUSES to deploy without one that is inside the
+            # RPO; it takes no new backup itself (that is deploy/backup/pg-backup.sh,
+            # TKT-foundation-076's drill) and it records what it verified, so the deploy
+            # log carries the restore point it relied on.
+            phase="backup-marker"
+            echo "==> [backup-marker] requiring a restore point in ${PRE_DEPLOY_BACKUP_DIR} no older than ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h"
+            newest=""
+            newest_mtime=0
+            for candidate in "${PRE_DEPLOY_BACKUP_DIR}"/degerli-*.dump.gpg; do
+              [ -f "${candidate}" ] || continue
+              mtime="$(stat -c %Y "${candidate}")"
+              if [ "${mtime}" -gt "${newest_mtime}" ]; then
+                newest="${candidate}"
+                newest_mtime="${mtime}"
+              fi
+            done
+            if [ -z "${newest}" ]; then
+              echo "::error::no backup archive (degerli-*.dump.gpg) in ${PRE_DEPLOY_BACKUP_DIR} — refusing to run a forward-only migration with no restore point. Run deploy/backup/pg-backup.sh first (deploy/README.md §Backups)."
+              false
+            fi
+            if [ ! -s "${newest}" ]; then
+              echo "::error::newest backup archive ${newest} is empty — it is not a restore point"
+              false
+            fi
+            age_seconds=$(( $(date -u +%s) - newest_mtime ))
+            age_hours=$(( age_seconds / 3600 ))
+            if [ "${age_seconds}" -gt $(( PRE_DEPLOY_MAX_BACKUP_AGE_HOURS * 3600 )) ]; then
+              echo "::error::newest restore point ${newest} is ${age_hours}h old (> ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h RPO) — run deploy/backup/pg-backup.sh first."
+              false
+            fi
+            marker="${PRE_DEPLOY_BACKUP_DIR}/predeploy-${IMAGE_TAG}-$(date -u +%Y%m%dT%H%M%SZ).marker"
+            printf 'deploy_tag=%s\nrestore_point=%s\nrestore_point_age_hours=%s\nverified_at=%s\n' \
+              "${IMAGE_TAG}" "$(basename "${newest}")" "${age_hours}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${marker}"
+            echo "    restore point: $(basename "${newest}") (${age_hours}h old); marker: $(basename "${marker}")"
+
+            # --- migrate (one-shot, the running stack is untouched) ------------------
+            phase="migrate"
+            echo "==> [migrate] applying forward-only EF migrations in a one-shot container"
+            ${COMPOSE} run --rm api migrate
+
+            # --- readiness gate -----------------------------------------------------
+            # `--wait` makes this block until every service reports running/healthy or
+            # fail inside the bounded window. The API's healthcheck in compose.prod.yml
+            # is what makes Caddy's `depends_on: condition: service_healthy` real, so
+            # Caddy is not started against an API that has not reported ready.
+            phase="ready"
+            echo "==> [ready] replacing the stack; the readiness gate bounds this at ${READINESS_TIMEOUT_SECONDS}s"
+            ${COMPOSE} up -d --wait --wait-timeout "${READINESS_TIMEOUT_SECONDS}"
+
+            # --- smoke-check through the public entrypoint --------------------------
+            phase="smoke"
+            echo "==> [smoke] checking ${PUBLIC_URL}/health through Caddy"
+            code=""
             for attempt in $(seq 1 30); do
               code="$(curl -s -o /dev/null -w '%{http_code}' "${PUBLIC_URL}/health" || true)"
-              if [ "$code" = "200" ]; then
-                echo "Health check passed after ${attempt} attempt(s)."
-                exit 0
+              if [ "${code}" = "200" ]; then
+                echo "    ${PUBLIC_URL}/health answered 200 on attempt ${attempt}"
+                break
               fi
               sleep 5
             done
+            if [ "${code}" != "200" ]; then
+              echo "::error::smoke-check FAILED: ${PUBLIC_URL}/health returned '${code:-none}' within 150s"
+              false
+            fi
 
-            echo "Health check FAILED (last status: ${code:-none})."
-            docker compose -f compose.prod.yml ps
-            exit 1
+            echo "==> deploy complete: tag ${IMAGE_TAG} (was ${previous_tag:-none}), restore point $(basename "${newest}")"
+            ${COMPOSE} ps
           REMOTE

@@ -1,16 +1,26 @@
-# Production stack (architecture 01-system-architecture.md §5/§6.2, TKT-int-006).
+# Production stack (architecture 01-system-architecture.md §5/§6.2, TKT-int-006;
+# ordered deploy + readiness gate, TKT-foundation-067).
 #
 #   docker compose -f compose.prod.yml pull
+#   # ... pre-deploy restore-point marker (deploy/README.md §Deploying) ...
 #   docker compose -f compose.prod.yml run --rm api migrate
-#   docker compose -f compose.prod.yml up -d
+#   docker compose -f compose.prod.yml up -d --wait --wait-timeout 180
+#
+# The order is the contract: images pulled, the restore point verified, the schema
+# migrated by a one-shot container, and only then the running stack replaced. `--wait`
+# is the readiness gate — the API's `healthcheck:` below is what makes Caddy's
+# `depends_on: api: condition: service_healthy` satisfiable, so Caddy is not (re)started
+# against an API that has not reported ready, and `up` fails within the bounded window
+# instead of returning success on a stack that is still starting.
 #
 # Runs on the Hetzner VPS from the deploy job in .github/workflows/deploy.yml. Images
 # are pulled from public GHCR (`ghcr.io/sarperim/degerli/api` + `.../web`) — the VPS
 # needs no registry credentials (architecture §5/§6.3). All secrets come from the
 # git-ignored VPS `.env` (see .env.example); the repo and the images carry none.
 #
-# Rollback = pin IMAGE_TAG to the previous image SHA and `up -d` again — see
-# deploy/README.md. Not to be confused with compose.dev.yml (hot-reload local dev) or
+# Rollback = pin IMAGE_TAG to the previous image SHA and `up -d` again, *and* only
+# inside the expand→migrate→contract rule for schema changes — see deploy/README.md
+# §Rollback posture. Not to be confused with compose.dev.yml (hot-reload local dev) or
 # compose.ci.yml (CI e2e stack).
 
 name: degerli
@@ -19,6 +29,12 @@ x-api-environment: &api-environment
   ASPNETCORE_ENVIRONMENT: Production
   ASPNETCORE_URLS: http://+:8080
   ConnectionStrings__Default: ${ConnectionStrings__Default:?set ConnectionStrings__Default in .env}
+  # Read by the schema seed the `migrate` step runs (the builder bootstrap account in
+  # `src/Persistence/Seed/DegerliSeed`). In a deployed environment it has no default by
+  # design (CWE-798), so without it `migrate` aborts — a deploy precondition, failed at
+  # `compose config` time (preflight) rather than mid-migration. Surfaced by
+  # TKT-foundation-067's compose-level rehearsal.
+  DEGERLI_BUILDER_PASSWORD: ${DEGERLI_BUILDER_PASSWORD:?set DEGERLI_BUILDER_PASSWORD in .env}
   Smtp__Host: ${Smtp__Host:?set Smtp__Host in .env}
   Smtp__Port: ${Smtp__Port:-587}
   Smtp__User: ${Smtp__User}
@@ -58,6 +74,19 @@ services:
     # Internal only; Caddy is the single public entrypoint.
     expose:
       - "8080"
+    # The readiness gate (TKT-foundation-067). Caddy below declares
+    # `depends_on: api: condition: service_healthy`; without this block that condition
+    # is unsatisfiable and `up -d` is not a readiness gate at all. `/health` is the
+    # liveness + DB probe (§10.3) — a container that cannot reach Postgres is not ready
+    # to take traffic. curl ships in the API image (src/Api/Dockerfile), the same probe
+    # compose.ci.yml uses. Bounded: 30 s start period + 6 × ~15 s ≈ 120 s worst case,
+    # under the deploy's `--wait-timeout 180`.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   caddy:
     image: ${WEB_IMAGE:-ghcr.io/sarperim/degerli/web}:${IMAGE_TAG:-latest}
