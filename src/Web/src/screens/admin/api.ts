@@ -14,6 +14,7 @@ import {
   type AdminMetricsResponse,
   type AdminStatsResponse,
   type AdminSummaryResponse,
+  type ApiComponents,
   type CoverageResponse,
   type CoverageScope,
   type DcfBaselineRegenerateResponse,
@@ -127,10 +128,18 @@ export function useIngestRuns(filters: LedgerFilters): UseQueryResult<IngestRuns
   })
 }
 
+/**
+ * `POST /api/v1/admin/quarantine/{id}/dismiss` — the body is the served
+ * `components.DismissQuarantineRequest`; `id` is a path parameter, supplied by
+ * the caller alongside it (no hand-maintained copy of the body shape). This
+ * replaces the previous inline `{ id: number; note: string }`.
+ */
+export type DismissQuarantineVariables = { id: number } & ApiComponents['schemas']['DismissQuarantineRequest']
+
 export function useDismissQuarantine(): UseMutationResult<
   QuarantineItem,
   Error,
-  { id: number; note: string }
+  DismissQuarantineVariables
 > {
   const queryClient = useQueryClient()
   return useMutation({

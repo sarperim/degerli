@@ -1,12 +1,50 @@
 /**
- * Client-side API contracts mirroring `.pipeline/architecture/03-api-design.md`.
+ * Client-side API contracts. Two sources, one rule: **nothing here re-states a
+ * shape the server generates.**
  *
- * These types are the web app's view of the server contract: the honest-data
- * envelope (`03` §1.2), the RFC 7807 error-code catalog (`03` §7), and a first
- * slice of public payload shapes (`03` §3). Domain tickets extend this module
- * as they implement their endpoints; the shapes here are what MSW handlers in
- * `src/test/msw` are typed against.
+ * 1. **Generated** — `./generated.ts` is produced by `openapi-typescript` from
+ *    the checked-in snapshot `src/Api/openapi.json`, which is the OpenAPI
+ *    document the API actually serves (TKT-foundation-071; `01` §6.1). Where the
+ *    served document carries a shape, this module **aliases** it (the request
+ *    bodies below) instead of re-declaring it, so a served change cannot drift
+ *    from the Web types: `scripts/generate-openapi.sh --check` fails CI on a
+ *    stale snapshot and `npm run check:api` fails it on stale generated types.
+ *    Regenerate with `scripts/generate-openapi.sh --update` then
+ *    `npm --prefix src/Web run generate:api`.
+ * 2. **Curated** — the hand-written shapes below, each carrying its reason, and
+ *    what the MSW handlers in `src/test/msw` are typed against. They are two
+ *    groups:
+ *    - **Response payloads** (most of this file): the served document declares
+ *      **no response schemas** — the endpoints return untyped
+ *      `IResult`/`Results.Ok(...)` values, so Microsoft.AspNetCore.OpenApi emits
+ *      bare `200` responses. No served shape therefore exists to alias, and each
+ *      interface cites the `03` section it mirrors. When the API starts
+ *      declaring response types, the corresponding shape moves to a generated
+ *      alias.
+ *    - **Request bodies the document does not model** — every body a
+ *      hand-parsing handler reads, six paths on the snapshot this head carries:
+ *      `ScreenerRunRequest`, `SaveScreenRequest` and `DcfComputeRequest` here
+ *      (their handlers parse the body by hand, which ASP.NET does not model),
+ *      plus three inline call-site bodies on paths the document also declares no
+ *      `requestBody` for — `PATCH /admin/descriptions/{id}` (`screens/admin/api.ts`),
+ *      `PATCH /admin/screener-metrics/{code}` (`screens/admin/api.ts`) and
+ *      `PATCH /me/screens/{id}` (`screens/savedScreens/api.ts`), the same
+ *      hand-parse pattern. The four requestBody-less paths the Web calls with no
+ *      body or an empty `{}` carry no fields to drift and need no shape here.
+ *      `SaveScenarioRequest` / `IngestTriggerRequest` sit in this group too (the
+ *      document models them too loosely). Each block states its own reason.
+ *
+ * The prose design authority stays `.pipeline/architecture/03-api-design.md`
+ * (intent and semantics); the snapshot is the machine contract the Web compiles
+ * against (`03` header note).
  */
+
+// The generated component schemas, re-exported so a call site can reach a served
+// shape (`ApiComponents['schemas'][...]`) without importing the generated module
+// directly. Only the surface the Web actually consumes is exported.
+export type { components as ApiComponents } from './generated'
+
+import type { components } from './generated'
 
 /** Honest-data envelope carried on every data response (`03` §1.2). */
 export interface HonestDataEnvelope {
@@ -255,12 +293,14 @@ export interface AnonymousSession {
 
 export type SessionResponse = AuthenticatedSession | AnonymousSession
 
-/** `POST /api/v1/auth/register` request body (`03` §6). */
-export interface RegisterRequest {
-  email: string
-  password: string
-  consent: { noticeVersion: string }
-}
+/**
+ * `POST /api/v1/auth/register` request body (`03` §6).
+ *
+ * **Generated** (`components.RegisterRequest`). The served document types every
+ * string as `string | null` — ASP.NET's nullable reference metadata, not a
+ * client-side hypothesis — and the server's validation is what rejects nulls.
+ */
+export type RegisterRequest = components['schemas']['RegisterRequest']
 
 /**
  * `POST /api/v1/auth/register` response (`03` §6) — 201 with the created account
@@ -271,11 +311,8 @@ export interface RegisterResponse {
   email: string
 }
 
-/** `POST /api/v1/auth/login` request body (`03` §6). */
-export interface LoginRequest {
-  email: string
-  password: string
-}
+/** `POST /api/v1/auth/login` request body (`03` §6) — **generated**. */
+export type LoginRequest = components['schemas']['LoginRequest']
 
 /**
  * `POST /api/v1/auth/login` response (`03` §6) — 200 with the session cookie and
@@ -285,10 +322,10 @@ export interface LoginResponse {
   languagePref: LanguagePref
 }
 
-/** `POST /api/v1/auth/verify-email` request body (`03` §6). */
-export interface VerifyEmailRequest {
-  token: string
-}
+/**
+ * `POST /api/v1/auth/verify-email` request body (`03` §6) — **generated**.
+ */
+export type VerifyEmailRequest = components['schemas']['VerifyEmailRequest']
 
 /** `POST /api/v1/auth/resend-verification` response (`03` §6) — 200 `{verified}`. */
 export interface ResendVerificationResponse {
@@ -305,10 +342,8 @@ export interface CsrfTokenResponse {
  * Identity — password reset (`03` §6) — TKT-acc-009 (SCR-009).
  * ------------------------------------------------------------------ */
 
-/** `POST /api/v1/auth/forgot-password` request body (`03` §6). */
-export interface ForgotPasswordRequest {
-  email: string
-}
+/** `POST /api/v1/auth/forgot-password` request body (`03` §6) — **generated**. */
+export type ForgotPasswordRequest = components['schemas']['ForgotPasswordRequest']
 
 /**
  * `POST /api/v1/auth/forgot-password` response (`03` §6) — always a byte-identical
@@ -319,11 +354,8 @@ export interface ForgotPasswordResponse {
   status: string
 }
 
-/** `POST /api/v1/auth/reset-password` request body (`03` §6). */
-export interface ResetPasswordRequest {
-  token: string
-  newPassword: string
-}
+/** `POST /api/v1/auth/reset-password` request body (`03` §6) — **generated**. */
+export type ResetPasswordRequest = components['schemas']['ResetPasswordRequest']
 
 /**
  * `POST /api/v1/auth/reset-password` response (`03` §6) — 200 on success; the
@@ -348,16 +380,24 @@ export interface MeResponse {
   verified: boolean
 }
 
-/** `PATCH /api/v1/me` request body (`03` §6) — the language preference. */
-export interface UpdateLanguagePreferenceRequest {
-  languagePref: LanguagePref
-}
+/**
+ * `PATCH /api/v1/me` request body (`03` §6) — the language preference.
+ *
+ * **Generated + one documented narrowing.** The served schema is
+ * `components.LanguagePreferenceRequest`; it types `languagePref` as a bare
+ * `string` (no enum), while the SPA's stored preference is the `LanguagePref`
+ * union. The intersection keeps every served field (a new body field appears
+ * here automatically) and narrows only that one property.
+ */
+export type UpdateLanguagePreferenceRequest =
+  components['schemas']['LanguagePreferenceRequest'] & {
+    languagePref: LanguagePref
+  }
 
-/** `PATCH /api/v1/me/password` request body (`03` §6). */
-export interface PasswordChangeRequest {
-  current: string
-  newPassword: string
-}
+/**
+ * `PATCH /api/v1/me/password` request body (`03` §6) — **generated**.
+ */
+export type PasswordChangeRequest = components['schemas']['PasswordChangeRequest']
 
 /** `PATCH /api/v1/me/password` response (`03` §6) — the account e-mail. */
 export interface PasswordChangeResponse {
@@ -425,6 +465,12 @@ export interface ScreenerCriterion {
  * the run as a re-run, so the server drops any criterion whose metric has since been
  * hidden and reports it in `droppedCriteria` (UC-SCR-003a, UXR-SCR-015) instead of the
  * ad-hoc `METRIC_NOT_AVAILABLE` rejection. The re-run still ships the stored criteria.
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `ScreenerEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
  */
 export interface ScreenerRunRequest {
   criteria?: ScreenerCriterion[]
@@ -462,7 +508,15 @@ export interface SavedScreenListResponse {
   screens: SavedScreen[]
 }
 
-/** `POST /api/v1/me/screens` request body (`03` §4). */
+/**
+ * `POST /api/v1/me/screens` request body (`03` §4).
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `SavedScreenEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
+ */
 export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
@@ -951,7 +1005,14 @@ export interface IngestRunsResponse {
   runs: IngestRun[]
 }
 
-/** `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8). */
+/**
+ * `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8).
+ *
+ * **Hand-written, reason:** the document does carry `components.IngestTriggerRequest`,
+ * but as required-and-nullable (`backfillFrom: string | null`), while the Web calls
+ * the endpoint optionally and the admin tests read it as an optional string; the
+ * curated shape states the client's contract where the served one does not.
+ */
 export interface IngestTriggerRequest {
   backfillFrom?: string
 }
@@ -1105,7 +1166,15 @@ export interface DcfBaselineResponse {
   missingInputs?: DcfParamKey[]
 }
 
-/** `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters. */
+/**
+ * `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters.
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `DcfComputeEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
+ */
 export type DcfComputeRequest = DcfParams
 
 /**
@@ -1143,7 +1212,13 @@ export interface SavedScenarioListResponse {
   scenarios: SavedScenario[]
 }
 
-/** `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006. */
+/**
+ * `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006.
+ *
+ * **Hand-written, reason:** the document does carry `components.SaveScenarioRequest`,
+ * but it types `params` as `JsonElement` (`unknown`), which would erase the
+ * calculator's parameter contract — the DCF UI and the MSW handlers need `DcfParams`.
+ */
 export interface SaveScenarioRequest {
   symbol: string
   name: string

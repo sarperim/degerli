@@ -8,6 +8,7 @@ import {
 
 import { apiFetch } from '@/lib/api/client'
 import type {
+  ApiComponents,
   SaveScenarioRequest,
   SavedScenario,
   SavedScenarioListResponse,
@@ -95,14 +96,19 @@ export function useSaveScenario(
   })
 }
 
-/** `PATCH /api/v1/me/scenarios/{id}` `{name}` — rename (UXR-VAL-017). */
+/**
+ * `PATCH /api/v1/me/scenarios/{id}` `{name}` — rename (UXR-VAL-017).
+ *
+ * The body is the served `components.RenameScenarioRequest`; `id` is a path
+ * parameter, supplied by the caller alongside it (no hand-maintained copy of the
+ * body shape). This replaces the previous inline `{ id: number; name: string }`.
+ */
+export type RenameScenarioVariables = { id: number } & ApiComponents['schemas']['RenameScenarioRequest']
+
 export function renameScenario({
   id,
   name,
-}: {
-  id: number
-  name: string
-}): Promise<SavedScenario> {
+}: RenameScenarioVariables): Promise<SavedScenario> {
   return apiFetch<SavedScenario>(`/me/scenarios/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ name }),
@@ -112,7 +118,7 @@ export function renameScenario({
 export function useRenameScenario(): UseMutationResult<
   SavedScenario,
   Error,
-  { id: number; name: string }
+  RenameScenarioVariables
 > {
   const queryClient = useQueryClient()
   return useMutation({

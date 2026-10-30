@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "check:i18n": "node scripts/i18n-parity.mjs",
     "check:advice": "node scripts/advice-vocabulary.mjs",
+    "generate:api": "openapi-typescript ../Api/openapi.json -o src/lib/api/generated.ts",
+    "check:api": "npm run generate:api && git diff --exit-code -- src/lib/api/generated.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -46,6 +48,7 @@
     "globals": "^15.14.0",
     "jsdom": "^26.1.0",
     "msw": "^2.15.0",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
