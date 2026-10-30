@@ -4,6 +4,12 @@ scope:
   - src/Api/openapi.json
   - src/Web/src/lib/api/generated.ts
   - src/Web/src/lib/api/contracts.ts
+  # Ticket-scope amendment (review round 1, LEAD-1): acceptance (iii) cannot be
+  # met while these two call sites re-declare request bodies the document already
+  # carries (`DismissQuarantineRequest`, `RenameScenarioRequest`). Recorded in
+  # `01` §13.1 v1.5.86, not hidden.
+  - src/Web/src/screens/admin/api.ts
+  - src/Web/src/screens/dcf/scenariosApi.ts
   - src/Web/package.json
   - src/Web/package-lock.json
   - scripts/generate-openapi.sh
@@ -42,6 +48,7 @@ scope:
 ## Notes
 
 - PR: https://github.com/sarperim/degerli/pull/169 (TKT-foundation-071).
-- Implementation note (2026-10-30): the **start-the-API** mechanism was chosen (not a build-time generator), so the snapshot *is* the runtime document — the only transformation is `servers` dropped (throwaway bind URL) and keys sorted, proven byte-identical across two runs. Generation lives in `scripts/generate-openapi.sh`, which CI runs (`--check` in the backend job, `OPENAPI_SKIP_BUILD=1`); a developer never needs the API running to *pass* the gate, only `--update` (which runs the script) when a contract change is intended. **Recorded honesty limit:** the served document declares no response schemas (endpoints return untyped `IResult`), so response payload types in `contracts.ts` stay curated with stated reasons until endpoints declare response types — flagged on the PR as the follow-up.
+- Implementation note (2026-10-30): the **start-the-API** mechanism was chosen (not a build-time generator), so the snapshot *is* the runtime document — the only transformation is `servers` dropped (throwaway bind URL) and keys sorted, proven byte-identical across two runs. Generation lives in `scripts/generate-openapi.sh`, which CI runs (`--check` in the backend job, `OPENAPI_SKIP_BUILD=1`); a developer never needs the API running to *pass* the gate, only `--update` (which runs the script) when a contract change is intended. **Recorded honesty limits (review round 1, DR-1 — both named in `03`'s header and `01` §13.1 v1.5.86):** the served document declares no response schemas (endpoints return untyped `IResult`), so response payload types in `contracts.ts` stay curated with stated reasons until endpoints declare response types; **and** three request bodies are absent from the document entirely — `POST /api/v1/screener/run`, `POST /api/v1/me/screens`, `POST /api/v1/stocks/{symbol}/dcf/compute` — because their handlers take `HttpRequest` and parse the body with `JsonDocument.ParseAsync`, which ASP.NET does not model. **Recorded follow-up (not this ticket): endpoint typing** — bind a typed request record on those three handlers, delete the hand-written shape and alias the generated one; the same change is the precondition for declaring `securitySchemes`/response types, so it is also where SEC-2 of this round's review lands.
+- Scope amendment (review round 1, LEAD-1): `src/Web/src/screens/admin/api.ts` and `src/Web/src/screens/dcf/scenariosApi.ts` were added to the frontmatter `scope:` list — acceptance (iii) cannot be met while those call sites re-declare `DismissQuarantineRequest`/`RenameScenarioRequest` inline. Recorded in `01` §13.1 v1.5.86 as "ticket-scope amendment, recorded not hidden".
 
 - Keep the snapshot generation **inside CI only** (no requirement that a developer runs the API locally). If a build-time generator is chosen instead of start-the-API, record the exact mechanism and prove the output is byte-identical to the runtime document.

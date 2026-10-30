@@ -17,7 +17,12 @@
 # Options (environment):
 #   OPENAPI_PORT             port to bind the throwaway API on (default 5198)
 #   OPENAPI_STARTUP_TIMEOUT  seconds to wait for the document (default 120)
+#   OPENAPI_MIN_PATHS        sanity floor on the path count (default 40; 0 disables)
 #   OPENAPI_SKIP_BUILD=1     reuse the existing Release build (CI already built it)
+#
+# The port is pre-flighted: if anything already answers on `$OPENAPI_PORT` the
+# script fails immediately instead of letting a stale server satisfy the check
+# with an old document (a false "matches").
 #
 # Determinism (`01` §6.1, acceptance (iv) of TKT-foundation-071): the snapshot is
 # normalised — `servers` is dropped (it carries the throwaway bind URL, not a
@@ -36,6 +41,7 @@ cd "$repo_root"
 snapshot="src/Api/openapi.json"
 port="${OPENAPI_PORT:-5198}"
 startup_timeout="${OPENAPI_STARTUP_TIMEOUT:-120}"
+min_paths="${OPENAPI_MIN_PATHS:-40}"
 base_url="http://127.0.0.1:${port}"
 
 mode="write"
@@ -47,6 +53,30 @@ case "${1:-}" in
     exit 2
     ;;
 esac
+
+# Pre-flight the port. A leftover API from an earlier run would answer this run's
+# `curl` with the *old* document, so `--check` would compare old against old and
+# report "matches" on a drifted tree. Refuse to run rather than risk that.
+if python3 - "$port" <<'PY'
+import socket
+import sys
+
+sock = socket.socket()
+sock.settimeout(1.0)
+try:
+    sock.connect(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+finally:
+    sock.close()
+sys.exit(0)
+PY
+then
+  echo "generate-openapi: something already answers on ${base_url} — stop it first." >&2
+  echo "  (a stale API from a previous run would satisfy the check with an old document," >&2
+  echo "   so this script refuses to run on an occupied port; set OPENAPI_PORT to pick another)" >&2
+  exit 1
+fi
 
 if [[ "${OPENAPI_SKIP_BUILD:-0}" != "1" ]]; then
   echo "generate-openapi: building the API (Release)…"
@@ -64,11 +94,22 @@ raw_json="$workdir/openapi.raw.json"
 normalized_json="$workdir/openapi.json"
 api_log="$workdir/api.log"
 api_pid=""
+tmp_snapshot=""
 
 cleanup() {
   if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
     kill "$api_pid" 2>/dev/null || true
+    # Wait for the graceful shutdown, then insist: an orphan here would hold the
+    # port and let the next run's check be answered by a stale document.
+    for _ in $(seq 1 25); do
+      kill -0 "$api_pid" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -9 "$api_pid" 2>/dev/null || true
     wait "$api_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$tmp_snapshot" ]]; then
+    rm -f "$tmp_snapshot"
   fi
   rm -rf "$workdir"
 }
@@ -79,13 +120,18 @@ trap cleanup EXIT
 # placeholder — the document is built from endpoint metadata and never opens a
 # connection; the scheduler is off so no worker touches the placeholder.
 echo "generate-openapi: starting the API on ${base_url}…"
+# `exec` matters: without it this subshell is a separate process whose child
+# `dotnet` survives the `kill "$api_pid"` in cleanup (bash does not exec-optimise
+# a command carrying a redirection) — leaving a Production-mode API listening on
+# the port after the script exits. With `exec`, `$!` *is* the API process.
 (
   cd "$workdir"
-  ASPNETCORE_ENVIRONMENT=Production \
-  ASPNETCORE_CONTENTROOT="$repo_root/src/Api" \
-  ASPNETCORE_URLS="$base_url" \
-  ConnectionStrings__Default="Host=127.0.0.1;Port=1;Database=openapi;Username=openapi;Password=openapi;Timeout=1" \
-  Ingestion__Scheduler__Enabled=false \
+  exec env \
+    ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_CONTENTROOT="$repo_root/src/Api" \
+    ASPNETCORE_URLS="$base_url" \
+    ConnectionStrings__Default="Host=127.0.0.1;Port=1;Database=openapi;Username=openapi;Password=openapi;Timeout=1" \
+    Ingestion__Scheduler__Enabled=false \
     dotnet "$repo_root/$api_dll" >"$api_log" 2>&1
 ) &
 api_pid=$!
@@ -124,6 +170,18 @@ PY
 
 path_count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["paths"]))' "$normalized_json")"
 
+# Sanity floor (DR-4): a truncated-but-valid document would otherwise be written
+# or matched silently — a gate that accepts an empty contract is not a gate.
+# The API serves 46 paths; the default floor of 40 leaves room for real removals
+# while catching a document that lost most of its surface. `OPENAPI_MIN_PATHS=0`
+# disables the guard for an intentional large deletion.
+if ((min_paths > 0 && path_count < min_paths)); then
+  echo "generate-openapi: the served document has only ${path_count} paths (floor ${min_paths})." >&2
+  echo "  That looks truncated, not intentional. If it is intended, re-run with OPENAPI_MIN_PATHS=0." >&2
+  cat "$api_log" >&2
+  exit 1
+fi
+
 if [[ "$mode" == "check" ]]; then
   if [[ ! -f "$snapshot" ]]; then
     echo "generate-openapi: '$snapshot' is missing — run 'scripts/generate-openapi.sh --update' and commit it." >&2
@@ -141,6 +199,19 @@ if [[ "$mode" == "check" ]]; then
   exit 0
 fi
 
-cp "$normalized_json" "$snapshot"
+# Refuse to follow a symlink: `cp`/`>` onto a symlinked snapshot would write to
+# whatever it points at instead of failing (SEC-3). And write atomically — a temp
+# file in the same directory, then `mv` — so an interrupted run can never leave a
+# half-written snapshot behind.
+if [[ -L "$snapshot" ]]; then
+  echo "generate-openapi: refusing to write '$snapshot' — it is a symlink." >&2
+  echo "  The snapshot must be a regular file tracked in git; replace the link with the file." >&2
+  exit 1
+fi
+tmp_snapshot="$(mktemp "$(dirname "$snapshot")/.openapi.json.XXXXXX")"
+cp "$normalized_json" "$tmp_snapshot"
+chmod 644 "$tmp_snapshot"
+mv -f "$tmp_snapshot" "$snapshot"
+tmp_snapshot=""
 echo "generate-openapi: wrote '$snapshot' (${path_count} paths)."
 echo "generate-openapi: regenerate the web types with 'npm --prefix src/Web run generate:api'."

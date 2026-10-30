@@ -11,27 +11,31 @@
  *    stale snapshot and `npm run check:api` fails it on stale generated types.
  *    Regenerate with `scripts/generate-openapi.sh --update` then
  *    `npm --prefix src/Web run generate:api`.
- * 2. **Curated** — the hand-written response payload shapes below. The served
- *    document currently declares **no response schemas**: the endpoints return
- *    untyped `IResult`/`Results.Ok(...)` values, so Microsoft.AspNetCore.OpenApi
- *    emits bare `200` responses. Every curated shape therefore carries an
- *    explicit reason (see the note on each block), and they are what the MSW
- *    handlers in `src/test/msw` are typed against. When the API starts declaring
- *    response types, the corresponding shape moves to a generated alias.
+ * 2. **Curated** — the hand-written shapes below, each carrying its reason, and
+ *    what the MSW handlers in `src/test/msw` are typed against. They are two
+ *    groups:
+ *    - **Response payloads** (most of this file): the served document declares
+ *      **no response schemas** — the endpoints return untyped
+ *      `IResult`/`Results.Ok(...)` values, so Microsoft.AspNetCore.OpenApi emits
+ *      bare `200` responses. No served shape therefore exists to alias, and each
+ *      interface cites the `03` section it mirrors. When the API starts
+ *      declaring response types, the corresponding shape moves to a generated
+ *      alias.
+ *    - **Request bodies the document does not model**: `ScreenerRunRequest`,
+ *      `SaveScreenRequest` and `DcfComputeRequest` (their handlers parse the
+ *      body by hand, which ASP.NET does not model) and `SaveScenarioRequest` /
+ *      `IngestTriggerRequest` (the document models them too loosely). Each block
+ *      states its own reason.
  *
  * The prose design authority stays `.pipeline/architecture/03-api-design.md`
  * (intent and semantics); the snapshot is the machine contract the Web compiles
  * against (`03` header note).
  */
 
-// The generated contract, re-exported so consumers can reach a served shape
-// (`ApiComponents['schemas'][...]`, `ApiPaths['/api/v1/...']`) without importing
-// the generated module directly.
-export type {
-  components as ApiComponents,
-  operations as ApiOperations,
-  paths as ApiPaths,
-} from './generated'
+// The generated component schemas, re-exported so a call site can reach a served
+// shape (`ApiComponents['schemas'][...]`) without importing the generated module
+// directly. Only the surface the Web actually consumes is exported.
+export type { components as ApiComponents } from './generated'
 
 import type { components } from './generated'
 
@@ -454,6 +458,12 @@ export interface ScreenerCriterion {
  * the run as a re-run, so the server drops any criterion whose metric has since been
  * hidden and reports it in `droppedCriteria` (UC-SCR-003a, UXR-SCR-015) instead of the
  * ad-hoc `METRIC_NOT_AVAILABLE` rejection. The re-run still ships the stored criteria.
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `ScreenerEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
  */
 export interface ScreenerRunRequest {
   criteria?: ScreenerCriterion[]
@@ -491,7 +501,15 @@ export interface SavedScreenListResponse {
   screens: SavedScreen[]
 }
 
-/** `POST /api/v1/me/screens` request body (`03` §4). */
+/**
+ * `POST /api/v1/me/screens` request body (`03` §4).
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `SavedScreenEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
+ */
 export interface SaveScreenRequest {
   name: string
   criteria: ScreenerCriterion[]
@@ -980,7 +998,14 @@ export interface IngestRunsResponse {
   runs: IngestRun[]
 }
 
-/** `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8). */
+/**
+ * `POST /api/v1/admin/ingest/{job}/run` request body (`03` §8).
+ *
+ * **Hand-written, reason:** the document does carry `components.IngestTriggerRequest`,
+ * but as required-and-nullable (`backfillFrom: string | null`), while the Web calls
+ * the endpoint optionally and the admin tests read it as an optional string; the
+ * curated shape states the client's contract where the served one does not.
+ */
 export interface IngestTriggerRequest {
   backfillFrom?: string
 }
@@ -1134,7 +1159,15 @@ export interface DcfBaselineResponse {
   missingInputs?: DcfParamKey[]
 }
 
-/** `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters. */
+/**
+ * `POST /api/v1/stocks/{symbol}/dcf/compute` request — the eight parameters.
+ *
+ * **Hand-written, reason:** the handler takes `HttpRequest` and parses the body
+ * itself (`JsonDocument.ParseAsync` in `DcfComputeEndpoints.cs`), which ASP.NET
+ * does not model — so the served document carries no `requestBody` for this path
+ * and this shape **cannot be gated** until the endpoint binds a typed parameter
+ * (recorded endpoint-typing follow-up).
+ */
 export type DcfComputeRequest = DcfParams
 
 /**
@@ -1172,7 +1205,13 @@ export interface SavedScenarioListResponse {
   scenarios: SavedScenario[]
 }
 
-/** `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006. */
+/**
+ * `POST /api/v1/me/scenarios` request body (`03` §5) — save from SCR-006.
+ *
+ * **Hand-written, reason:** the document does carry `components.SaveScenarioRequest`,
+ * but it types `params` as `JsonElement` (`unknown`), which would erase the
+ * calculator's parameter contract — the DCF UI and the MSW handlers need `DcfParams`.
+ */
 export interface SaveScenarioRequest {
   symbol: string
   name: string
