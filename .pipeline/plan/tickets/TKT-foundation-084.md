@@ -9,7 +9,8 @@ scope:
 
 # TKT-foundation-084: Market-wide recent-disclosures feed on the public site — **GATED on the recorded OQ-1 evidence** (byCriteria market-wide shape unverified)
 
-- Status: todo
+- Status: in-review
+- PR: https://github.com/sarperim/degerli/pull/168
 - Size: M
 - **Priority: P2 — lane ticket 6/6, explicitly last (the investigation's OQ-3 recommendation: statements/FR first — highest value, clearest parsing; the feed second).**
 - **Gate (decision-grade, recorded before any implementation):** the market-wide shape of byCriteria — an **empty** `mkkMemberOidList` returning the market's disclosures — is **UNVERIFIED** (OQ-1). The precondition is TKT-foundation-079's committed probe evidence. **If the probe shows market-wide is not served (an error, an empty body, a silently-ignored filter), this ticket records the finding verbatim, flips to `blocked`, and surfaces to the user — no alternative design (per-company fan-out, scraping HTML pages, third-party mirrors) is invented silently.** The VYK disclosures lane (078's market feed) keeps serving in the meantime; the two feeds coexist as separate sources.
