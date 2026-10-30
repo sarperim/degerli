@@ -9,7 +9,7 @@ scope:
 
 # TKT-foundation-084: Market-wide recent-disclosures feed on the public site — **GATED on the recorded OQ-1 evidence** (byCriteria market-wide shape unverified)
 
-- Status: in-review
+- Status: done — **PR #168 squash-merged 2026-10-30 (`a374841` on dev), round-4 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-084-round-{1,2,3,4}.md`; 3 passes + 2 fixer rounds — round-1 behavioural blocker DR-1 (a market row naming two bound constituents silently kept only the first, `sourceUrl`-alone keying) fixed with `instrumentId|sourceUrl` keying and TC-MDF-112 (ii)-a; GATE-1 facet false positive closed under the ACTIVE cross-ticket-citation standing waiver, application appended to WAIVERS.md). **Non-blocking recorded:** DR-12 — v1.5.85 row "never backwards" vs its "re-anchor" addendum (planner one-liner); CoverageRecorder sources-blind aggregation (pre-existing, routed as follow-up ticket candidate — two coexisting disclosure sources can overstate served depth). **Live criterion (orchestrator-owned, OPEN):** one paced `Source = kap-public` pass then a second incremental pass over the bound universe, counts recorded verbatim.
 - PR: https://github.com/sarperim/degerli/pull/168
 - Size: M
 - **Priority: P2 — lane ticket 6/6, explicitly last (the investigation's OQ-3 recommendation: statements/FR first — highest value, clearest parsing; the feed second).**
