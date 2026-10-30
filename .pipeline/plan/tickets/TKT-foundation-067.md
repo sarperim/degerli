@@ -8,7 +8,7 @@ scope:
 
 # TKT-foundation-067: Deploy migration safety — a real readiness gate and a defined rollback posture
 
-- Status: in-review — PR https://github.com/sarperim/degerli/pull/166
+- Status: done — **PR #166 squash-merged 2026-10-30 (`dfb5c59` on dev), round-2 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-067-round-{1,2}.md`; 2 passes, 1 fixer round — round-1 blockers F1 mid-migration partial-schema honesty and F2 unreachable restore-point gate both fixed-verified). **Non-blocking open items:** R1 low — `bootstrap=true` detection can fail open via `COMPOSE_PROJECT_NAME` in `.env` (recommended immediate follow-up; weakens the gate); R2–R7 doc/quoting nits. **Routing items:** acceptance (ii) third clause ("rollback executed and recorded") re-scoped honestly in `01` §10.8 + §13.1(h) — planner may amend ticket wording; `.env.example` missing `DEGERLI_BUILDER_PASSWORD` (next VPS deploy stops at preflight until added); `02-data-model.md:399` stale migrate command. Full prod-VPS rehearsal remains a builder manual-ledger item.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 2 unparked).**
 - **Evidence (gathered 2026-10-24):**
