@@ -15,7 +15,7 @@ scope:
 
 # TKT-foundation-073: Stale-"why" extensions — the explanatory freshness copy reaches every surface, not just SCR-001
 
-- Status: in-review
+- Status: done — **PR #170 squash-merged 2026-10-30 (`bfb9ffb` on dev), round-2 MERGEABLE** (`.pipeline/plan/reviews/TKT-foundation-073-round-{1,2}.md`; 2 passes, 1 fixer round — round-1 blocker DR-1: `fresh={!series.stale}` licensed the recency claim on unknown-freshness/degraded macro series, fixed as `fresh={!series.stale && !unavailable}` with discriminating tests; security lane zero findings). **Routing items for the planner:** DR-2 — the ticket's "screener covered" claim is inaccurate (`ScreenerScreen.tsx:663` passes no `fresh` though `result.stale` is available; choose scope-extension vs explicit routing item); DR-3 — direct `formatAsOfDate` renders in `StatementsView.tsx:104`/`KeyMetricsPanel.tsx:423` bypass the primitive (under-claim, not mis-state). UX-073-1 flow-back (final prose/inventory) stays routed to the ux-designer.
 - Size: M
 - **Priority: P2 — normal (USER DECISION D6, 2026-10-24: 056 item 9 unparked).**
 - **Evidence (gathered 2026-10-24):**
