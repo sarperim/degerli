@@ -319,29 +319,102 @@ jobs:
             # restore yet, and pg-backup.sh dumps out of a RUNNING postgres container that
             # does not exist until the stack has been brought up once — so requiring an
             # archive here would deadlock the very first deploy (deploy/README.md
-            # §First-time VPS setup). Bootstrap is detected from the absence of the compose
-            # project's `postgres-data` volume, the only durable marker of "this host has
-            # never held a database". As soon as that volume exists — every later deploy,
-            # including a box whose stack is currently down — the no-override gate below
-            # applies unchanged.
+            # §First-time VPS setup). The carve-out is taken only on POSITIVE evidence of
+            # a blank host (below), never because some lookup came back empty: an empty
+            # result is what a wrong question returns. As soon as data exists — every
+            # later deploy, including a box whose stack is currently down — the
+            # no-override gate applies unchanged.
             phase="backup-marker"
-            compose_project="${COMPOSE_PROJECT_NAME:-degerli}"   # compose.prod.yml pins `name: degerli`
-            volume_list=""
-            if ! volume_list="$(docker volume ls -q \
-                 --filter "label=com.docker.compose.project=${compose_project}" \
-                 --filter 'label=com.docker.compose.volume=postgres-data')"; then
+
+            # WHICH project is this? `docker compose` resolves the project name as
+            # `-p` > COMPOSE_PROJECT_NAME > the file's top-level `name:` — and compose
+            # reads COMPOSE_PROJECT_NAME *out of `.env`*, which this shell never exports.
+            # Keying the volume lookup on `${COMPOSE_PROJECT_NAME:-degerli}` therefore
+            # asked about a project the deploy would not actually use: a `.env` carrying
+            # that key made the lookup match nothing, that empty result read as "blank
+            # host", and the restore-point gate was skipped on a host that already held a
+            # database (TKT-foundation-067 review round 2, R1 — the command failures here
+            # were fail-closed, that false negative was not). So the file's own `name:` is
+            # the authority, the name compose actually resolved is read back, and a
+            # mismatch is REFUSED instead of guessed at.
+            declared_project="$(sed -n 's/^name:[[:space:]]*//p' compose.prod.yml | tr -d '\r' | grep -m1 . || true)"
+            resolved_project="$(${COMPOSE} config --format json 2>/dev/null \
+              | sed -n 's/^[[:space:]]*"name":[[:space:]]*"\([^"]*\)".*$/\1/p' | grep -m1 . || true)"
+            if [ -z "${resolved_project}" ]; then
+              # Compose without `config --format json`: the rendered config carries the
+              # same resolved project name as a top-level `name:` line.
+              resolved_project="$(${COMPOSE} config 2>/dev/null \
+                | sed -n 's/^name:[[:space:]]*//p' | tr -d '\r' | grep -m1 . || true)"
+            fi
+            if [ -z "${declared_project}" ] || [ -z "${resolved_project}" ]; then
+              echo "::error::could not resolve the compose project name (compose.prod.yml declares '${declared_project:-none}', compose resolves '${resolved_project:-none}') — refusing to guess whether this host already holds a database"
+              false
+            fi
+            if [ "${resolved_project}" != "${declared_project}" ]; then
+              echo "::error::this deploy would run as compose project '${resolved_project}', but compose.prod.yml declares '${declared_project}' — a COMPOSE_PROJECT_NAME in ${DEPLOY_PATH}/.env (or in the environment) overrides the file. Deploying under a different project would start an EMPTY database and slip past the restore-point gate, so this is refused: remove the override from .env and re-run."
+              false
+            fi
+            compose_project="${declared_project}"
+
+            # IS THERE DATA? Three positive probes, unioned; none of them is trusted when
+            # it comes back empty on its own:
+            #   (a) the volume compose itself creates for this project — "<project>_postgres-data";
+            #   (b) any volume carrying this project's compose labels — the stack has run
+            #       here even if the data volume was renamed/re-keyed or removed;
+            #   (c) a host-wide scan for a "*_postgres-data" volume owned by this project
+            #       (under any name) or by no compose project at all — a volume created
+            #       outside Compose. Another project's database is not this deploy's data
+            #       and is only named in the log; a shared host must not be able to look
+            #       blank.
+            # A docker failure while deciding is fail-closed (the ERR trap aborts).
+            volumes_all=""
+            if ! volumes_all="$(docker volume ls -q)"; then
               echo "::error::could not inspect docker volumes to decide bootstrap vs restore-point gate — refusing to guess"
               false
             fi
-            postgres_volume="$(printf '%s\n' "${volume_list}" | head -n1)"
+            if ! project_volumes="$(docker volume ls -q \
+                 --filter "label=com.docker.compose.project=${compose_project}")"; then
+              echo "::error::could not inspect docker volumes to decide bootstrap vs restore-point gate — refusing to guess"
+              false
+            fi
+            postgres_volume="$(printf '%s\n' "${volumes_all}" | grep -Fx -m1 "${compose_project}_postgres-data" || true)"
+            unowned_postgres_volumes=""
+            while IFS= read -r candidate_volume; do
+              [ -n "${candidate_volume}" ] || continue
+              # The canonical volume is probe (a)'s business, already decided above.
+              [ "${candidate_volume}" = "${compose_project}_postgres-data" ] && continue
+              candidate_owner="$(docker volume inspect \
+                --format '{{ index .Labels "com.docker.compose.project" }}' "${candidate_volume}" 2>/dev/null || true)"
+              if [ -z "${candidate_owner}" ] || [ "${candidate_owner}" = "${compose_project}" ]; then
+                unowned_postgres_volumes="${unowned_postgres_volumes} ${candidate_volume}"
+              else
+                echo "==> [backup-marker] note: ${candidate_volume} is another compose project's database (project '${candidate_owner}') — not counted as this deploy's data"
+              fi
+            done < <(printf '%s\n' "${volumes_all}" | grep -E '_postgres-data$' || true)
+
             bootstrap=false
             newest=""
             age_hours="n/a"
-            if [ -z "${postgres_volume}" ]; then
+            # The ambiguity refusal is only about a host whose OWN data volume is missing:
+            # when `${compose_project}_postgres-data` IS present, an unrelated unlabelled
+            # "*_postgres-data" volume (a drill/scratch volume created outside Compose) is
+            # not ambiguity about THIS deploy's data — it is noted below and the deploy
+            # takes the ordinary restore-point gate. Refusing there would block every
+            # deploy on such a host, and the message would have to claim a volume is
+            # missing that the probe above just found.
+            if [ -z "${postgres_volume}" ] && [ -n "${unowned_postgres_volumes}" ]; then
+              echo "::error::no ${compose_project}_postgres-data volume for compose project '${compose_project}', but this host holds:${unowned_postgres_volumes} — that postgres data volume belongs to this project (under another name) or to no compose project at all, so a blank-host bootstrap cannot be proven. Refusing: take a restore point first (deploy/README.md §Backups), and either free the host (remove any of those volumes that do not hold this project's data) or, if one of them is this project's database, bring it back as ${compose_project}_postgres-data so the deploy can see its own data, then re-run."
+              false
+            fi
+            if [ -z "${postgres_volume}" ] && [ -z "${project_volumes}" ]; then
               bootstrap=true
               restore_point_label="none (bootstrap)"
-              echo "==> [backup-marker] bootstrap deploy: no postgres data volume on this host yet — nothing to restore, no archive required (marker records bootstrap=true)"
+              echo "==> [backup-marker] bootstrap deploy: compose project '${compose_project}' has no volumes on this host yet — nothing to restore, no archive required (marker records bootstrap=true)"
             else
+              [ -n "${postgres_volume}" ] || echo "==> [backup-marker] compose project '${compose_project}' has volumes on this host but no ${compose_project}_postgres-data — the database existed once, so this deploy is gated like any other"
+              if [ -n "${postgres_volume}" ] && [ -n "${unowned_postgres_volumes}" ]; then
+                echo "==> [backup-marker] note: this host also holds:${unowned_postgres_volumes} — not counted as this project's data, because its own ${compose_project}_postgres-data is present; the ordinary restore-point gate below applies"
+              fi
               restore_point_label=""
               echo "==> [backup-marker] requiring a restore point in ${PRE_DEPLOY_BACKUP_DIR} no older than ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h"
               newest_mtime=0

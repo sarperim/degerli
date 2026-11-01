@@ -241,6 +241,7 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
 | `GET /api/v1/admin/summary` | **ops one-glance (v1.1)**: last run per job, freshness/staleness per data type, description coverage (published/draft vs universe), open-quarantine count — aggregated from existing tables (`ingest_runs`, `v_data_freshness`, `coverage_metadata`, `business_descriptions`) | UC-MDF-004, UC-MOV-005, FR-MDF-016 |
 | `GET /api/v1/admin/quarantine?status=open\|dismissed` | **validation-failure review queue (v1.1)**: rejected payloads + reason per item | UC-MDF-001 (alternate b), FR-MDF-012 |
 | `POST /api/v1/admin/quarantine/{id}/dismiss` `{note}` | record the accepted gap (BR-MDF-007); re-ingestion = re-triggering the job (endpoint below) after a fix | UC-MDF-001 (alternate b), BR-MDF-007 |
+| `POST /api/v1/admin/quarantine/conflicting/resolve` `{note, batchSize?}` | **the paced bulk-acknowledge lane over the `CONFLICTING_VALUE` backlog** (shipped, `01` §10.10 / §13.1 v1.5.81, `TKT-foundation-035`): acknowledges `open` rows of that reason class only, **oldest-first** (`quarantined_at, id`, `FOR UPDATE SKIP LOCKED`), at most **1000** per run (default **500**), via the existing `open → dismissed` transition with `note` as `resolution_note`. Never deletes a row, never touches another reason class, never writes/promotes a quarantined payload into a fact. Response sketch below | FR-MDF-012, BR-MDF-007, FR-MDF-015/NFR-MDF-002 |
 | `GET /api/v1/admin/coverage?scope=instrument\|fund` | coverage report (equity + funds) | UC-MDF-004, UC-FDF-003 |
 | `GET /api/v1/admin/ingest-runs?job=&status=` | run-ledger monitoring | UC-MDF-001 (ops), UC-MOV-005, UC-FDF-002 (ops) |
 | `POST /api/v1/admin/ingest/{job}/run` | trigger/backfill — `{job}` ∈ job codes below; body may carry `{backfillFrom}` | UC-MDF-002 |
@@ -303,6 +304,23 @@ Background (e-mail dispatch, ingest) failures never surface as endpoint errors m
 - The queue payload **is** the editor payload — both texts ride the list (there is no `GET …/descriptions/{id}`; the queue is bounded by the covered universe, §2 no-pagination posture). The wrapped root (`descriptions[]`) keeps the response additively evolvable (§11 — a bare-array root could not gain top-level fields without a breaking change).
 
 Job codes for ingest triggers: `prices`, `statements`, `dividends`, `corporate-actions`, `disclosures`, `universe-sync`, `macro-daily`, `macro-cpi`, `metrics-recompute`, `snapshot`, `medians`, `fund-nav`, `fund-holdings`, `fund-performance`, `kap-public-identity`.
+
+### `POST /api/v1/admin/quarantine/conflicting/resolve` — the bulk-acknowledge lane (shipped shape, `TKT-foundation-035`)
+
+Documents what the endpoint serves today (`01` §10.10 is the policy record, §13.1 v1.5.81 the change record); no contract change, no new shape — the row above and this sketch close that lane's recorded `03` follow-up.
+
+```json
+// request
+{ "note": "2026-10-19/20 paced catch-up re-fetch drift — revision/rounding churn, accepted", "batchSize": 500 }
+
+// 200
+{ "runId": 4821, "reasonCode": "CONFLICTING_VALUE", "batchSize": 500, "resolved": 500, "retained": 73508, "resolvedIds": [90012, 90013] }
+```
+
+- **`resolved` is this batch, `retained` is the rest of the class** (open and quarantined) after the run — so a drained backlog answers the stated zero `{"resolved": 0, "retained": 0}` rather than an error or an omission. `resolvedIds` is the acknowledged set, oldest first.
+- **Bound, never clamped:** a `batchSize` outside `1..1000` is `VALIDATION_FAILED` (`400`) with `params.fields[] = [{field: "batchSize", code: "out-of-range"}]` plus `params.min`/`params.max`; a missing or blank `note` is `VALIDATION_FAILED` with `{field: "note", code: "required"}` and changes nothing.
+- **Audit trail:** exactly one `ingest_runs` row per run under the job code `quarantine-resolve` — deliberately **not** a registered job (so no freshness or summary query can read an admin action as an ingestion run) — committed in the same transaction as the rows it acknowledges.
+- **Builder-only**, like every `/admin` route (`FORBIDDEN` otherwise), through the group's existing gate and rate limit.
 
 ## 9. Non-HTTP operations (workers + CLI) — UC coverage
 

@@ -66,10 +66,28 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
 6. **First deploy (bootstrap)** — the restore-point gate (phase 3) cannot be satisfied on
    a blank host: there is nothing to restore, and `pg-backup.sh` dumps out of a *running*
    `postgres` container while also requiring `RCLONE_REMOTE`. So the gate detects exactly
-   that case — no `postgres-data` volume for the compose project, i.e. no database has
-   ever existed on this host — and records `bootstrap=true` in the marker instead of
-   requiring an archive. That carve-out applies **once**, while the volume is absent;
-   every later deploy is gated unchanged. Either push to `main` (CI green → CD runs) or
+   that case — no volume of the compose project on this host at all, i.e. no database has
+   ever existed here — and records `bootstrap=true` in the marker instead of requiring an
+   archive. The detection is **positive**: it names the volume compose itself would create
+   (`degerli_postgres-data`), the project's other volumes, and any `*_postgres-data` volume
+   that belongs to this project or to no compose project — and it **refuses** rather than
+   records `bootstrap=true` when the evidence is ambiguous (a `*_postgres-data` volume
+   whose owner it cannot be sure of, on a host where the project's own
+   `degerli_postgres-data` is absent; when that volume is present, such a scratch volume is
+   only noted in the log and the deploy takes the ordinary gate). It also **refuses to run
+   at all** when the project name compose resolves is not the `name: degerli` the file
+   declares: `docker compose` reads
+   `COMPOSE_PROJECT_NAME` out of `.env`, so a stray line there would move the whole deploy
+   to a different project — a new, empty database, past the gate. Keep `.env` free of it.
+   That carve-out applies **once**, while no volume exists; every later deploy is gated
+   unchanged. Those probes read Docker volume **names** and compose **labels**, nothing
+   else: a data volume created outside Compose under an arbitrary name (one that does not
+   end in `_postgres-data`), a bind-mounted data directory, and this project's old volume
+   left behind after the compose project is **renamed** (its label then names a different
+   project, so it reads as another project's data) are all outside them. On a host that
+   holds data, keep the project's `name:` and the checkout's directory name stable —
+   widening the probes to cover those shapes is an open architecture decision, not
+   something this gate claims to do. Either push to `main` (CI green → CD runs) or
    run the `Deploy` workflow manually from the Actions tab.
    *Optionally*, if `/etc/degerli/backup.env` and the rclone remote are already set up
    (§Backups), give even the first migration a restore point by creating the empty
@@ -103,7 +121,7 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
    |---|---|---|---|
    | 1 | `preflight` | reads the tag currently serving (the rollback target), checks `compose.prod.yml`/`.env`/`docker`/`curl`, validates the compose file, and checks `DEGERLI_BUILDER_PASSWORD` is present and ≥ 12 chars | anything required is missing, the password is absent/too short, or the compose file does not validate |
    | 2 | `pull` | `docker compose -f compose.prod.yml pull` | an image cannot be pulled |
-   | 3 | `backup-marker` | verifies the newest `degerli-*.dump.gpg` restore point is non-empty and **no older than the RPO (24 h)**, then records the tag + restore point + `outcome=attempt` in a `predeploy-<tag>-<utc>.marker` beside it. On a blank host (no `postgres-data` volume yet) it records `bootstrap=true` instead of requiring an archive | there is no restore point, it is empty, or it is older than the RPO |
+   | 3 | `backup-marker` | verifies the newest `degerli-*.dump.gpg` restore point is non-empty and **no older than the RPO (24 h)**, then records the tag + restore point + `outcome=attempt` in a `predeploy-<tag>-<utc>.marker` beside it. On a blank host (no volume of the compose project at all) it records `bootstrap=true` instead of requiring an archive, and it refuses when the project name compose resolves is not the file's `name: degerli` | there is no restore point, it is empty, or it is older than the RPO |
    | 4 | `migrate` | `docker compose -f compose.prod.yml run --rm -e DEGERLI_BUILDER_PASSWORD=… api migrate` — a **one-shot** container; the serving stack is untouched | the migration fails |
    | 5 | `ready` | `docker compose -f compose.prod.yml up -d --wait --wait-timeout 180` — the readiness gate (below) | a service does not report running/healthy within 180 s |
    | 6 | `smoke` | `GET ${PUBLIC_URL}/health` through Caddy, 30 attempts × 5 s, each `curl` bounded at 5 s | `/health` never answers 200 |
@@ -333,7 +351,7 @@ Stop the `api` first. Afterwards **drop the scratch database** — a drill that 
 second copy of production on the disk is a finding in itself:
 
 ```bash
-docker compose -f compose.prod.yml exec postgres dropdb -U degerli degerli_restore
+docker compose -f compose.prod.yml exec postgres dropdb --if-exists -U degerli degerli_restore
 ```
 
 **Status: rehearsed, not yet run on the VPS.** The drill was executed on 2026-10-30
@@ -358,9 +376,24 @@ tag, the archive it relied on, the archive's age, `bootstrap=false` and
 `outcome=success` and stamped with `smoke_ok_at` — so **a marker left at
 `outcome=attempt` is a tag that was tried, not one that served**; only `outcome=success`
 markers are rollback targets. The one exception is a **bootstrap** deploy (§First-time VPS
-setup step 6): on a host where no `postgres-data` volume has ever existed there is nothing
+setup step 6): on a host where the compose project has no volumes at all there is nothing
 to restore, so the phase records `bootstrap=true` and requires no archive — that carve-out
-applies only while the volume is absent, and every later deploy is gated unchanged.
+applies only while no volume exists, and every later deploy is gated unchanged. It is
+decided from **positive evidence** (the `degerli_postgres-data` volume, the project's other
+volumes, and any `*_postgres-data` volume owned by this project or by no compose project),
+never from an empty lookup: an empty lookup is what a wrong question returns. Two shapes
+therefore refuse instead of bootstrapping — a `postgres-data` volume the gate cannot
+attribute to another compose project **on a host where the project's own
+`degerli_postgres-data` is missing** (when that volume is present, an unrelated scratch
+volume of that shape is only noted in the log and the ordinary gate below applies), and a
+`.env` whose `COMPOSE_PROJECT_NAME` moves the deploy off the file's declared `name: degerli`
+(compose reads that variable out of `.env`, and the deploy would then start a new, empty
+database past the gate). The probes read volume names and compose labels only, so the
+positive-evidence property is bounded by what they can see: a data volume created outside
+Compose under an arbitrary name (not ending in `_postgres-data`), a bind-mounted data
+directory, and an old project volume left behind after a **rename** of the compose project
+(its label then names a different project, so it reads as another project's data) are
+outside the gate.
 
 It is a gate, not a formality — a forward-only migration has no down path, so a restore
 point is the only honest undo. The deploy **stops before it migrates** when:
@@ -574,8 +607,9 @@ checklists (test strategy §5.6/§9.4):
     schema can be *partially* advanced, and that `__EFMigrationsHistory` names how far it
     got. The batch shape is the one an operator actually meets, and a single-migration
     rehearsal cannot show it.
-  Also exercise the `bootstrap` marker path on a host with no `postgres-data` volume
-  (last run 2026-10-30, TKT-foundation-067 — see the ticket);
+  Also exercise the `bootstrap` marker path on a host with no volume of the compose project
+  (last full run 2026-10-30, TKT-foundation-067; its detection block re-exercised
+  2026-11-01, TKT-foundation-102 — see the tickets);
 - backup restore drill (once before launch);
 - UptimeRobot monitor live and green (once before launch);
 - README quickstart verified on a clean machine (≤ 10 commands, NFR-MDF-005).
