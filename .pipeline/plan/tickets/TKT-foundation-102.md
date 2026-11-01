@@ -72,6 +72,15 @@ over the tree with the new `.env.example` line.
 
 **Honesty limit, stated:** the rehearsal exercises the decision block, not a whole SSH
 deploy, and never touches the VPS — the first real deploy on the box remains the builder's.
+The fail-open guarantee is bounded by the vector this ticket closes (a `.env`
+`COMPOSE_PROJECT_NAME` / an empty lookup asking about the wrong project) and by what the
+three probes can read (volume names and compose labels). It does not cover an operator
+**rename** of the compose project — `compose.prod.yml`'s `name:`, or a move to a
+differently-named checkout directory — while an old project's `*_postgres-data` volume
+survives (its label then names a different project, so it reads as another project's data;
+review round 1's SEC-1), nor this project's data in a volume created outside Compose under
+an arbitrary name, nor a bind-mounted data path. Those boundaries are routed as shared-host
+architecture/ops decisions (round 1's R-1), not fixed here.
 
 **(b) The six nits** — all corrected in place: (1) `01` §13.1 v1.5.85's "never backwards"
 watermark claim corrected in place with a dated amendment (the code pulls a future watermark

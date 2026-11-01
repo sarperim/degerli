@@ -71,13 +71,23 @@ without registry credentials. Build/push is owned by [`deploy.yml`](../.github/w
    archive. The detection is **positive**: it names the volume compose itself would create
    (`degerli_postgres-data`), the project's other volumes, and any `*_postgres-data` volume
    that belongs to this project or to no compose project — and it **refuses** rather than
-   records `bootstrap=true` when the evidence is ambiguous (a `postgres-data` volume whose
-   owner it cannot be sure of). It also **refuses to run at all** when the project name
-   compose resolves is not the `name: degerli` the file declares: `docker compose` reads
+   records `bootstrap=true` when the evidence is ambiguous (a `*_postgres-data` volume
+   whose owner it cannot be sure of, on a host where the project's own
+   `degerli_postgres-data` is absent; when that volume is present, such a scratch volume is
+   only noted in the log and the deploy takes the ordinary gate). It also **refuses to run
+   at all** when the project name compose resolves is not the `name: degerli` the file
+   declares: `docker compose` reads
    `COMPOSE_PROJECT_NAME` out of `.env`, so a stray line there would move the whole deploy
    to a different project — a new, empty database, past the gate. Keep `.env` free of it.
    That carve-out applies **once**, while no volume exists; every later deploy is gated
-   unchanged. Either push to `main` (CI green → CD runs) or
+   unchanged. Those probes read Docker volume **names** and compose **labels**, nothing
+   else: a data volume created outside Compose under an arbitrary name (one that does not
+   end in `_postgres-data`), a bind-mounted data directory, and this project's old volume
+   left behind after the compose project is **renamed** (its label then names a different
+   project, so it reads as another project's data) are all outside them. On a host that
+   holds data, keep the project's `name:` and the checkout's directory name stable —
+   widening the probes to cover those shapes is an open architecture decision, not
+   something this gate claims to do. Either push to `main` (CI green → CD runs) or
    run the `Deploy` workflow manually from the Actions tab.
    *Optionally*, if `/etc/degerli/backup.env` and the rclone remote are already set up
    (§Backups), give even the first migration a restore point by creating the empty
@@ -373,9 +383,17 @@ decided from **positive evidence** (the `degerli_postgres-data` volume, the proj
 volumes, and any `*_postgres-data` volume owned by this project or by no compose project),
 never from an empty lookup: an empty lookup is what a wrong question returns. Two shapes
 therefore refuse instead of bootstrapping — a `postgres-data` volume the gate cannot
-attribute to another compose project, and a `.env` whose `COMPOSE_PROJECT_NAME` moves the
-deploy off the file's declared `name: degerli` (compose reads that variable out of `.env`,
-and the deploy would then start a new, empty database past the gate).
+attribute to another compose project **on a host where the project's own
+`degerli_postgres-data` is missing** (when that volume is present, an unrelated scratch
+volume of that shape is only noted in the log and the ordinary gate below applies), and a
+`.env` whose `COMPOSE_PROJECT_NAME` moves the deploy off the file's declared `name: degerli`
+(compose reads that variable out of `.env`, and the deploy would then start a new, empty
+database past the gate). The probes read volume names and compose labels only, so the
+positive-evidence property is bounded by what they can see: a data volume created outside
+Compose under an arbitrary name (not ending in `_postgres-data`), a bind-mounted data
+directory, and an old project volume left behind after a **rename** of the compose project
+(its label then names a different project, so it reads as another project's data) are
+outside the gate.
 
 It is a gate, not a formality — a forward-only migration has no down path, so a restore
 point is the only honest undo. The deploy **stops before it migrates** when:

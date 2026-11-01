@@ -395,8 +395,15 @@ jobs:
             bootstrap=false
             newest=""
             age_hours="n/a"
-            if [ -n "${unowned_postgres_volumes}" ]; then
-              echo "::error::no ${compose_project}_postgres-data volume for compose project '${compose_project}', but this host holds:${unowned_postgres_volumes} — that postgres data volume belongs to this project (under another name) or to no compose project at all, so a blank-host bootstrap cannot be proven. Refusing: take a restore point first (deploy/README.md §Backups) or free the host, then re-run."
+            # The ambiguity refusal is only about a host whose OWN data volume is missing:
+            # when `${compose_project}_postgres-data` IS present, an unrelated unlabelled
+            # "*_postgres-data" volume (a drill/scratch volume created outside Compose) is
+            # not ambiguity about THIS deploy's data — it is noted below and the deploy
+            # takes the ordinary restore-point gate. Refusing there would block every
+            # deploy on such a host, and the message would have to claim a volume is
+            # missing that the probe above just found.
+            if [ -z "${postgres_volume}" ] && [ -n "${unowned_postgres_volumes}" ]; then
+              echo "::error::no ${compose_project}_postgres-data volume for compose project '${compose_project}', but this host holds:${unowned_postgres_volumes} — that postgres data volume belongs to this project (under another name) or to no compose project at all, so a blank-host bootstrap cannot be proven. Refusing: take a restore point first (deploy/README.md §Backups), and either free the host (remove any of those volumes that do not hold this project's data) or, if one of them is this project's database, bring it back as ${compose_project}_postgres-data so the deploy can see its own data, then re-run."
               false
             fi
             if [ -z "${postgres_volume}" ] && [ -z "${project_volumes}" ]; then
@@ -405,6 +412,9 @@ jobs:
               echo "==> [backup-marker] bootstrap deploy: compose project '${compose_project}' has no volumes on this host yet — nothing to restore, no archive required (marker records bootstrap=true)"
             else
               [ -n "${postgres_volume}" ] || echo "==> [backup-marker] compose project '${compose_project}' has volumes on this host but no ${compose_project}_postgres-data — the database existed once, so this deploy is gated like any other"
+              if [ -n "${postgres_volume}" ] && [ -n "${unowned_postgres_volumes}" ]; then
+                echo "==> [backup-marker] note: this host also holds:${unowned_postgres_volumes} — not counted as this project's data, because its own ${compose_project}_postgres-data is present; the ordinary restore-point gate below applies"
+              fi
               restore_point_label=""
               echo "==> [backup-marker] requiring a restore point in ${PRE_DEPLOY_BACKUP_DIR} no older than ${PRE_DEPLOY_MAX_BACKUP_AGE_HOURS}h"
               newest_mtime=0
