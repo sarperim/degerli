@@ -3,7 +3,7 @@
   "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/disclosures?disclosureIndex={disclosureIndex}&companyId={companyId}",
   "double": {
     "catalogEntry": "kap-vyk-disclosures",
-    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "file": "fixtures/Degerli.Fixtures/Payloads/kap/kap-vyk-disclosures.json",
     "provenance": "constructed",
     "note": "hand-constructed shape-faithful VYK list body (shape live-verified 2026-10-18, 01 \u00a710.9.11)"
   },

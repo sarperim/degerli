@@ -3,7 +3,7 @@
   "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/members",
   "double": {
     "catalogEntry": "kap-vyk-members",
-    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "file": "fixtures/Degerli.Fixtures/Payloads/kap/kap-vyk-members.json",
     "provenance": "constructed",
     "note": "hand-constructed shape-faithful member list (shape live-verified 2026-10-18)"
   },

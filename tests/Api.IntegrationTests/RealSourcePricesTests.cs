@@ -40,6 +40,17 @@ public sealed class RealSourcePricesTests : IClassFixture<WireMockFixture>
         Assert.Equal(RealSourceCatalog.Names, all.Select(p => p.Name).ToList());
         Assert.False(string.IsNullOrWhiteSpace(RealSourceCatalog.RedistributionTerms));
 
+        var embeddedPayloads = typeof(RealSourceCatalog).Assembly
+            .GetManifestResourceNames()
+            .Where(n => n.StartsWith("real-sources/", StringComparison.Ordinal))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+        var expectedResources = RealSourceCatalog.Names
+            .Select(n => $"real-sources/{n}")
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expectedResources, embeddedPayloads);
+
         using var http = new HttpClient { BaseAddress = new Uri(_wireMock.BaseUrl) };
         var client = new HttpSourceClient(http);
 
