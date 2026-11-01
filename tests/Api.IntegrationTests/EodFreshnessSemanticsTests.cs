@@ -24,6 +24,12 @@ namespace Degerli.Api.IntegrationTests;
 /// strictly before today, resolved through the configured calendar (weekend ∪ holiday), never a
 /// weekday assumption over <i>today</i>.
 /// <para>
+/// Doctrine ancestry: TC-MOV-032 (TKT-foundation-037) — the market overview's stored-prices
+/// freshness rule this slice extends from the snapshot lane to the store-backed stock/screener
+/// surfaces. TC-MOV-032 is a precedent this rule mirrors, not a case re-verified here; the
+/// overview's own cases (<c>MarketOverviewFreshnessTests</c>) keep it pinned.
+/// </para>
+/// <para>
 /// The defect this pins (the user's 2026-10-31 report: "I always see something is stale"): the
 /// pre-slice rule <c>asOf &lt; LatestTradingDayOnOrBefore(today)</c> compared against today, so
 /// every trading day served <c>stale: true</c> from midnight until the 20:30 EOD chain landed —
