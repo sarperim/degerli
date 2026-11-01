@@ -471,6 +471,8 @@ public sealed class SourceContractProbeTests
             var contract = ProbeContractJson.Read(File.ReadAllText(file));
             Assert.Equal(probe.Key, contract.Source);
             Assert.Equal(probe.DoubleCatalogEntry, contract.Double.CatalogEntry);
+            var doubleFile = Path.Combine(root.FullName, contract.Double.File);
+            Assert.True(File.Exists(doubleFile), $"missing double file for {probe.Key}: {doubleFile}");
             Assert.False(contract.Shape.IsEmpty, $"{probe.Key} carries no expected shape");
             Assert.False(string.IsNullOrWhiteSpace(contract.DerivedAt), $"{probe.Key} does not date its derivation");
         }

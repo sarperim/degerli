@@ -3,7 +3,7 @@
   "endpoint": "https://apigwdev.mkk.com.tr/api/vyk/disclosureDetail/{disclosureIndex}",
   "double": {
     "catalogEntry": "kap-vyk-disclosure-detail",
-    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "file": "fixtures/Degerli.Fixtures/Payloads/kap/kap-vyk-disclosure-detail.json",
     "provenance": "captured",
     "note": "bounded live capture, disclosure 1226255 (2026-10-18), presentation trees trimmed (01 \u00a710.9.11)"
   },

@@ -3,7 +3,7 @@
   "endpoint": "https://evds3.tcmb.gov.tr/igmevdsms-dis/fe",
   "double": {
     "catalogEntry": "evds-v3-capture",
-    "file": "fixtures/Degerli.Fixtures/RealSourceCatalog.cs",
+    "file": "fixtures/Degerli.Fixtures/Payloads/evds/evds-v3-capture.json",
     "provenance": "captured",
     "note": "bounded verbatim EVDS 3.0 /fe capture (2026-10-18), 01 \u00a710.9.12"
   },

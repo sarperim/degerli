@@ -1,0 +1,2 @@
+# Preserve verbatim real-source capture and double bytes across platforms (never normalize EOLs).
+fixtures/Degerli.Fixtures/Payloads/** -text

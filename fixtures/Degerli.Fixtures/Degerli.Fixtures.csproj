@@ -30,4 +30,11 @@
     <ProjectReference Include="../../src/Ingestion/Degerli.Ingestion.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Real-source capture and double payloads live as standalone .json/.html files on
+         disk under Payloads/<source>/ and compile into Degerli.Fixtures.dll under the
+         stable manifest name `real-sources/<catalog-name>`. -->
+    <EmbeddedResource Include="Payloads\**\*" LogicalName="real-sources/%(Filename)" />
+  </ItemGroup>
+
 </Project>
