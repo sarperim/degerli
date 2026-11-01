@@ -4,6 +4,7 @@ using Degerli.Core.Metrics;
 using Degerli.Core.Valuation;
 using Degerli.Ingestion.Dividends;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Ingestion.Statements;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -155,6 +156,7 @@ public static class StockFundamentalsEndpoints
     private static async Task<IResult> FinancialsAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -291,7 +293,7 @@ public static class StockFundamentalsEndpoints
             });
         }
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         // The EV header inputs are served as their own facts with their own as-of, display-only:
         // the DCF's own debt/cash/share-count inputs are untouched (02 §6.2, FR-RES-008).
@@ -370,6 +372,7 @@ public static class StockFundamentalsEndpoints
     private static async Task<IResult> ProfitabilityAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -379,7 +382,7 @@ public static class StockFundamentalsEndpoints
             return NotFound(symbol);
         }
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
         var current = await CurrentMetricsAsync(db, instrument.Id, ProfitabilityMetricCodes, cancellationToken);
 
         var metrics = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -403,6 +406,7 @@ public static class StockFundamentalsEndpoints
     private static async Task<IResult> GrowthAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -412,7 +416,7 @@ public static class StockFundamentalsEndpoints
             return NotFound(symbol);
         }
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         var codes = GrowthFamilies
             .SelectMany(family => MetricCodes.CagrWindows.Select(window => $"{family.Prefix}_{window}y"))
@@ -482,6 +486,7 @@ public static class StockFundamentalsEndpoints
     private static async Task<IResult> BalanceSheetAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -491,7 +496,7 @@ public static class StockFundamentalsEndpoints
             return NotFound(symbol);
         }
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         var statements = await db.FinancialStatements
             .Where(statement => statement.InstrumentId == instrument.Id
@@ -601,6 +606,7 @@ public static class StockFundamentalsEndpoints
     private static async Task<IResult> DividendsAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -610,7 +616,7 @@ public static class StockFundamentalsEndpoints
             return NotFound(symbol);
         }
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         var dividends = await db.Dividends
             .Where(dividend => dividend.InstrumentId == instrument.Id)
@@ -1014,34 +1020,6 @@ public static class StockFundamentalsEndpoints
             .Select(metric => new { metric.MetricCode, metric.Value })
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(row => row.MetricCode, row => row.Value, StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// The section freshness: the latest canonical daily-price date serves as the as-of
-    /// date; it is stale when that date trails the latest trading day (`03` §1.2, M-1).
-    /// </summary>
-    private static async Task<(DateOnly AsOf, bool Stale)> FreshnessAsync(
-        DegerliDbContext db,
-        TimeProvider clock,
-        CancellationToken cancellationToken)
-    {
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DailyPrices
-            .MaxAsync(price => (DateOnly?)price.PriceDate, cancellationToken)
-            ?? today;
-
-        return (asOf, asOf < LatestTradingDayOnOrBefore(today));
-    }
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
     }
 
     private static IResult NotFound(string symbol)

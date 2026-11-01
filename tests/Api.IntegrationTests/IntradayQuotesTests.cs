@@ -141,11 +141,19 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
 
     /// <summary>
     /// The lane's cadence and source are <b>configuration constants</b> (01 §10.9.18): the
-    /// shipped <c>appsettings.json</c> carries the four-sweep trading-day cron
-    /// (11:15/13:15/15:15/17:15 Europe/Istanbul, expressed in the scheduler's six-field form)
+    /// shipped <c>appsettings.json</c> carries the hourly trading-day cron
+    /// (10:15…17:15 Europe/Istanbul, expressed in the scheduler's six-field form)
     /// and the intraday source section mirrors the <c>Ingestion:Prices</c> pattern — so the
-    /// two-hour interval is user-adjustable without a code change, and the Yahoo contingency
+    /// interval is user-adjustable without a code change, and the Yahoo contingency
     /// is a one-line repoint.
+    /// <para>
+    /// <b>Supersession (SLICE-002, 2026-11-01):</b> the four-sweep cron
+    /// (<c>0 15 11,13,15,17 * * 1-5</c>, v1.5.27) was re-pinned to the hourly sweep the user
+    /// asked for — the original requirement allowed "hour or 2 hour periods"; the slice moves it
+    /// to the hour side, roughly doubling the paced sweep budget (~400 → ~800 calls/day at
+    /// XU100, recorded on the slice). The <c>TradingDaysOnly: true</c> gate and everything else
+    /// about the lane stand unchanged.
+    /// </para>
     /// </summary>
     [Fact]
     public void TC_MDF_084_Intraday_cadence_and_source_are_shipped_config_constants()
@@ -157,9 +165,9 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
         var schedule = ingestion.GetProperty("Scheduler").GetProperty("JobSchedules")
             .EnumerateArray()
             .Single(entry => entry.GetProperty("JobCode").GetString() == IntradayRefreshJob.Code);
-        // Four sweeps at mid-hour+15 on trading days; the six-field form is the scheduler's
-        // (Cronos) expression, the same cadence as the ticket's "15 11,13,15,17 * * 1-5".
-        Assert.Equal("0 15 11,13,15,17 * * 1-5", schedule.GetProperty("Cron").GetString());
+        // Eight sweeps at mid-hour+15 on trading days; the six-field form is the scheduler's
+        // (Cronos) expression, the hourly form of the ticket's original "15 11,13,15,17 * * 1-5".
+        Assert.Equal("0 15 10-17 * * 1-5", schedule.GetProperty("Cron").GetString());
 
         var intraday = ingestion.GetProperty("Intraday");
         Assert.StartsWith("https://www.isyatirim.com.tr", intraday.GetProperty("BaseUrl").GetString(), StringComparison.Ordinal);

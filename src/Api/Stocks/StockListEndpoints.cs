@@ -1,3 +1,5 @@
+using Degerli.Api.Infrastructure;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +42,7 @@ public static class StockListEndpoints
         string? sector,
         string? q,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -59,7 +62,7 @@ public static class StockListEndpoints
             })
             .ToListAsync(cancellationToken);
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         return Results.Ok(new { asOf, stale, stocks });
     }
@@ -72,6 +75,7 @@ public static class StockListEndpoints
     private static async Task<IResult> SearchAsync(
         string? q,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -84,7 +88,7 @@ public static class StockListEndpoints
             .Select(instrument => new { instrument.Symbol, instrument.Name })
             .ToListAsync(cancellationToken);
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         return Results.Ok(new { asOf, stale, stocks });
     }
@@ -119,33 +123,6 @@ public static class StockListEndpoints
         }
 
         return universe;
-    }
-
-    /// <summary>
-    /// The list/typeahead freshness: the latest canonical daily-price date serves as the
-    /// as-of date; it is stale when that date trails the latest trading day (`03` §1.2).
-    /// </summary>
-    private static async Task<(DateOnly AsOf, bool Stale)> FreshnessAsync(
-        DegerliDbContext db,
-        TimeProvider clock,
-        CancellationToken cancellationToken)
-    {
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DailyPrices
-            .MaxAsync(price => (DateOnly?)price.PriceDate, cancellationToken)
-            ?? today;
-
-        return (asOf, asOf < LatestTradingDayOnOrBefore(today));
-    }
-
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
     }
 
     private static string EscapeLike(string value) =>
