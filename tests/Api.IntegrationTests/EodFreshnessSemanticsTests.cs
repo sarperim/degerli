@@ -20,9 +20,11 @@ namespace Degerli.Api.IntegrationTests;
 /// <summary>
 /// SLICE-002 acceptance — the EOD display-freshness rule shared by the stock/screener surfaces
 /// (<see cref="Degerli.Api.Infrastructure.EodSessionFreshness"/>): a served as-of is stale only
-/// when it trails the newest session that <b>should have completed</b> — the latest trading day
-/// strictly before today, resolved through the configured calendar (weekend ∪ holiday), never a
-/// weekday assumption over <i>today</i>.
+/// when it trails the newest session that <b>should have completed</b>, resolved through the
+/// configured calendar (weekend ∪ holiday), never a weekday assumption over <i>today</i>. Which
+/// session that is follows the EOD chain's completion: the latest trading day strictly before
+/// today while the chain is still legitimately running, today's own session at or after the
+/// arbitrated <c>DefaultEodCompletionCutoff</c> (19:45 UTC).
 /// <para>
 /// Doctrine ancestry: TC-MOV-032 (TKT-foundation-037) — the market overview's stored-prices
 /// freshness rule this slice extends from the snapshot lane to the store-backed stock/screener
@@ -35,7 +37,16 @@ namespace Degerli.Api.IntegrationTests;
 /// every trading day served <c>stale: true</c> from midnight until the 20:30 EOD chain landed —
 /// even when Monday's close (the freshest session that exists during a Tuesday) was perfectly
 /// healthy. Cases (i), (iii) and (v) are red on the old rule; case (ii) pins that the missed-run
-/// signal survives the fix, honestly late; case (iv) closes the v1.5.44 holiday follow-up.
+/// signal survives the fix; case (iv) closes the v1.5.44 holiday follow-up.
+/// </para>
+/// <para>
+/// <b>Dated supersession (2026-11-02, user arbitration on PR #174 review round 2 — G-1).</b> The
+/// first cut expected the latest trading day strictly before today unconditionally and called the
+/// missed-run signal "honestly late". The user arbitrated the completion-cutoff shape: once the
+/// chain should have finished (19:45 UTC, derived from the 20:30 TRT start plus the ~100–120 min
+/// healthy run — see the rule's own doc), the day's own session is expected, so a genuinely missed
+/// same-day run is reported the same night. The cutoff cases below pin both halves; the existing
+/// 18:00 UTC cases stay and must still pass, because that instant is mid-chain and fresh by design.
 /// </para>
 /// <para>
 /// The world is the L2 fixture universe (anchor T = Tuesday 2026-10-06); the harness clock's
@@ -63,6 +74,20 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
     /// <summary>Saturday 2026-10-10 12:00 UTC — the weekend rule-level clock.</summary>
     private static readonly DateTimeOffset SaturdayClock =
         new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// Tuesday 2026-10-06 20:30 UTC (23:30 TRT) — past the 19:45 UTC completion cutoff, so the
+    /// day's own EOD chain should have finished.
+    /// </summary>
+    private static readonly DateTimeOffset TuesdayPostCutoffClock =
+        new(2026, 10, 6, 20, 30, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// Tuesday 2026-10-06 exactly at the cutoff instant (19:45 UTC) — the rule is inclusive:
+    /// at-or-after the cutoff the day's own session is expected.
+    /// </summary>
+    private static readonly DateTimeOffset TuesdayAtCutoffClock =
+        new(2026, 10, 6, 19, 45, 0, TimeSpan.Zero);
 
     private readonly PostgresFixture _postgres;
 
@@ -140,6 +165,101 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
         Assert.False(stale);
     }
 
+    /// <summary>
+    /// The arbitrated completion cutoff (2026-11-02, user decision on PR #174 review round 2):
+    /// at or after 19:45 UTC the day's own session is expected, so a missed same-day EOD is
+    /// reported the same night rather than the next trading day. Past the cutoff, Monday's data
+    /// on a Tuesday clock reads <b>stale</b> (Tuesday's chain should have finished and produced
+    /// Tuesday's metrics) while Tuesday's data reads fresh. Before the cutoff the same Monday
+    /// data reads fresh (see the core case), which is why the cutoff, not the calendar day alone,
+    /// is what moved.
+    /// </summary>
+    [Fact]
+    public void Eod_Freshness_rule_after_the_cutoff_expects_the_same_day_session()
+    {
+        var calendar = new ConfiguredTradingCalendar(
+            Microsoft.Extensions.Options.Options.Create(new TradingCalendarOptions()));
+        var postCutoff = new FakeTimeProvider(TuesdayPostCutoffClock);
+
+        // Past the cutoff, the day's own EOD should have landed: only Monday stored is a miss.
+        var (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Monday, calendar, postCutoff);
+        Assert.Equal(Monday, asOf);
+        Assert.True(stale);
+
+        // Past the cutoff with Tuesday's own session stored: fresh.
+        (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Tuesday, calendar, postCutoff);
+        Assert.Equal(Tuesday, asOf);
+        Assert.False(stale);
+    }
+
+    /// <summary>
+    /// The cutoff's boundary is <b>inclusive</b>: at exactly 19:45 UTC (22:45 TRT) the day's own
+    /// session is already the expected one — 19:44:59 is mid-chain, 19:45:00 is post-chain. Pinned
+    /// as its own case so an off-by-one flip in the comparison cannot pass unnoticed.
+    /// </summary>
+    [Fact]
+    public void Eod_Freshness_rule_cutoff_boundary_is_inclusive()
+    {
+        var calendar = new ConfiguredTradingCalendar(
+            Microsoft.Extensions.Options.Options.Create(new TradingCalendarOptions()));
+
+        // One second before the cutoff: still the mid-chain rule — Monday is the expected session.
+        var justBefore = new FakeTimeProvider(TuesdayAtCutoffClock.AddSeconds(-1));
+        var (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Monday, calendar, justBefore);
+        Assert.Equal(Monday, asOf);
+        Assert.False(stale);
+
+        // Exactly at the cutoff: the day's own session is expected — Monday now trails it.
+        var atCutoff = new FakeTimeProvider(TuesdayAtCutoffClock);
+        (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Monday, calendar, atCutoff);
+        Assert.Equal(Monday, asOf);
+        Assert.True(stale);
+
+        (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Tuesday, calendar, atCutoff);
+        Assert.Equal(Tuesday, asOf);
+        Assert.False(stale);
+    }
+
+    /// <summary>
+    /// The cutoff never invents a session. Past the cutoff on a normal Monday, the day's own
+    /// session is expected — so with only Friday stored the rule reads <b>stale</b> (the same-night
+    /// honesty the cutoff exists for). With that same Monday 2026-10-05 configured as a market
+    /// holiday, the calendar resolves the expected session to Friday, so Friday's close still reads
+    /// <b>fresh</b> after the cutoff: a holiday is never made "expected" merely because the clock
+    /// passed 19:45 UTC.
+    /// </summary>
+    [Fact]
+    public void Eod_Freshness_rule_cutoff_never_expects_a_holiday_session()
+    {
+        var weekdayCalendar = new ConfiguredTradingCalendar(
+            Microsoft.Extensions.Options.Options.Create(new TradingCalendarOptions()));
+        var mondayPostCutoff = new FakeTimeProvider(
+            new DateTimeOffset(Monday.ToDateTime(new TimeOnly(20, 30)), TimeSpan.Zero));
+
+        // Control: a normal Monday past the cutoff expects Monday itself, so Friday-only is stale.
+        var (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Friday, weekdayCalendar, mondayPostCutoff);
+        Assert.Equal(Friday, asOf);
+        Assert.True(stale);
+
+        // Same clock, Monday declared a holiday: the expectation falls back to Friday — fresh.
+        var holidayCalendar = new ConfiguredTradingCalendar(
+            Microsoft.Extensions.Options.Options.Create(new TradingCalendarOptions
+            {
+                Holidays = [Monday.ToString("yyyy-MM-dd")],
+            }));
+
+        (asOf, stale) = Degerli.Api.Infrastructure.EodSessionFreshness
+            .AgainstCompletedSession(Friday, holidayCalendar, mondayPostCutoff);
+        Assert.Equal(Friday, asOf);
+        Assert.False(stale);
+    }
+
     // ---------------------------------------------------------------------------------
     // The surfaces (real endpoints, real store): the reported defect
     // ---------------------------------------------------------------------------------
@@ -169,10 +289,11 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
     }
 
     /// <summary>
-    /// (ii) The missed-run signal survives, honestly late: with only Friday stored on the
-    /// Tuesday clock (Monday's EOD genuinely missed) the list serves <c>stale: true</c> —
-    /// the same-night detection stays with the watchdog/alerting lanes; the badge is the
-    /// next-day truth, never a same-night lie.
+    /// (ii) The missed-run signal survives: with only Friday stored on the Tuesday 18:00 UTC
+    /// clock (Monday's EOD genuinely missed, Tuesday's chain still mid-run) the list serves
+    /// <c>stale: true</c>. Under the arbitrated completion-cutoff rule the badge also tells the
+    /// same-night truth once Tuesday's chain should have finished — the cutoff cases above pin
+    /// that half.
     /// </summary>
     [Fact]
     public async Task Eod_Freshness_missed_session_is_stale_on_the_next_trading_day()
