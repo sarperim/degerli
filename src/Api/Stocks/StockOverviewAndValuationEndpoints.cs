@@ -1,6 +1,7 @@
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
 using Degerli.Ingestion.Intraday;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -63,6 +64,7 @@ public static class StockOverviewAndValuationEndpoints
         string symbol,
         DegerliDbContext db,
         PriceStateService priceStates,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -89,7 +91,7 @@ public static class StockOverviewAndValuationEndpoints
             .Select(row => new { row.TextTr, row.TextEn, row.LastReviewedAt })
             .FirstOrDefaultAsync(cancellationToken);
 
-        var (asOf, stale) = await FreshnessAsync(db, clock, cancellationToken);
+        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         // The intraday/close price state (01 §10.9.18, TKT-foundation-047 — the frozen
         // contract TKT-foundation-049's Web half consumes): the sweep's last price while the
@@ -133,6 +135,7 @@ public static class StockOverviewAndValuationEndpoints
     private static async Task<IResult> ValuationAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -145,11 +148,7 @@ public static class StockOverviewAndValuationEndpoints
             return NotFound(symbol);
         }
 
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DerivedMetrics
-            .MaxAsync(metric => (DateOnly?)metric.AsOfDate, cancellationToken)
-            ?? today;
-        var stale = asOf < LatestTradingDayOnOrBefore(today);
+        var (asOf, stale) = await EodSessionFreshness.FromDerivedMetricsAsync(db, calendar, clock, cancellationToken);
 
         // Current multiples — the canonical rows every other surface serves (BR-RES-004).
         var metricRows = await db.DerivedMetrics
@@ -233,34 +232,6 @@ public static class StockOverviewAndValuationEndpoints
         join index in db.Indices on constituent.IndexId equals index.Id
         where index.Code == UniverseIndexCode && constituent.EffectiveTo == null
         select instrument;
-
-    /// <summary>
-    /// The section freshness: the latest canonical daily-price date serves as the as-of date;
-    /// it is stale when that date trails the latest trading day (`03` §1.2, FR-MDF-016).
-    /// </summary>
-    private static async Task<(DateOnly AsOf, bool Stale)> FreshnessAsync(
-        DegerliDbContext db,
-        TimeProvider clock,
-        CancellationToken cancellationToken)
-    {
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DailyPrices
-            .MaxAsync(price => (DateOnly?)price.PriceDate, cancellationToken)
-            ?? today;
-
-        return (asOf, asOf < LatestTradingDayOnOrBefore(today));
-    }
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
-    }
 
     private static IResult NotFound(string symbol)
         => Results.Problem(ApiProblem.Create(

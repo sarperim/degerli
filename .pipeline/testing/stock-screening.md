@@ -71,7 +71,8 @@
 
 **TC-SCR-010 — Run response envelope and staleness**
 - Traces: FR-SCR-005, BR-SCR-006, NFR-SCR-004 · Level: L2 · Design: decision table — data fresh/stale × run
-- Expected: fresh state → `asOf: T`, `stale: false`; with a forced freshness gap (fixture variant as in TC-MDF-013) → `stale: true` with the older `asOf` — a run never presents unclear vintage.
+- Expected: fresh state → `asOf: T`, `stale: false`; with a forced freshness gap past the EOD completion cutoff (fixture variant as in TC-MDF-013) → `stale: true` with the older `asOf` — a run never presents unclear vintage.
+- **Dated supersession (2026-11-02, SLICE-002 user arbitration on PR #174 review round 2, G-1):** staleness is measured against the **completion-cutoff rule**, not an unconditional "today − 1" and not the pre-037 "today" weekday rule. Before the cutoff (19:45 UTC = 22:45 Europe/Istanbul — the 20:30 TRT chain start plus its healthy ~100–120 min run, metrics/snapshot/medians last) the expected session is the latest trading day before today; at or after it, today's own session (calendar-resolved) is expected. The case now pins **both halves**: the mid-chain instant (18:00 UTC = 21:00 TRT) is `stale: false` — the pre-slice weekday rule flagged it stale all day, which is the false alarm this arbitration removes — and a genuinely missed same-day run past the cutoff (20:30 UTC = 23:30 TRT) is `asOf: T` + `stale: true` the same night.
 - Dependencies: —
 
 **TC-SCR-011 — Results are computed on demand, never persisted**

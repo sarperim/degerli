@@ -26,9 +26,10 @@ namespace Degerli.Api.IntegrationTests;
 /// value, invalid CAGR window, range min &gt; max, window on a non-growth metric) each
 /// reject the whole run with <c>400 VALIDATION_FAILED</c> and <c>params.fields[]</c>
 /// naming the offending criterion field; no partial execution.</item>
-/// <item>TC-SCR-010 — the run envelope always carries <c>asOf</c> + <c>stale</c>; a
-/// forced freshness gap serves the older vintage and marks it stale
-/// (FR-SCR-005, NFR-SCR-004).</item>
+/// <item>TC-SCR-010 — the run envelope always carries <c>asOf</c> + <c>stale</c>; the
+/// mid-chain window reads fresh and a forced freshness gap past the EOD completion
+/// cutoff serves the older vintage and marks it stale (FR-SCR-005, NFR-SCR-004;
+/// completion-cutoff rule arbitrated 2026-11-02).</item>
 /// <item>TC-SCR-011 — results are computed on demand against the latest
 /// <c>derived_metrics</c>, never persisted: a data-day advance changes the result
 /// with no result-set table behind it (UC-SCR-003 step 2).</item>
@@ -101,6 +102,26 @@ public sealed class ScreenerRunEdgeEndpointTests : IClassFixture<PostgresFixture
 
     // -- TC-SCR-010 — Run response envelope and staleness ------------------------
 
+    /// <summary>
+    /// TC-SCR-010 — the run envelope always carries <c>asOf</c> + <c>stale</c>, and the boolean is
+    /// the shared completion-cutoff rule's answer
+    /// (<c>EodSessionFreshness.DefaultEodCompletionCutoff</c>): fresh while the day's EOD chain is
+    /// still legitimately running, stale once it should have finished.
+    /// <para>
+    /// <b>Dated supersession (2026-11-02, user arbitration on review round 2 — G-1).</b> This case
+    /// used to force its freshness gap at the next trading day's <b>18:00 UTC</b>, which the
+    /// pre-slice weekday rule flagged stale all day. SLICE-002 arbitrated the completion-cutoff
+    /// shape instead: 18:00 UTC (21:00 TRT) sits <b>inside</b> the legitimate chain run — the chain
+    /// starts 20:30 TRT and metrics/snapshot/medians are its last steps — so that instant is fresh
+    /// by design, and the stale half moved past the 19:45 UTC cutoff (20:30 UTC = 23:30 TRT, a
+    /// genuinely missed same-day run). The mid-chain half is pinned separately by
+    /// <see cref="TC_SCR_010_mid_chain_is_not_reported_stale"/>. Same dated re-pin posture as the
+    /// TC-MDF-084 shipped-config case in this slice.
+    /// </para>
+    /// FR-SCR-005 / NFR-SCR-004 keep their contract: a run never presents an unclear vintage — the
+    /// envelope carries the as-of and the honest boolean, now measured against when the chain should
+    /// have completed rather than against an unconditional yesterday.
+    /// </summary>
     [Fact]
     public async Task TC_SCR_010_run_envelope_serves_the_older_vintage_when_stale()
     {
@@ -121,16 +142,45 @@ public sealed class ScreenerRunEdgeEndpointTests : IClassFixture<PostgresFixture
         Assert.Equal(T.ToString("yyyy-MM-dd"), freshRoot.GetProperty("asOf").GetString());
         Assert.False(freshRoot.GetProperty("stale").GetBoolean());
 
-        // Forced freshness gap: the clock has advanced to the next trading day with no
-        // new canonical metrics — the run serves the older asOf and marks it stale, never
+        // Forced freshness gap, past the completion cutoff: the clock has advanced to the next
+        // trading day at 20:30 UTC (23:30 TRT) — the day's EOD chain should have finished and no
+        // new canonical metrics landed. The run serves the older asOf and marks it stale, never
         // presenting an unclear vintage (FR-SCR-005 / NFR-SCR-004).
-        factory.Clock.SetUtcNow(new DateTimeOffset(T1.ToDateTime(new TimeOnly(18, 0)), TimeSpan.Zero));
+        factory.Clock.SetUtcNow(new DateTimeOffset(T1.ToDateTime(new TimeOnly(20, 30)), TimeSpan.Zero));
         using var stale = await RunAsync(client, criteria);
         Assert.Equal(HttpStatusCode.OK, stale.StatusCode);
         using var staleDocument = JsonDocument.Parse(await stale.Content.ReadAsStringAsync());
         var staleRoot = staleDocument.RootElement;
         Assert.Equal(T.ToString("yyyy-MM-dd"), staleRoot.GetProperty("asOf").GetString());
         Assert.True(staleRoot.GetProperty("stale").GetBoolean());
+    }
+
+    /// <summary>
+    /// TC-SCR-010 (mid-chain half, added 2026-11-02 with the arbitrated completion-cutoff rule) —
+    /// the normal chain window is never reported stale. The clock is at the next trading day's
+    /// 18:00 UTC (21:00 TRT), ~30 minutes after the 20:30 TRT EOD chain started and before its last
+    /// metrics/snapshot steps land, so T remains the newest session that should have completed and
+    /// the run reads fresh. This is the reported defect's exact shape: a healthy chain must not
+    /// paint the stale badge.
+    /// </summary>
+    [Fact]
+    public async Task TC_SCR_010_mid_chain_is_not_reported_stale()
+    {
+        await SeedAsync();
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        const string criteria = """
+            { "criteria": [ { "metricCode": "pe", "bound": "max", "maxValue": 15 } ] }
+            """;
+
+        factory.Clock.SetUtcNow(new DateTimeOffset(T1.ToDateTime(new TimeOnly(18, 0)), TimeSpan.Zero));
+        using var response = await RunAsync(client, criteria);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal(T.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+        Assert.False(root.GetProperty("stale").GetBoolean());
     }
 
     // -- TC-SCR-011 — Results computed on demand, never persisted ----------------

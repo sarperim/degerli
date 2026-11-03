@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Identity;
@@ -89,6 +90,7 @@ public static class ScreenerEndpoints
     private static async Task<IResult> RunAsync(
         HttpRequest request,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         UserManager<ApplicationUser> userManager,
         HttpContext context,
@@ -198,7 +200,7 @@ public static class ScreenerEndpoints
                 return Validation(new[] { new ValidationField("criteria", "required") });
             }
 
-            return await EvaluateAsync(db, clock, criteria, dropped, cancellationToken);
+            return await EvaluateAsync(db, calendar, clock, criteria, dropped, cancellationToken);
         }
     }
 
@@ -304,14 +306,13 @@ public static class ScreenerEndpoints
 
     private static async Task<IResult> EvaluateAsync(
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         IReadOnlyList<Criterion> criteria,
         IReadOnlyList<string> dropped,
         CancellationToken cancellationToken)
     {
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DerivedMetrics.MaxAsync(metric => (DateOnly?)metric.AsOfDate, cancellationToken) ?? today;
-        var stale = asOf < LatestTradingDayOnOrBefore(today);
+        var (asOf, stale) = await EodSessionFreshness.FromDerivedMetricsAsync(db, calendar, clock, cancellationToken);
 
         var universe = await (
                 from instrument in db.Instruments
@@ -478,17 +479,6 @@ public static class ScreenerEndpoints
             StatusCodes.Status400BadRequest,
             ApiErrorCodes.ValidationFailed,
             new Dictionary<string, object?> { ["fields"] = payload }));
-    }
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
     }
 
     private sealed record Criterion(
