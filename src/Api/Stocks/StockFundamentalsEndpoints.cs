@@ -40,6 +40,9 @@ public static class StockFundamentalsEndpoints
     /// <summary>The index code whose current constituents form the covered universe.</summary>
     private const string UniverseIndexCode = "XU100";
 
+    private const int MaxFreshStatementAgeDays = 365;
+    private const int MaxFreshAnnualBalanceSheetAgeDays = 450;
+
     // ── Canonical chart-of-accounts item codes (02 §6.1) ─────────────────────
     private const string Rev = "REV";
     private const string Ebit = "EBIT";
@@ -200,6 +203,18 @@ public static class StockFundamentalsEndpoints
             })
             .ToList();
 
+        var (asOf, eodStale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        if (entries.Count == 0 && !financialSectorLayout)
+        {
+            return Results.Ok(DataEnvelope.Missing(
+                asOf,
+                DataStates.NoData,
+                new DataCoverage(instrument.ListingDate?.ToString("yyyy-MM-dd"), "no financial statements reported"),
+                eodStale));
+        }
+
         var byPeriod = entries.ToDictionary(
             entry => (entry.PeriodType, entry.PeriodEndDate));
 
@@ -293,8 +308,6 @@ public static class StockFundamentalsEndpoints
             });
         }
 
-        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
-
         // The EV header inputs are served as their own facts with their own as-of, display-only:
         // the DCF's own debt/cash/share-count inputs are untouched (02 §6.2, FR-RES-008).
         // A financial-sector layout is served no EV header at all: its inputs are the same
@@ -358,6 +371,8 @@ public static class StockFundamentalsEndpoints
                 message = FinancialSectorLayoutNotice,
             }
             : null;
+
+        var stale = eodStale || latest is null || latest.PeriodEndDate < today.AddDays(-MaxFreshStatementAgeDays);
 
         return Results.Ok(new { asOf, stale, filing, layoutNotice, evHeader, periods });
     }
@@ -496,7 +511,7 @@ public static class StockFundamentalsEndpoints
             return NotFound(symbol);
         }
 
-        var (asOf, stale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
+        var (asOf, eodStale) = await EodSessionFreshness.FromDailyPricesAsync(db, calendar, clock, cancellationToken);
 
         var statements = await db.FinancialStatements
             .Where(statement => statement.InstrumentId == instrument.Id
@@ -514,8 +529,11 @@ public static class StockFundamentalsEndpoints
                 asOf,
                 DataStates.NoData,
                 new DataCoverage(instrument.ListingDate?.ToString("yyyy-MM-dd"), "no balance sheet reported"),
-                stale));
+                eodStale));
         }
+
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+        var stale = eodStale || latest.PeriodEndDate < today.AddDays(-MaxFreshAnnualBalanceSheetAgeDays);
 
         // The restated version serves when present (BR-MDF-011).
         var candidates = statements.Where(statement => statement.PeriodEndDate == latest.PeriodEndDate).ToList();

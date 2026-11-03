@@ -595,6 +595,88 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             Assert.False(root.TryGetProperty("metrics", out _));
             Assert.True(root.TryGetProperty("coverage", out _));
         }
+
+        // NEWP statements absent → explicit no-data with the listing boundary;
+        // never fabricated, no periods property.
+        await using (var db = _postgres.CreateContext())
+        {
+            var newp = await db.Instruments.SingleAsync(i => i.Symbol == "NEWP");
+            var statements = await db.FinancialStatements.Where(s => s.InstrumentId == newp.Id).ToListAsync();
+            db.FinancialStatements.RemoveRange(statements);
+            await db.SaveChangesAsync();
+        }
+
+        using (var response = await client.GetAsync("/api/v1/stocks/NEWP/financials"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            Assert.Equal("no-data", root.GetProperty("state").GetString());
+            Assert.False(root.TryGetProperty("periods", out _));
+            Assert.True(root.TryGetProperty("coverage", out var coverage));
+            Assert.Equal("2025-08-01", coverage.GetProperty("availableFrom").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Outdated_statement_periods_mark_financials_and_balance_sheet_stale_even_when_eod_prices_are_fresh()
+    {
+        await SeedAsync();
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var rest = await db.Instruments.SingleAsync(i => i.Symbol == "REST");
+            var statements = await db.FinancialStatements.Where(s => s.InstrumentId == rest.Id).ToListAsync();
+            foreach (var statement in statements)
+            {
+                statement.FiscalYear = 2023;
+                statement.PeriodEndDate = new DateOnly(2023, 12, 31);
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        // REST profitability is fresh because EOD daily prices are current at T
+        using (var response = await client.GetAsync("/api/v1/stocks/REST/profitability"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        // Outdated statement period (2023-12-31 > 365 days) marks financials stale
+        using (var response = await client.GetAsync("/api/v1/stocks/REST/financials"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.True(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        // Outdated FY balance sheet (2023-12-31 > 450 days) marks balance sheet stale
+        using (var response = await client.GetAsync("/api/v1/stocks/REST/balance-sheet"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.True(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        // ALFA has fresh statements (2025-12-31), so financials and balance-sheet are not stale
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/financials"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/balance-sheet"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(document.RootElement.GetProperty("stale").GetBoolean());
+        }
     }
 
     // ---------------------------------------------------------------------------
