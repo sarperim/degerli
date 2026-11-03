@@ -187,6 +187,10 @@ PY
   printf -- '- Status: partially resolved\n' > "$CASE/.pipeline/plan/tickets/TKT-demo-003.md"
   run_case "an unknown/multi-word status is open, not terminal, and needs a row" 1 "open ticket TKT-demo-003 \('partially'\) is missing"
 
+  CASE="$tmp/bold-terminal-status"; cp -a "$base" "$CASE"
+  printf -- '- Status: **superseded — note**\n' > "$CASE/.pipeline/plan/tickets/TKT-demo-004.md"
+  run_case "a markdown-bolded terminal status (**superseded) is parsed as terminal" 0 'OK — '
+
   CASE="$tmp/stale-date"; cp -a "$base" "$CASE"
   mutate "$CASE/IMPLEMENTATION_STATUS.md" 's/^Last verified: 2026-10-24$/Last verified: 2020-01-01/'
   run_case "a stale last-verified date fails" 1 "days old \(limit 60\)"
@@ -553,7 +557,7 @@ done
 # ---------------------------------------------------------------------------
 ticket_class() { # $1 = ticket file -> terminal class word
   local class
-  class="$(grep -m1 -E '^- Status:' "$1" | sed -E 's/^- Status:[[:space:]]*([A-Za-z-]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
+  class="$(grep -m1 -E '^- Status:' "$1" | sed -E 's/^- Status:[[:space:]*]*([A-Za-z-]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
   [ -n "$class" ] || class="unknown"
   printf '%s' "$class"
 }
