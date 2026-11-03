@@ -378,8 +378,12 @@ public sealed class StatementsJob : IIngestJob
         var now = _clock.GetUtcNow();
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         var lookbackMonths = _options.KapPublicLookbackMonths > 0 ? _options.KapPublicLookbackMonths : 1;
+        var defaultFrom = today.AddMonths(-lookbackMonths);
+        var planFrom = request.BackfillFrom is { } backfillFrom && backfillFrom <= today
+            ? backfillFrom
+            : defaultFrom;
         var plan = new KapPublicStatementWalkPlan(
-            today.AddMonths(-lookbackMonths),
+            planFrom,
             today,
             _options.KapPublicWindowDays);
 
@@ -402,6 +406,22 @@ public sealed class StatementsJob : IIngestJob
         var publicOids = await _kapPublicMaps
             .GetPublicOidsAsync(instrumentIds.Values.Distinct().ToList(), cancellationToken)
             .ConfigureAwait(false);
+
+        var cursorResets = 0;
+        if (request.BackfillFrom is { } resetTo && resetTo <= today)
+        {
+            foreach (var symbol in constituents)
+            {
+                if (instrumentIds.TryGetValue(symbol, out var mappedInstrumentId)
+                    && publicOids.ContainsKey(mappedInstrumentId))
+                {
+                    await _kapPublicCursors
+                        .SetAsync(symbol, KapPublicStatementCursor.Start(resetTo), cancellationToken)
+                        .ConfigureAwait(false);
+                    cursorResets++;
+                }
+            }
+        }
 
         // Fair iteration across passes (review round 1, D2). The budget is run-sticky, so a fixed
         // universe order would let the same head companies spend it every pass and starve the tail
@@ -693,7 +713,7 @@ public sealed class StatementsJob : IIngestJob
             failedSymbols,
             parseFailed: 0,
             identityIsolated,
-            cursorResets: 0,
+            cursorResets: cursorResets,
             symbolStats,
             cancellationToken,
             truncatedWalk: truncatedCompanies > 0 || notWalked > 0,
