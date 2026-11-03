@@ -51,6 +51,8 @@ x-api-environment: &api-environment
   # VYK gateway (and supplied credentials) entirely via VPS .env.
   Ingestion__Statements__Source: ${Ingestion__Statements__Source:-kap-public}
   Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}
+  Ingestion__Statements__UniverseIndex: ${Ingestion__Statements__UniverseIndex:-XU100}
+  Ingestion__Disclosures__UniverseIndex: ${Ingestion__Disclosures__UniverseIndex:-XU100}
   Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}
   Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}
   APP_URL: ${APP_URL:?set APP_URL in .env}

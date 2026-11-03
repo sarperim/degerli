@@ -455,6 +455,10 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
         AssertKapSweep("disclosures");
         AssertKapSweep("statements");
 
+        var identity = schedules.Single(entry => entry.GetProperty("JobCode").GetString() == "kap-public-identity");
+        Assert.Equal("0 15 8 * * *", identity.GetProperty("Cron").GetString());
+        Assert.True(identity.GetProperty("TradingDaysOnly").GetBoolean());
+
         // The hourly intraday sweep (the re-pinned TC-MDF-084 constant).
         var intraday = schedules.Single(entry => entry.GetProperty("JobCode").GetString() == "intraday-quotes");
         Assert.Equal("0 15 10-17 * * 1-5", intraday.GetProperty("Cron").GetString());

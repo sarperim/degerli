@@ -508,6 +508,8 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
         var envExample = File.ReadAllText(Path.Combine(FindRepositoryRoot(), ".env.example"));
         Assert.Contains("Ingestion__Statements__Source=kap-public", envExample, StringComparison.Ordinal);
         Assert.Contains("Ingestion__Disclosures__Source=kap-public", envExample, StringComparison.Ordinal);
+        Assert.Contains("Ingestion__Statements__UniverseIndex=XU100", envExample, StringComparison.Ordinal);
+        Assert.Contains("Ingestion__Disclosures__UniverseIndex=XU100", envExample, StringComparison.Ordinal);
 
         var composeDev = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "compose.dev.yml"));
         Assert.Contains(
@@ -518,6 +520,14 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             "Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}",
             composeDev,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Statements__UniverseIndex: ${Ingestion__Statements__UniverseIndex:-XU100}",
+            composeDev,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Disclosures__UniverseIndex: ${Ingestion__Disclosures__UniverseIndex:-XU100}",
+            composeDev,
+            StringComparison.Ordinal);
 
         var composeProd = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "compose.prod.yml"));
         Assert.Contains(
@@ -526,6 +536,14 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
             StringComparison.Ordinal);
         Assert.Contains(
             "Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}",
+            composeProd,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Statements__UniverseIndex: ${Ingestion__Statements__UniverseIndex:-XU100}",
+            composeProd,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Disclosures__UniverseIndex: ${Ingestion__Disclosures__UniverseIndex:-XU100}",
             composeProd,
             StringComparison.Ordinal);
         Assert.Contains(

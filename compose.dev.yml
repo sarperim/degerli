@@ -24,6 +24,8 @@ x-api-environment: &api-environment
   # VYK gateway (and supplied credentials) entirely via .env.
   Ingestion__Statements__Source: ${Ingestion__Statements__Source:-kap-public}
   Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}
+  Ingestion__Statements__UniverseIndex: ${Ingestion__Statements__UniverseIndex:-XU100}
+  Ingestion__Disclosures__UniverseIndex: ${Ingestion__Disclosures__UniverseIndex:-XU100}
   # KAP VYK API credentials (MKK "KAP Data Dissemination Services", Ingestion:Kap:ApiKey /
   # ApiSecret). Reach the api service only through this passthrough; never baked into an image.
   Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}
