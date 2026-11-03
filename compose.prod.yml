@@ -47,6 +47,12 @@ x-api-environment: &api-environment
   Smtp__From: ${Smtp__From:?set Smtp__From in .env}
   Smtp__UseStartTls: ${Smtp__UseStartTls:-true}
   Evren__ApiKey: ${Evren__ApiKey}
+  # KAP sources default to the public site lane (kap-public); can be switched back to the
+  # VYK gateway (and supplied credentials) entirely via VPS .env.
+  Ingestion__Statements__Source: ${Ingestion__Statements__Source:-kap-public}
+  Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}
+  Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}
+  Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}
   APP_URL: ${APP_URL:?set APP_URL in .env}
   ALERT_EMAIL: ${ALERT_EMAIL:?set ALERT_EMAIL in .env}
 

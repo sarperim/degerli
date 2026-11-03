@@ -496,6 +496,48 @@ public sealed class LiveActivationTests : IClassFixture<PostgresFixture>, IClass
         Assert.DoesNotContain("evds2.tcmb.gov.tr", compose, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// SLICE-003 — KAP source deployment wiring: compose.prod.yml and compose.dev.yml select
+    /// kap-public by default for both statements and disclosures while allowing overrides via .env.
+    /// compose.prod.yml also passes Ingestion__Kap__ApiKey and Ingestion__Kap__ApiSecret through
+    /// so switching back to the VYK gateway remains config-only without container rebuilding.
+    /// </summary>
+    [Fact]
+    public void SLICE_003_deployment_wiring_selects_kap_public_by_default_and_passes_source_knobs()
+    {
+        var envExample = File.ReadAllText(Path.Combine(FindRepositoryRoot(), ".env.example"));
+        Assert.Contains("Ingestion__Statements__Source=kap-public", envExample, StringComparison.Ordinal);
+        Assert.Contains("Ingestion__Disclosures__Source=kap-public", envExample, StringComparison.Ordinal);
+
+        var composeDev = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "compose.dev.yml"));
+        Assert.Contains(
+            "Ingestion__Statements__Source: ${Ingestion__Statements__Source:-kap-public}",
+            composeDev,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}",
+            composeDev,
+            StringComparison.Ordinal);
+
+        var composeProd = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "compose.prod.yml"));
+        Assert.Contains(
+            "Ingestion__Statements__Source: ${Ingestion__Statements__Source:-kap-public}",
+            composeProd,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Disclosures__Source: ${Ingestion__Disclosures__Source:-kap-public}",
+            composeProd,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Kap__ApiKey: ${Ingestion__Kap__ApiKey:-}",
+            composeProd,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}",
+            composeProd,
+            StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------

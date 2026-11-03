@@ -567,7 +567,7 @@ the repo or the images (`.env.example` is the template; architecture §6.3).
 |---|---|
 | GitHub Actions secrets | `SSH_PRIVATE_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_HOST_KEY` |
 | GitHub Actions variables | `DEPLOY_PATH`, `PUBLIC_URL` |
-| VPS `.env` (compose) | `DOMAIN`, `POSTGRES_*`, `ConnectionStrings__Default`, `DEGERLI_BUILDER_PASSWORD`, `Smtp__*`, `Evren__ApiKey`, `APP_URL`, `ALERT_EMAIL` |
+| VPS `.env` (compose) | `DOMAIN`, `POSTGRES_*`, `ConnectionStrings__Default`, `DEGERLI_BUILDER_PASSWORD`, `Smtp__*`, `Evren__ApiKey`, `APP_URL`, `ALERT_EMAIL` (plus optional `Ingestion__Statements__Source`, `Ingestion__Disclosures__Source`, `Ingestion__Kap__ApiKey`, `Ingestion__Kap__ApiSecret`) |
 | VPS `/etc/degerli/backup.env` | `BACKUP_PASSPHRASE`, `RCLONE_REMOTE` |
 
 `DEPLOY_HOST_KEY` is the deploy host's public host-key line exactly as it appears in
@@ -579,6 +579,11 @@ rogue/on-path host key aborts the deploy instead of being trusted silently (no T
 ---
 
 ## KAP public-site access: the relay fallback
+
+Both `Ingestion__Statements__Source` and `Ingestion__Disclosures__Source` default to
+`kap-public` in `compose.prod.yml` (and `compose.dev.yml`). To switch either lane back to
+the official MKK VYK gateway, override the source to `vyk` in the VPS `.env` alongside
+`Ingestion__Kap__ApiKey` and `Ingestion__Kap__ApiSecret`.
 
 The KAP public-site lane reaches `https://www.kap.org.tr` through the adapter's own
 browser-shaped TLS handler plus 429-aware pacing (TKT-foundation-100, architecture
