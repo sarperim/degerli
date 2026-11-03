@@ -7,6 +7,7 @@ using Degerli.Ingestion;
 using Degerli.Ingestion.Jobs;
 using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Scheduling;
+using Degerli.Ingestion.Valuation;
 using Degerli.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -460,6 +461,179 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
         Assert.True(intraday.GetProperty("TradingDaysOnly").GetBoolean());
     }
 
+    /// <summary>
+    /// (vii) Key metrics carries the completed-session rule over its derived-metrics as-of:
+    /// Monday metrics served on the Tuesday 18:00 UTC clock read fresh; after the 19:45 UTC
+    /// completion cutoff (20:30 UTC) they read stale.
+    /// </summary>
+    [Fact]
+    public async Task Eod_Freshness_stock_key_metrics_carries_the_completed_session_rule()
+    {
+        await SeedAsync();
+        await DeletePricesAfterAsync(Monday);
+        await TrimMetricsAfterAsync(Monday);
+        await RunMetricsRecomputeAsync(Monday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        // Mid-chain at 18:00 UTC Tuesday: Monday metrics are the latest completed session — fresh.
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/key-metrics"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+            Assert.False(root.GetProperty("stale").GetBoolean());
+        }
+
+        // Past the 19:45 UTC cutoff (20:30 UTC): Tuesday's chain should have finished — stale.
+        factory.Clock.SetUtcNow(TuesdayPostCutoffClock);
+
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/key-metrics"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), root.GetProperty("asOf").GetString());
+            Assert.True(root.GetProperty("stale").GetBoolean());
+        }
+    }
+
+    /// <summary>
+    /// (viii) DCF baseline carries the completed-session rule over its canonical price as-of:
+    /// Monday prices served on the Tuesday 18:00 UTC clock read fresh; after the 19:45 UTC
+    /// completion cutoff (20:30 UTC) they read stale.
+    /// </summary>
+    [Fact]
+    public async Task Eod_Freshness_dcf_baseline_carries_the_completed_session_rule()
+    {
+        await SeedAsync();
+        await DeletePricesAfterAsync(Monday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        await RunBaselineJobAsync(factory, Monday);
+        using var client = CreateClient(factory);
+
+        // Mid-chain at 18:00 UTC Tuesday: Monday prices are the latest completed session — fresh.
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/dcf"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var price = document.RootElement.GetProperty("price");
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+            Assert.False(price.GetProperty("stale").GetBoolean());
+        }
+
+        // Past the 19:45 UTC cutoff (20:30 UTC): Tuesday's chain should have finished — stale.
+        factory.Clock.SetUtcNow(TuesdayPostCutoffClock);
+
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/dcf"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var price = document.RootElement.GetProperty("price");
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+            Assert.True(price.GetProperty("stale").GetBoolean());
+        }
+    }
+
+    /// <summary>
+    /// (ix) DCF baseline holiday handling: with Monday configured as a holiday and Friday
+    /// prices stored, the Tuesday clock serves Friday fresh.
+    /// </summary>
+    [Fact]
+    public async Task Eod_Freshness_dcf_baseline_holiday_serves_the_last_completed_session_fresh()
+    {
+        await SeedAsync();
+        await DeletePricesAfterAsync(Friday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString)
+            .WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
+            {
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Ingestion:TradingCalendar:Holidays:0"] = Monday.ToString("yyyy-MM-dd"),
+                });
+            }));
+        await RunBaselineJobAsync(factory, Friday);
+        using var client = CreateClient(factory);
+
+        using var response = await client.GetAsync("/api/v1/stocks/ALFA/dcf");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var price = document.RootElement.GetProperty("price");
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+        Assert.False(price.GetProperty("stale").GetBoolean());
+    }
+
+    /// <summary>
+    /// (x) DCF compute carries the completed-session rule over its canonical price as-of:
+    /// Monday prices served on the Tuesday 18:00 UTC clock read fresh; after the 19:45 UTC
+    /// completion cutoff (20:30 UTC) they read stale.
+    /// </summary>
+    [Fact]
+    public async Task Eod_Freshness_dcf_compute_carries_the_completed_session_rule()
+    {
+        await SeedAsync();
+        await DeletePricesAfterAsync(Monday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+        using var client = CreateClient(factory);
+
+        // Mid-chain at 18:00 UTC Tuesday: Monday prices are the latest completed session — fresh.
+        using (var response = await PostDcfComputeAsync(client, "ALFA"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var price = document.RootElement.GetProperty("price");
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+            Assert.False(price.GetProperty("stale").GetBoolean());
+        }
+
+        // Past the 19:45 UTC cutoff (20:30 UTC): Tuesday's chain should have finished — stale.
+        factory.Clock.SetUtcNow(TuesdayPostCutoffClock);
+
+        using (var response = await PostDcfComputeAsync(client, "ALFA"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var price = document.RootElement.GetProperty("price");
+            Assert.Equal(Monday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+            Assert.True(price.GetProperty("stale").GetBoolean());
+        }
+    }
+
+    /// <summary>
+    /// (xi) DCF compute holiday handling: with Monday configured as a holiday and Friday
+    /// prices stored, the Tuesday clock serves Friday fresh.
+    /// </summary>
+    [Fact]
+    public async Task Eod_Freshness_dcf_compute_holiday_serves_the_last_completed_session_fresh()
+    {
+        await SeedAsync();
+        await DeletePricesAfterAsync(Friday);
+
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString)
+            .WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
+            {
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Ingestion:TradingCalendar:Holidays:0"] = Monday.ToString("yyyy-MM-dd"),
+                });
+            }));
+        using var client = CreateClient(factory);
+
+        using var response = await PostDcfComputeAsync(client, "ALFA");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var price = document.RootElement.GetProperty("price");
+        Assert.Equal(Friday.ToString("yyyy-MM-dd"), price.GetProperty("asOf").GetString());
+        Assert.False(price.GetProperty("stale").GetBoolean());
+    }
+
     // ---------------------------------------------------------------------------------
     // Harness
     // ---------------------------------------------------------------------------------
@@ -530,6 +704,47 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/screener/run")
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("X-CSRF-Token", token);
+        request.Headers.Add("X-Forwarded-For", Guid.NewGuid().ToString("N"));
+        return await client.SendAsync(request);
+    }
+
+    private static async Task RunBaselineJobAsync(WebApplicationFactory<Program> factory, DateOnly buildDate)
+    {
+        using var scope = factory.Services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+        var result = await runner.RunAsync(
+            DcfBaselineGenerationJob.Code,
+            new IngestionRequest(buildDate));
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+    }
+
+    private static async Task<HttpResponseMessage> PostDcfComputeAsync(HttpClient client, string symbol)
+    {
+        using var csrfRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
+        csrfRequest.Headers.Add("X-Forwarded-For", Guid.NewGuid().ToString("N"));
+        using var csrfResponse = await client.SendAsync(csrfRequest);
+        csrfResponse.EnsureSuccessStatusCode();
+        using var csrfDocument = JsonDocument.Parse(await csrfResponse.Content.ReadAsStringAsync());
+        var token = csrfDocument.RootElement.GetProperty("token").GetString();
+
+        var payload = """
+            {
+                "base_fcf": 100,
+                "growth_rate": 0.10,
+                "horizon_years": 5,
+                "terminal_growth": 0.03,
+                "discount_rate": 0.12,
+                "debt": 400,
+                "cash": 200,
+                "share_count": 100
+            }
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/stocks/{symbol}/dcf/compute")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
         };
         request.Headers.Add("X-CSRF-Token", token);
         request.Headers.Add("X-Forwarded-For", Guid.NewGuid().ToString("N"));

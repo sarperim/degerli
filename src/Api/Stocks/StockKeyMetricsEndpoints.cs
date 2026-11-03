@@ -2,6 +2,7 @@ using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Metrics;
 using Degerli.Core.Valuation;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,7 @@ public static class StockKeyMetricsEndpoints
     private static async Task<IResult> KeyMetricsAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -92,11 +94,7 @@ public static class StockKeyMetricsEndpoints
             return NotFound(symbol);
         }
 
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var asOf = await db.DerivedMetrics
-            .MaxAsync(metric => (DateOnly?)metric.AsOfDate, cancellationToken)
-            ?? today;
-        var stale = asOf < LatestTradingDayOnOrBefore(today);
+        var (asOf, stale) = await EodSessionFreshness.FromDerivedMetricsAsync(db, calendar, clock, cancellationToken);
 
         // ── current canonical values (read, never computed — BR-RES-004) ──────────────
         var panelCodes = MetricCodes.KeyMetricPanel;
@@ -396,17 +394,6 @@ public static class StockKeyMetricsEndpoints
         join index in db.Indices on constituent.IndexId equals index.Id
         where index.Code == UniverseIndexCode && constituent.EffectiveTo == null
         select instrument;
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
-    }
 
     private static IResult NotFound(string symbol)
         => Results.Problem(ApiProblem.Create(
