@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
@@ -69,7 +71,7 @@ public static class RateLimitingSetup
         });
     }
 
-    private static string ResolveClientIp(HttpContext context, IHostEnvironment environment)
+    public static string ResolveClientIp(HttpContext context, IHostEnvironment environment)
     {
         if (!environment.IsProduction())
         {
@@ -82,9 +84,53 @@ public static class RateLimitingSetup
                     return first;
                 }
             }
+
+            return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         }
 
-        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var remoteIp = NormalizeIp(context.Connection.RemoteIpAddress);
+        if (remoteIp is null || IsTrustedProxyPeer(remoteIp))
+        {
+            var forwarded = context.Request.Headers["X-Forwarded-For"].ToString();
+            if (!string.IsNullOrWhiteSpace(forwarded))
+            {
+                var lastHop = forwarded.Split(',')[^1].Trim();
+                if (IPAddress.TryParse(lastHop, out var parsedClientIp))
+                {
+                    return NormalizeIp(parsedClientIp)!.ToString();
+                }
+            }
+        }
+
+        return remoteIp?.ToString() ?? "unknown";
+    }
+
+    private static IPAddress? NormalizeIp(IPAddress? ip) =>
+        ip is { IsIPv4MappedToIPv6: true } ? ip.MapToIPv4() : ip;
+
+    private static bool IsTrustedProxyPeer(IPAddress ip)
+    {
+        var normalized = NormalizeIp(ip)!;
+        if (IPAddress.IsLoopback(normalized))
+        {
+            return true;
+        }
+
+        var bytes = normalized.GetAddressBytes();
+        if (normalized.AddressFamily == AddressFamily.InterNetwork)
+        {
+            return bytes[0] == 10
+                || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168)
+                || bytes[0] == 127;
+        }
+
+        if (normalized.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            return (bytes[0] & 0xFE) == 0xFC || IPAddress.IsLoopback(normalized);
+        }
+
+        return false;
     }
 
     private static async ValueTask WriteRejectionAsync(OnRejectedContext context)
