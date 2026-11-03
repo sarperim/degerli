@@ -11,7 +11,7 @@ scope:
 
 # TKT-foundation-051: Cash-flow decoder coverage — zero OCF/CAPEX line items decoded blocks FCF/SNA (DCF blocker); extend the ConceptMap from real captured shapes
 
-- Status: **superseded — 2026-10-25 (planner, USER-DIRECTED public-site lane pass): superseded by TKT-foundation-081.** The ticket's goal (OCF/CAPEX decoded, FCF computes, SNA populates) lands there as **TC-MDF-108** (test plan §22). See the supersession note below.
+- Status: superseded — **2026-10-25 (planner, USER-DIRECTED public-site lane pass): superseded by TKT-foundation-081.** The ticket's goal (OCF/CAPEX decoded, FCF computes, SNA populates) lands there as **TC-MDF-108** (test plan §22). See the supersession note below.
 - Size: M
 - **Priority: P2 — capture-gated (see Dependencies): the implementation dispatches once the orchestrator's paced CF capture set is committed.** Gates the user's DCF goal together with share counts (TKT-foundation-033, still blocked on the prod-gateway NXDOMAIN — dependency recorded, not re-planned here).
 - **Planner-verified evidence (dev DB, read-only, 2026-10-22):**
