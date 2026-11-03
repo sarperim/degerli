@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Valuation;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,6 +28,7 @@ public static class DcfBaselineEndpoints
     private static async Task<IResult> GetAsync(
         string symbol,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -65,8 +67,7 @@ public static class DcfBaselineEndpoints
         using var document = JsonDocument.Parse(baseline.ParamsJson);
         var root = document.RootElement;
 
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var stale = price.PriceDate < LatestTradingDayOnOrBefore(today);
+        var (_, stale) = EodSessionFreshness.AgainstCompletedSession(price.PriceDate, calendar, clock);
 
         // Financial-sector exclusion (02 §6.4, 03 §5 v1.4): the generation job records a
         // `sector_not_applicable` state instead of an FCF-derived baseline; serve that
@@ -139,14 +140,4 @@ public static class DcfBaselineEndpoints
             ApiErrorCodes.NotFound,
             new Dictionary<string, object?> { ["symbol"] = symbol }));
 
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
-    }
 }

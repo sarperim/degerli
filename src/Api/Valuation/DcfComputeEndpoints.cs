@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Core.Valuation;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,6 +40,7 @@ public static class DcfComputeEndpoints
         string symbol,
         HttpRequest request,
         DegerliDbContext db,
+        IIngestionCalendar calendar,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -145,8 +147,7 @@ public static class DcfComputeEndpoints
                 .Select(row => row.ToArray())
                 .ToArray();
 
-            var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-            var stale = price.PriceDate < LatestTradingDayOnOrBefore(today);
+            var (_, stale) = EodSessionFreshness.AgainstCompletedSession(price.PriceDate, calendar, clock);
 
             return Results.Ok(new
             {
@@ -259,17 +260,6 @@ public static class DcfComputeEndpoints
                 ["reason"] = DcfSectorApplicability.FinancialSectorReason,
                 ["profile"] = accountingProfile,
             }));
-
-    /// <summary>The latest Mon–Fri trading day at or before <paramref name="date"/>.</summary>
-    private static DateOnly LatestTradingDayOnOrBefore(DateOnly date)
-    {
-        while (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-        {
-            date = date.AddDays(-1);
-        }
-
-        return date;
-    }
 
     private readonly record struct ValidationField(string Field, string Code);
 }
