@@ -1632,6 +1632,74 @@ public sealed class KapPublicStatementsIngestTests : IClassFixture<PostgresFixtu
                 && message.Contains("never guessed", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// SLICE-007 — <b>admin backfill resets kap-public cursors and recovers statements.</b>
+    /// When a company's kap-public statement cursor already has Watermark = T and an index
+    /// in Seen and Retried (with 0 rows in financial_statements), running StatementsJob with
+    /// BackfillFrom resets the cursor to BackfillFrom, clears Seen and Retried tombstones,
+    /// re-walks the window, and writes the recovered statements to financial_statements.
+    /// </summary>
+    [Fact]
+    public async Task Backfill_resets_cursor_clears_tombstones_and_writes_recovered_statements()
+    {
+        await ResetAsync();
+        await BindAsync("ASELS");
+
+        // Seed a stuck cursor: Watermark at T, and InterimIndex in both Seen and Retried,
+        // with 0 rows in financial_statements.
+        var stuckCursor = new KapPublicStatementCursor(T, [InterimIndex])
+        {
+            Retried = [InterimIndex],
+        };
+        await using (var db = _postgres.CreateContext())
+        {
+            var cursorStore = new KapPublicStatementCursorStore(db);
+            await cursorStore.SetAsync("ASELS", stuckCursor);
+            Assert.Equal(0, await db.FinancialStatements.CountAsync());
+        }
+
+        var seededCursor = await ReadCursorAsync("ASELS");
+        Assert.NotNull(seededCursor);
+        Assert.Equal(T, seededCursor!.Watermark);
+        Assert.Contains(InterimIndex, seededCursor.Seen);
+        Assert.Contains(InterimIndex, seededCursor.Retried);
+
+        StubDoubles();
+
+        var backfillFrom = new DateOnly(2024, 10, 29);
+        await using (var host = BuildIngestion())
+        {
+            using var scope = host.Provider.CreateScope();
+            var runner = scope.ServiceProvider.GetRequiredService<IIngestionJobRunner>();
+            var result = await runner.RunAsync(
+                StatementsJob.Code,
+                new IngestionRequest(T, BackfillFrom: backfillFrom));
+
+            Assert.NotEqual(IngestResult.Failed, result.Status);
+            Assert.True(result.Written > 0, "backfill pass must write statement rows");
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var asels = await db.Instruments.SingleAsync(i => i.Symbol == "ASELS");
+            var statements = await db.FinancialStatements
+                .Where(s => s.InstrumentId == asels.Id && s.SourceRef == KapPublicSourceOptions.SourceName)
+                .ToListAsync();
+            Assert.NotEmpty(statements);
+            Assert.Contains(statements, s => s.PeriodEndDate == InterimPeriodEnd);
+        }
+
+        Assert.Equal(1, _wireMock.RequestsFor(string.Format(ReportRoute, InterimIndex)));
+
+        var afterBackfill = await ReadCursorAsync("ASELS");
+        Assert.NotNull(afterBackfill);
+        // Retried tombstone cleared by cursor reset
+        Assert.Empty(afterBackfill!.Retried);
+        // Interim report re-walked and marked Seen in the new walk
+        Assert.Contains(InterimIndex, afterBackfill.Seen);
+        Assert.True(afterBackfill.Watermark >= backfillFrom);
+    }
+
     // =============================================================================================
     // Harness
     // =============================================================================================

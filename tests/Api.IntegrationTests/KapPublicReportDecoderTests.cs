@@ -2567,6 +2567,55 @@ public sealed class KapPublicReportDecoderTests : IClassFixture<PostgresFixture>
         Assert.Equal(2, report.Count(KapPublicReportReasons.DuplicateLabelConflict));
     }
 
+    /// <summary>
+    /// SLICE-007 — <b>multi-subgroup lease liabilities fall back to OTHER_* while same-subgroup
+    /// duplicates still conflict.</b> When a balance sheet carries <c>Kiralama İşlemlerinden Borçlar</c>
+    /// in two different borrowing sub-groups inside the same block (with an intervening
+    /// <c>Borçlanmalar</c> heading), the first occurrence maps to <c>ST_LEASE_LIAB</c>, the second
+    /// occurrence falls back to its section-scoped <c>OTHER_BS_Kiralama_İşlemlerinden_Borçlar</c>
+    /// passthrough, <c>ConflictingItemCodes</c> is null, and <c>DuplicateLabelConflict</c> is 0.
+    /// When mutating a sibling row inside the same borrowing sub-group (with no intervening
+    /// <c>Borçlanmalar</c> heading), the second occurrence still conflicts and quarantines.
+    /// </summary>
+    [Fact]
+    public void Multi_subgroup_lease_liabilities_fall_back_to_other_while_same_subgroup_duplicates_still_conflict()
+    {
+        // Case 1: Intervening borrowing sub-heading (occurrence 1 under 'İlişkili Taraflardan Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları',
+        // followed by 'İlişkili Olmayan Taraflardan Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları' before the existing row).
+        var multiSubgroupBody = Mutate(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao],
+            "Banka Kredileri",
+            "Kiralama İşlemlerinden Borçlar",
+            occurrence: 1);
+
+        var multiSubgroupReport = KapPublicReportDecoder.Decode(multiSubgroupBody, "THYAO");
+
+        Assert.Equal(0, multiSubgroupReport.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        var multiSubgroupBs = multiSubgroupReport.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        Assert.Null(multiSubgroupBs.ConflictingItemCodes);
+        Assert.Equal(0m, multiSubgroupBs.Lines["ST_LEASE_LIAB"]);
+        Assert.Equal(86_152m, multiSubgroupBs.Lines["OTHER_BS_Kiralama_İşlemlerinden_Borçlar"]);
+
+        // Case 2: Sibling row in the same borrowing sub-group (occurrence 2 under 'İlişkili Olmayan Taraflardan Uzun Vadeli Borçlanmaların Kısa Vadeli Kısımları',
+        // with no intervening 'Borçlanmalar' heading before the existing row).
+        var sameSubgroupBody = Mutate(
+            CaptureBodies[RealSourceCatalog.KapPublicReportThyao],
+            "Banka Kredileri",
+            "Kiralama İşlemlerinden Borçlar",
+            occurrence: 2);
+
+        var sameSubgroupReport = KapPublicReportDecoder.Decode(sameSubgroupBody, "THYAO");
+
+        Assert.Equal(2, sameSubgroupReport.Count(KapPublicReportReasons.DuplicateLabelConflict));
+        var sameSubgroupBs = sameSubgroupReport.Payload.Statements.Single(
+            s => s.StatementType == "BS" && s.PeriodEndDate == new DateOnly(2025, 12, 31));
+
+        Assert.NotNull(sameSubgroupBs.ConflictingItemCodes);
+        Assert.Contains("ST_LEASE_LIAB", sameSubgroupBs.ConflictingItemCodes!);
+    }
+
     // =================================================================================
     // TC-MDF-128 — the bare-currency declaration (TKT-foundation-101)
     // =================================================================================

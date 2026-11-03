@@ -595,6 +595,7 @@ public static class KapPublicReportDecoder
         var firstStoredAt = new Dictionary<Group, Dictionary<string, long>>();
         var rowSequence = 0L;
         var otherPartAttestedAt = -1L;
+        var borrowingSubgroupAttestedAt = -1L;
 
         // Phase 2 — decode the value cells of every table whose heading and columns resolved.
         foreach (var decode in decodes)
@@ -663,6 +664,10 @@ public static class KapPublicReportDecoder
                     // even when the anchor's wording is one this decoder cannot read, which is
                     // exactly the case the stale-part fallback exists for (DR-01).
                     otherPartAttestedAt = rowSequence;
+                }
+                if (statementType == "BS" && AttestsBorrowingSubgroup(rowLabel))
+                {
+                    borrowingSubgroupAttestedAt = rowSequence;
                 }
 
                 switch (statementType)
@@ -818,6 +823,18 @@ public static class KapPublicReportDecoder
                     {
                         itemCode = MapCode(statementType, section, null, label);
                         stalePart = true;
+                    }
+                    else if (statementType == "BS"
+                        && scope is not null
+                        && HasScopedRule(statementType, label)
+                        && StatementMapper.CanonicalCodes.Contains(itemCode)
+                        && group.Lines.TryGetValue(itemCode, out var bsTaken)
+                        && bsTaken != value
+                        && firstStoredAt.TryGetValue(group, out var bsStoredInGroup)
+                        && bsStoredInGroup.TryGetValue(itemCode, out var bsFirstSeenAt)
+                        && borrowingSubgroupAttestedAt > bsFirstSeenAt)
+                    {
+                        itemCode = MapCode(statementType, section, null, label);
                     }
 
                     var outcome = group.Add(itemCode, value, label, findings, out var storedCode);
@@ -1532,6 +1549,11 @@ public static class KapPublicReportDecoder
         !string.IsNullOrWhiteSpace(label)
         && (label.Contains("Kapsamlı Gelir", StringComparison.Ordinal)
             || label.Contains("Yeniden Sınıflandırıl", StringComparison.Ordinal));
+
+    private static bool AttestsBorrowingSubgroup(string? label) =>
+        !string.IsNullOrWhiteSpace(label)
+        && label.Contains("Borçlanmalar", StringComparison.Ordinal)
+        && !label.StartsWith("Diğer ", StringComparison.Ordinal);
 
     /// <summary>
     /// Maps a label to its canonical code inside its statement and row scope, or to its
