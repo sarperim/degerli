@@ -15,7 +15,7 @@ scope:
 
 ## Context & Goal
 
-In `src/Api/appsettings.json`, `Ingestion:Statements:Source` and `Ingestion:Disclosures:Source` ship as `"vyk"` so that the L2 integration suite (`TC-MDF-109`, `StatementsAndEventsIngestionTests`, etc.) exercises the VYK double without per-test source overrides.
+In `src/Api/appsettings.json`, `Ingestion:Statements:Source` and `Ingestion:Disclosures:Source` ship as `"vyk"` so that the L2 integration suite (`KapPublicStatementsIngestTests`, `StatementsAndEventsIngestionTests`, etc.) exercises the VYK double without per-test source overrides.
 
 However, neither `compose.prod.yml`, `compose.dev.yml`, nor `.env.example` passes `Ingestion__Statements__Source` or `Ingestion__Disclosures__Source` into the `api` container environment. As a result, deploying `compose.prod.yml` to a VPS (or booting `compose.dev.yml` from `.env.example`) leaves both KAP lanes on `"vyk"` (the key-gated MKK dev gateway) with empty credentials, causing both the EOD/morning chains and SLICE-002's 2-hour intraday KAP sweeps to fail instead of running the keyless live `kap-public` lane (`TKT-foundation-082` / `TKT-foundation-084`).
 
