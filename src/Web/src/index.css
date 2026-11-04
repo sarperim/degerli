@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import './styles/tokens.css';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   * {
     border-color: var(--color-border);
