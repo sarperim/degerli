@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { setTheme, THEME_STORAGE_KEY } from '@/lib/theme'
+import { runA11y } from '@/test/a11y'
 import { catalogValue } from '@/test/i18n'
 import { renderWithProviders } from '@/test/render'
 
@@ -20,15 +21,16 @@ describe('ThemeToggle', () => {
 
   it('renders in light mode by default and toggles to dark and back', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<ThemeToggle />)
+    const { container } = renderWithProviders(<ThemeToggle />)
 
     const button = screen.getByRole('button', {
-      name: catalogValue('tr', 'header.themeToggle'),
+      name: new RegExp(catalogValue('tr', 'header.themeToggle')),
     })
 
     expect(button).toHaveAttribute('aria-pressed', 'false')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(button).toHaveTextContent(catalogValue('tr', 'header.lightMode'))
+    expect(await runA11y(container)).toEqual([])
 
     await user.click(button)
 
@@ -36,6 +38,7 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
     expect(button).toHaveTextContent(catalogValue('tr', 'header.darkMode'))
+    expect(await runA11y(container)).toEqual([])
 
     await user.click(button)
 
@@ -49,7 +52,7 @@ describe('ThemeToggle', () => {
     renderWithProviders(<ThemeToggle />, { language: 'en' })
 
     const button = screen.getByRole('button', {
-      name: catalogValue('en', 'header.themeToggle'),
+      name: new RegExp(catalogValue('en', 'header.themeToggle')),
     })
 
     expect(button).toHaveAttribute('aria-pressed', 'false')

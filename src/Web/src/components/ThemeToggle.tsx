@@ -7,13 +7,14 @@ export function ThemeToggle() {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme === 'dark'
+  const modeLabel = isDark ? t('header.darkMode') : t('header.lightMode')
 
   return (
     <Button
       type="button"
       size="sm"
       variant="outline"
-      aria-label={t('header.themeToggle')}
+      aria-label={`${t('header.themeToggle')}: ${modeLabel}`}
       aria-pressed={isDark}
       onClick={toggleTheme}
       className="gap-1.5"
@@ -55,9 +56,7 @@ export function ThemeToggle() {
           <path d="m19.07 4.93-1.41 1.41" />
         </svg>
       )}
-      <span aria-hidden="true">
-        {isDark ? t('header.darkMode') : t('header.lightMode')}
-      </span>
+      <span>{modeLabel}</span>
     </Button>
   )
 }
