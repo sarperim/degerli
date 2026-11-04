@@ -23,6 +23,7 @@
 
 /* 1. Primitive + semantic tokens (shadcn/ui-compatible, light) */
 :root {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -114,9 +115,10 @@
   --line-height-display: 1.15;
 }
 
-/* Dark theme token set (shadcn `.dark` convention). Not yet toggled by the app;
- * present so a future theme switch is a class flip, not a redesign. */
+/* Dark theme token set (shadcn `.dark` convention). Toggled via `<html class="dark">`
+ * by `@/lib/theme`. */
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

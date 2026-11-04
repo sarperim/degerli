@@ -4,6 +4,7 @@ import { NavLink } from 'react-router'
 import { AuthState } from '@/components/AuthState'
 import { LanguageToggle } from '@/components/LanguageToggle'
 import { StockSearch } from '@/components/StockSearch'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { useIsBuilder, useSession } from '@/lib/auth/session'
 import { NAVIGATION_ROUTES } from '@/routes/routeConfig'
 import { cn } from '@/lib/utils'
@@ -70,6 +71,7 @@ export function Header() {
 
         <div className="ms-auto flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <StockSearch />
+          <ThemeToggle />
           <LanguageToggle />
           <AuthState />
         </div>
