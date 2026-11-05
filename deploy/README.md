@@ -527,7 +527,10 @@ exists only when the fix genuinely cannot be made in this repository, and it car
 four properties that make it a gate rather than a mute button:
 
 1. **Per-finding** — an exact CVE id scoped to an exact target path (`usr/bin/caddy`),
-   never a bare id, never a wildcard.
+   never a bare id, never a wildcard. For an **OS package** Trivy matches on the scan
+   target rather than a file path, so the pin is the exact target
+   (`<image> (<os>)`) and the affected packages are named in the `statement` — the
+   entry covers that one CVE in that one image's OS layer, nothing else.
 2. **Dated and owned** — a `statement` with the owner and why the CVE is not fixable
    here, next to a review date.
 3. **Self-expiring** — Trivy enforces `expired_at`: the day it passes, the entry stops
@@ -536,19 +539,48 @@ four properties that make it a gate rather than a mute button:
    and no entry is written.
 
 Baseline at this ticket's landing (2026-10-29/30, Trivy 0.76.1, both images fresh):
-**zero entries for the API image.** The web image first came back red with **three
-fixable Alpine findings** — a CRITICAL `brotli` out-of-bounds write and a HIGH `curl`
+**zero entries for the API image** at that time. The web image first came back red with
+**three fixable Alpine findings** — a CRITICAL `brotli` out-of-bounds write and a HIGH `curl`
 use-after-free among them — which were **fixed in `deploy/caddy/Dockerfile`** with
 `RUN apk upgrade --no-cache` (the `caddy:2` base layer lags the Alpine security repo
 between upstream rebuilds), not baselined. What remains is **seven HIGH findings inside
 the prebuilt Caddy binary itself** (Go stdlib 1.26.8 `crypto/x509`, `net/http`,
 `crypto/tls`, `golang.org/x/net`, `go-jose`), which needs an upstream Caddy rebuild on
-Go 1.26.10+/1.27.3+ and cannot be changed from here — those five CVE ids are the only
-entries, expiring **2026-12-31**, after which the check goes red again until Caddy
-ships the rebuild.
+Go 1.26.10+/1.27.3+ and cannot be changed from here — those five CVE ids expire
+**2026-12-31**, after which the check goes red again until Caddy ships the rebuild.
 
-Re-check procedure: `docker pull caddy:2`, rebuild, scan, and delete every entry that
-no longer reports.
+**The API image is no longer entry-free** (2026-11-05, SLICE-015). A newly published
+advisory, **CVE-2026-109518** (`apt` / `libapt-pkg6.0t64` 2.8.3, HIGH), reports in the
+Ubuntu 24.04 layer of the `mcr.microsoft.com/dotnet/aspnet:10.0` base image — the
+Dockerfile only installs `curl` on top and never reinstalls apt — and the advisory
+carries **no fixed version** for noble, so there is no upgrade this repository can
+make and no newer base image that carries one. It is one entry, owner **builder**,
+expiring **2026-12-31**: for an OS package the finding's path is the scan target, so
+its `paths` pins `degerli-api:scan (ubuntu 24.04)` exactly — retag the scan image and
+the entry stops applying, which is a red check, not a silent pass. The packages are
+named in the entry's `statement`, so the suppression covers that one CVE in that one
+OS layer and nothing else.
+
+Retaining apt is deliberate, not an oversight. Purging `apt`/`libapt-pkg6.0t64` from
+the runtime stage at build time was considered and rejected: apt is a component of the
+**Microsoft-supported** base image, not something this repo added, so deleting it
+mutates the vendor image and is a broader lifecycle change than an **unreachable**
+HIGH advisory warrants (nothing in the API's code path invokes apt at runtime — only
+the build step uses `apt-get` to install `curl`, and `curl` does not depend on
+`libapt-pkg`). Such a change would also be an image/Dockerfile change, which is out of
+SLICE-015's scope: if the base image is to be trimmed, that is its own slice, not a
+silent edit hidden behind a baseline entry.
+
+Re-check procedures, one per image:
+
+- **web:** `docker pull caddy:2`, rebuild, scan, and delete every entry in `usr/bin/caddy`
+  that no longer reports.
+- **api:** a fixed apt arriving in Ubuntu's security repo is not automatically in the
+  pinned `dotnet/aspnet:10.0` layer. Either bump the base-image tag, or add a
+  build-time `apt-get upgrade` layer in `src/Api/Dockerfile` — the same move as the
+  Caddy `apk upgrade`, and equally a Dockerfile change, so it ships as its own slice.
+  Once a scan of the rebuilt image is green, delete the CVE-2026-109518 entry (Trivy
+  enforces the expiry either way, so the check re-asserts itself on 2027-01-01).
 
 **Monitoring the other direction:** [`.github/dependabot.yml`](../.github/dependabot.yml)
 opens weekly upgrade PRs for NuGet, both npm roots and the workflow actions, so an

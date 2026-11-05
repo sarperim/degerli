@@ -11,7 +11,12 @@
 #   1. `expired_at` is enforced by Trivy — on the day it passes, the entry stops
 #      applying and the CVE fails the build again. Silence is temporary, by design.
 #   2. Scope is narrow: `paths` pins the finding to the exact target inside the image,
-#      so the same CVE appearing in a different layer (or a new package) is still red.
+#      so the same CVE appearing in a different layer is still red. For a language
+#      package the path is the file that ships it; for an OS package Trivy matches on
+#      the scan target, not the package path, so the pin is the exact target
+#      (`<image> (<os>)`) and the affected packages are named in the `statement`. The
+#      entry therefore covers that one CVE in that one image's OS layer only — a
+#      different image, a different layer, or a different OS is still red.
 #
 # Rules: never a bare id (always `paths`), never a wildcard path, never an id without a
 # `statement` and an `expired_at`, never an entry for something this repo could fix —
@@ -77,4 +82,34 @@ vulnerabilities:
       in the upstream Caddy binary). Not fixable from this repo; needs an upstream
       rebuild. ECH is not configured on this deployment's Caddyfile.
       Owner: builder. Re-check when Caddy ships Go >= 1.26.9 / 1.27.2.
+    expired_at: 2026-12-31
+
+  # --- owner: builder (sarperim); review by 2026-12-31 -----------------------
+  # One entry for the API image, which until SLICE-015 had none. `apt` /
+  # `libapt-pkg6.0t64` 2.8.3 ship inside the `mcr.microsoft.com/dotnet/aspnet:10.0`
+  # base layer; the Dockerfile only installs `curl` on top and never reinstalls apt.
+  # For an OS package the finding's path is the scan target, `<image> (<os>)`, so the
+  # entry pins the exact target of the `containers` job's API scan — retagging that
+  # image makes the entry stop applying, which fails the check red, not silent.
+  # Retention of apt is deliberate, see the entry's `statement` for why a build-time
+  # purge was considered and rejected.
+  # Re-check: when a fixed apt reaches Ubuntu 24.04 (noble) or the dotnet base image
+  # moves to a distro release that carries it, the CVE stops reporting — delete the
+  # entry. Trivy enforces the expiry below either way.
+  - id: CVE-2026-109518
+    paths:
+      - "degerli-api:scan (ubuntu 24.04)"
+    statement: >-
+      apt/libapt-pkg6.0t64 2.8.3 (HIGH) in the Ubuntu 24.04 base layer of
+      mcr.microsoft.com/dotnet/aspnet:10.0. Trivy reports no fixed version for noble
+      at entry time (2026-11-05), so there is no upgrade this repository can make;
+      not reachable from this app's code — the API runtime never invokes apt (only
+      the build step does, to install curl, and curl does not depend on
+      libapt-pkg). Purging apt from the runtime stage at build time was considered
+      and rejected: apt is a component of the Microsoft-supported base image, not
+      something this repo added, so deleting it mutates the vendor image and is a
+      broader lifecycle change than an unreachable HIGH advisory warrants — and this
+      slice's scope forbids image/Dockerfile changes, so such a fix would be its own
+      slice, not a silent purge here. Owner: builder. Re-check when a fixed apt ships;
+      delete the entry then.
     expired_at: 2026-12-31
