@@ -445,6 +445,18 @@ Free tier, 5-minute checks, alert e-mail (architecture §5, NFR-MOV-003 operatio
 Note: UptimeRobot also acts as the **outside-in** check that the tunnel/cert/TLS chain
 is healthy, which the on-box smoke-check cannot prove.
 
+### Optional local telemetry (dev only)
+
+The API carries OpenTelemetry instrumentation (`src/Api/Infrastructure/OpenTelemetrySetup.cs`)
+whose **export is off by default** — nothing is shipped, and `compose.prod.yml` is
+untouched, so the VPS stack runs byte-identically whether or not you read this paragraph.
+Local debugging is opt-in: run `docker compose -f compose.dev.yml --profile tools up -d
+aspire-dashboard`, set `OpenTelemetry__Enabled=true` in `.env` (the OTLP endpoint defaults to
+`http://aspire-dashboard:18889`), and open the dashboard at `http://localhost:18888` — the
+`Degerli.Ingestion` meters (job duration and per-disposition row counts) plus the EOD
+session lag gauge appear there. Turning telemetry on in production is an explicit `.env`
+decision, not a default this stack makes for you.
+
 ---
 
 ## Security checks (required CI gates)
