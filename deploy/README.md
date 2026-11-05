@@ -543,12 +543,26 @@ use-after-free among them — which were **fixed in `deploy/caddy/Dockerfile`** 
 between upstream rebuilds), not baselined. What remains is **seven HIGH findings inside
 the prebuilt Caddy binary itself** (Go stdlib 1.26.8 `crypto/x509`, `net/http`,
 `crypto/tls`, `golang.org/x/net`, `go-jose`), which needs an upstream Caddy rebuild on
-Go 1.26.10+/1.27.3+ and cannot be changed from here — those five CVE ids are the only
-entries, expiring **2026-12-31**, after which the check goes red again until Caddy
-ships the rebuild.
+Go 1.26.10+/1.27.3+ and cannot be changed from here — those five CVE ids expire
+**2026-12-31**, after which the check goes red again until Caddy ships the rebuild.
 
-Re-check procedure: `docker pull caddy:2`, rebuild, scan, and delete every entry that
-no longer reports.
+**The API image is no longer entry-free** (2026-11-05, SLICE-015). A newly published
+advisory, **CVE-2026-109518** (`apt` / `libapt-pkg6.0t64` 2.8.3, HIGH), reports in the
+Ubuntu 24.04 layer of the `mcr.microsoft.com/dotnet/aspnet:10.0` base image — the
+Dockerfile only adds `curl` on top and never reinstalls apt — and the advisory carries
+**no fixed version** for noble, so there is no upgrade this repository can make and no
+newer base image that carries one. It is one entry, owner **builder**, expiring
+**2026-12-31**: for an OS package the finding's path is the scan target, so its `paths`
+pins `degerli-api:scan (ubuntu 24.04)` exactly — retag the scan image and the entry
+stops applying, which is a red check, not a silent pass.
+
+Re-check procedures, one per image:
+
+- **web:** `docker pull caddy:2`, rebuild, scan, and delete every entry in `usr/bin/caddy`
+  that no longer reports.
+- **api:** when a fixed apt reaches Ubuntu 24.04 (noble) or the dotnet base image moves
+  to a release that ships it, CVE-2026-109518 stops reporting — delete the entry (Trivy
+  enforces the expiry either way, so the check re-asserts itself on 2027-01-01).
 
 **Monitoring the other direction:** [`.github/dependabot.yml`](../.github/dependabot.yml)
 opens weekly upgrade PRs for NuGet, both npm roots and the workflow actions, so an

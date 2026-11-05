@@ -78,3 +78,24 @@ vulnerabilities:
       rebuild. ECH is not configured on this deployment's Caddyfile.
       Owner: builder. Re-check when Caddy ships Go >= 1.26.9 / 1.27.2.
     expired_at: 2026-12-31
+
+  # --- owner: builder (sarperim); review by 2026-12-31 -----------------------
+  # One entry for the API image, which until SLICE-015 had none. `apt` /
+  # `libapt-pkg6.0t64` 2.8.3 ship inside the `mcr.microsoft.com/dotnet/aspnet:10.0`
+  # base layer (the Dockerfile only adds `curl` on top; it never reinstalls apt).
+  # For an OS package the finding's path is the scan target, `<image> (<os>)`, so the
+  # entry pins the exact target of the `containers` job's API scan — retagging that
+  # image makes the entry stop applying, which fails the check red, not silent.
+  # Re-check: when a fixed apt reaches Ubuntu 24.04 (noble) or the dotnet base image
+  # moves to a distro release that carries it, the CVE stops reporting — delete the
+  # entry. Trivy enforces the expiry below either way.
+  - id: CVE-2026-109518
+    paths:
+      - "degerli-api:scan (ubuntu 24.04)"
+    statement: >-
+      apt/libapt-pkg6.0t64 2.8.3 (HIGH) in the Ubuntu 24.04 base layer of
+      mcr.microsoft.com/dotnet/aspnet:10.0. Trivy reports no fixed version for noble
+      at entry time (2026-11-05), so there is no upgrade this repository can make;
+      not reachable from this app's code — the API runtime never invokes apt.
+      Owner: builder. Re-check when a fixed apt ships; delete the entry then.
+    expired_at: 2026-12-31
