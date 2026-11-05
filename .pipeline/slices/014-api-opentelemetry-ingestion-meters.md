@@ -109,7 +109,7 @@ registered only when `OpenTelemetry:Enabled` is true. This keeps tests exporter-
 
 ## Result
 
-Done (2026-11-05).
+Done (2026-11-05). PR: https://github.com/sarperim/degerli/pull/185
 
 - **Meters** — `src/Ingestion/Telemetry/DegerliIngestionMetrics.cs`: static `Meter`
   `Degerli.Ingestion` with `degerli.ingestion.job.duration` (histogram, unit `s`, tags
