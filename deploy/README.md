@@ -429,6 +429,61 @@ Three configuration facts about this gate, each of which can look like a bug:
 
 ---
 
+## Ops commands — one-shot status report
+
+[`deploy/status.sh`](status.sh) is the **on-box** counterpart to the UptimeRobot monitor
+below: the monitor answers "is the public URL healthy from the outside?", this answers "what
+does the box look like right now?". Neither replaces the other — the monitor cannot see disk
+usage, container CPU or backup age, and the script cannot see whether TLS is valid from
+outside the VPS.
+
+```bash
+/opt/degerli/deploy/status.sh              # ps · /health · resources · backup age
+/opt/degerli/deploy/status.sh --logs       # + last 50 lines per service
+/opt/degerli/deploy/status.sh --logs 200 --errors
+```
+
+It resolves the repo root relative to itself (so it runs from any working directory, like
+`deploy/backup/*.sh`) and prints four sections (the two log sections are opt-in and follow
+them):
+
+| Section | What it prints | Degrades to |
+|---|---|---|
+| **compose ps** | `docker compose ps` for the stack | the interpolation/compose error verbatim, plus the `config -q` pointer |
+| **health** | `GET /health` through Caddy on `localhost`, bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | `DOWN` with the curl failure mode (timeout / connection refused / TLS), pointing at §Monitoring |
+| **resources** | `docker stats --no-stream` for this project's containers only, `docker system df`, and the `postgres-data` volume size | "no running containers", or the named volume reported missing |
+| **backup** | newest `backups/degerli-*.dump.gpg` — name, size, age vs the 24 h RPO, `OK` or `WARNING` | "no backup archive found" / "no backup directory", with the `pg-backup.sh` line to take one |
+
+**It is a viewer, not an operator.** Nothing in it mutates state — no `up`/`down`/`restart`,
+no writes outside stdout — and it never dumps a secret: plain `docker compose config` (which
+interpolates `.env` into your scrollback, §Deploying) is not used anywhere, only
+`config --services`, which prints service names.
+
+Two details are deliberate, because the naive version lies:
+
+- **Backup age comes from the archive name, never from mtime.** The names are
+  `degerli-%Y%m%dT%H%M%SZ.dump.gpg` (UTC, as `pg-backup.sh` writes them), so a reverse name
+  sort is both "newest" and chronological — and a copied archive (`scp`/`curl`/`cp` onto a
+  rebuilt host) has a fresh mtime, which would report a week-old archive as minutes old. The
+  same convention, and the same reason, as §Restore drill and `restore.sh`.
+- **A `WARNING` here is the deploy's phase 3 in advance.** The age is compared against the
+  same 24 h RPO (`PRE_DEPLOY_MAX_BACKUP_AGE_HOURS`) that stops a deploy at the
+  **backup-marker** phase (§The pre-deploy restore-point marker), so a red line in this
+  report means the *next* deploy will refuse before it migrates. The remedy is printed with
+  it: source `/etc/degerli/backup.env` and run `deploy/backup/pg-backup.sh`.
+
+**Exit code is 0 for a completed report**, degraded or not — a status report is not a gate,
+and a script that exits non-zero on a down stack is unusable in `ssh host status.sh`.
+Non-zero (2) is reserved for a usage error.
+
+**Tunables** (environment, no flags): `COMPOSE_FILE` (default `compose.prod.yml`, resolved
+against the repo root — so `COMPOSE_FILE=compose.ci.yml ./deploy/status.sh` reports on the
+local CI stack), `HEALTH_URL` (override the probe target; by default the script probes
+`https://localhost/health` when the compose file has a `caddy` service and otherwise the
+`api` service's published host port), and `BACKUP_DIR` (default `<repo>/backups`).
+
+---
+
 ## Monitoring — UptimeRobot
 
 Free tier, 5-minute checks, alert e-mail (architecture §5, NFR-MOV-003 operational).
@@ -443,7 +498,10 @@ Free tier, 5-minute checks, alert e-mail (architecture §5, NFR-MOV-003 operatio
    read from UptimeRobot's report (recorded as `operational` in the coverage matrix).
 
 Note: UptimeRobot also acts as the **outside-in** check that the tunnel/cert/TLS chain
-is healthy, which the on-box smoke-check cannot prove.
+is healthy, which the on-box smoke-check cannot prove. The on-box half of the same question
+— compose state, container load, backup age — is [`deploy/status.sh`](#ops-commands--one-shot-status-report)
+above; run it whenever the monitor alerts, to tell "the public path broke" from "the box
+broke".
 
 ---
 
