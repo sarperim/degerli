@@ -452,7 +452,7 @@ them):
 | Section | What it prints | Degrades to |
 |---|---|---|
 | **compose ps** | `docker compose ps` for the stack | the interpolation/compose error verbatim, plus the `config -q` pointer |
-| **health** | `GET https://${DOMAIN}/health` **resolved to loopback** (`curl --resolve`, DOMAIN read from the compose project's `.env` by single-key extraction), bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | the curl failure mode (timeout / connection refused / TLS) pointing at §Monitoring, or "no health endpoint could be derived" when DOMAIN is absent — `HEALTH_URL` then probes any target you name |
+| **health** | `GET https://${DOMAIN}/health` **resolved to loopback** (`curl --resolve`, DOMAIN read from the compose project's `.env` by single-key extraction, then normalised like Compose reads it: surrounding quotes, trailing whitespace and an inline `#comment` are stripped), bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | the curl failure mode (timeout / connection refused / TLS) pointing at §Monitoring, or "no health endpoint could be derived" naming the missing input: **DOMAIN absent** from a caddy stack's `.env` (or no readable `.env` at all), or **no `caddy` service and no published `api` port** (e.g. `compose.ci.yml` with the stack down) — `HEALTH_URL` then probes any target you name |
 | **resources** | `docker stats --no-stream` for this project's containers only, `docker system df`, and the `postgres-data` volume size | "no running containers", the named volume reported missing, or the volume reported unknown when the compose file is unreadable |
 | **backup** | newest `backups/degerli-*.dump.gpg` — name, size, age vs the 24 h RPO, `OK` or `WARNING` | "no backup archive found" / "no backup directory", with the `pg-backup.sh` line to take one |
 
@@ -490,8 +490,9 @@ something else), and `BACKUP_DIR` (default `<repo>/backups`). The default probe 
 `https://${DOMAIN}/health` with `--resolve "${DOMAIN}:443:127.0.0.1"` — the real site name,
 pinned to loopback, which is what Caddy holds a certificate for and what the deploy
 smoke-check requests; `DOMAIN` is read from the compose project's `.env` by single-key `sed`,
-never by `cat`ing or sourcing it. A stack with no `caddy` service falls back to the `api`
-service's published host port.
+never by `cat`ing or sourcing it, and normalised the way Compose reads `.env` (surrounding
+quotes, trailing whitespace and an inline `#comment` stripped), so a quoted assignment works.
+A stack with no `caddy` service falls back to the `api` service's published host port.
 
 ---
 

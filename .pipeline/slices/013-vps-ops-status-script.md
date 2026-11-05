@@ -32,8 +32,11 @@ operational picture in one shot, and documents it in the runbook:
      --connect-timeout 3`, mirroring the deploy smoke-check), reporting the HTTP code
      and latency. `DOMAIN` is read from the VPS `.env` by **single-key extraction**
      (the same `sed -n 's/^DOMAIN=//p' .env | tail -n1` shape deploy.yml uses for the
-     builder password — never `cat .env`). `HEALTH_URL` remains as an explicit
-     override. Rationale (review round 1, DR-1): Caddy's only site block is
+     builder password — never `cat .env`), then **normalised the way Compose reads
+     `.env`**: a surrounding quote pair, trailing whitespace and an inline `#comment`
+     are stripped (deploy.yml:296-297, "last assignment wins, optional quotes"), so a
+     quoted `DOMAIN="degerli.example"` probes `degerli.example`. `HEALTH_URL` remains as
+     an explicit override. Rationale (review round 1, DR-1): Caddy's only site block is
      `{$DOMAIN}` — it holds no certificate for `localhost`, so an `https://localhost`
      or `Host: localhost` probe cannot succeed on a healthy production box; probing
      the real domain over loopback mirrors the deploy smoke-check
@@ -182,3 +185,68 @@ a recorded follow-up, out of this slice's scope).
 **Scope (round 2):** `git diff --stat dev...HEAD` — `deploy/status.sh`, `deploy/README.md`,
 `.gitignore`, this slice doc.
 
+### Review round 2 fixes (round 3, same branch)
+
+Fixed DR2-1..DR2-4 from `.pipeline/slices/reviews/SLICE-013-round-2.md`. DR2-5 (RPO constant
+vs `deploy.yml`, `%.1f` rounding) stays deferred to a follow-up slice — unchanged here. The
+red Trivy gate finding (CVE-2026-109518 in the `dotnet/aspnet` base image) is out of this
+slice's scope and left to the user's decision; no `.trivyignore.yaml` entry was added.
+
+| Finding | Change |
+|---|---|
+| **DR2-1** (blocker) | The `else` glued onto the end of the DOMAIN-absent `echo` string now starts its own line, so the inner `if [ "$caddy_present" -eq 1 ]` has a real `else` again. Both branches verified below. |
+| **DR2-2** (major) | The extracted `DOMAIN` is now normalised the way Compose reads `.env` and the way deploy.yml:296-297 does: trailing whitespace and an inline `#comment` are stripped, then a surrounding `"`/`'` pair — so quotes never reach the URL or the `--resolve` argument. A quoted end-to-end value is left alone (a `#` inside it is literal). |
+| **DR2-3** (minor) | README health "degrades to" cell now names both cases (DOMAIN absent / no readable `.env`; no `caddy` service and no published `api` port) and the tunables paragraph documents the normalisation. This table records the output verbatim, not a summary. |
+| **DR2-4** (nit) | The DOMAIN-absent message distinguishes the two states: `DOMAIN is not set in …/.env` when the file is readable, `DOMAIN is not set and there is no readable …/.env` when it is not (`[ -r ]` test). |
+
+**Round-2 verification** (targeted only, `/tmp` fixtures, no full suite):
+
+`bash -n deploy/status.sh` → parses clean; `shellcheck -S warning deploy/status.sh` → no
+findings (the pre-existing `SC2012` *info* on the `ls` of backup archives is unchanged).
+
+DR2-1 — both degraded branches now print their own message and nothing else:
+
+```
+$ COMPOSE_FILE=compose.ci.yml bash deploy/status.sh        # caddy absent, no api port derivable
+== health ==
+  no health endpoint could be derived from /…/compose.ci.yml (no caddy service and
+  no published api port). Set HEALTH_URL explicitly to probe one.
+
+== resources ==
+```
+
+```
+$ # fixture compose with a caddy service, .env present but no DOMAIN
+== health ==
+  no health endpoint could be derived: DOMAIN is not set in
+  /tmp/opencode/slice013-fix/.env, so Caddy's site name is unknown. Set DOMAIN there, or
+  set HEALTH_URL explicitly to probe a target you name.
+
+== resources ==
+```
+
+```
+$ # same fixture, no .env at all
+== health ==
+  no health endpoint could be derived: DOMAIN is not set and there is no readable
+  /tmp/opencode/slice013-fix/.env, so Caddy's site name is unknown. Create one with DOMAIN, or
+  set HEALTH_URL explicitly to probe a target you name.
+
+== resources ==
+```
+
+DR2-2 — every `.env` form yields exactly the same clean probe target:
+
+| `.env` content | health line |
+|---|---|
+| `DOMAIN=degerli.example` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `DOMAIN="degerli.example"` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `DOMAIN='degerli.example'` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `  DOMAIN  =  degerli.example  ` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `DOMAIN=degerli.example   # public site` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `DOMAIN="degerli.example"   # public site` | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| `DOMAIN=old.example` + `DOMAIN="degerli.example"` (last wins) | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+| CRLF (`DOMAIN=degerli.example\r\n`) | `GET https://degerli.example/health (resolved to 127.0.0.1)` |
+
+**Scope (round 3):** unchanged — `deploy/status.sh`, `deploy/README.md`, `.gitignore`, this
+slice doc.

@@ -179,8 +179,23 @@ else
       # Single-key extraction from the compose project's `.env`, the same shape deploy.yml
       # uses for the builder password — never `cat .env`, never sourcing it. DOMAIN is not a
       # secret; it is read because Caddy's certificate is issued for exactly this name.
+      #
+      # The value is then normalised the way Compose reads `.env` (deploy.yml:296-297, "last
+      # assignment wins, optional quotes"): a trailing `#comment`, trailing whitespace and a
+      # surrounding quote pair are NOT part of the value. Skipping this puts the quotes inside
+      # both the URL and the --resolve argument, curl exits 3, and a healthy box reads DOWN —
+      # the same false negative DR-1 fixed, re-entering through the input path.
       domain="$(sed -n 's/^[[:space:]]*DOMAIN[[:space:]]*=[[:space:]]*//p' \
         "${COMPOSE_PROJECT_DIR}/.env" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+      case "$domain" in
+        \"*\"|\'*\') ;;  # quoted end-to-end: a '#' inside is literal, leave it alone
+        *)
+          domain="${domain%%[[:space:]]#*}"                  # drop an inline #comment
+          domain="${domain%"${domain##*[![:space:]]}"}"      # drop trailing whitespace
+          ;;
+      esac
+      domain="${domain%\"}"; domain="${domain#\"}"
+      domain="${domain%\'}"; domain="${domain#\'}"
       if [ -n "$domain" ]; then
         health_url="https://${domain}/health"
         resolve_args=(--resolve "${domain}:443:127.0.0.1")
@@ -196,9 +211,15 @@ else
 
   if [ -z "$health_url" ]; then
     if [ "$caddy_present" -eq 1 ]; then
-      echo "  no health endpoint could be derived: DOMAIN is not set in"
-      echo "  ${COMPOSE_PROJECT_DIR}/.env, so Caddy's site name is unknown. Set DOMAIN there, or"
-      echo "  set HEALTH_URL explicitly to probe a target you name."    else
+      if [ -r "${COMPOSE_PROJECT_DIR}/.env" ]; then
+        echo "  no health endpoint could be derived: DOMAIN is not set in"
+        echo "  ${COMPOSE_PROJECT_DIR}/.env, so Caddy's site name is unknown. Set DOMAIN there, or"
+      else
+        echo "  no health endpoint could be derived: DOMAIN is not set and there is no readable"
+        echo "  ${COMPOSE_PROJECT_DIR}/.env, so Caddy's site name is unknown. Create one with DOMAIN, or"
+      fi
+      echo "  set HEALTH_URL explicitly to probe a target you name."
+    else
       echo "  no health endpoint could be derived from ${COMPOSE_FILE} (no caddy service and"
       echo "  no published api port). Set HEALTH_URL explicitly to probe one."
     fi
