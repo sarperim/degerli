@@ -443,15 +443,17 @@ outside the VPS.
 /opt/degerli/deploy/status.sh --logs 200 --errors
 ```
 
-It resolves the repo root relative to itself (so it runs from any working directory, like
-`deploy/backup/*.sh`) and prints four sections (the two log sections are opt-in and follow
+It resolves the repo root relative to itself, from `BASH_SOURCE` (so it runs from any
+working directory and from a checkout that is not `/opt/degerli`; unlike
+`deploy/backup/*.sh`, which default to a fixed `/opt/degerli` path rather than resolving
+their own location), and prints four sections (the two log sections are opt-in and follow
 them):
 
 | Section | What it prints | Degrades to |
 |---|---|---|
 | **compose ps** | `docker compose ps` for the stack | the interpolation/compose error verbatim, plus the `config -q` pointer |
-| **health** | `GET /health` through Caddy on `localhost`, bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | `DOWN` with the curl failure mode (timeout / connection refused / TLS), pointing at §Monitoring |
-| **resources** | `docker stats --no-stream` for this project's containers only, `docker system df`, and the `postgres-data` volume size | "no running containers", or the named volume reported missing |
+| **health** | `GET https://${DOMAIN}/health` **resolved to loopback** (`curl --resolve`, DOMAIN read from the compose project's `.env` by single-key extraction), bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | the curl failure mode (timeout / connection refused / TLS) pointing at §Monitoring, or "no health endpoint could be derived" when DOMAIN is absent — `HEALTH_URL` then probes any target you name |
+| **resources** | `docker stats --no-stream` for this project's containers only, `docker system df`, and the `postgres-data` volume size | "no running containers", the named volume reported missing, or the volume reported unknown when the compose file is unreadable |
 | **backup** | newest `backups/degerli-*.dump.gpg` — name, size, age vs the 24 h RPO, `OK` or `WARNING` | "no backup archive found" / "no backup directory", with the `pg-backup.sh` line to take one |
 
 **It is a viewer, not an operator.** Nothing in it mutates state — no `up`/`down`/`restart`,
@@ -466,11 +468,15 @@ Two details are deliberate, because the naive version lies:
   sort is both "newest" and chronological — and a copied archive (`scp`/`curl`/`cp` onto a
   rebuilt host) has a fresh mtime, which would report a week-old archive as minutes old. The
   same convention, and the same reason, as §Restore drill and `restore.sh`.
-- **A `WARNING` here is the deploy's phase 3 in advance.** The age is compared against the
-  same 24 h RPO (`PRE_DEPLOY_MAX_BACKUP_AGE_HOURS`) that stops a deploy at the
-  **backup-marker** phase (§The pre-deploy restore-point marker), so a red line in this
-  report means the *next* deploy will refuse before it migrates. The remedy is printed with
-  it: source `/etc/degerli/backup.env` and run `deploy/backup/pg-backup.sh`.
+- **A `WARNING` here tracks the deploy's RPO, not its literal outcome.** The age is compared
+  against the same 24 h RPO (`PRE_DEPLOY_MAX_BACKUP_AGE_HOURS`) that gates a deploy at the
+  **backup-marker** phase (§The pre-deploy restore-point marker) — but measured from the
+  timestamp in the archive **name**, while phase 3 selects the newest archive by **mtime**.
+  For an ordinary nightly archive the two agree; for a copied archive (mtime reset by the
+  copy) they can disagree, so treat a red line here as "this restore point is too old to be
+  a real one", not as a guaranteed deploy rejection. Reconciling phase 3 to the name
+  convention is a recorded follow-up. The remedy is printed with it: source
+  `/etc/degerli/backup.env` and run `deploy/backup/pg-backup.sh`.
 
 **Exit code is 0 for a completed report**, degraded or not — a status report is not a gate,
 and a script that exits non-zero on a down stack is unusable in `ssh host status.sh`.
@@ -478,9 +484,14 @@ Non-zero (2) is reserved for a usage error.
 
 **Tunables** (environment, no flags): `COMPOSE_FILE` (default `compose.prod.yml`, resolved
 against the repo root — so `COMPOSE_FILE=compose.ci.yml ./deploy/status.sh` reports on the
-local CI stack), `HEALTH_URL` (override the probe target; by default the script probes
-`https://localhost/health` when the compose file has a `caddy` service and otherwise the
-`api` service's published host port), and `BACKUP_DIR` (default `<repo>/backups`).
+local CI stack), `HEALTH_URL` (an explicit probe target that overrides the derived one
+entirely; use it when the caddy stack's `DOMAIN` is not readable or you want to probe
+something else), and `BACKUP_DIR` (default `<repo>/backups`). The default probe is
+`https://${DOMAIN}/health` with `--resolve "${DOMAIN}:443:127.0.0.1"` — the real site name,
+pinned to loopback, which is what Caddy holds a certificate for and what the deploy
+smoke-check requests; `DOMAIN` is read from the compose project's `.env` by single-key `sed`,
+never by `cat`ing or sourcing it. A stack with no `caddy` service falls back to the `api`
+service's published host port.
 
 ---
 

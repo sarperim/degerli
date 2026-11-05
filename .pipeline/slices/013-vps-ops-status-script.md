@@ -1,9 +1,10 @@
 ---
 id: SLICE-013
-status: done
+status: in-progress
 scope:
   - deploy/status.sh
   - deploy/README.md
+  - .gitignore
   - .pipeline/slices/013-vps-ops-status-script.md
 ---
 
@@ -26,9 +27,17 @@ operational picture in one shot, and documents it in the runbook:
    - **Compose state** — `docker compose ps` for the stack (compose file overridable via
      `COMPOSE_FILE` env, default `compose.prod.yml`, so the script is also usable against
      the CI stack locally).
-   - **Health** — `curl` `GET /health` through Caddy on `localhost` (bounded:
-     `--max-time 5 --connect-timeout 3`, mirroring the deploy smoke-check), reporting
-     the HTTP code and latency.
+   - **Health** — `curl` `GET https://${DOMAIN}/health` **resolved to loopback**
+     (`curl --resolve "${DOMAIN}:443:127.0.0.1"`), bounded (`--max-time 5
+     --connect-timeout 3`, mirroring the deploy smoke-check), reporting the HTTP code
+     and latency. `DOMAIN` is read from the VPS `.env` by **single-key extraction**
+     (the same `sed -n 's/^DOMAIN=//p' .env | tail -n1` shape deploy.yml uses for the
+     builder password — never `cat .env`). `HEALTH_URL` remains as an explicit
+     override. Rationale (review round 1, DR-1): Caddy's only site block is
+     `{$DOMAIN}` — it holds no certificate for `localhost`, so an `https://localhost`
+     or `Host: localhost` probe cannot succeed on a healthy production box; probing
+     the real domain over loopback mirrors the deploy smoke-check
+     (`${PUBLIC_URL}/health`) without leaving the box.
    - **Resource usage** — `docker stats --no-stream` for the project's containers only,
      plus `docker system df` and the size of the `postgres-data` volume.
    - **Backup freshness vs RPO** — newest `backups/degerli-*.dump.gpg` age compared to
@@ -48,6 +57,9 @@ operational picture in one shot, and documents it in the runbook:
    UptimeRobot monitor (outside-in liveness vs on-box state). The manual-ledger line
    "UptimeRobot monitor live and green (once before launch)" is unchanged — the slice
    does not automate account creation.
+3. **`.gitignore`** — add `.pipeline/slices/reviews/` (review round artifacts;
+   `.pipeline/plan/reviews/` is already ignored, the slices twin was missed) — folded
+   in by user decision during review round 1.
 
 ## Rules & Invariants
 
@@ -93,10 +105,13 @@ Implemented and verified locally on 2026-11-05 (branch `SLICE-013`, forked from 
   `docker system df -v` (no throwaway container, no writes); backup freshness from the
   newest `degerli-*.dump.gpg` by **name** with the age computed from the
   `degerli-%Y%m%dT%H%M%SZ` timestamp, `OK` vs the 24 h RPO or a `WARNING` naming the
-  backup-marker refusal plus the `pg-backup.sh` remedy; and the opt-in `--logs [N]`
+  backup-marker gate plus the `pg-backup.sh` remedy; and the opt-in `--logs [N]`
   (default 50) / `--errors` (last 24 h, `--tail 2000` in, `tail -n 200` out,
   case-insensitive `error|fail|exception`). Exit 0 for every completed report, 2 only for
-  a usage error.
+  a usage error. **Since review round 1** the health probe is
+  `GET https://${DOMAIN}/health` with `--resolve "${DOMAIN}:443:127.0.0.1"` (DOMAIN read
+  from the compose project's `.env` by single-key `sed`; `HEALTH_URL` remains the explicit
+  override) — see "Review round 1 fixes" below.
 - `deploy/README.md` — new **§Ops commands — one-shot status report** between §Backups and
   §Monitoring (section table, the viewer-not-operator and no-secrets rules, the two
   deliberate "the naive version lies" details, exit-code policy, tunables), plus a
@@ -131,4 +146,39 @@ was pointed at a stack via `COMPOSE_FILE` exactly as the slice intends.
 **Scope:** `git diff --stat` touches only `deploy/status.sh`, `deploy/README.md`, and this
 slice doc. No tests were added; the slice adds no application behaviour and the repo's
 targeted gates for a shell script are its parse + lint + the commands above.
+
+### Review round 1 fixes (round 2, same branch)
+
+Fixed DR-1..DR-6 from `.pipeline/slices/reviews/SLICE-013-round-1.md`, plus the folded
+`.gitignore` hygiene item. `deploy.yml` was **not** changed (DR-3's mtime/name divergence is
+a recorded follow-up, out of this slice's scope).
+
+| Finding | Change |
+|---|---|
+| **DR-1** (blocker) | Default production probe is now `GET https://${DOMAIN}/health` with `curl --resolve "${DOMAIN}:443:127.0.0.1"`, still bounded `--max-time 5 --connect-timeout 3`. `DOMAIN` is extracted from `${COMPOSE_PROJECT_DIR}/.env` with `sed -n 's/^[[:space:]]*DOMAIN[[:space:]]*=[[:space:]]*//p' … \| tail -n1 \| tr -d '\r'` — the deploy.yml builder-password shape; the `.env` is never catted or sourced. `HEALTH_URL` stays as the explicit override (no `--resolve` applied to it). README health row, tunables paragraph and usage text updated. |
+| **DR-2** (major) | The `name:` extraction now carries `\|\| true`, and the volume block is gated on `[ -r "$COMPOSE_FILE" ]` — an unreadable compose file reports `volume: unknown (compose file … is not readable)` instead of aborting the report. |
+| **DR-3** (minor) | The RPO `WARNING` no longer asserts "the next deploy will refuse": it says a restore point this old would not satisfy the backup-marker gate and states explicitly that the gate selects by mtime while this report ages the NAME, so a copied archive can disagree. README bullet reworded the same way. The no-archive messages now say "a non-bootstrap deploy", matching deploy.yml. |
+| **DR-4** (nit) | Every RPO message derives from `${RPO_MAX_HOURS}` (no hardcoded "24h"); the `--errors` 24 h window is a separate tunable and unchanged. |
+| **DR-5** (nit) | Header comment and README now state the repo root is resolved from `BASH_SOURCE` and that this is *deliberately different* from `deploy/backup/*.sh`, which default to a fixed `/opt/degerli` path. |
+| **DR-6** (nit) | `HEALTH_URL` documented in the README ops section as an explicit override of the derived probe. |
+| **hygiene** | `.gitignore` gains `.pipeline/slices/reviews/` beside `.pipeline/plan/reviews/`. |
+
+**Round-2 verification** (targeted only):
+
+| Command | Outcome |
+|---|---|
+| `bash -n deploy/status.sh` | parses clean |
+| `shellcheck -S warning deploy/status.sh` | no findings |
+| `bash deploy/status.sh --help` | exit 0 |
+| `bash deploy/status.sh --bogus` | exit 2 + usage |
+| `bash deploy/status.sh` (no stack) | exit 0, every section degrades honestly; health reports "DOMAIN is not set in …/.env" |
+| `COMPOSE_FILE=/tmp/opencode/nope.yml bash deploy/status.sh` | **exit 0** (was 2), report completes, `volume: unknown (compose file … is not readable)` |
+| DR-1 mechanism, in `unshare -rn` netns: self-signed `degerli.test` TLS server on 127.0.0.1:443 | `curl --resolve degerli.test:443:127.0.0.1 --cacert cert.pem https://degerli.test/health` → `http_code=200 remote=127.0.0.1`; the same URL **without** `--resolve` → exit 6 (DNS) — proves the resolve pins the real name to loopback and the Host/SNI is the domain |
+| Same netns, the script itself with a test compose file (`caddy:` service) + `DOMAIN=degerli.test` in `.env` and `CURL_CA_BUNDLE` set | `GET https://degerli.test/health (resolved to 127.0.0.1)` → `OK — HTTP 200 in 0.005292s`; with the TLS server stopped → `DOWN — connection refused (curl exit 7)` |
+| `HEALTH_URL=http://127.0.0.1:18099/health` against a local plain-HTTP server | `GET http://127.0.0.1:18099/health` → `OK — HTTP 200` (override bypasses `--resolve`) |
+| Backup fixtures, both archives mtime "now" | fresh name → `newest: degerli-20261105T000000Z…`, `age: 2.1h`, `OK`; only the 2020 name → `age: 60002.1h`, new RPO wording, exit 0 |
+| `git check-ignore -v .pipeline/slices/reviews/test` | matched by `.gitignore:4` |
+
+**Scope (round 2):** `git diff --stat dev...HEAD` — `deploy/status.sh`, `deploy/README.md`,
+`.gitignore`, this slice doc.
 

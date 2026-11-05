@@ -17,7 +17,8 @@
 # Sections, each degrading honestly on its own (a missing piece is reported in place, never
 # hidden, never fatal to the rest of the report):
 #   1. compose state     — `docker compose ps` for the stack
-#   2. health            — `GET /health` through Caddy on localhost, bounded curl
+#   2. health            — `GET https://${DOMAIN}/health` resolved to loopback
+#                          (`curl --resolve`), bounded curl
 #   3. resource usage    — `docker stats --no-stream` (this project's containers),
 #                          `docker system df`, and the postgres-data volume size
 #   4. backup freshness  — newest backups/degerli-*.dump.gpg age vs the 24 h RPO
@@ -33,12 +34,15 @@
 #   COMPOSE_FILE=compose.ci.yml ./status.sh    # usable against the local CI stack
 #
 # Tunables (environment): COMPOSE_FILE (default compose.prod.yml, resolved against the repo
-# root), HEALTH_URL (override the probe target), BACKUP_DIR (default <repo>/backups).
+# root), HEALTH_URL (explicit override for the probe target), BACKUP_DIR (default
+# <repo>/backups). DOMAIN is read from the compose project's `.env` when the health probe
+# has to be derived (see §2 below); it is never sourced and never dumped.
 set -euo pipefail
 
-# Repository root resolved relative to this script, the same way deploy/backup/pg-backup.sh
-# and deploy/backup/restore.sh locate their compose file — so the script runs from any cwd
-# and from a checkout that is not /opt/degerli.
+# Repository root resolved relative to this script itself (BASH_SOURCE), so the script runs
+# from any working directory and from a checkout that is not /opt/degerli. This is
+# deliberately different from deploy/backup/pg-backup.sh and deploy/backup/restore.sh, which
+# default to a fixed /opt/degerli path rather than resolving their own location.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -68,9 +72,10 @@ Read-only operational status report for the Değerli VPS stack.
 
 Environment:
   COMPOSE_FILE  compose file to inspect (default: compose.prod.yml, relative to the repo root)
-  HEALTH_URL    override the /health probe target
-                (default: https://localhost/health when the stack has a caddy service,
-                 else the api service's published host port)
+  HEALTH_URL    explicit override for the /health probe target
+                (default: https://${DOMAIN}/health resolved to 127.0.0.1 when the stack has
+                 a caddy service — DOMAIN read from the compose project's .env — else the
+                 api service's published host port)
   BACKUP_DIR    where to look for degerli-*.dump.gpg (default: <repo>/backups)
 
 Exit status: 0 for a completed report (including a degraded one); 2 for a usage error.
@@ -152,14 +157,35 @@ if ! command -v curl >/dev/null 2>&1; then
   echo "  skipped (curl not installed)"
 else
   health_url="${HEALTH_URL:-}"
+  # Extra curl args for the derived production probe: `--resolve` pins the public hostname
+  # to loopback, so the request goes through the on-box Caddy with the right SNI/Host (the
+  # exact site block Caddy holds a certificate for) without leaving the machine. An explicit
+  # HEALTH_URL is used verbatim, with no --resolve.
+  resolve_args=()
+  resolved_note=""
+  caddy_present=0
   if [ -z "$health_url" ]; then
-    # Production routes /health through Caddy (the single public entrypoint). A stack
-    # without a caddy service (compose.ci.yml) publishes the api's port directly instead —
-    # the same probe, against the same /health, just not through the reverse proxy. The
-    # choice is made from the compose file being inspected, so `COMPOSE_FILE=… ./status.sh`
-    # reports on the stack it was pointed at rather than on production's shape.
+    # Production routes /health through Caddy (the single public entrypoint). Caddy's only
+    # site block is `{$DOMAIN}` (deploy/caddy/Caddyfile) and it holds a certificate for that
+    # name only — so `https://localhost` would fail TLS on a perfectly healthy box. The probe
+    # therefore uses the real domain, resolved to 127.0.0.1, mirroring the deploy smoke-check
+    # (`${PUBLIC_URL}/health`) without leaving the box. A stack without a caddy service
+    # (compose.ci.yml) publishes the api's port directly instead — the same probe, against
+    # the same /health, just not through the reverse proxy. The choice is made from the
+    # compose file being inspected, so `COMPOSE_FILE=… ./status.sh` reports on the stack it
+    # was pointed at rather than on production's shape.
     if grep -qE '^[[:space:]]+caddy:[[:space:]]*$' "$COMPOSE_FILE" 2>/dev/null; then
-      health_url="https://localhost/health"
+      caddy_present=1
+      # Single-key extraction from the compose project's `.env`, the same shape deploy.yml
+      # uses for the builder password — never `cat .env`, never sourcing it. DOMAIN is not a
+      # secret; it is read because Caddy's certificate is issued for exactly this name.
+      domain="$(sed -n 's/^[[:space:]]*DOMAIN[[:space:]]*=[[:space:]]*//p' \
+        "${COMPOSE_PROJECT_DIR}/.env" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+      if [ -n "$domain" ]; then
+        health_url="https://${domain}/health"
+        resolve_args=(--resolve "${domain}:443:127.0.0.1")
+        resolved_note=" (resolved to 127.0.0.1)"
+      fi
     elif [ "$docker_ok" -eq 1 ]; then
       api_addr="$(compose port api 8080 2>/dev/null | head -n1 || true)"
       if [ -n "$api_addr" ]; then
@@ -169,14 +195,20 @@ else
   fi
 
   if [ -z "$health_url" ]; then
-    echo "  no health endpoint could be derived from ${COMPOSE_FILE} (no caddy service and"
-    echo "  no published api port). Set HEALTH_URL explicitly to probe one."
+    if [ "$caddy_present" -eq 1 ]; then
+      echo "  no health endpoint could be derived: DOMAIN is not set in"
+      echo "  ${COMPOSE_PROJECT_DIR}/.env, so Caddy's site name is unknown. Set DOMAIN there, or"
+      echo "  set HEALTH_URL explicitly to probe a target you name."    else
+      echo "  no health endpoint could be derived from ${COMPOSE_FILE} (no caddy service and"
+      echo "  no published api port). Set HEALTH_URL explicitly to probe one."
+    fi
   else
-    echo "  GET ${health_url}"
+    echo "  GET ${health_url}${resolved_note}"
     # Bounded exactly like the deploy's smoke-check (30 × 5 s, each curl capped at 5 s):
     # a status report must never hang on a wedged proxy. -s + -o /dev/null keeps the
     # response body out of the output; -w carries the two numbers that matter.
     probe="$(curl -s -o /dev/null --max-time 5 --connect-timeout 3 \
+      ${resolve_args[@]+"${resolve_args[@]}"} \
       -w '%{http_code} %{time_total}' "$health_url" 2>/dev/null)" && probe_rc=0 || probe_rc=$?
     if [ "$probe_rc" -ne 0 ]; then
       case "$probe_rc" in
@@ -227,19 +259,24 @@ else
   # needs no image pull (the box may have no spare image) and writes nothing. The volume is
   # named `<compose project>_postgres-data`; the project name is taken from the compose
   # file's own `name:` line, the same line the deploy's bootstrap detection trusts.
-  project_name="$(sed -n 's/^name:[[:space:]]*\([^[:space:]]*\).*$/\1/p' "$COMPOSE_FILE" 2>/dev/null | head -n1)"
-  if [ -z "$project_name" ]; then
-    project_name="$(basename "$COMPOSE_PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
-  fi
-  vol="${project_name}_postgres-data"
-  vol_size="$(docker system df -v 2>/dev/null \
-    | awk -v want="$vol" '$1 == want { print $3; exit }' || true)"
-  if [ -n "$vol_size" ]; then
+  if [ ! -r "$COMPOSE_FILE" ]; then
     echo
-    echo "  volume ${vol}: ${vol_size}"
+    echo "  volume: unknown (compose file ${COMPOSE_FILE} is not readable)"
   else
-    echo
-    echo "  volume ${vol}: not found (the project has no database volume on this host)"
+    project_name="$(sed -n 's/^name:[[:space:]]*\([^[:space:]]*\).*$/\1/p' "$COMPOSE_FILE" 2>/dev/null | head -n1 || true)"
+    if [ -z "$project_name" ]; then
+      project_name="$(basename "$COMPOSE_PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
+    fi
+    vol="${project_name}_postgres-data"
+    vol_size="$(docker system df -v 2>/dev/null \
+      | awk -v want="$vol" '$1 == want { print $3; exit }' || true)"
+    if [ -n "$vol_size" ]; then
+      echo
+      echo "  volume ${vol}: ${vol_size}"
+    else
+      echo
+      echo "  volume ${vol}: not found (the project has no database volume on this host)"
+    fi
   fi
 fi
 
@@ -253,8 +290,9 @@ section "backup"
 newest=""
 if [ ! -d "$BACKUP_DIR" ]; then
   echo "  no backup directory at ${BACKUP_DIR} — RPO status unknown"
-  echo "  the nightly job (deploy/backup/pg-backup.sh) writes here; until it runs once, the"
-  echo "  deploy will refuse at the backup-marker phase (deploy/README.md §Backups)"
+  echo "  the nightly job (deploy/backup/pg-backup.sh) writes here; until it runs once, a"
+  echo "  non-bootstrap deploy has no restore point and will refuse at the backup-marker"
+  echo "  phase (deploy/README.md §Backups)"
 else
   archives="$(ls -1 "$BACKUP_DIR"/degerli-*.dump.gpg 2>/dev/null | sort -r || true)"
   newest="$(printf '%s\n' "$archives" | sed -n '1p')"
@@ -278,17 +316,21 @@ if [ -n "$newest" ]; then
       'BEGIN { printf "%.1f", (now - created) / 3600 }')"
     echo "  age: ${age_h}h (RPO target ≤ ${RPO_MAX_HOURS}h)"
     if awk -v age="$age_h" -v max="$RPO_MAX_HOURS" 'BEGIN { exit !(age > max) }'; then
-      echo "  WARNING: older than the 24h RPO — the next deploy will refuse at the"
-      echo "  backup-marker phase (deploy/README.md §The pre-deploy restore-point marker)."
+      echo "  WARNING: older than the ${RPO_MAX_HOURS}h RPO. A restore point this old would not"
+      echo "  satisfy the deploy's backup-marker gate (deploy/README.md §The pre-deploy"
+      echo "  restore-point marker). Note the two can disagree: this report ages the timestamp in"
+      echo "  the archive NAME, while the gate selects by mtime — a copied archive can read as old"
+      echo "  here yet pass there."
       echo "  Remedy: set -a; . /etc/degerli/backup.env; set +a; ${REPO_ROOT}/deploy/backup/pg-backup.sh"
       echo "  Until a fresh archive exists, a forward-only migration has no honest undo."
     else
-      echo "  OK — inside the 24h RPO"
+      echo "  OK — inside the ${RPO_MAX_HOURS}h RPO"
     fi
   fi
 elif [ -d "$BACKUP_DIR" ]; then
   echo "  no backup archive found in ${BACKUP_DIR} — RPO status unknown"
-  echo "  the deploy will refuse at the backup-marker phase until one exists; take one with:"
+  echo "  a non-bootstrap deploy has no restore point and will refuse at the backup-marker"
+  echo "  phase until one exists; take one with:"
   echo "    set -a; . /etc/degerli/backup.env; set +a; ${REPO_ROOT}/deploy/backup/pg-backup.sh"
 fi
 
