@@ -58,6 +58,11 @@ builder.Services.AddDegerliAuthSessionRevocation();
 // registration convention (TKT-mdf-002). Later ingestion tickets add their jobs there.
 builder.Services.AddMarketDataIngestion(builder.Configuration);
 
+// Telemetry (SLICE-014): the OpenTelemetry pipeline (metrics + traces) and its OTLP export.
+// Instrumentation is unconditional; this registration is a no-op unless
+// `OpenTelemetry:Enabled` is true, so production stays exactly as it was by default.
+builder.Services.AddDegerliOpenTelemetry(builder.Configuration);
+
 // Data platform workers run in-process in this container (AD-04).
 builder.Services.AddHostedService<IngestionHostedService>();
 builder.Services.AddHostedService<Degerli.Ingestion.Scheduling.IngestionSchedulerHostedService>();
