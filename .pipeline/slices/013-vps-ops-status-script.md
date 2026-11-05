@@ -1,6 +1,16 @@
 ---
 id: SLICE-013
-status: in-progress
+status: blocked
+blocked_reason: >
+  Review round 3 ESCALATED (PR #183): the slice's code is review-clean (all DR-1..DR-6,
+  DR2-1..DR2-4 findings verified closed; facet gate clean), but the required Containers
+  (Trivy) CI check is red on a newly published upstream CVE — CVE-2026-109518 (apt /
+  libapt-pkg6.0t64, HIGH, no fixed version) in the dotnet aspnet base image. It fails
+  identically on dev, blocking every PR repo-wide, and no commit on this branch touches
+  an image or dependency. Remedy: a separate hygiene slice adding a dated, path-scoped,
+  self-expiring .trivyignore.yaml entry per deploy/README.md §Container baseline; this
+  PR needs no further code review and goes green on rebase after that lands. Artifacts:
+  .pipeline/slices/reviews/SLICE-013-round-{1,2,3}.md
 scope:
   - deploy/status.sh
   - deploy/README.md
