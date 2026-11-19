@@ -122,7 +122,8 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>, IClas
                 kapPublic.GetProperty("AutomatedAccess").GetString()!, ignoreCase: true),
         };
 
-        Assert.Equal(KapPublicSourceOptions.DefaultMaxListPages, shipped.MaxListPages);
+        // SLICE-015 raised shipped MaxListPages from 40 to 120 so 100 XU100 companies do not starve.
+        Assert.Equal(120, shipped.MaxListPages);
         Assert.Equal(KapPublicSourceOptions.DefaultMaxDetailFetches, shipped.MaxDetailFetches);
         Assert.Equal(KapPublicSourceOptions.DefaultDetailFetchTimeoutMs, shipped.DetailFetchTimeoutMs);
         Assert.Equal(KapPublicSourceOptions.DefaultRequestTimeoutMs, shipped.RequestTimeoutMs);

@@ -298,6 +298,103 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         Assert.Equal(0, await LedgerCountAsync());
     }
 
+    /// <summary>
+    /// SLICE-015 — When the clock jumps across multiple missed hourly ticks on a per-job stream,
+    /// <see cref="IngestionScheduler.TickAsync"/> coalesces all missed eligible occurrences into
+    /// a single run and advances <c>NextScheduled</c> strictly past <c>now</c>.
+    /// </summary>
+    [Fact]
+    public async Task SLICE_015_StartDueAttempts_coalesces_multiple_missed_cron_occurrences_into_single_run()
+    {
+        await ResetAsync();
+
+        var intraday = new TrackingStep("intraday-quotes");
+        await using var host = BuildPerJobHost(
+            intraday,
+            cron: "0 15 10-18 * * 1-5",
+            tradingDaysOnly: true);
+        var clock = host.Clock;
+
+        // Arm the stream before the 10:15 TRT tick on Monday 2026-10-05 (NextScheduled = 10:15 TRT).
+        var beforeOpen = Trt(2026, 10, 5, 10, 0);
+        clock.SetUtcNow(beforeOpen);
+        await host.Scheduler.TickAsync(beforeOpen);
+        Assert.Empty(intraday.RequestedDates);
+        Assert.Equal(Trt(2026, 10, 5, 10, 15), host.Scheduler.NextWake(beforeOpen));
+
+        // Jump across 6 missed hourly occurrences (10:15, 11:15, 12:15, 13:15, 14:15, 15:15 TRT).
+        var afterSixTicks = Trt(2026, 10, 5, 15, 20);
+        clock.SetUtcNow(afterSixTicks);
+        await host.Scheduler.TickAsync(afterSixTicks);
+
+        var runDate = Assert.Single(intraday.RequestedDates);
+        Assert.Equal(new DateOnly(2026, 10, 5), runDate);
+        Assert.Single(await LedgerAsync());
+
+        // NextScheduled must have advanced strictly past now (16:15 TRT); another tick at 15:21
+        // must not replay the missed occurrences.
+        Assert.Equal(Trt(2026, 10, 5, 16, 15), host.Scheduler.NextWake(afterSixTicks));
+        var shortlyAfter = Trt(2026, 10, 5, 15, 21);
+        clock.SetUtcNow(shortlyAfter);
+        await host.Scheduler.TickAsync(shortlyAfter);
+
+        Assert.Single(intraday.RequestedDates);
+        Assert.Single(await LedgerAsync());
+    }
+
+    /// <summary>
+    /// SLICE-015 — When the latest completed EOD session has complete <c>daily_prices</c> coverage
+    /// (16/16) but no <c>market_snapshots</c> row, <see cref="IngestionScheduler.RunStartupAsync"/>
+    /// arms and executes <c>startup-catchup</c> (skipping the already-covered <c>prices</c> step
+    /// via its coverage gate and running <c>market-snapshot</c> for that session).
+    /// </summary>
+    [Fact]
+    public async Task SLICE_015_RunStartupAsync_arms_catchup_when_prices_complete_but_market_snapshot_missing()
+    {
+        var eodDate = new DateOnly(2026, 10, 5);
+        await using (var db = _postgres.CreateContext())
+        {
+            await FixtureSeeder.ApplyAsync(db, L2);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM market_snapshots");
+            Assert.Equal(16, await db.DailyPrices.CountAsync(p => p.PriceDate == eodDate));
+            Assert.False(await db.MarketSnapshots.AnyAsync(s => s.SnapshotDate == eodDate));
+        }
+
+        var intraday = new TrackingStep("intraday-quotes");
+        var universeSync = new TrackingStep("universe-sync");
+        var prices = new TrackingStep("prices");
+        var metricsRecompute = new TrackingStep("metrics-recompute");
+        var dcfBaselines = new TrackingStep("dcf-baselines");
+        var marketSnapshot = new TrackingStep("market-snapshot");
+        var medians = new TrackingStep("medians");
+
+        await using var host = BuildPerJobHost(
+            intraday,
+            cron: "0 15 10-18 * * 1-5",
+            tradingDaysOnly: true,
+            runOnStartup: false,
+            catchUpPricesOnStartup: true,
+            extraJobs: [universeSync, prices, metricsRecompute, dcfBaselines, marketSnapshot, medians]);
+
+        var earlyMorning = Trt(2026, 10, 6, 2, 30);
+        host.Clock.SetUtcNow(earlyMorning);
+        await host.Scheduler.RunStartupAsync(earlyMorning);
+
+        Assert.Contains(
+            host.Logs.Events,
+            evt => evt.MessageTemplate.Text.Contains("Startup catch-up armed")
+                   && evt.Properties.TryGetValue("Covered", out var cov)
+                   && cov is Serilog.Events.ScalarValue { Value: 16 }
+                   && evt.Properties.TryGetValue("Constituents", out var con)
+                   && con is Serilog.Events.ScalarValue { Value: 16 }
+                   && evt.Properties.TryGetValue("HasMarketSnapshot", out var hasSnap)
+                   && hasSnap is Serilog.Events.ScalarValue { Value: false });
+
+        Assert.Equal(eodDate, Assert.Single(marketSnapshot.RequestedDates));
+        Assert.Empty(prices.RequestedDates);
+    }
+
     /// <summary>TC-MDF-012 — Source failure retries per the 5/15/60 ladder.</summary>
     [Fact]
     public async Task TC_MDF_012_Source_failure_retries_per_ladder()

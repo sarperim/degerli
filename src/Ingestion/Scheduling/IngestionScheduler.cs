@@ -245,8 +245,12 @@ public sealed class IngestionScheduler
                 .GetRequiredService<DailyPriceStore>()
                 .GetDayCoverageAsync(indexCode, latestCompletedEodDate, cancellationToken)
                 .ConfigureAwait(false);
+            var db = scope.ServiceProvider.GetRequiredService<DegerliDbContext>();
+            var hasMarketSnapshot = await db.MarketSnapshots
+                .AnyAsync(s => s.SnapshotDate == latestCompletedEodDate, cancellationToken)
+                .ConfigureAwait(false);
 
-            if (!coverage.IsComplete)
+            if (!coverage.IsComplete || !hasMarketSnapshot)
             {
                 lock (_gate)
                 {
@@ -258,17 +262,18 @@ public sealed class IngestionScheduler
                 }
 
                 _logger.LogInformation(
-                    "Startup catch-up armed for {Stream} targeting {Date} ({Covered}/{Constituents} {Index} EOD prices stored).",
+                    "Startup catch-up armed for {Stream} targeting {Date} ({Covered}/{Constituents} {Index} EOD prices stored, marketSnapshot={HasMarketSnapshot}).",
                     catchUpStream.Name,
                     latestCompletedEodDate,
                     coverage.Covered,
                     coverage.Constituents,
-                    indexCode);
+                    indexCode,
+                    hasMarketSnapshot);
             }
             else
             {
                 _logger.LogInformation(
-                    "Startup catch-up skipped for {Date}: {Covered}/{Constituents} {Index} EOD prices already stored.",
+                    "Startup catch-up skipped for {Date}: {Covered}/{Constituents} {Index} EOD prices and market snapshot already stored.",
                     latestCompletedEodDate,
                     coverage.Covered,
                     coverage.Constituents,
