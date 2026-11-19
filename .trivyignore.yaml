@@ -78,3 +78,23 @@ vulnerabilities:
       rebuild. ECH is not configured on this deployment's Caddyfile.
       Owner: builder. Re-check when Caddy ships Go >= 1.26.9 / 1.27.2.
     expired_at: 2026-12-31
+
+  - id: CVE-2026-78661
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      golang.org/x/net/html DoS via crafted HTML input (v0.60.0 vendored inside the
+      upstream Caddy binary). Not fixable from this repo; needs an upstream Caddy
+      rebuild with golang.org/x/net >= 0.62.0.
+      Owner: builder. Re-check when Caddy ships x/net >= 0.62.0.
+    expired_at: 2026-12-31
+
+  - id: CVE-2026-97054
+    paths:
+      - "usr/bin/caddy"
+    statement: >-
+      Go net/http HTTP/1 MaxBytesReader connection handling issue (Go stdlib 1.27.3
+      inside the upstream Caddy binary). Not fixable from this repo; needs an
+      upstream Caddy rebuild on Go >= 1.26.11 / 1.27.4.
+      Owner: builder. Re-check when Caddy ships Go >= 1.27.4.
+    expired_at: 2026-12-31
