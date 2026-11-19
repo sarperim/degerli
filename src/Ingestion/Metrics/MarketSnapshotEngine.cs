@@ -11,6 +11,9 @@ namespace Degerli.Ingestion.Metrics;
 /// assembles the covered-universe facts from the canonical MDF tables and delegates
 /// every aggregate formula to <see cref="MarketAggregates"/> (one definition per
 /// number, AD-06). The mover threshold is configuration, not code.
+/// Share counts follow the two-tier precedence (01 v1.5.60 §10.9.11, SLICE-013):
+/// statement-reported <c>SHARES_DILUTED</c> first, falling back to
+/// <see cref="Degerli.Persistence.Entities.PriceDerivedShareCount"/> when absent or non-positive.
 /// </summary>
 public sealed class MarketSnapshotEngine
 {
@@ -158,6 +161,11 @@ public sealed class MarketSnapshotEngine
             .ToDictionaryAsync(s => s.Id, s => s.Code, cancellationToken)
             .ConfigureAwait(false);
 
+        var derivedShares = await _db.PriceDerivedShareCounts
+            .Where(row => coveredIds.Contains(row.InstrumentId) && row.SharesOutstanding > 0)
+            .ToDictionaryAsync(row => row.InstrumentId, row => (decimal)row.SharesOutstanding, cancellationToken)
+            .ConfigureAwait(false);
+
         var constituents = new List<MarketConstituent>(instruments.Count);
         foreach (var instrument in instruments)
         {
@@ -174,8 +182,12 @@ public sealed class MarketSnapshotEngine
 
             // A member without a usable share count is NOT dropped (01 §10.9.14): it joins the
             // price-derived aggregates with no market cap, and the share-derived aggregates
-            // exclude it while reporting the exclusion. Null stays null — no fabricated cap.
-            var shares = LineFor(instrument.Id, "BS", SharesDiluted);
+            // exclude it while reporting the exclusion. Statement-reported SHARES_DILUTED
+            // comes first, falling back to PriceDerivedShareCounts (TKT-foundation-086, SLICE-013).
+            var statementShares = LineFor(instrument.Id, "BS", SharesDiluted);
+            var shares = statementShares is > 0m
+                ? statementShares
+                : (derivedShares.TryGetValue(instrument.Id, out var derivedShareCount) ? derivedShareCount : (decimal?)null);
             decimal? marketCap = null;
             var divTtm = 0m;
             if (shares is > 0m)

@@ -174,6 +174,11 @@ public sealed class MetricsEngine
                     .Select(a => a!)
                     .ToList());
 
+        var derivedSharesByInstrument = await _db.PriceDerivedShareCounts
+            .Where(row => instrumentIds.Contains(row.InstrumentId) && row.SharesOutstanding > 0)
+            .ToDictionaryAsync(row => row.InstrumentId, row => (decimal)row.SharesOutstanding, cancellationToken)
+            .ConfigureAwait(false);
+
         var results = new List<InstrumentMetricResult>(prices.Count);
         foreach (var (instrumentId, price) in prices)
         {
@@ -189,8 +194,9 @@ public sealed class MetricsEngine
             instrumentDividends ??= [];
             instrumentActions ??= [];
 
+            decimal? fallbackShares = derivedSharesByInstrument.TryGetValue(instrument.Id, out var derivedShares) ? derivedShares : null;
             var (input, epsAdjusted, panelAdjusted) = BuildInput(
-                price, instrument.AccountingProfile, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate);
+                price, instrument.AccountingProfile, instrumentStatements, linesByStatement, instrumentDividends, instrumentActions, asOfDate, fallbackShares);
 
             // The corporate-action basis marker is per metric (FR-MDF-018): only the
             // per-share growth CAGRs computed from a genuinely adjusted per-share series
@@ -359,7 +365,8 @@ public sealed class MetricsEngine
         IReadOnlyDictionary<long, Dictionary<string, decimal>> lines,
         IReadOnlyList<Dividend> dividends,
         IReadOnlyList<DatedAction> actions,
-        DateOnly asOfDate)
+        DateOnly asOfDate,
+        decimal? fallbackShares = null)
     {
         var periods = statements
             .Select(s => s.PeriodEndDate)
@@ -460,7 +467,8 @@ public sealed class MetricsEngine
                 niSeries.Add(new FiscalValue(period.Year, niY, period));
             }
 
-            var shares = Line(bsY, SharesDiluted);
+            var statementSharesY = Line(bsY, SharesDiluted);
+            var shares = statementSharesY is > 0m ? statementSharesY : fallbackShares;
             if (niY is not null && shares is > 0m)
             {
                 // Per-share CAGR basis (02 §6.2): the as-reported EPS is put on today's
@@ -528,10 +536,11 @@ public sealed class MetricsEngine
             .Where(d => d.ExDate >= ttmFrom && d.ExDate <= asOfDate)
             .Sum(d => d.AmountPerShare);
 
+        var statementShares0 = Line(bs0, SharesDiluted);
         return (
             new CanonicalMetricsInput(
                 Price: price,
-                SharesDiluted: Line(bs0, SharesDiluted),
+                SharesDiluted: statementShares0 is > 0m ? statementShares0 : fallbackShares,
                 Ttm: ttm,
                 RevenueByFiscalYear: revenue,
                 EpsByFiscalYear: eps,
