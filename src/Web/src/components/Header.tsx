@@ -40,7 +40,7 @@ export function Header() {
       aria-label={t('header.ariaLabel')}
       className="border-b bg-background"
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2.5 px-4 py-2.5 lg:flex-nowrap lg:items-center lg:gap-4">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2.5 px-4 py-2.5 lg:min-h-16 lg:flex-nowrap lg:items-center lg:gap-4">
         <NavLink to="/" className="flex shrink-0 flex-col leading-tight">
           <span className="text-lg font-semibold">{t('app.name')}</span>
           <span className="hidden text-[11px] leading-tight text-muted-foreground xl:block">
