@@ -171,6 +171,82 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         Assert.Equal(IngestResult.Succeeded, afterTuesday[1].Status);
     }
 
+    /// <summary>
+    /// SLICE-012 — RunStartupAsync resolves session dates based on Istanbul market hours and gates
+    /// startup-catchup on existing EOD daily_prices coverage.
+    /// </summary>
+    [Fact]
+    public async Task SLICE_012_RunStartupAsync_resolves_session_date_and_gates_eod_catchup_on_coverage()
+    {
+        // 1. Seed L2 (which contains 16/16 XU100 daily_prices for Monday 2026-10-05) plus a
+        // market_snapshots row for 2026-10-05 (SLICE-015), and clear ledger.
+        await using (var db = _postgres.CreateContext())
+        {
+            await FixtureSeeder.ApplyAsync(db, L2);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM ingest_runs");
+            Assert.Equal(16, await db.DailyPrices.CountAsync(p => p.PriceDate == new DateOnly(2026, 10, 5)));
+            var eodDate = new DateOnly(2026, 10, 5);
+            if (!await db.MarketSnapshots.AnyAsync(s => s.SnapshotDate == eodDate))
+            {
+                db.MarketSnapshots.Add(new MarketSnapshot
+                {
+                    SnapshotDate = eodDate,
+                    AsOfTradingDate = eodDate,
+                    ComputedAt = Trt(2026, 10, 5, 20, 35),
+                });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // a) RunStartupAsync at 02:30 TRT on Tuesday 2026-10-06 (before 10:00 TRT session open)
+        // targets Monday 2026-10-05 (PreviousTradingDay).
+        var trackingEarly = new TrackingStep("intraday-quotes");
+        await using (var hostEarly = BuildPerJobHost(
+            trackingEarly,
+            cron: "0 15 10-18 * * 1-5",
+            tradingDaysOnly: true,
+            runOnStartup: true,
+            catchUpPricesOnStartup: true))
+        {
+            var earlyMorning = Trt(2026, 10, 6, 2, 30);
+            hostEarly.Clock.SetUtcNow(earlyMorning);
+            await hostEarly.Scheduler.RunStartupAsync(earlyMorning);
+
+            var earlyDate = Assert.Single(trackingEarly.RequestedDates);
+            Assert.Equal(new DateOnly(2026, 10, 5), earlyDate);
+
+            // b) Verify startup catch-up for latest completed EOD session (2026-10-05) was skipped
+            // because 16/16 constituents are already covered.
+            Assert.Contains(
+                hostEarly.Logs.Events,
+                evt => evt.MessageTemplate.Text.Contains("Startup catch-up skipped")
+                       && evt.Properties.TryGetValue("Covered", out var cov)
+                       && cov is Serilog.Events.ScalarValue { Value: 16 }
+                       && evt.Properties.TryGetValue("Constituents", out var con)
+                       && con is Serilog.Events.ScalarValue { Value: 16 });
+
+            var runsAfterEarly = await LedgerAsync();
+            Assert.DoesNotContain(runsAfterEarly, r => r.JobCode == "prices");
+        }
+
+        // a cont.) RunStartupAsync at 14:00 TRT on Tuesday 2026-10-06 targets Tuesday 2026-10-06.
+        var trackingMidday = new TrackingStep("intraday-quotes");
+        await using (var hostMidday = BuildPerJobHost(
+            trackingMidday,
+            cron: "0 15 10-18 * * 1-5",
+            tradingDaysOnly: true,
+            runOnStartup: true,
+            catchUpPricesOnStartup: true))
+        {
+            var midday = Trt(2026, 10, 6, 14, 0);
+            hostMidday.Clock.SetUtcNow(midday);
+            await hostMidday.Scheduler.RunStartupAsync(midday);
+
+            var middayDate = Assert.Single(trackingMidday.RequestedDates);
+            Assert.Equal(new DateOnly(2026, 10, 6), middayDate);
+        }
+    }
+
     /// <summary>TC-MDF-012 — Source failure retries per the 5/15/60 ladder.</summary>
     [Fact]
     public async Task TC_MDF_012_Source_failure_retries_per_ladder()
@@ -763,7 +839,11 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         IIngestJob job,
         string cron,
         bool tradingDaysOnly,
-        string? holiday = null)
+        string? holiday = null,
+        bool runOnStartup = false,
+        bool catchUpPricesOnStartup = false,
+        bool enabled = true,
+        IEnumerable<IIngestJob>? extraJobs = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -772,12 +852,19 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+            ["Ingestion:Prices:BaseUrl"] = _wireMock.BaseUrl,
+            ["Ingestion:Prices:Path"] = PricesPath,
+            ["Ingestion:Prices:UniverseIndex"] = "XU100",
+            ["Ingestion:Prices:RequestDelayMs"] = "0",
             // Out of the window: a Saturday-only EOD cron never occurs Mon–Tue.
             ["Ingestion:Scheduler:Cron"] = "0 30 20 * * 6",
             ["Ingestion:Scheduler:TimeZone"] = "Europe/Istanbul",
+            ["Ingestion:Scheduler:CatchUpPricesOnStartup"] = catchUpPricesOnStartup ? "true" : "false",
             ["Ingestion:Scheduler:JobSchedules:0:JobCode"] = job.JobCode,
             ["Ingestion:Scheduler:JobSchedules:0:Cron"] = cron,
             ["Ingestion:Scheduler:JobSchedules:0:TradingDaysOnly"] = tradingDaysOnly ? "true" : "false",
+            ["Ingestion:Scheduler:JobSchedules:0:RunOnStartup"] = runOnStartup ? "true" : "false",
+            ["Ingestion:Scheduler:JobSchedules:0:Enabled"] = enabled ? "true" : "false",
         };
 
         if (holiday is not null)
@@ -786,14 +873,16 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         }
 
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        var logger = new LoggerConfiguration().MinimumLevel.Warning().WriteTo.Sink(logs).CreateLogger();
+        var logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Sink(logs).CreateLogger();
+
+        var jobs = extraJobs is null ? [job] : new[] { job }.Concat(extraJobs).ToList();
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddSerilog(logger, dispose: false));
         services.AddSingleton<TimeProvider>(clock);
         services.AddSingleton<IIngestionAlerter>(new HarnessMailAlerter(mail));
         services.AddMarketDataIngestion(configuration);
-        services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, [job]));
+        services.AddSingleton<IIngestionJobRunner>(new RecordingJobRunner(_postgres, clock, jobs));
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetRequiredService<IngestionScheduler>();
@@ -1257,6 +1346,21 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         {
             RequestedDate = request.Date;
             _entered.TrySetResult();
+            return Task.FromResult(new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded));
+        }
+    }
+
+    private sealed class TrackingStep : IIngestJob
+    {
+        public TrackingStep(string code) => JobCode = code;
+
+        public string JobCode { get; }
+
+        public List<DateOnly> RequestedDates { get; } = new();
+
+        public Task<IngestResult> RunAsync(IngestionRequest request, CancellationToken cancellationToken = default)
+        {
+            RequestedDates.Add(request.Date);
             return Task.FromResult(new IngestResult(JobCode, 1, 0, 0, IngestResult.Succeeded));
         }
     }

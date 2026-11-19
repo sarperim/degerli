@@ -170,11 +170,20 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
             File.ReadAllText(Path.Combine(FindRepositoryRoot(), "src", "Api", "appsettings.json")));
         var ingestion = document.RootElement.GetProperty("Ingestion");
 
+        var scheduler = JsonSerializer.Deserialize<IngestionSchedulerOptions>(
+            ingestion.GetProperty("Scheduler").GetRawText(),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.True(scheduler.CatchUpPricesOnStartup);
+        var intradayJob = scheduler.JobSchedules
+            .Single(entry => entry.JobCode == IntradayRefreshJob.Code);
+        Assert.True(intradayJob.RunOnStartup);
+
         var schedule = ingestion.GetProperty("Scheduler").GetProperty("JobSchedules")
             .EnumerateArray()
             .Single(entry => entry.GetProperty("JobCode").GetString() == IntradayRefreshJob.Code);
         // Nine sweeps at mid-hour+15 on trading days (10:15 through 18:15 Europe/Istanbul).
         Assert.Equal("0 15 10-18 * * 1-5", schedule.GetProperty("Cron").GetString());
+        Assert.True(schedule.GetProperty("RunOnStartup").GetBoolean());
 
         var intraday = ingestion.GetProperty("Intraday");
         Assert.StartsWith("https://www.isyatirim.com.tr", intraday.GetProperty("BaseUrl").GetString(), StringComparison.Ordinal);
