@@ -1,3 +1,4 @@
+using System.Globalization;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Api.IntegrationTests.Harness.Mail;
 using Degerli.Fixtures;
@@ -17,6 +18,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Serilog;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
 
 namespace Degerli.Api.IntegrationTests;
 
@@ -475,6 +478,54 @@ public sealed class UniverseRealEnvelopeTests : IClassFixture<PostgresFixture>, 
         Assert.True(
             host.Logs.Contains(evt => evt.RenderMessage().Contains(unknown, StringComparison.Ordinal)),
             $"no log event naming the unresolved seed symbol {unknown}");
+    }
+
+    /// <summary>
+    /// SLICE-013 — the index-levels adapter advances the templated <c>{to}</c> parameter to
+    /// the calendar day following <c>date</c> (<c>date.AddDays(1)</c>) because İş Yatırım's
+    /// <c>IndexHistoricalAll</c> endpoint treats <c>{to}</c> as an exclusive upper bound on
+    /// the trading session date.
+    /// </summary>
+    [Fact]
+    public async Task SLICE_013_Index_levels_adapter_resolves_templated_to_bound_to_next_calendar_day()
+    {
+        _wireMock.Server.ResetMappings();
+        _wireMock.Server.ResetLogEntries();
+
+        var expectedFrom = T.AddDays(-30).ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "000000";
+        var expectedTo = T.AddDays(1).ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "235959";
+
+        const string templatePath = "/isl/history?from={from}&to={to}&endeks={index}";
+
+        var payload = RealSourceCatalog.Get(RealSourceCatalog.IndexLevelsXu100);
+        _wireMock.Server
+            .Given(
+                Request.Create()
+                    .WithPath("/isl/history")
+                    .UsingGet()
+                    .WithParam("from", expectedFrom)
+                    .WithParam("to", expectedTo)
+                    .WithParam("endeks", "XU100"))
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(payload.StatusCode)
+                    .WithHeader("Content-Type", $"application/json; charset={payload.EncodingName}")
+                    .WithBody(payload.RawBytes));
+
+        var adapter = BuildIndexLevelsAdapter(templatePath, "XU100");
+        var result = await adapter.FetchAsync(T);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result.Payload.Levels);
+        Assert.NotEmpty(result.Payload.Levels);
+
+        var entry = Assert.Single(_wireMock.Server.LogEntries);
+        Assert.NotNull(entry.RequestMessage);
+        Assert.NotNull(entry.RequestMessage.Query);
+        Assert.Equal("/isl/history", entry.RequestMessage.Path);
+        Assert.Equal(expectedTo, entry.RequestMessage.Query["to"].First());
+        Assert.Equal(expectedFrom, entry.RequestMessage.Query["from"].First());
+        Assert.Equal("XU100", entry.RequestMessage.Query["endeks"].First());
     }
 
     // ---------------------------------------------------------------------------------

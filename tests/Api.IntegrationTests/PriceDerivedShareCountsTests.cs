@@ -2,10 +2,12 @@ using System.Net;
 using System.Text.Json;
 using Degerli.Api.IntegrationTests.Harness;
 using Degerli.Api.IntegrationTests.Harness.Mail;
+using Degerli.Core.Metrics;
 using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
@@ -14,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Serilog;
 
@@ -546,6 +549,46 @@ public sealed class PriceDerivedShareCountsTests : IClassFixture<PostgresFixture
             Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstanding").ValueKind);
             Assert.Equal(JsonValueKind.Null, shareCount.GetProperty("sharesOutstandingAsOf").ValueKind);
         }
+    }
+
+    /// <summary>
+    /// SLICE-013 — when KAP balance sheets lack <c>SHARES_DILUTED</c> in <c>fin_line_items</c>,
+    /// <see cref="PriceDerivedShareCounts"/> provides the second-tier fallback for share count:
+    /// <see cref="MetricsEngine"/> successfully populates valuation multiples (<c>pe</c>, <c>pb</c>,
+    /// <c>ev_ebitda</c>) and <see cref="MarketSnapshotEngine"/> computes cap-weighted market aggregates
+    /// (<c>MarketPe</c>, <c>SectorPerformance</c>).
+    /// </summary>
+    [Fact]
+    public async Task SLICE_013_PriceDerivedShareCounts_fallback_populates_metrics_and_market_snapshot()
+    {
+        await SeedAsync();
+
+        await using var db = _postgres.CreateContext();
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM fin_line_items WHERE item_code = 'SHARES_DILUTED'");
+
+        var alfa = await db.Instruments.SingleAsync(i => i.Symbol == "ALFA");
+        db.PriceDerivedShareCounts.Add(new PriceDerivedShareCount
+        {
+            InstrumentId = alfa.Id,
+            SharesOutstanding = 100_000_000L,
+            MarketCapRaw = 2_150_000_000m,
+            CloseRaw = 21.50m,
+            PriceDate = T,
+            SourceRef = "isyatirim",
+            RecordedAt = new DateTimeOffset(T.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+
+        var metrics = await new MetricsEngine(db).ComputeAsync(T);
+        var alfaMetrics = metrics.Single(m => m.Symbol == "ALFA").Metrics;
+        Assert.NotNull(alfaMetrics.Single(m => m.Code == MetricCodes.Pe).Value);
+        Assert.NotNull(alfaMetrics.Single(m => m.Code == MetricCodes.Pb).Value);
+        Assert.NotNull(alfaMetrics.Single(m => m.Code == MetricCodes.EvEbitda).Value);
+
+        var snapshot = await new MarketSnapshotEngine(db, Options.Create(new MarketSnapshotOptions())).ComputeAsync(T);
+        Assert.NotNull(snapshot);
+        Assert.NotNull(snapshot.MarketPe);
+        Assert.NotEmpty(snapshot.SectorPerformance);
     }
 
     // ---------------------------------------------------------------------------------

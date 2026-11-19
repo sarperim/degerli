@@ -303,8 +303,15 @@ public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload
     /// <summary>
     /// Substitutes the <c>{from}</c>/<c>{to}</c>/<c>{index}</c> tokens. The window ends at the
     /// requested date and spans <see cref="UniverseSourceOptions.IndexLevelsLookbackDays"/>
-    /// back; dates are the source-locale <c>yyyyMMddHHmmss</c> form (01 v1.5 §10.9.8). A path
-    /// without tokens is returned unchanged (the canonical L2 double route).
+    /// back; dates are the source-locale <c>yyyyMMddHHmmss</c> form (01 v1.5 §10.9.8).
+    /// <para>
+    /// Note: İş Yatırım's <c>ChartData.aspx/IndexHistoricalAll</c> treats the <c>{to}</c> parameter
+    /// as an <b>exclusive upper bound</b> on the trading date (omitting <paramref name="date"/>'s bar
+    /// when <c>{to}</c> is <paramref name="date"/> + <c>"235959"</c>). Advancing <c>{to}</c> by
+    /// one day (<c>date.AddDays(1)</c>) ensures the requested session's close is included in the
+    /// response (SLICE-013).
+    /// </para>
+    /// A path without tokens is returned unchanged (the canonical L2 double route).
     /// </summary>
     private string ResolveIndexLevelsPath(string template, string indexCode, DateOnly date)
     {
@@ -314,7 +321,7 @@ public sealed class IndexLevelsSourceAdapter : ISourceAdapter<IndexLevelsPayload
         }
 
         var from = date.AddDays(-_options.IndexLevelsLookbackDays).ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-        var to = date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var to = date.AddDays(1).ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         return template
             .Replace("{from}", from + "000000", StringComparison.Ordinal)
             .Replace("{to}", to + "235959", StringComparison.Ordinal)
