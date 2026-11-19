@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { Disclaimer } from '@/components/Disclaimer'
 import {
   AsOfDate,
   RestatedMarker,
@@ -301,7 +300,7 @@ export function DcfCalculatorScreen() {
           {/* Parameter panel — all eight visible and editable (UXR-VAL-003). */}
           <div
             data-testid="dcf-params"
-            className="grid grid-cols-1 gap-4 rounded-lg border bg-background p-4 sm:grid-cols-2"
+            className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-4 text-card-foreground sm:grid-cols-2"
           >
             {DCF_PARAMS.map((def) => {
               const unit = def.unitKey ? ` (${t(def.unitKey)})` : ''
@@ -391,7 +390,7 @@ export function DcfCalculatorScreen() {
           {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
           <div
             data-testid="dcf-scenario-panel"
-            className="flex flex-col gap-3 rounded-lg border bg-background p-4"
+            className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground"
           >
             <h2 className="text-h3 font-medium text-foreground">
               {t('dcf.scenario.heading')}
@@ -567,13 +566,13 @@ export function DcfCalculatorScreen() {
 
           {/* Results — fair value, price with as-of, plain-language verdict. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border bg-background p-4">
+            <div className="rounded-lg border bg-card p-4 text-card-foreground">
               <p className="text-xs text-muted-foreground">{t('dcf.fairValue')}</p>
               <p data-testid="dcf-fair-value" className="text-h2 font-semibold tabular-nums">
                 {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
               </p>
             </div>
-            <div className="rounded-lg border bg-background p-4">
+            <div className="rounded-lg border bg-card p-4 text-card-foreground">
               <p className="text-xs text-muted-foreground">{t('dcf.price')}</p>
               <p data-testid="dcf-price" className="text-h2 font-semibold tabular-nums">
                 {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
@@ -587,7 +586,7 @@ export function DcfCalculatorScreen() {
                 {price?.stale ? <StaleBadge /> : null}
               </span>
             </div>
-            <div className="rounded-lg border bg-background p-4">
+            <div className="rounded-lg border bg-card p-4 text-card-foreground">
               <Badge variant="info">{t('dcf.framing')}</Badge>
               {result ? (
                 <p
@@ -619,7 +618,6 @@ export function DcfCalculatorScreen() {
             />
           ) : null}
 
-          <Disclaimer variant="note" />
         </>
       ) : null}
 

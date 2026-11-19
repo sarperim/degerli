@@ -55,7 +55,7 @@ export function SectionShell({
     <section
       data-section={section}
       aria-labelledby={headingId}
-      className="flex scroll-mt-24 flex-col gap-4 rounded-lg border bg-background p-4"
+      className="flex scroll-mt-24 flex-col gap-4 rounded-lg border bg-card text-card-foreground p-4"
     >
       <h2 id={headingId} className="text-h3 font-semibold text-foreground">
         {t(titleKey)}
