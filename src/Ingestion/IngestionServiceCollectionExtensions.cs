@@ -358,7 +358,7 @@ public static class IngestionServiceCollectionExtensions
             return new HttpSourceClient(new HttpClient
             {
                 BaseAddress = new Uri(baseUrl, UriKind.Absolute),
-                Timeout = TimeSpan.FromSeconds(30),
+                Timeout = TimeSpan.FromSeconds(90),
             });
         });
         services.AddScoped<ISourceAdapter<MacroPayload>>(provider =>
