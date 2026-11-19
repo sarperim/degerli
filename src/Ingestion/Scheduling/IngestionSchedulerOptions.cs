@@ -190,4 +190,11 @@ public sealed class JobScheduleOptions
     /// Defaults to <c>false</c>.
     /// </summary>
     public bool RunOnStartup { get; set; }
+
+    /// <summary>
+    /// Whether this per-job schedule is enabled (SLICE-014). Defaults to <c>true</c> so existing
+    /// entries remain active unless explicitly disabled in configuration (e.g. unconfigured fund
+    /// jobs).
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 }

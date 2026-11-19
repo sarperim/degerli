@@ -165,7 +165,7 @@ public sealed class IngestionScheduler
                 ? "DISABLED — no morning stream is created"
                 : "enabled",
             _options.TimeZone,
-            _options.JobSchedules.Count,
+            _options.JobSchedules.Count(schedule => schedule.Enabled),
             _options.MaxStepDuration > TimeSpan.Zero || _options.MaxRunDuration > TimeSpan.Zero
                 ? $"bounded at {DescribeConfiguredBound(_options.MaxStepDuration)} per step and {DescribeConfiguredBound(_options.MaxRunDuration)} per chain attempt (RUN_HUNG)"
                 : "DISABLED — a hung step can hold every stream silently");
@@ -599,6 +599,11 @@ public sealed class IngestionScheduler
 
         foreach (var schedule in options.JobSchedules)
         {
+            if (!schedule.Enabled)
+            {
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(schedule.JobCode) || string.IsNullOrWhiteSpace(schedule.Cron))
             {
                 throw new InvalidOperationException(

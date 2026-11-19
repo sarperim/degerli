@@ -40,11 +40,19 @@ public sealed class TradingCalendarTests
     ];
 
     /// <summary>
-    /// The 2026 closures still ahead of the seeding date (2026-10-24) — the ticket pins
-    /// "2025 + remaining 2026", so earlier 2026 closures are not re-seeded here.
+    /// The 2026 BIST full-closure weekdays (Pay Piyasası 2026 tatil tablosu — SLICE-014).
     /// </summary>
-    private static readonly DateOnly[] Bist2026RemainingClosures =
+    private static readonly DateOnly[] Bist2026Closures =
     [
+        new(2026, 1, 1),   // Yılbaşı (Thu)
+        new(2026, 3, 20),  // Ramazan Bayramı (Fri)
+        new(2026, 4, 23),  // Ulusal Egemenlik ve Çocuk Bayramı (Thu)
+        new(2026, 5, 1),   // Emek ve Dayanışma Günü (Fri)
+        new(2026, 5, 19),  // Atatürk'ü Anma, Gençlik ve Spor Bayramı (Tue)
+        new(2026, 5, 27),  // Kurban Bayramı (Wed)
+        new(2026, 5, 28),  // Kurban Bayramı (Thu)
+        new(2026, 5, 29),  // Kurban Bayramı (Fri)
+        new(2026, 7, 15),  // Demokrasi ve Millî Birlik Günü (Wed)
         new(2026, 10, 29), // Cumhuriyet Bayramı (Thu)
     ];
 
@@ -199,7 +207,7 @@ public sealed class TradingCalendarTests
             Bist2025Closures.OrderBy(date => date),
             shipped.Where(date => date.Year == 2025).OrderBy(date => date));
         Assert.Equal(
-            Bist2026RemainingClosures.OrderBy(date => date),
+            Bist2026Closures.OrderBy(date => date),
             shipped.Where(date => date.Year == 2026).OrderBy(date => date));
 
         // The arefe (half-day) dates are trading sessions, never seeded as holidays.
@@ -239,6 +247,13 @@ public sealed class TradingCalendarTests
         {
             var schedule = schedules.Single(entry => entry.GetProperty("JobCode").GetString() == code);
             Assert.False(schedule.TryGetProperty("TradingDaysOnly", out var flag) && flag.GetBoolean());
+        }
+
+        // SLICE-014: unconfigured TEFAS fund schedules are disabled by default in shipped config.
+        foreach (var code in new[] { "fund-nav", "fund-performance", "fund-holdings" })
+        {
+            var schedule = schedules.Single(entry => entry.GetProperty("JobCode").GetString() == code);
+            Assert.True(schedule.TryGetProperty("Enabled", out var enabled) && !enabled.GetBoolean());
         }
     }
 
