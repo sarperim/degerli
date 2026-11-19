@@ -218,7 +218,11 @@ function StatementTable({
   const { t } = useTranslation()
 
   const cell = (row: StatementRow, period: FinancialPeriod): ReactNode => (
-    <TableCell key={period.periodEndDate} data-period={period.periodEndDate}>
+    <TableCell
+      key={period.periodEndDate}
+      data-period={period.periodEndDate}
+      className="text-right tabular-nums"
+    >
       <StatementValue figure={rowFigure(period, row)} format={row.format} locale={locale} />
     </TableCell>
   )

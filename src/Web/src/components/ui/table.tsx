@@ -117,7 +117,10 @@ export function TableHead({ className, scope = 'col', ...props }: TableHeadProps
       data-slot="table-head"
       scope={scope}
       className={cn(
-        'h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted-foreground',
+        'px-3 text-left align-middle',
+        scope === 'row'
+          ? 'py-2.5 whitespace-normal text-sm font-medium text-foreground'
+          : 'h-10 whitespace-nowrap text-xs font-medium text-muted-foreground',
         className,
       )}
       {...props}
