@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 
+import { buttonVariants } from '@/components/ui/button'
 import { SectionNav } from '@/components/ui/section-nav'
 import { useDraftStore, type StockPageSection } from '@/store/draftStore'
 import { fetchStockOverview, stockPageQueryKeys } from '@/screens/stock-page/api'
@@ -130,7 +131,7 @@ export function StockPage() {
         <div>
           <Link
             to={`/stocks/${encodeURIComponent(symbol)}/dcf`}
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:underline"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             {t('stockPage.dcfHandoff')}
           </Link>

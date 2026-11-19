@@ -459,9 +459,9 @@ public sealed class EodFreshnessSemanticsTests : IClassFixture<PostgresFixture>
         Assert.Equal("0 15 8 * * *", identity.GetProperty("Cron").GetString());
         Assert.True(identity.GetProperty("TradingDaysOnly").GetBoolean());
 
-        // The hourly intraday sweep (the re-pinned TC-MDF-084 constant).
+        // The hourly intraday sweep (the re-pinned TC-MDF-084 constant, extended to 18:15 post-close in SLICE-011).
         var intraday = schedules.Single(entry => entry.GetProperty("JobCode").GetString() == "intraday-quotes");
-        Assert.Equal("0 15 10-17 * * 1-5", intraday.GetProperty("Cron").GetString());
+        Assert.Equal("0 15 10-18 * * 1-5", intraday.GetProperty("Cron").GetString());
         Assert.True(intraday.GetProperty("TradingDaysOnly").GetBoolean());
     }
 

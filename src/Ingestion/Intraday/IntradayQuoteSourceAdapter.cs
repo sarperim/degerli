@@ -28,6 +28,9 @@ public sealed class IntradayQuoteSourceOptions
     /// </summary>
     public string BaseUrl { get; set; } = string.Empty;
 
+    /// <summary>HTTP verb used for the fetch (<c>GET</c> or <c>POST</c>).</summary>
+    public string Method { get; set; } = "GET";
+
     /// <summary>
     /// Path of the per-symbol intraday resource, relative to <see cref="BaseUrl"/>. Supports
     /// the same tokens as the prices lane: <c>{symbol}</c> and <c>{date}</c> (source-locale
@@ -40,6 +43,12 @@ public sealed class IntradayQuoteSourceOptions
     /// (e.g. <c>/v8/finance/chart/{symbol}.IS?range=1d&amp;interval=5m</c>) needs no code change.
     /// </summary>
     public string Path { get; set; } = "/intraday/{symbol}";
+
+    /// <summary>Request body for POST requests (e.g. İş Yatırım's <c>GetHissePerformans</c>).</summary>
+    public string RequestBody { get; set; } = """{"endeksKodu":"09","sektorKodu":"","exchange":""}""";
+
+    /// <summary>True when the configured endpoint is swept via a single bulk request.</summary>
+    public bool IsBulkRequest => string.Equals(Method, "POST", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The index whose current constituents (<c>index_constituents</c>,
@@ -129,6 +138,17 @@ public sealed class IntradayQuoteSourceAdapter
                 raw);
         }
 
+        if (IsYatirimPerformanceEnvelope(document))
+        {
+            var items = DecodePerformanceFacts(document, sessionDate)
+                .Where(item => MatchesSymbol(item.Symbol, symbol))
+                .ToList();
+            return new SourcePayload<IntradayQuotePayload>(
+                IsYatirimSource,
+                new IntradayQuotePayload(IsYatirimSource, sessionDate, items),
+                raw);
+        }
+
         if (IsYatirimChartEnvelope(document))
         {
             // İş Yatırım's delayed intraday chart feed (the shipped intraday resource, probed
@@ -189,6 +209,39 @@ public sealed class IntradayQuoteSourceAdapter
             .Where(item => MatchesSymbol(item.Symbol, symbol))
             .ToList();
         return new SourcePayload<IntradayQuotePayload>(payload.SourceRef, payload with { Items = filtered }, raw);
+    }
+
+    /// <summary>
+    /// Fetches the intraday readings for all constituents in a single bulk request for
+    /// <paramref name="sessionDate"/>. Supported when the source publishes a multi-symbol
+    /// envelope such as İş Yatırım's <c>GetHissePerformans</c> or a canonical bulk double.
+    /// </summary>
+    public async Task<SourcePayload<IntradayQuotePayload>> FetchBulkAsync(
+        DateOnly sessionDate,
+        CancellationToken cancellationToken = default)
+    {
+        var raw = string.Equals(_options.Method, "POST", StringComparison.OrdinalIgnoreCase)
+            ? await _client.PostJsonAsync(_options.Path, _options.RequestBody, cancellationToken).ConfigureAwait(false)
+            : await _client.GetStringAsync(ResolveFetchPath(_options.Path, string.Empty, sessionDate), cancellationToken).ConfigureAwait(false);
+
+        using var document = ParseDocument(raw);
+
+        if (IsYatirimPerformanceEnvelope(document))
+        {
+            var items = DecodePerformanceFacts(document, sessionDate);
+            return new SourcePayload<IntradayQuotePayload>(
+                IsYatirimSource,
+                new IntradayQuotePayload(IsYatirimSource, sessionDate, items),
+                raw);
+        }
+
+        var payload = Deserialize<IntradayQuotePayload>(raw);
+        if (payload is null)
+        {
+            throw new SourceFetchException("Intraday payload deserialized to null.");
+        }
+
+        return new SourcePayload<IntradayQuotePayload>(payload.SourceRef, payload, raw);
     }
 
     /// <summary>
@@ -275,6 +328,79 @@ public sealed class IntradayQuoteSourceAdapter
     private static bool IsYahooEnvelope(JsonDocument document) =>
         document.RootElement.ValueKind == JsonValueKind.Object
         && document.RootElement.TryGetProperty("chart", out _);
+
+    /// <summary>
+    /// True when the document is İş Yatırım's multi-instrument <c>GetHissePerformans</c>
+    /// envelope: an ASP.NET AJAX wrapper (<c>{"d":"..."}</c>) or root object carrying the
+    /// <c>Oran</c> row array.
+    /// </summary>
+    private static bool IsYatirimPerformanceEnvelope(JsonDocument document)
+    {
+        var root = document.RootElement;
+        return root.ValueKind == JsonValueKind.Object
+            && (root.TryGetProperty("d", out _)
+                || (root.TryGetProperty("Oran", out var rowsProp) && rowsProp.ValueKind == JsonValueKind.Array));
+    }
+
+    private static IReadOnlyList<IntradayQuoteFact> DecodePerformanceFacts(JsonDocument document, DateOnly sessionDate)
+    {
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("d", out var wrapper))
+        {
+            if (wrapper.ValueKind == JsonValueKind.String)
+            {
+                using var inner = ParseDocument(wrapper.GetString()!);
+                return DecodePerformanceFactsFromObject(inner.RootElement, sessionDate);
+            }
+
+            if (wrapper.ValueKind == JsonValueKind.Object)
+            {
+                return DecodePerformanceFactsFromObject(wrapper, sessionDate);
+            }
+        }
+
+        return DecodePerformanceFactsFromObject(root, sessionDate);
+    }
+
+    private static IReadOnlyList<IntradayQuoteFact> DecodePerformanceFactsFromObject(JsonElement root, DateOnly sessionDate)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("Oran", out var rows)
+            || rows.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var facts = new List<IntradayQuoteFact>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (!row.TryGetProperty("HISSE_KODU", out var symbolEl) || symbolEl.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var symbol = symbolEl.GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(symbol))
+            {
+                continue;
+            }
+
+            if (row.TryGetProperty("PRICE_TL", out var priceEl)
+                && priceEl.ValueKind == JsonValueKind.Number
+                && priceEl.TryGetDecimal(out var price))
+            {
+                facts.Add(new IntradayQuoteFact(symbol, sessionDate, price, DayVolume: null));
+            }
+        }
+
+        return facts;
+    }
 
     /// <summary>
     /// True when the document is İş Yatırım's delayed intraday chart feed: an object carrying

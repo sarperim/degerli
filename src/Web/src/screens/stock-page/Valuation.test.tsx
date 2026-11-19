@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 
 import { formatAsOfDate, formatNumber } from '@/lib/format'
@@ -44,7 +44,33 @@ function metric(container: HTMLElement, code: string): HTMLElement {
   return node
 }
 
-beforeEach(resetStockPageTest)
+const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+
+beforeEach(() => {
+  resetStockPageTest()
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList?.contains('recharts-responsive-container')) {
+      return {
+        width: 640,
+        height: 240,
+        top: 0,
+        left: 0,
+        bottom: 240,
+        right: 640,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }
+    }
+    return originalGetBoundingClientRect.call(this)
+  })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('TC-RES-025 — vs.-sector strip component', () => {
   it('shows the stock value next to the sector median with its peer count and the P/E exclusion disclosure', () => {

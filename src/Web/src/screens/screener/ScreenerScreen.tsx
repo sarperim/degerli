@@ -218,7 +218,7 @@ export function ScreenerScreen() {
       </header>
 
       {/* Criteria builder ------------------------------------------------- */}
-      <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
+      <div className="flex flex-col gap-4 rounded-lg border bg-card text-card-foreground p-4">
         {metricsQuery.isPending ? (
           <div role="status" aria-label={t('common.loading')}>
             <SkeletonTable rows={3} columns={2} />
@@ -495,7 +495,7 @@ export function ScreenerScreen() {
 
       {/* Save control ----------------------------------------------------- */}
       {metricsQuery.isSuccess ? (
-        <div className="flex flex-col gap-3 rounded-lg border bg-background p-4">
+        <div className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4">
           <h2 className="text-h3 font-medium text-foreground">
             {t('screener.saveButton')}
           </h2>

@@ -278,9 +278,8 @@ describe('TC-VAL-019 — plain-language verdict rendering', () => {
     // Direction is carried in the text, not by colour alone.
     expect(verdict).toHaveAttribute('data-direction', 'above')
     expect(verdict).toHaveTextContent(TR('dcf.framing'))
-    // Framing + informational-only disclaimer are both visible.
+    // Framing badge is visible (AppShell renders the global Disclaimer for research routes).
     expect(screen.getByText(TR('dcf.framing'))).toBeInTheDocument()
-    expect(screen.getByText(TR('disclaimer.text'))).toBeInTheDocument()
   })
 
   it('renders the verdict from the EN catalog when the language is English', async () => {

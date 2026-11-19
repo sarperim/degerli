@@ -113,4 +113,43 @@ describe('header stock search (FR-RES-004)', () => {
     expect(useDraftStore.getState().headerSearch).toBe('beta')
     // The value is store-backed, so a remount would restore it (asserted at L4).
   })
+
+  it('supports keyboard navigation with ArrowDown, ArrowUp, Enter, and Escape', async () => {
+    const user = userEvent.setup()
+    renderSearch()
+
+    const input = screen.getByLabelText(TR('header.searchLabel'))
+    await user.type(input, 'a')
+
+    const options = await screen.findAllByRole('option')
+    expect(options.length).toBeGreaterThanOrEqual(2)
+
+    await user.keyboard('{ArrowDown}')
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowDown}')
+    expect(options[1]).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowUp}')
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    await user.keyboard('{ArrowDown}')
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
+
+    const reopenedOptions = await screen.findAllByRole('option')
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(input).toHaveAttribute('aria-activedescendant', reopenedOptions[1].id)
+
+    const expectedSymbol = reopenedOptions[1].id.replace(
+      'header-stock-search-option-',
+      '',
+    )
+    await user.keyboard('{Enter}')
+    expect(await screen.findByTestId('stock-page-symbol')).toHaveTextContent(
+      expectedSymbol,
+    )
+  })
 })

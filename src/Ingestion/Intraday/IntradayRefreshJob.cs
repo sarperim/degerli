@@ -91,6 +91,11 @@ public sealed class IntradayRefreshJob : IIngestJob
             return new IngestResult(Code, 0, 0, 0, IngestResult.Succeeded);
         }
 
+        if (_options.IsBulkRequest)
+        {
+            return await RunBulkAsync(request, constituents, cancellationToken).ConfigureAwait(false);
+        }
+
         var written = 0;
         var unchanged = 0;
         var rewritten = 0;
@@ -218,6 +223,124 @@ public sealed class IntradayRefreshJob : IIngestJob
             noData,
             quarantined,
             failedSymbols.Count,
+            status);
+
+        return new IngestResult(Code, written, unchanged, quarantined, status, Skipped: noData)
+        {
+            SymbolStats = symbolStats,
+        };
+    }
+
+    private async Task<IngestResult> RunBulkAsync(
+        IngestionRequest request,
+        IReadOnlyList<string> constituents,
+        CancellationToken cancellationToken)
+    {
+        SourcePayload<IntradayQuotePayload> fetched;
+        try
+        {
+            fetched = await _adapter.FetchBulkAsync(request.Date, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SourcePayloadException exception)
+        {
+            _logger.LogWarning(
+                "intraday: bulk payload for {Date} unparseable (UNPARSEABLE_PAYLOAD)",
+                request.Date);
+            await _quarantine.QuarantineAsync(
+                new QuarantineEntry(Code, null, exception.RawJson, QuarantineReason.UnparseablePayload, _clock.GetUtcNow()),
+                cancellationToken).ConfigureAwait(false);
+            return new IngestResult(Code, 0, 0, 1, IngestResult.Failed);
+        }
+        catch (SourceFetchException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "intraday: bulk fetch failed for {Date} (SOURCE_FETCH_FAILED)",
+                request.Date);
+            await _alerter.RaiseAsync(
+                new IngestionAlert(
+                    JobCode: Code,
+                    ReasonCode: SourceFetchFailed,
+                    Subject: $"Degerli alert: {Code} source fetch failed for {string.Join(", ", constituents)}",
+                    BodyTr: $"Gün içi fiyat işi {request.Date:yyyy-MM-dd} için şu sembollerin kaynağından veri çekemedi: {string.Join(", ", constituents)}. Kaynak hatası karantinaya alınmaz.",
+                    BodyEn: $"The intraday quotes job could not fetch data for {string.Join(", ", constituents)} on {request.Date:yyyy-MM-dd}. A source failure is not quarantined (it is a source-down, not a parse event).",
+                    SourceRef: null),
+                cancellationToken).ConfigureAwait(false);
+            return new IngestResult(Code, 0, 0, 0, IngestResult.Failed);
+        }
+
+        if (string.IsNullOrWhiteSpace(fetched.SourceRef))
+        {
+            _logger.LogWarning(
+                "intraday: bulk payload for {Date} carries no provenance (MISSING_PROVENANCE)",
+                request.Date);
+            await _quarantine.QuarantineAsync(
+                new QuarantineEntry(Code, null, fetched.RawJson, QuarantineReason.MissingProvenance, _clock.GetUtcNow()),
+                cancellationToken).ConfigureAwait(false);
+            return new IngestResult(Code, 0, 0, 1, IngestResult.Partial);
+        }
+
+        var written = 0;
+        var unchanged = 0;
+        var rewritten = 0;
+        var noData = 0;
+        var quarantined = 0;
+        var symbolStats = new List<SymbolRunStat>(constituents.Count);
+
+        for (var index = 0; index < constituents.Count; index++)
+        {
+            var symbol = constituents[index];
+            var symbolItems = fetched.Payload.Items
+                .Where(item => string.Equals(item.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (symbolItems.Count == 0)
+            {
+                _logger.LogInformation(
+                    "intraday: symbol {Symbol} has no same-day row for {Date} (NO_DATA)",
+                    symbol,
+                    request.Date);
+                noData++;
+                symbolStats.Add(new SymbolRunStat(symbol, 0, 0, 0, false));
+                continue;
+            }
+
+            var outcome = await _store
+                .UpsertAsync(request.Date, fetched.SourceRef, _clock.GetUtcNow(), symbolItems, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var reject in outcome.Rejected)
+            {
+                _logger.LogWarning(
+                    "intraday: rejected reading for {Symbol} on {Date} ({ReasonCode})",
+                    reject.Fact.Symbol,
+                    request.Date,
+                    reject.ReasonCode);
+                await QuarantineAsync(reject, fetched.SourceRef, cancellationToken).ConfigureAwait(false);
+                quarantined++;
+            }
+
+            written += outcome.Inserted;
+            unchanged += outcome.Unchanged;
+            rewritten += outcome.Rewritten;
+
+            symbolStats.Add(new SymbolRunStat(symbol, outcome.Inserted, outcome.Unchanged, outcome.Rejected.Count, false));
+        }
+
+        var status = quarantined > 0
+            ? IngestResult.Partial
+            : IngestResult.Succeeded;
+
+        _logger.LogInformation(
+            "intraday: sweep for {Date} complete — constituents {Constituents}, written {Written}, unchanged {Unchanged}, rewritten {Rewritten}, no-data {NoData}, quarantined {Quarantined}, failed {Failed} ({Status})",
+            request.Date,
+            constituents.Count,
+            written,
+            unchanged,
+            rewritten,
+            noData,
+            quarantined,
+            0,
             status);
 
         return new IngestResult(Code, written, unchanged, quarantined, status, Skipped: noData)

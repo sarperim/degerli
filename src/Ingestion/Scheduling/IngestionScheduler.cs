@@ -2,9 +2,13 @@ using System.Text.Json;
 using Cronos;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Metrics;
 using Degerli.Ingestion.Prices;
+using Degerli.Ingestion.Universe;
+using Degerli.Ingestion.Valuation;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -71,6 +75,8 @@ namespace Degerli.Ingestion.Scheduling;
 public sealed class IngestionScheduler
 {
     private static readonly JsonSerializerOptions StatsJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly TimeOnly IntradaySessionOpenLocalTime = new(10, 0);
+    private static readonly TimeOnly EodTriggerLocalTime = new(20, 30);
 
     /// <summary>
     /// The named reason code of the hung-run watchdog's alert and ledger row (01 v1.5
@@ -159,7 +165,7 @@ public sealed class IngestionScheduler
                 ? "DISABLED — no morning stream is created"
                 : "enabled",
             _options.TimeZone,
-            _options.JobSchedules.Count,
+            _options.JobSchedules.Count(schedule => schedule.Enabled),
             _options.MaxStepDuration > TimeSpan.Zero || _options.MaxRunDuration > TimeSpan.Zero
                 ? $"bounded at {DescribeConfiguredBound(_options.MaxStepDuration)} per step and {DescribeConfiguredBound(_options.MaxRunDuration)} per chain attempt (RUN_HUNG)"
                 : "DISABLED — a hung step can hold every stream silently");
@@ -202,6 +208,106 @@ public sealed class IngestionScheduler
             }
 
             return next;
+        }
+    }
+
+    /// <summary>
+    /// Executes startup data refreshes on container boot (SLICE-012, SLICE-015):
+    /// 1. If <see cref="IngestionSchedulerOptions.CatchUpPricesOnStartup"/> is true, checks whether
+    /// the latest completed EOD session's prices are fully stored and its <c>market_snapshots</c>
+    /// row exists; if either is missing, arms the <c>startup-catchup</c> stream to ingest universe,
+    /// prices, metrics, DCF baselines, snapshots, and sector medians.
+    /// 2. If any stream has <c>RunOnStartup = true</c> (e.g. <c>intraday-quotes</c>), arms it for
+    /// immediate execution targeting the current active session (or previous trading day if unopened).
+    /// </summary>
+    public async Task RunStartupAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        if (!_options.Enabled)
+        {
+            return;
+        }
+
+        var local = TimeZoneInfo.ConvertTime(now, _timeZone);
+        var localDate = DateOnly.FromDateTime(local.DateTime);
+        var localTime = TimeOnly.FromDateTime(local.DateTime);
+        var armed = false;
+
+        if (_options.CatchUpPricesOnStartup
+            && _streams.FirstOrDefault(stream => stream.StartupOnly) is { } catchUpStream)
+        {
+            var latestCompletedEodDate = _calendar.IsTradingDay(localDate) && localTime >= EodTriggerLocalTime
+                ? localDate
+                : ResolvePreviousTradingDay(localDate);
+
+            using var scope = _scopeFactory.CreateScope();
+            var indexCode = scope.ServiceProvider.GetRequiredService<IOptions<PricesSourceOptions>>().Value.UniverseIndex;
+            var coverage = await scope.ServiceProvider
+                .GetRequiredService<DailyPriceStore>()
+                .GetDayCoverageAsync(indexCode, latestCompletedEodDate, cancellationToken)
+                .ConfigureAwait(false);
+            var db = scope.ServiceProvider.GetRequiredService<DegerliDbContext>();
+            var hasMarketSnapshot = await db.MarketSnapshots
+                .AnyAsync(s => s.SnapshotDate == latestCompletedEodDate, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!coverage.IsComplete || !hasMarketSnapshot)
+            {
+                lock (_gate)
+                {
+                    if (catchUpStream.Active is null && !catchUpStream.InFlight)
+                    {
+                        catchUpStream.Active = new ActiveRun(latestCompletedEodDate, nextAttemptAt: now);
+                        armed = true;
+                    }
+                }
+
+                _logger.LogInformation(
+                    "Startup catch-up armed for {Stream} targeting {Date} ({Covered}/{Constituents} {Index} EOD prices stored, marketSnapshot={HasMarketSnapshot}).",
+                    catchUpStream.Name,
+                    latestCompletedEodDate,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    indexCode,
+                    hasMarketSnapshot);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Startup catch-up skipped for {Date}: {Covered}/{Constituents} {Index} EOD prices and market snapshot already stored.",
+                    latestCompletedEodDate,
+                    coverage.Covered,
+                    coverage.Constituents,
+                    indexCode);
+            }
+        }
+
+        foreach (var stream in _streams.Where(candidate => candidate.RunOnStartup))
+        {
+            var startupRunDate = !stream.TradingDaysOnly
+                ? localDate
+                : _calendar.IsTradingDay(localDate) && localTime >= IntradaySessionOpenLocalTime
+                    ? localDate
+                    : ResolvePreviousTradingDay(localDate);
+
+            lock (_gate)
+            {
+                if (stream.Active is null && !stream.InFlight)
+                {
+                    stream.NextScheduled ??= stream.Cron.GetNextOccurrence(now, _timeZone, inclusive: false);
+                    stream.Active = new ActiveRun(startupRunDate, nextAttemptAt: now);
+                    armed = true;
+                }
+            }
+
+            _logger.LogInformation(
+                "Startup refresh armed for {Stream} targeting {Date}.",
+                stream.Name,
+                startupRunDate);
+        }
+
+        if (armed)
+        {
+            await TickAsync(now, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -392,9 +498,11 @@ public sealed class IngestionScheduler
                 {
                     EnsureScheduled(stream, now);
 
-                    // Consume every cron occurrence up to `now`. A non-trading occurrence on a
-                    // calendar-gated stream runs nothing; a per-job stream is gated only when
-                    // its own configuration says so. The first eligible occurrence starts a run.
+                    // Consume every cron occurrence up to `now` so NextScheduled advances strictly
+                    // past `now`. A non-trading occurrence on a calendar-gated stream runs nothing;
+                    // a per-job stream is gated only when its own configuration says so. Multiple
+                    // missed eligible occurrences coalesce into a single run for the latest one.
+                    DateOnly? latestEligible = null;
                     while (stream.NextScheduled is { } occurrence && occurrence <= now)
                     {
                         stream.NextScheduled = stream.Cron.GetNextOccurrence(occurrence, _timeZone, inclusive: false);
@@ -411,8 +519,12 @@ public sealed class IngestionScheduler
                             continue;
                         }
 
-                        stream.Active = new ActiveRun(ResolveRunDate(stream, occurrenceDate), nextAttemptAt: now);
-                        break;
+                        latestEligible = occurrenceDate;
+                    }
+
+                    if (latestEligible is { } eligibleDate)
+                    {
+                        stream.Active = new ActiveRun(ResolveRunDate(stream, eligibleDate), nextAttemptAt: now);
                     }
                 }
 
@@ -469,8 +581,34 @@ public sealed class IngestionScheduler
             });
         }
 
+        if (options.CatchUpPricesOnStartup)
+        {
+            streams.Add(new ScheduleStream
+            {
+                Name = "startup-catchup",
+                Cron = CronExpression.Parse(options.Cron, CronFormat.IncludeSeconds),
+                TradingDaysOnly = true,
+                StartupOnly = true,
+                GatePricesOnStoredCoverage = true,
+                JobCodes = new[]
+                {
+                    UniverseSyncJob.Code,
+                    PricesJob.Code,
+                    MetricsRecomputeJob.Code,
+                    DcfBaselineGenerationJob.Code,
+                    MarketSnapshotJob.Code,
+                    SectorMediansJob.Code,
+                },
+            });
+        }
+
         foreach (var schedule in options.JobSchedules)
         {
+            if (!schedule.Enabled)
+            {
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(schedule.JobCode) || string.IsNullOrWhiteSpace(schedule.Cron))
             {
                 throw new InvalidOperationException(
@@ -484,6 +622,7 @@ public sealed class IngestionScheduler
                 // Per-job streams are ungated by default (macro/fund data is published every
                 // day); a market stream opts in — the intraday sweep does (TKT-foundation-048).
                 TradingDaysOnly = schedule.TradingDaysOnly,
+                RunOnStartup = schedule.RunOnStartup,
                 JobCodes = new[] { schedule.JobCode },
             });
         }
@@ -491,8 +630,15 @@ public sealed class IngestionScheduler
         return streams;
     }
 
-    private void EnsureScheduled(ScheduleStream stream, DateTimeOffset now) =>
+    private void EnsureScheduled(ScheduleStream stream, DateTimeOffset now)
+    {
+        if (stream.StartupOnly)
+        {
+            return;
+        }
+
         stream.NextScheduled ??= stream.Cron.GetNextOccurrence(now, _timeZone, inclusive: true);
+    }
 
     private static DateTimeOffset? Earliest(DateTimeOffset? current, DateTimeOffset? candidate)
     {
@@ -519,13 +665,13 @@ public sealed class IngestionScheduler
     /// weekends and those configured holidays; a job's own stored-facts resolution still
     /// self-heals, the §10.9.13 doctrine).
     /// </summary>
-    private DateOnly ResolveRunDate(ScheduleStream stream, DateOnly occurrenceDate)
-    {
-        if (stream.RunDate == RunDateMode.OccurrenceDate)
-        {
-            return occurrenceDate;
-        }
+    private DateOnly ResolveRunDate(ScheduleStream stream, DateOnly occurrenceDate) =>
+        stream.RunDate == RunDateMode.OccurrenceDate
+            ? occurrenceDate
+            : ResolvePreviousTradingDay(occurrenceDate);
 
+    private DateOnly ResolvePreviousTradingDay(DateOnly occurrenceDate)
+    {
         var candidate = occurrenceDate;
         for (var back = 1; back <= PreviousTradingDayLookbackDays; back++)
         {
@@ -537,7 +683,7 @@ public sealed class IngestionScheduler
         }
 
         _logger.LogWarning(
-            "No trading day found in the {Days} days before {Date}; the morning run falls back to {Candidate}, the last candidate tested.",
+            "No trading day found in the {Days} days before {Date}; the run falls back to {Candidate}, the last candidate tested.",
             PreviousTradingDayLookbackDays,
             occurrenceDate,
             candidate);
@@ -1497,6 +1643,9 @@ public sealed class IngestionScheduler
 
         /// <summary>Whether the stored-prices repair gate applies to this stream's prices step.</summary>
         public bool GatePricesOnStoredCoverage { get; init; }
+
+        public bool RunOnStartup { get; init; }
+        public bool StartupOnly { get; init; }
 
         public DateTimeOffset? NextScheduled { get; set; }
 

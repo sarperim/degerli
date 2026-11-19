@@ -20,6 +20,7 @@ x-ci-environment: &ci-environment
   ASPNETCORE_ENVIRONMENT: Development
   ASPNETCORE_URLS: http://+:8080
   ConnectionStrings__Default: Host=postgres;Port=5432;Database=degerli;Username=degerli;Password=degerli
+  Ingestion__Scheduler__Enabled: "false"
   Smtp__Host: mailpit
   Smtp__Port: "1025"
   Smtp__User: ""

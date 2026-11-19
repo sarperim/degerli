@@ -729,6 +729,7 @@
     "canonicalSource": "Canonical fact · as of {{date}}",
     "baselineDefault": "Baseline default",
     "baselineVersion": "Baseline version {{version}}",
+    "backToStock": "Back to {{symbol}}",
     "error": {
       "notNumber": "Enter a valid number.",
       "notInteger": "Enter a whole number.",

@@ -41,7 +41,8 @@ public static class StockFundamentalsEndpoints
     private const string UniverseIndexCode = "XU100";
 
     private const int MaxFreshStatementAgeDays = 365;
-    private const int MaxFreshAnnualBalanceSheetAgeDays = 450;
+    // Covers Turkish TMS 29 spring filing extensions through mid-May.
+    private const int MaxFreshAnnualBalanceSheetAgeDays = 500;
 
     // ── Canonical chart-of-accounts item codes (02 §6.1) ─────────────────────
     private const string Rev = "REV";
@@ -372,7 +373,7 @@ public static class StockFundamentalsEndpoints
             }
             : null;
 
-        var stale = eodStale || latest is null || latest.PeriodEndDate < today.AddDays(-MaxFreshStatementAgeDays);
+        var stale = latest is null || latest.PeriodEndDate < today.AddDays(-MaxFreshStatementAgeDays);
 
         return Results.Ok(new { asOf, stale, filing, layoutNotice, evHeader, periods });
     }
@@ -533,7 +534,7 @@ public static class StockFundamentalsEndpoints
         }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var stale = eodStale || latest.PeriodEndDate < today.AddDays(-MaxFreshAnnualBalanceSheetAgeDays);
+        var stale = latest.PeriodEndDate < today.AddDays(-MaxFreshAnnualBalanceSheetAgeDays);
 
         // The restated version serves when present (BR-MDF-011).
         var candidates = statements.Where(statement => statement.PeriodEndDate == latest.PeriodEndDate).ToList();
