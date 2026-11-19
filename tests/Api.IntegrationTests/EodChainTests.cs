@@ -19,9 +19,10 @@ namespace Degerli.Api.IntegrationTests;
 
 /// <summary>
 /// TKT-int-001 acceptance — the full cross-domain EOD chain pinned on the TKT-mdf-005
-/// scheduler: prices → statements/dividends/corporate-actions/disclosures →
-/// metrics-recompute → snapshot → medians, run in order on the daily 20:30 Europe/Istanbul
-/// trigger with one run-ledger row per job and every artifact produced for the run day
+/// scheduler (updated in SLICE-014): universe-sync → prices → metrics-recompute →
+/// market-snapshot → medians → statements/dividends/corporate-actions/disclosures, run in
+/// order on the daily 20:30 Europe/Istanbul trigger with one run-ledger row per job and
+/// every artifact produced for the run day
 /// (TC-MDF-010; FR-MDF-009, UC-MDF-001 main, NFR-MDF-001, `03` §9).
 /// <para>
 /// The scheduler is driven through the real engine over a <see cref="FakeTimeProvider"/>,
@@ -62,13 +63,13 @@ public sealed class EodChainTests : IClassFixture<PostgresFixture>, IClassFixtur
     [
         "universe-sync",
         "prices",
+        "metrics-recompute",
+        "market-snapshot",
+        "medians",
         "statements",
         "dividends",
         "corporate-actions",
         "disclosures",
-        "metrics-recompute",
-        "market-snapshot",
-        "medians",
     ];
 
     private readonly PostgresFixture _postgres;

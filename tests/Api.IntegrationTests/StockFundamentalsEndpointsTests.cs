@@ -655,7 +655,7 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
             Assert.True(document.RootElement.GetProperty("stale").GetBoolean());
         }
 
-        // Outdated FY balance sheet (2023-12-31 > 450 days) marks balance sheet stale
+        // Outdated FY balance sheet (2023-12-31 > 500 days) marks balance sheet stale
         using (var response = await client.GetAsync("/api/v1/stocks/REST/balance-sheet"))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -664,6 +664,30 @@ public sealed class StockFundamentalsEndpointsTests : IClassFixture<PostgresFixt
         }
 
         // ALFA has fresh statements (2025-12-31), so financials and balance-sheet are not stale
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/financials"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/balance-sheet"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
+        // SLICE-014: when EOD prices are stale (Wednesday 20:30 UTC after T=Tuesday), profitability
+        // reports stale: true while fresh statements (within 365 / 500 days) stay stale: false.
+        factory.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 7, 20, 30, 0, TimeSpan.Zero));
+        using (var response = await client.GetAsync("/api/v1/stocks/ALFA/profitability"))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.True(document.RootElement.GetProperty("stale").GetBoolean());
+        }
+
         using (var response = await client.GetAsync("/api/v1/stocks/ALFA/financials"))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);

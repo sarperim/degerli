@@ -247,6 +247,57 @@ public sealed class SchedulerTests : IClassFixture<PostgresFixture>, IClassFixtu
         }
     }
 
+    /// <summary>
+    /// SLICE-014 — The pinned EOD chain runs price-derived computation (<c>metrics-recompute</c>,
+    /// <c>market-snapshot</c>, <c>medians</c>) immediately after <c>prices</c> and before the slow
+    /// KAP walks.
+    /// </summary>
+    [Fact]
+    public void SLICE_014_EodIngestChain_runs_metrics_snapshot_and_medians_before_slow_kap_walks()
+    {
+        Assert.Equal(
+            new[]
+            {
+                "universe-sync",
+                "prices",
+                "metrics-recompute",
+                "market-snapshot",
+                "medians",
+                "statements",
+                "dividends",
+                "corporate-actions",
+                "disclosures",
+            },
+            EodIngestChain.JobCodes);
+    }
+
+    /// <summary>
+    /// SLICE-014 — A <see cref="JobScheduleOptions"/> entry with <c>Enabled = false</c> is skipped
+    /// during stream registration and never scheduled or started on startup or cron.
+    /// </summary>
+    [Fact]
+    public async Task SLICE_014_JobScheduleOptions_Enabled_false_prevents_stream_from_scheduling()
+    {
+        await ResetAsync();
+
+        var fundNav = new TrackingStep("fund-nav");
+        await using var host = BuildPerJobHost(
+            fundNav,
+            cron: "0 0 19 * * *",
+            tradingDaysOnly: false,
+            runOnStartup: true,
+            enabled: false);
+
+        var clock = host.Clock;
+        clock.SetUtcNow(Trt(2026, 10, 5, 18, 0));
+
+        await host.Scheduler.RunStartupAsync(clock.GetUtcNow());
+        await AdvanceToAsync(host.Scheduler, clock, Trt(2026, 10, 5, 23, 59));
+
+        Assert.Empty(fundNav.RequestedDates);
+        Assert.Equal(0, await LedgerCountAsync());
+    }
+
     /// <summary>TC-MDF-012 — Source failure retries per the 5/15/60 ladder.</summary>
     [Fact]
     public async Task TC_MDF_012_Source_failure_retries_per_ladder()
