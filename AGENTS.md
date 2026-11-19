@@ -11,11 +11,11 @@ All features, fixes, and refactors are developed **one vertical slice at a time*
 3. **After verification:** Mark `status: done` and record the `Result` in the slice file.
 4. **PR & Review Gate:** When a slice's work is finished and locally verified, commit on a slice branch and open a PR targeting `dev`. **Never merge a PR without running the review agents (`review-lead` / `diff-reviewer` / `security-reviewer`) first.**
 
-## 2. Subagent Delegation (DeepSeek V4.1 Flash or Gemini Flash)
+## 2. Subagent Delegation (DeepSeek V4.1 Flash or Gemini Hydrogen)
 
-- **Always use a Flash subagent (DeepSeek V4.1 Flash or Gemini Flash) whenever coding is needed.**
-- When implementing code, config, or test changes, delegate to a Flash subagent (e.g. `invoke_subagent` with `Model: "flash"` in Antigravity, or the DeepSeek V4.1 Flash / Gemini Flash subagent in your active harness).
-- The main agent acts as planner, architect, and reviewer: it investigates context, defines the slice spec, dispatches the Flash subagent with a clear, self-contained prompt, and verifies the subagent's work.
+- **Always use a fast coding subagent (DeepSeek V4.1 Flash or Gemini Hydrogen) whenever coding is needed.**
+- When implementing code, config, or test changes, delegate to a fast coding subagent (e.g. `invoke_subagent` with `Model: "flash"` in Antigravity, or the DeepSeek V4.1 Flash / Gemini Hydrogen subagent in your active harness).
+- The main agent acts as planner, architect, and reviewer: it investigates context, defines the slice spec, dispatches the coding subagent with a clear, self-contained prompt, and verifies the subagent's work.
 
 ## 3. Repository Map
 

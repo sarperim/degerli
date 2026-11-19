@@ -8,6 +8,7 @@ using Degerli.Ingestion;
 using Degerli.Ingestion.Alerting;
 using Degerli.Ingestion.Intraday;
 using Degerli.Ingestion.Jobs;
+using Degerli.Ingestion.Scheduling;
 using Degerli.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -154,6 +155,13 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
     /// XU100, recorded on the slice). The <c>TradingDaysOnly: true</c> gate and everything else
     /// about the lane stand unchanged.
     /// </para>
+    /// <para>
+    /// <b>Supersession (SLICE-011, 2026-11-04):</b> the intraday lane is extended to a single-request
+    /// POST bulk sweep over İş Yatırım's <c>GetHissePerformans</c> endpoint (~600 instruments in 1 call
+    /// instead of 100 sequential GETs), and the cron schedule is extended from <c>10-17</c> to
+    /// <c>10-18</c> (<c>0 15 10-18 * * 1-5</c>) to add the post-close 18:15 sweep immediately after
+    /// BIST session close.
+    /// </para>
     /// </summary>
     [Fact]
     public void TC_MDF_084_Intraday_cadence_and_source_are_shipped_config_constants()
@@ -165,22 +173,62 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
         var schedule = ingestion.GetProperty("Scheduler").GetProperty("JobSchedules")
             .EnumerateArray()
             .Single(entry => entry.GetProperty("JobCode").GetString() == IntradayRefreshJob.Code);
-        // Eight sweeps at mid-hour+15 on trading days; the six-field form is the scheduler's
-        // (Cronos) expression, the hourly form of the ticket's original "15 11,13,15,17 * * 1-5".
-        Assert.Equal("0 15 10-17 * * 1-5", schedule.GetProperty("Cron").GetString());
+        // Nine sweeps at mid-hour+15 on trading days (10:15 through 18:15 Europe/Istanbul).
+        Assert.Equal("0 15 10-18 * * 1-5", schedule.GetProperty("Cron").GetString());
 
         var intraday = ingestion.GetProperty("Intraday");
         Assert.StartsWith("https://www.isyatirim.com.tr", intraday.GetProperty("BaseUrl").GetString(), StringComparison.Ordinal);
-        // The intraday resource is İş Yatırım's delayed chart feed (the 2026-10-23 probe found
-        // HisseTekil lagging: no same-day row mid-session, while IntradayDelay served the live
-        // session's bars). The EOD prices lane keeps HisseTekil — only this lane moved, and the
-        // chart feed needs no {date} token because the sweep narrows by the bars' own stamps.
-        Assert.Contains("{symbol}", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
-        Assert.Contains("ChartData.aspx/IntradayDelay", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
+        Assert.Equal("POST", intraday.GetProperty("Method").GetString());
+        Assert.Contains("GetHissePerformans", intraday.GetProperty("Path").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("endeksKodu", intraday.GetProperty("RequestBody").GetString()!, StringComparison.Ordinal);
         // The politeness posture: sequential requests paced between calls (01 §10.9.2).
         Assert.Equal(500, intraday.GetProperty("RequestDelayMs").GetInt32());
         // The sweep bound follows the covered universe (XU100 at launch).
         Assert.Equal("XU100", intraday.GetProperty("UniverseIndex").GetString());
+    }
+
+    [Fact]
+    public async Task SLICE_011_Bulk_post_intraday_sweep_fetches_once_stores_quotes_and_counts_no_data()
+    {
+        await ResetAsync();
+        await RestrictUniverseAsync(Bound);
+
+        const string bulkBody = """{"d":"{\"Sector\":null,\"Oran\":[{\"HISSE_KODU\":\"ALFA\",\"PRICE_TL\":21.50},{\"HISSE_KODU\":\"BETA\",\"PRICE_TL\":33.75},{\"HISSE_KODU\":\"GAMA\",\"PRICE_TL\":null}]}"}""";
+        _wireMock.StubJson("/intraday/bulk", bulkBody, method: "POST");
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(T.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero));
+        await using var host = BuildIngestion(clock, requestDelayMs: 0, method: "POST", path: "/intraday/bulk");
+
+        var result = await RunAsync(host, T);
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(2, result.Written);
+        Assert.Equal(0, result.Unchanged);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(1, _wireMock.RequestsFor("/intraday/bulk"));
+
+        await using var db = _postgres.CreateContext();
+        var rows = await db.IntradayQuotes
+            .Where(quote => quote.SessionDate == T)
+            .ToListAsync();
+
+        Assert.Equal(2, rows.Count);
+        var symbols = await db.Instruments.AsNoTracking()
+            .ToDictionaryAsync(instrument => instrument.Id, instrument => instrument.Symbol);
+
+        var alfa = rows.Single(row => symbols[row.InstrumentId] == "ALFA");
+        var beta = rows.Single(row => symbols[row.InstrumentId] == "BETA");
+        Assert.Equal(21.50m, alfa.LastPrice);
+        Assert.Equal("isyatirim", alfa.SourceRef);
+        Assert.Equal(33.75m, beta.LastPrice);
+        Assert.Equal("isyatirim", beta.SourceRef);
+        Assert.DoesNotContain(rows, row => symbols[row.InstrumentId] == "GAMA");
+
+        Assert.Contains(host.Logs.Events, evt =>
+            evt.MessageTemplate.Text.Contains("NO_DATA", StringComparison.Ordinal)
+            && evt.Properties.TryGetValue("Symbol", out var symbol)
+            && symbol is Serilog.Events.ScalarValue scalar
+            && Equals(scalar.Value, "GAMA"));
     }
 
     // ---------------------------------------------------------------------------------
@@ -297,7 +345,11 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
     /// double. The intraday source is its own configuration section mirroring
     /// <c>Ingestion:Prices</c>; the sweep bound is the FU XU100 subset the test restricts.
     /// </summary>
-    private IngestionHost BuildIngestion(FakeTimeProvider clock, int requestDelayMs)
+    private IngestionHost BuildIngestion(
+        FakeTimeProvider clock,
+        int requestDelayMs,
+        string? method = null,
+        string? path = null)
     {
         var mail = new RecordingMailDispatcher();
         var logs = new InMemorySerilogSink();
@@ -307,7 +359,8 @@ public sealed class IntradayQuotesTests : IClassFixture<PostgresFixture>, IClass
             {
                 ["ConnectionStrings:Default"] = _postgres.ConnectionString,
                 ["Ingestion:Intraday:BaseUrl"] = _wireMock.BaseUrl,
-                ["Ingestion:Intraday:Path"] = "/intraday/{symbol}",
+                ["Ingestion:Intraday:Method"] = method ?? "GET",
+                ["Ingestion:Intraday:Path"] = path ?? "/intraday/{symbol}",
                 ["Ingestion:Intraday:UniverseIndex"] = "XU100",
                 ["Ingestion:Intraday:RequestDelayMs"] = requestDelayMs.ToString(CultureInfo.InvariantCulture),
                 // The prices lane's bound is irrelevant to this job, but the shared client's
