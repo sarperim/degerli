@@ -21,6 +21,8 @@
     </PackageReference>
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <PackageReference Include="WireMock.Net" Version="2.19.0" />
+    <!-- Pin patched WebUtilities (GHSA-6527-9fp8-r4x6) over WireMock.Net's transitive 2.3.0. -->
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="2.3.14" />
   </ItemGroup>
 
   <ItemGroup>
