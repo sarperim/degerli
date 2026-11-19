@@ -729,6 +729,7 @@
     "canonicalSource": "Kanonik tablo · {{date}} itibarıyla",
     "baselineDefault": "Temel varsayılan",
     "baselineVersion": "Temel sürüm {{version}}",
+    "backToStock": "{{symbol}} hissesine dön",
     "error": {
       "notNumber": "Geçerli bir sayı girin.",
       "notInteger": "Tam sayı girin.",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams, useSearchParams } from 'react-router'
+import { ArrowLeft } from 'lucide-react'
 
 import {
   AsOfDate,
@@ -9,7 +10,8 @@ import {
   StaleBadge,
 } from '@/components/honest-data'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { FormField } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -264,9 +266,29 @@ export function DcfCalculatorScreen() {
   return (
     <section data-screen="SCR-006" data-route-id="dcfCalculator" className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
-          {t('screens.dcfCalculator.title')}
-        </h1>
+        {upperSymbol ? (
+          <Link
+            to={`/stocks/${encodeURIComponent(upperSymbol)}`}
+            data-testid="dcf-back-to-stock"
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'sm' }),
+              '-ml-2 w-fit text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ArrowLeft aria-hidden="true" className="size-3.5" />
+            {t('dcf.backToStock', { symbol: upperSymbol })}
+          </Link>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-h1 font-semibold tracking-tight">
+            {t('screens.dcfCalculator.title')}
+          </h1>
+          {upperSymbol ? (
+            <Badge variant="outline" data-testid="dcf-symbol" className="font-mono">
+              {upperSymbol}
+            </Badge>
+          ) : null}
+        </div>
         <p className="max-w-2xl text-muted-foreground">
           {t('screens.dcfCalculator.description')}
         </p>
@@ -300,7 +322,7 @@ export function DcfCalculatorScreen() {
           {/* Parameter panel — all eight visible and editable (UXR-VAL-003). */}
           <div
             data-testid="dcf-params"
-            className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-4 text-card-foreground sm:grid-cols-2"
+            className="grid grid-cols-1 gap-4 rounded-lg border bg-card text-card-foreground p-4 sm:grid-cols-2"
           >
             {DCF_PARAMS.map((def) => {
               const unit = def.unitKey ? ` (${t(def.unitKey)})` : ''
@@ -387,10 +409,64 @@ export function DcfCalculatorScreen() {
             ) : null}
           </div>
 
+          {/* Results — fair value, price with as-of, plain-language verdict. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border bg-card text-card-foreground p-4">
+              <p className="text-xs text-muted-foreground">{t('dcf.fairValue')}</p>
+              <p data-testid="dcf-fair-value" className="text-h2 font-semibold tabular-nums">
+                {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card text-card-foreground p-4">
+              <p className="text-xs text-muted-foreground">{t('dcf.price')}</p>
+              <p data-testid="dcf-price" className="text-h2 font-semibold tabular-nums">
+                {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
+              </p>
+              <span className="flex items-center gap-2">
+                {price ? (
+                  <span data-testid="dcf-price-asof">
+                    <AsOfDate asOf={price.asOf} />
+                  </span>
+                ) : null}
+                {price?.stale ? <StaleBadge /> : null}
+              </span>
+            </div>
+            <div className="rounded-lg border bg-card text-card-foreground p-4">
+              <Badge variant="info">{t('dcf.framing')}</Badge>
+              {result ? (
+                <p
+                  data-testid="dcf-verdict"
+                  data-direction={
+                    result.marginOfSafety > 0
+                      ? 'below'
+                      : result.marginOfSafety < 0
+                        ? 'above'
+                        : 'equal'
+                  }
+                  className="mt-2 text-sm"
+                >
+                  {t(verdictKey(result.marginOfSafety), {
+                    percent: formatPercent(locale, Math.abs(result.marginOfSafety)),
+                  })}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
+          {result ? (
+            <SensitivityTable
+              sensitivity={result.sensitivity}
+              locale={locale}
+              discountRate={currentDiscountRate}
+              terminalGrowth={currentTerminalGrowth}
+            />
+          ) : null}
+
           {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
           <div
             data-testid="dcf-scenario-panel"
-            className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground"
+            className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4"
           >
             <h2 className="text-h3 font-medium text-foreground">
               {t('dcf.scenario.heading')}
@@ -563,61 +639,6 @@ export function DcfCalculatorScreen() {
               )}
             </div>
           </div>
-
-          {/* Results — fair value, price with as-of, plain-language verdict. */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border bg-card p-4 text-card-foreground">
-              <p className="text-xs text-muted-foreground">{t('dcf.fairValue')}</p>
-              <p data-testid="dcf-fair-value" className="text-h2 font-semibold tabular-nums">
-                {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
-              </p>
-            </div>
-            <div className="rounded-lg border bg-card p-4 text-card-foreground">
-              <p className="text-xs text-muted-foreground">{t('dcf.price')}</p>
-              <p data-testid="dcf-price" className="text-h2 font-semibold tabular-nums">
-                {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
-              </p>
-              <span className="flex items-center gap-2">
-                {price ? (
-                  <span data-testid="dcf-price-asof">
-                    <AsOfDate asOf={price.asOf} />
-                  </span>
-                ) : null}
-                {price?.stale ? <StaleBadge /> : null}
-              </span>
-            </div>
-            <div className="rounded-lg border bg-card p-4 text-card-foreground">
-              <Badge variant="info">{t('dcf.framing')}</Badge>
-              {result ? (
-                <p
-                  data-testid="dcf-verdict"
-                  data-direction={
-                    result.marginOfSafety > 0
-                      ? 'below'
-                      : result.marginOfSafety < 0
-                        ? 'above'
-                        : 'equal'
-                  }
-                  className="mt-2 text-sm"
-                >
-                  {t(verdictKey(result.marginOfSafety), {
-                    percent: formatPercent(locale, Math.abs(result.marginOfSafety)),
-                  })}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
-          {result ? (
-            <SensitivityTable
-              sensitivity={result.sensitivity}
-              locale={locale}
-              discountRate={currentDiscountRate}
-              terminalGrowth={currentTerminalGrowth}
-            />
-          ) : null}
-
         </>
       ) : null}
 
@@ -698,7 +719,11 @@ function SensitivityTable({
                     key={column}
                     data-testid={`dcf-sensitivity-cell-${row}-${column}`}
                     data-current={isCurrent ? 'true' : undefined}
-                    className="text-right tabular-nums"
+                    className={cn(
+                      'text-right tabular-nums',
+                      isCurrent &&
+                        'bg-primary/15 font-semibold text-foreground ring-1 ring-inset ring-primary/40',
+                    )}
                   >
                     {cell === null ? (
                       <span

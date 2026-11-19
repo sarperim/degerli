@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 
 import { NotMeaningful } from '@/components/honest-data'
@@ -45,9 +45,9 @@ const VALUATION_METRIC_LABEL_KEYS: Record<ValuationMetricCode, string> = {
   fcf_yield: 'stockPage.valuation.metrics.fcf_yield',
 }
 
-/** The chart's fixed drawing area; the wrapper scrolls at narrow widths (UXR-G-025). */
-const CHART_WIDTH = 640
+/** The chart's height and minimum width for ResponsiveContainer. */
 const CHART_HEIGHT = 240
+const CHART_MIN_WIDTH = 320
 
 /** Format a valuation metric in its own unit (percent for FCF yield, ratio otherwise). */
 function formatMetric(locale: string, code: string, value: number): string {
@@ -78,7 +78,7 @@ export function ValuationTooltipContent({
   return (
     <div
       data-testid="valuation-tooltip"
-      className="flex flex-col gap-0.5 rounded-md border bg-background px-2 py-1 text-xs shadow-md"
+      className="flex flex-col gap-0.5 rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
     >
       <span data-slot="tooltip-date" className="text-muted-foreground">
         {formatAsOfDate(locale, point.date)}
@@ -120,32 +120,45 @@ export function ValuationHistoryChart({
         {caption}
       </figcaption>
       {points.length > 0 ? (
-        <div className="overflow-x-auto" role="img" aria-label={caption}>
-          <LineChart
-            width={CHART_WIDTH}
+        <div className="w-full overflow-x-auto" role="img" aria-label={caption}>
+          <ResponsiveContainer
+            width="100%"
             height={CHART_HEIGHT}
-            data={points}
-            accessibilityLayer
-            margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+            minWidth={CHART_MIN_WIDTH}
+            minHeight={CHART_HEIGHT}
           >
-            <XAxis
-              dataKey="date"
-              tickFormatter={(value: string) => formatAsOfDate(locale, value)}
-              tick={{ fontSize: 11 }}
-            />
-            <YAxis width={56} tick={{ fontSize: 11 }} />
-            <Line
-              type="monotone"
-              dataKey="close"
-              dot={false}
-              isAnimationActive={false}
-              strokeWidth={2}
-            />
-            <Tooltip
-              content={<ValuationTooltipContent />}
-              isAnimationActive={false}
-            />
-          </LineChart>
+            <LineChart
+              data={points}
+              accessibilityLayer
+              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+            >
+              <XAxis
+                dataKey="date"
+                tickFormatter={(value: string) => formatAsOfDate(locale, value)}
+                tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                axisLine={{ stroke: 'var(--border)' }}
+                tickLine={{ stroke: 'var(--border)' }}
+              />
+              <YAxis
+                width={56}
+                tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                axisLine={{ stroke: 'var(--border)' }}
+                tickLine={{ stroke: 'var(--border)' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="close"
+                dot={false}
+                isAnimationActive={false}
+                stroke="var(--primary)"
+                strokeWidth={2}
+              />
+              <Tooltip
+                content={<ValuationTooltipContent />}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       ) : null}
     </figure>

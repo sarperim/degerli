@@ -96,7 +96,7 @@ function Block({
     <section
       data-testid={testId}
       aria-label={title}
-      className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground"
+      className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4"
     >
       <h2 className="text-h3 font-semibold tracking-tight">{title}</h2>
       {query.isPending ? <BlockSkeleton /> : null}
@@ -112,7 +112,14 @@ function ChangeValue({ value, className }: { value: number; className?: string }
   const locale = i18n.resolvedLanguage ?? 'tr'
   const Icon = value < 0 ? ArrowDown : ArrowUp
   return (
-    <span className={cn('inline-flex items-center gap-1 tabular-nums', className)}>
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 tabular-nums',
+        value > 0 && 'text-emerald-700 dark:text-emerald-400',
+        value < 0 && 'text-rose-600 dark:text-rose-400',
+        className,
+      )}
+    >
       <Icon aria-hidden="true" className="size-3.5 shrink-0" />
       {formatSignedPercent(locale, value)}
     </span>
@@ -274,7 +281,7 @@ function SectorPerformanceBlock({
                       */}
                       <span className="text-muted-foreground">
                         {'('}
-                        <ChangeValue value={change} className="text-foreground" />
+                        <ChangeValue value={change} />
                         {')'}
                       </span>
                     </Link>
