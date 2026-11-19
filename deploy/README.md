@@ -429,6 +429,73 @@ Three configuration facts about this gate, each of which can look like a bug:
 
 ---
 
+## Ops commands — one-shot status report
+
+[`deploy/status.sh`](status.sh) is the **on-box** counterpart to the UptimeRobot monitor
+below: the monitor answers "is the public URL healthy from the outside?", this answers "what
+does the box look like right now?". Neither replaces the other — the monitor cannot see disk
+usage, container CPU or backup age, and the script cannot see whether TLS is valid from
+outside the VPS.
+
+```bash
+/opt/degerli/deploy/status.sh              # ps · /health · resources · backup age
+/opt/degerli/deploy/status.sh --logs       # + last 50 lines per service
+/opt/degerli/deploy/status.sh --logs 200 --errors
+```
+
+It resolves the repo root relative to itself, from `BASH_SOURCE` (so it runs from any
+working directory and from a checkout that is not `/opt/degerli`; unlike
+`deploy/backup/*.sh`, which default to a fixed `/opt/degerli` path rather than resolving
+their own location), and prints four sections (the two log sections are opt-in and follow
+them):
+
+| Section | What it prints | Degrades to |
+|---|---|---|
+| **compose ps** | `docker compose ps` for the stack | the interpolation/compose error verbatim, plus the `config -q` pointer |
+| **health** | `GET https://${DOMAIN}/health` **resolved to loopback** (`curl --resolve`, DOMAIN read from the compose project's `.env` by single-key extraction, then normalised like Compose reads it: surrounding quotes, trailing whitespace and an inline `#comment` are stripped), bounded `--max-time 5 --connect-timeout 3` (the deploy smoke-check's bound), reported as HTTP code + latency | the curl failure mode (timeout / connection refused / TLS) pointing at §Monitoring, or "no health endpoint could be derived" naming the missing input: **DOMAIN absent** from a caddy stack's `.env` (or no readable `.env` at all), or **no `caddy` service and no published `api` port** (e.g. `compose.ci.yml` with the stack down) — `HEALTH_URL` then probes any target you name |
+| **resources** | `docker stats --no-stream` for this project's containers only, `docker system df`, and the `postgres-data` volume size | "no running containers", the named volume reported missing, or the volume reported unknown when the compose file is unreadable |
+| **backup** | newest `backups/degerli-*.dump.gpg` — name, size, age vs the 24 h RPO, `OK` or `WARNING` | "no backup archive found" / "no backup directory", with the `pg-backup.sh` line to take one |
+
+**It is a viewer, not an operator.** Nothing in it mutates state — no `up`/`down`/`restart`,
+no writes outside stdout — and it never dumps a secret: plain `docker compose config` (which
+interpolates `.env` into your scrollback, §Deploying) is not used anywhere, only
+`config --services`, which prints service names.
+
+Two details are deliberate, because the naive version lies:
+
+- **Backup age comes from the archive name, never from mtime.** The names are
+  `degerli-%Y%m%dT%H%M%SZ.dump.gpg` (UTC, as `pg-backup.sh` writes them), so a reverse name
+  sort is both "newest" and chronological — and a copied archive (`scp`/`curl`/`cp` onto a
+  rebuilt host) has a fresh mtime, which would report a week-old archive as minutes old. The
+  same convention, and the same reason, as §Restore drill and `restore.sh`.
+- **A `WARNING` here tracks the deploy's RPO, not its literal outcome.** The age is compared
+  against the same 24 h RPO (`PRE_DEPLOY_MAX_BACKUP_AGE_HOURS`) that gates a deploy at the
+  **backup-marker** phase (§The pre-deploy restore-point marker) — but measured from the
+  timestamp in the archive **name**, while phase 3 selects the newest archive by **mtime**.
+  For an ordinary nightly archive the two agree; for a copied archive (mtime reset by the
+  copy) they can disagree, so treat a red line here as "this restore point is too old to be
+  a real one", not as a guaranteed deploy rejection. Reconciling phase 3 to the name
+  convention is a recorded follow-up. The remedy is printed with it: source
+  `/etc/degerli/backup.env` and run `deploy/backup/pg-backup.sh`.
+
+**Exit code is 0 for a completed report**, degraded or not — a status report is not a gate,
+and a script that exits non-zero on a down stack is unusable in `ssh host status.sh`.
+Non-zero (2) is reserved for a usage error.
+
+**Tunables** (environment, no flags): `COMPOSE_FILE` (default `compose.prod.yml`, resolved
+against the repo root — so `COMPOSE_FILE=compose.ci.yml ./deploy/status.sh` reports on the
+local CI stack), `HEALTH_URL` (an explicit probe target that overrides the derived one
+entirely; use it when the caddy stack's `DOMAIN` is not readable or you want to probe
+something else), and `BACKUP_DIR` (default `<repo>/backups`). The default probe is
+`https://${DOMAIN}/health` with `--resolve "${DOMAIN}:443:127.0.0.1"` — the real site name,
+pinned to loopback, which is what Caddy holds a certificate for and what the deploy
+smoke-check requests; `DOMAIN` is read from the compose project's `.env` by single-key `sed`,
+never by `cat`ing or sourcing it, and normalised the way Compose reads `.env` (surrounding
+quotes, trailing whitespace and an inline `#comment` stripped), so a quoted assignment works.
+A stack with no `caddy` service falls back to the `api` service's published host port.
+
+---
+
 ## Monitoring — UptimeRobot
 
 Free tier, 5-minute checks, alert e-mail (architecture §5, NFR-MOV-003 operational).
@@ -443,7 +510,10 @@ Free tier, 5-minute checks, alert e-mail (architecture §5, NFR-MOV-003 operatio
    read from UptimeRobot's report (recorded as `operational` in the coverage matrix).
 
 Note: UptimeRobot also acts as the **outside-in** check that the tunnel/cert/TLS chain
-is healthy, which the on-box smoke-check cannot prove.
+is healthy, which the on-box smoke-check cannot prove. The on-box half of the same question
+— compose state, container load, backup age — is [`deploy/status.sh`](#ops-commands--one-shot-status-report)
+above; run it whenever the monitor alerts, to tell "the public path broke" from "the box
+broke".
 
 ---
 
