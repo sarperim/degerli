@@ -24,10 +24,10 @@ export function AuthState() {
 
   if (data?.authenticated) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
         <span
           data-testid="auth-email"
-          className="hidden max-w-[12rem] truncate text-sm text-muted-foreground sm:inline"
+          className="hidden max-w-[12rem] truncate text-xs text-muted-foreground sm:inline"
         >
           {data.email}
         </span>
@@ -45,8 +45,8 @@ export function AuthState() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="hidden text-sm text-muted-foreground sm:inline">
+    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
+      <span className="hidden text-xs text-muted-foreground sm:inline">
         {t('header.anonymous')}
       </span>
       <Button

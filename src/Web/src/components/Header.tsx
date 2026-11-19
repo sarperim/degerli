@@ -40,15 +40,17 @@ export function Header() {
       aria-label={t('header.ariaLabel')}
       className="border-b bg-background"
     >
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-        <NavLink to="/" className="flex flex-col leading-tight">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2.5 px-4 py-2.5 lg:flex-nowrap lg:items-center lg:gap-4">
+        <NavLink to="/" className="flex shrink-0 flex-col leading-tight">
           <span className="text-lg font-semibold">{t('app.name')}</span>
-          <span className="text-xs text-muted-foreground">{t('app.tagline')}</span>
+          <span className="hidden text-[11px] leading-tight text-muted-foreground xl:block">
+            {t('app.tagline')}
+          </span>
         </NavLink>
 
         <nav
           aria-label={t('header.primaryNav')}
-          className="order-last flex w-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:w-auto"
+          className="order-last flex w-full flex-wrap items-center gap-x-4 gap-y-1 lg:order-none lg:w-auto lg:min-w-0"
         >
           {routes.map((route) => (
             <NavLink
@@ -57,7 +59,7 @@ export function Header() {
               end={route.path === '/'}
               className={({ isActive }) =>
                 cn(
-                  'text-sm transition-colors hover:text-foreground',
+                  'shrink-0 whitespace-nowrap text-sm transition-colors hover:text-foreground',
                   isActive
                     ? 'font-medium text-foreground'
                     : 'text-muted-foreground',
@@ -69,7 +71,7 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="ms-auto flex w-full flex-wrap items-center gap-3 sm:w-auto">
+        <div className="ms-auto flex w-full flex-wrap items-center gap-2 sm:w-auto lg:shrink-0 lg:flex-nowrap">
           <StockSearch />
           <ThemeToggle />
           <LanguageToggle />

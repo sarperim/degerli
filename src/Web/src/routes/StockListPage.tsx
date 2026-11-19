@@ -98,7 +98,7 @@ export function StockListPage() {
         </p>
       </header>
 
-      <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
+      <div className="flex flex-col gap-4 rounded-lg border bg-card text-card-foreground p-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label

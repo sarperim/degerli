@@ -96,7 +96,7 @@ function Block({
     <section
       data-testid={testId}
       aria-label={title}
-      className="flex flex-col gap-3 rounded-lg border bg-background p-4"
+      className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground"
     >
       <h2 className="text-h3 font-semibold tracking-tight">{title}</h2>
       {query.isPending ? <BlockSkeleton /> : null}

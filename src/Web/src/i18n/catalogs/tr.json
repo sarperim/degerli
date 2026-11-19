@@ -604,9 +604,9 @@
   },
   "honestData": {
     "asOf": "Veri {{date}} itibarıyla",
-    "asOfExplanation": "As-of tarihi, verinin tanımladığı zaman noktasıdır.",
+    "asOfExplanation": "Veri tarihi, değerin ait olduğu zaman noktasını gösterir.",
     "asOfRecencyExplanation": "Bu, kaynağın bu veri için yayımladığı en güncel tarihtir.",
-    "stale": "Bayat",
+    "stale": "Güncel değil",
     "staleExplanation": "Bu değer en son bilinen geçerli veridir; daha güncel bir tamamlanmış seans veya yayım henüz ulaşmadı. Değerin kendisi hatalı değildir.",
     "restated": "Yeniden düzenlendi",
     "restatedNotice": "* ile işaretlenen tutarlar şirket tarafından yeniden düzenlenmiştir; daha önce bildirilen tutarlar geçersizdir.",
@@ -705,7 +705,7 @@
         "title": "Piyasa değerlemesi",
         "marketPe": "Piyasa F/K",
         "marketDivYield": "Piyasa temettü verimi",
-        "exclusion": "Kayıp açıklayan {{count}} şirket piyasa F/K toplamının dışında tutulmuştur."
+        "exclusion": "Zarar açıklayan {{count}} şirket piyasa F/K toplamının dışında tutulmuştur."
       }
     }
   },

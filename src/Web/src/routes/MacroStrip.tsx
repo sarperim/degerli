@@ -238,7 +238,7 @@ export function MacroStrip() {
     <section
       data-testid="market-block-macro"
       aria-label={t('marketOverview.macro.title')}
-      className="flex flex-col gap-3 rounded-lg border bg-background p-4"
+      className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4"
     >
       <h2 className="text-h3 font-semibold tracking-tight">
         {t('marketOverview.macro.title')}
