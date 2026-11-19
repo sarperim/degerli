@@ -39,6 +39,19 @@ public sealed class IngestionSchedulerHostedService : BackgroundService
 
         _logger.LogInformation("Ingestion scheduler started.");
 
+        try
+        {
+            await _scheduler.RunStartupAsync(_clock.GetUtcNow(), stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Ingestion scheduler startup refresh failed; continuing to scheduled loop.");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = _clock.GetUtcNow();

@@ -16,6 +16,14 @@ public sealed class IngestionSchedulerOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Whether to check the latest completed EOD session's stored <c>daily_prices</c> coverage
+    /// on scheduler startup and run the lightweight price/metrics/snapshot catch-up chain when
+    /// coverage is incomplete (SLICE-012). Defaults to <c>false</c> in code so existing tests
+    /// have zero behavioral drift; enabled in <c>appsettings.json</c>.
+    /// </summary>
+    public bool CatchUpPricesOnStartup { get; set; }
+
+    /// <summary>
     /// Cronos cron expression (six fields, seconds included: <c>sec min hour day month dow</c>)
     /// for the EOD trigger. The default fires at 20:30:00 daily; trading-day eligibility is
     /// applied separately by the calendar (FR-MDF-009).
@@ -176,4 +184,10 @@ public sealed class JobScheduleOptions
     /// market.
     /// </summary>
     public bool TradingDaysOnly { get; set; }
+
+    /// <summary>
+    /// Whether this per-job stream should run once immediately on scheduler startup (SLICE-012).
+    /// Defaults to <c>false</c>.
+    /// </summary>
+    public bool RunOnStartup { get; set; }
 }
