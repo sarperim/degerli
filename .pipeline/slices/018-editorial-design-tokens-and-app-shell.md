@@ -4,11 +4,15 @@ status: done
 scope:
   - .pipeline/slices/018-editorial-design-tokens-and-app-shell.md
   - src/Web/index.html
+  - src/Web/package.json
+  - src/Web/package-lock.json
+  - src/Web/src/main.tsx
   - src/Web/src/styles/tokens.css
   - src/Web/src/index.css
   - src/Web/src/components/Header.tsx
   - src/Web/src/components/AppShell.tsx
   - src/Web/src/components/StockSearch.tsx
+  - src/Web/src/components/StockSearch.test.tsx
   - src/Web/src/components/ThemeToggle.tsx
   - src/Web/src/components/LanguageToggle.tsx
   - src/Web/src/components/AuthState.tsx
@@ -56,6 +60,11 @@ Establish the editorial engineering-paper visual foundation from `/mnt/c/Users/s
 
 ## Verification
 
-- [ ] `cd src/Web && npm run build` passes with 0 TypeScript/Vite errors.
-- [ ] `cd src/Web && npx vitest run src/components/ src/test/` passes.
-- [ ] Playwright visual check at `1440×900` (dark & light) and `375×844` (mobile) + `1280×400` TR→EN scroll stability check.
+- [x] `cd src/Web && npm run build` passes with 0 TypeScript/Vite errors.
+- [x] `cd src/Web && npx vitest run src/components/ src/test/ src/global-ux/` passes (`18` files, `73` tests).
+- [ ] Playwright visual check at `1440×900` (dark & light) and `375×844` (mobile) + `1280×400` TR→EN scroll stability check (CI / post-fix re-verify).
+
+## Result
+
+- Implemented the editorial engineering-paper design system tokens (`tokens.css`, `index.css`), self-hosted `@fontsource/schibsted-grotesk` (`400`–`700`) and `@fontsource/ibm-plex-mono` (`400`–`600`) in `main.tsx` (removing external Google Fonts links for CSP compliance), sticky `54px` `Header` (`z-40`, `max-w-content`), `AppShell` (`max-w-content`), `StockSearch` (`/` global shortcut with `defaultPrevented`/`isComposing`/modal guards + unit tests), `LanguageToggle` (`focus-visible:ring-inset`), `ThemeToggle`, `AuthState`, `Disclaimer`, `StaleBadge` (`text-stale-foreground`), and `ui/*` primitives (`table.tsx`, `input.tsx`, `button.tsx`) using AA-compliant `text-muted-foreground` / `text-stale-foreground`.
+- Verified after Round 1 fixes with `npm run build` (0 errors, bundled font assets) and `npx vitest run src/components/ src/test/ src/global-ux/` (`18` test files, `73` tests passing).

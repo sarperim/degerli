@@ -38,9 +38,9 @@ export function Header() {
   return (
     <header
       aria-label={t('header.ariaLabel')}
-      className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md"
+      className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md"
     >
-      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0">
+      <div className="mx-auto flex max-w-content flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0">
         <NavLink to="/" className="flex shrink-0 items-baseline gap-2">
           <span
             lang="tr"

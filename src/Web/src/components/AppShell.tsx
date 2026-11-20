@@ -25,13 +25,13 @@ export function AppShell() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-section sm:px-8">
+      <main className="mx-auto w-full max-w-content flex-1 px-4 py-section sm:px-8">
         <Suspense fallback={<LoadingScreen />}>
           <Outlet />
         </Suspense>
       </main>
       <footer className="border-t border-border bg-background/80">
-        <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-4 px-4 py-8 text-xs text-muted-foreground sm:px-8">
+        <div className="mx-auto flex w-full max-w-content flex-col gap-4 px-4 py-8 text-xs text-muted-foreground sm:px-8">
           {isResearch ? <Disclaimer /> : null}
           <div className="grid gap-6 md:grid-cols-[1.4fr_0.6fr] md:items-start">
             <DataSourceDisclaimer />

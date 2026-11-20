@@ -56,7 +56,17 @@ export function StockSearch() {
   // Global `/` shortcut to focus search when not already typing in a form field.
   useEffect(() => {
     function handleGlobalKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.key !== '/' ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      ) {
+        return
+      }
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
         return
       }
       const target = event.target as HTMLElement | null
@@ -145,7 +155,7 @@ export function StockSearch() {
   return (
     <div
       ref={containerRef}
-      className="relative w-full shrink-0 transition-[width] duration-150 sm:w-48 sm:focus-within:w-60"
+      className="relative w-full shrink-0 transition-[width] duration-150 motion-reduce:transition-none sm:w-48 sm:focus-within:w-60"
     >
       <label htmlFor="header-stock-search" className="sr-only">
         {t('header.searchLabel')}
@@ -169,12 +179,12 @@ export function StockSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        className="h-[30px] w-full rounded-[2px] border border-border bg-card pr-6 pl-2.5 font-mono text-xs text-foreground outline-none placeholder:text-[var(--ink-muted)] focus:border-[var(--brand-accent)] focus-visible:ring-1 focus-visible:ring-[var(--brand-accent)]"
+        className="h-[30px] w-full rounded-[2px] border border-border bg-card pr-6 pl-2.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-[var(--brand-accent)] focus-visible:ring-1 focus-visible:ring-[var(--brand-accent)]"
       />
       {term.length === 0 ? (
         <kbd
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 font-mono text-[10px] text-[var(--ink-muted)] sm:inline"
+          className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 font-mono text-[10px] text-muted-foreground sm:inline"
         >
           /
         </kbd>
@@ -230,7 +240,7 @@ export function StockSearch() {
             <button
               type="button"
               onClick={viewAllMatches}
-              className="border-t border-border bg-secondary/70 px-2.5 py-2 text-left font-mono text-[11px] font-medium text-[var(--brand-accent)] hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+              className="border-t border-border bg-secondary/70 px-2.5 py-2 text-left font-mono text-[11px] font-medium text-stale-foreground hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
             >
               {t('headerSearch.viewAll')}
             </button>

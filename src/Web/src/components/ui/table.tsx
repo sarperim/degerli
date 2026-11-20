@@ -120,7 +120,7 @@ export function TableHead({ className, scope = 'col', ...props }: TableHeadProps
         'px-3 text-left align-middle',
         scope === 'row'
           ? 'py-2.5 whitespace-normal text-sm font-medium text-foreground'
-          : 'h-9 whitespace-nowrap font-mono text-[10px] font-medium tracking-[0.06em] uppercase text-[var(--ink-muted)]',
+          : 'h-9 whitespace-nowrap font-mono text-[10px] font-medium tracking-[0.06em] uppercase text-muted-foreground',
         className,
       )}
       {...props}

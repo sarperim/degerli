@@ -152,4 +152,58 @@ describe('header stock search (FR-RES-004)', () => {
       expectedSymbol,
     )
   })
+
+  it('focuses the search input when / is pressed from document.body', async () => {
+    const user = userEvent.setup()
+    renderSearch()
+
+    const input = screen.getByLabelText(TR('header.searchLabel'))
+    expect(document.activeElement).not.toBe(input)
+
+    await user.keyboard('/')
+    expect(document.activeElement).toBe(input)
+  })
+
+  it('ignores the global / shortcut when focus is inside an input or textarea', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <MemoryRouter>
+        <StockSearch />
+        <input aria-label="other-input" />
+        <textarea aria-label="other-textarea" />
+      </MemoryRouter>,
+    )
+
+    const searchInput = screen.getByLabelText(TR('header.searchLabel'))
+    const otherInput = screen.getByLabelText('other-input')
+    const otherTextarea = screen.getByLabelText('other-textarea')
+
+    await user.click(otherInput)
+    await user.keyboard('/')
+    expect(document.activeElement).toBe(otherInput)
+    expect(document.activeElement).not.toBe(searchInput)
+    expect(otherInput).toHaveValue('/')
+
+    await user.click(otherTextarea)
+    await user.keyboard('/')
+    expect(document.activeElement).toBe(otherTextarea)
+    expect(document.activeElement).not.toBe(searchInput)
+    expect(otherTextarea).toHaveValue('/')
+  })
+
+  it('ignores the global / shortcut when a modal dialog is open', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <MemoryRouter>
+        <StockSearch />
+        <div role="dialog" aria-modal="true" tabIndex={-1}>
+          Modal content
+        </div>
+      </MemoryRouter>,
+    )
+
+    const searchInput = screen.getByLabelText(TR('header.searchLabel'))
+    await user.keyboard('/')
+    expect(document.activeElement).not.toBe(searchInput)
+  })
 })

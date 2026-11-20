@@ -99,7 +99,7 @@ export function StaleBadge({
       role="note"
       variant="stale"
       className={cn(
-        'rounded-[2px] border-[var(--brand-accent-border)] bg-[var(--brand-accent-soft)] font-mono text-[10px] tracking-wider text-[var(--brand-accent)]',
+        'rounded-[2px] border-[var(--brand-accent-border)] bg-[var(--brand-accent-soft)] font-mono text-[10px] tracking-wider',
         className,
       )}
       title={explanation}

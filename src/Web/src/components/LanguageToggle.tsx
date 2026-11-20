@@ -38,7 +38,7 @@ export function LanguageToggle() {
               if (!active) void i18n.changeLanguage(lng)
             }}
             className={cn(
-              'h-full cursor-pointer px-2 font-mono text-[10px] tracking-wide transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'h-full cursor-pointer px-2 font-mono text-[10px] tracking-wide transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
               index > 0 && 'border-l border-border',
               active
                 ? 'bg-accent font-medium text-foreground'
