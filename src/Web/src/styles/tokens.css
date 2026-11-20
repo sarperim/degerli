@@ -57,6 +57,11 @@
   --pos: #267349;
   --neg: #A94141;
   --grid-line: rgba(23, 26, 30, 0.038);
+  --grid-glow: rgba(155, 97, 35, 0.38);
+  --crosshair: rgba(23, 26, 30, 0.18);
+  --curve-stroke: rgba(155, 97, 35, 0.50);
+  --curve-fill: rgba(155, 97, 35, 0.055);
+  --grain-opacity: 0.025;
 
   /* 2. Honest-data / status tokens. Surfaces pair a soft background with a dark
    * foreground so text and asterisks keep contrast without relying on colour
@@ -163,6 +168,11 @@
   --pos: #5FA57C;
   --neg: #C86A6A;
   --grid-line: rgba(220, 225, 230, 0.028);
+  --grid-glow: rgba(198, 139, 73, 0.38);
+  --crosshair: rgba(220, 225, 230, 0.18);
+  --curve-stroke: rgba(198, 139, 73, 0.50);
+  --curve-fill: rgba(198, 139, 73, 0.055);
+  --grain-opacity: 0.032;
 
   --success: rgba(95, 165, 124, 0.14);
   --success-foreground: #7CC097;

@@ -31,6 +31,7 @@ export function LanguageToggle() {
           <button
             key={lng}
             type="button"
+            data-magnetic=""
             aria-pressed={active}
             lang={lng}
             onClick={() => {

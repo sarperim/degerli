@@ -42,6 +42,7 @@ function Button({
   return (
     <button
       data-slot="button"
+      data-magnetic=""
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
