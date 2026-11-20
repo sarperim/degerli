@@ -318,6 +318,89 @@ public sealed class StatementsAndEventsIngestionTests : IClassFixture<PostgresFi
         Assert.Equal(0, await db.QuarantinedFacts.CountAsync());
     }
 
+    [Fact]
+    public async Task SLICE_029_dividends_vyk_decodes_single_installment_object_form_and_deduplicates_share_classes()
+    {
+        await ResetAsync();
+        StubVykDirectory();
+        StubDisclosureList("1001", 0, ("1223948", "CA"));
+        // Real VYK XML-to-JSON single-installment shape (e.g. FROTO 2023-10-26):
+        // `cashDividendPaymentDateList.object.void` is a single JSON object (not an array),
+        // and multiple share classes share the same `exchCode` + `grossTry`.
+        StubDetail("1223948", """
+        {
+          "eventType": "KP",
+          "flatData": [
+            {
+              "content": {
+                "object": {
+                  "void": [
+                    {
+                      "property": "currency",
+                      "object": { "void": [ { "property": "key", "string": "TRY" } ] }
+                    },
+                    {
+                      "property": "cashDividendList",
+                      "object": {
+                        "void": [
+                          {
+                            "object": {
+                              "void": [
+                                { "property": "exchCode", "string": "ALFA" },
+                                { "property": "installmentOrder", "string": "P" },
+                                { "property": "grossTry", "object": { "string": "29.7600000" } }
+                              ]
+                            }
+                          },
+                          {
+                            "object": {
+                              "void": [
+                                { "property": "exchCode", "string": "ALFA" },
+                                { "property": "installmentOrder", "string": "P" },
+                                { "property": "grossTry", "object": { "string": "29.7600000" } }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "property": "cashDividendPaymentDateList",
+                      "object": {
+                        "void": {
+                          "object": {
+                            "void": [
+                              { "property": "installmentOrder", "string": "P" },
+                              { "property": "advisedUsageDate", "object": { "void": { "property": "date", "object": { "string": "2023-10-29" } } } },
+                              { "property": "usageDate", "object": { "void": { "property": "date", "object": { "string": "2023-10-30" } } } },
+                              { "property": "paymentDate", "object": { "void": { "property": "date", "object": { "string": "2023-11-01" } } } }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+        """);
+        await using var provider = BuildIngestion(vyk: true);
+
+        var result = await RunAsync(provider, "dividends");
+
+        Assert.Equal(IngestResult.Succeeded, result.Status);
+
+        await using var db = _postgres.CreateContext();
+        var alfa = await db.Instruments.Where(i => i.Symbol == "ALFA").Select(i => i.Id).SingleAsync();
+        var row = Assert.Single(await db.Dividends.Where(d => d.InstrumentId == alfa).ToListAsync());
+        Assert.Equal(new DateOnly(2023, 10, 30), row.ExDate);
+        Assert.Equal(new DateOnly(2023, 11, 1), row.PayDate);
+        Assert.Equal(29.7600m, row.AmountPerShare);
+        Assert.Equal("TRY", row.Currency);
+    }
+
     /// <summary>
     /// TKT-foundation-034 (criterion (i), <c>corporate-actions</c>) — the verified <c>CA</c>
     /// family route plus the detail's <c>eventType</c>/<c>time</c>/<c>flatData</c>: the action
