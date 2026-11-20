@@ -412,7 +412,7 @@ public sealed class MetricsEngine
                 Cogs: Line(is0, Cogs),
                 GrossProfit: Line(is0, GrossProfit),
                 Ebit: Line(is0, Ebit),
-                DeprAmort: Line(is0, DeprAmort),
+                DeprAmort: Line(is0, DeprAmort) ?? Line(cf0, DeprAmort),
                 Ebitda: Line(is0, Ebitda),
                 FinExp: Line(is0, FinExp),
                 PretaxInc: Line(is0, PretaxInc),

@@ -790,9 +790,25 @@ export function GrowthSection({ symbol }: { symbol: string }) {
                               >
                                 {t(GROWTH_FAMILY_KEYS[family])}
                               </TableHead>
-                              {windowOrder.map((yrs) => {
+                              {windowOrder.map((yrs, colIdx) => {
                                 const w = windows.find((item) => item.window === yrs)
-                                const val = w?.value ?? null
+                                // Avoid repeating an identical shorter-span CAGR (e.g. `actual 2Y`)
+                                // across longer horizons (`5Y`, `10Y`) when an earlier column
+                                // already displayed that exact available span.
+                                const isDuplicateShorterSpan =
+                                  w !== undefined &&
+                                  w.value !== null &&
+                                  w.windowYears !== null &&
+                                  w.windowYears < w.window &&
+                                  windowOrder.slice(0, colIdx).some((prevYrs) => {
+                                    const prev = windows.find((item) => item.window === prevYrs)
+                                    return (
+                                      prev !== undefined &&
+                                      prev.value !== null &&
+                                      prev.windowYears === w.windowYears
+                                    )
+                                  })
+                                const val = isDuplicateShorterSpan ? null : (w?.value ?? null)
                                 const wPct =
                                   val !== null
                                     ? Math.min(
@@ -843,7 +859,8 @@ export function GrowthSection({ symbol }: { symbol: string }) {
                                         </span>
                                       </div>
                                     )}
-                                    {w &&
+                                    {!isDuplicateShorterSpan &&
+                                    w &&
                                     w.windowYears !== null &&
                                     w.windowYears < w.window ? (
                                       <span

@@ -97,6 +97,19 @@ public sealed class ProfileMetricMatrixTests
         Assert.Equal(2m, metrics[MetricCodes.CurrentRatio].Value);
     }
 
+    [Fact]
+    public void SLICE_028_interest_coverage_handles_negative_kap_financial_expense()
+    {
+        var baseInput = Input("industrial");
+        var input = baseInput with
+        {
+            Ttm = baseInput.Ttm with { FinExp = -25m },
+        };
+        var metrics = ByCode(CanonicalMetrics.Compute(input));
+
+        Assert.Equal(8m, metrics[MetricCodes.InterestCoverage].Value);
+    }
+
     /// <summary>
     /// TC-MDF-057 (L1) — <c>reit</c> is <em>not</em> a gating profile: it keeps the natural
     /// not-meaningful rules (<c>02</c> §6.2). Only <c>bank</c>/<c>insurance</c> gate.
