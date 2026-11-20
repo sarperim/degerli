@@ -290,9 +290,9 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                 .filter(
                   (p) =>
                     p.periodType?.trim().toUpperCase() === 'FY' &&
-                    (p.revenue?.value !== null ||
-                      p.ebitda?.value !== null ||
-                      p.netIncome?.value !== null),
+                    (p.revenue?.value != null ||
+                      p.ebitda?.value != null ||
+                      p.netIncome?.value != null),
                 )
                 .slice(0, 6)
                 .reverse()
@@ -328,16 +328,16 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                     </span>
                     <span aria-hidden="true" className="flex items-center gap-3">
                       <span className="inline-flex items-center gap-1">
-                        <span className="inline-block size-2 bg-[var(--border-strong)]" />
-                        {t('stockPage.financials.columns.revenue')}
+                        <span className="text-[var(--border-strong)]">■</span>
+                        {` ${t('stockPage.financials.columns.revenue')}`}
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <span className="inline-block size-2 bg-[var(--brand-accent)]" />
-                        {t('stockPage.financials.columns.ebitda')}
+                        <span className="text-[var(--brand-accent)]">■</span>
+                        {` ${t('stockPage.financials.columns.ebitda')}`}
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <span className="inline-block size-2 bg-[var(--pos)]" />
-                        {t('stockPage.financials.columns.netIncome')}
+                        <span className="text-[var(--pos)]">■</span>
+                        {` ${t('stockPage.financials.columns.netIncome')}`}
                       </span>
                     </span>
                   </div>
@@ -360,6 +360,7 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                       const rH = barH(period.revenue?.value)
                       const eH = barH(period.ebitda?.value)
                       const nH = barH(period.netIncome?.value)
+                      const eNeg = (period.ebitda?.value ?? 0) < 0
                       const nNeg = (period.netIncome?.value ?? 0) < 0
                       return (
                         <g key={`${period.periodType}-${period.periodEndDate}`}>
@@ -378,7 +379,7 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
                               y={H - pB - eH}
                               width={barW}
                               height={eH}
-                              fill="var(--brand-accent)"
+                              fill={eNeg ? 'var(--neg)' : 'var(--brand-accent)'}
                             />
                           ) : null}
                           {nH > 0 ? (
@@ -534,10 +535,10 @@ export function ProfitabilitySection({ symbol }: { symbol: string }) {
                       {hasVal ? (
                         <span
                           className={
-                            code === 'roic'
-                              ? 'block h-full bg-[var(--brand-accent)]'
-                              : metric.value! < 0
-                                ? 'block h-full bg-[var(--neg)]'
+                            metric.value! < 0
+                              ? 'block h-full bg-[var(--neg)]'
+                              : code === 'roic'
+                                ? 'block h-full bg-[var(--brand-accent)]'
                                 : 'block h-full bg-muted-foreground'
                           }
                           style={{ width: `${barWidth}%` }}

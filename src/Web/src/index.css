@@ -16,6 +16,7 @@
 
   body {
     overflow-anchor: none;
+    overflow-x: clip;
     background-color: var(--color-background);
     background-image:
       linear-gradient(to right, var(--grid-line) 1px, transparent 1px),

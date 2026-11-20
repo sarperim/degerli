@@ -8,6 +8,7 @@ scope:
   - src/Web/src/screens/stock-page/StockSections.tsx
   - src/Web/src/screens/stock-page/ValuationSection.tsx
   - src/Web/src/components/ui/section-nav.tsx
+  - src/Web/src/index.css
 ---
 
 # SLICE-026 — Full-Bleed Market Overview Bands (`SCR-001`) + Stock Page (`SCR-005`) Sticky Left Numbered Rail (`01`..`07`), Visual SVG Charts & Open Growth Matrix (`geminisonuiux.html`)
