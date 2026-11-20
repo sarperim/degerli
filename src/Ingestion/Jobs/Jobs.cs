@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Degerli.Ingestion.Sources;
+using Degerli.Ingestion.Telemetry;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.Extensions.Logging;
@@ -298,14 +299,19 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
         }
 
         var startedAt = _clock.GetUtcNow();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var result = await job.RunAsync(request, cancellationToken).ConfigureAwait(false);
+            stopwatch.Stop();
             await RecordAsync(jobCode, startedAt, result.Status, result, request, context, thrownReason: null, cancellationToken).ConfigureAwait(false);
+            RecordMetrics(jobCode, result, stopwatch.Elapsed);
             return result;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            stopwatch.Stop();
+            RecordMetrics(jobCode, result: null, stopwatch.Elapsed);
             _logger.LogError(exception, "Ingestion job {JobCode} failed", jobCode);
             await RecordAsync(
                     jobCode,
@@ -318,6 +324,69 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
                     cancellationToken)
                 .ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Emits the ingestion meters (SLICE-023) for one run — the single instrumentation seam.
+    /// A null <paramref name="result"/> is a thrown run: its outcome is
+    /// <see cref="IngestResult.Failed"/> and it accounts for no rows. The instruments are
+    /// no-ops when nothing listens, and the tag vocabulary is bounded (<c>job_code</c> /
+    /// <c>outcome</c> / <c>disposition</c>) — never a payload or credential.
+    /// </summary>
+    private static void RecordMetrics(string jobCode, IngestResult? result, TimeSpan elapsed)
+    {
+        var scope = DegerliIngestionMetrics.CurrentScope.Value;
+        var outcome = result?.Status ?? IngestResult.Failed;
+
+        if (scope is null)
+        {
+            DegerliIngestionMetrics.JobDuration.Record(
+                elapsed.TotalSeconds,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.OutcomeTag, outcome));
+        }
+        else
+        {
+            DegerliIngestionMetrics.JobDuration.Record(
+                elapsed.TotalSeconds,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.OutcomeTag, outcome),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.ScopeTag, scope));
+        }
+
+        if (result is null)
+        {
+            return;
+        }
+
+        ReportRows(jobCode, DegerliIngestionMetrics.Written, result.Written, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Unchanged, result.Unchanged, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Quarantined, result.Quarantined, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Skipped, result.Skipped, scope);
+    }
+
+    private static void ReportRows(string jobCode, string disposition, int count, string? scope)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+
+        if (scope is null)
+        {
+            DegerliIngestionMetrics.JobRows.Add(
+                count,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.DispositionTag, disposition));
+        }
+        else
+        {
+            DegerliIngestionMetrics.JobRows.Add(
+                count,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.DispositionTag, disposition),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.ScopeTag, scope));
         }
     }
 
