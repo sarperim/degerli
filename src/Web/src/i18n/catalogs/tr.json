@@ -648,9 +648,16 @@
     "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — değişim, hacim",
     "errorTitle": "Bu bölüm yüklenemedi",
     "errorBody": "Bu bölüm yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    "hero": {
+      "eyebrow": "BIST 100 · GÜN SONU",
+      "eyebrowIntraday": "BIST 100 · GÜN İÇİ",
+      "primaryCta": "Hisseleri tara",
+      "secondaryCta": "Hisse listesini incele"
+    },
     "macro": {
       "title": "Makro göstergeler",
       "inflationTitle": "Enflasyon",
+      "spread": "Fark: {{value}} puan",
       "eodNote": "Makro veriler gün sonu (EOD) değerleridir; gerçek zamanlı değildir.",
       "cadence": {
         "monthly": "En güncel yayımlanmış değer — bu seri aylık yayımlanır.",
@@ -675,8 +682,9 @@
         "xu30": "BIST 30"
       },
       "sectors": {
+        "kicker": "Sektörler",
         "title": "Sektör performansı",
-        "linkLabel": "{{sector}} sektörü — hisse listesini aç",
+        "subtitle": "Dönem seçin veya hisse listesini filtrelemek için bir sektöre tıklayın.",
         "periodLabel": "Dönem",
         "period": {
           "daily": "1G",
@@ -692,9 +700,13 @@
         "unchanged": "Değişmeyen"
       },
       "movers": {
+        "kicker": "Hacim nitelikli hareketler",
         "title": "En çok hareket edenler",
         "gainers": "Yükselenler",
         "losers": "Düşenler",
+        "symbolCol": "Hisse",
+        "changeCol": "1G %",
+        "volumeCol": "Hacim",
         "empty": "Gösterilecek hareket eden hisse yok."
       },
       "volume": {
