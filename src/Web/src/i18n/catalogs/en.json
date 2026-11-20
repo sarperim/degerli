@@ -796,6 +796,18 @@
       "title": "Missing inputs",
       "body": "Some inputs needed to value this stock are missing from the data sources: {{fields}}. No computation runs until you supply the missing values; the model works with the values you enter."
     },
+    "sectorNotApplicable": {
+      "title": "DCF is not applicable to the financial sector",
+      "body": "Free cash flow does not map cleanly to banks, insurers, and financial institutions, so an FCF-based DCF baseline is not published. You can review P/B, ROE, and sector medians for {{symbol}} on the stock page.",
+      "browseStocks": "Browse all stocks"
+    },
+    "range": {
+      "title": "EOD price vs. sensitivity range",
+      "bear": "Low",
+      "bull": "High",
+      "eod": "EOD",
+      "implied": "Implied"
+    },
     "sensitivity": {
       "title": "Sensitivity table",
       "axisLabel": "Discount rate \\ terminal growth",

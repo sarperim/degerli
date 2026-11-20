@@ -86,23 +86,50 @@ export function DcfCalculatorScreen() {
 
   // Seed from the persisted draft exactly once, else from the served baseline.
   const storedDraft = useRef(useDraftStore.getState().dcfDraft as DcfDraft | null).current
-  const restored =
-    storedDraft && storedDraft.symbol === upperSymbol ? storedDraft.values : null
-  const [fields, setFields] = useState<DcfFieldMap | null>(restored)
+  const restored: DcfDraft | null =
+    storedDraft && storedDraft.symbol === upperSymbol ? storedDraft : null
+  const [fieldsDraft, setFieldsDraft] = useState<DcfDraft | null>(restored)
+  const fields: DcfFieldMap | null =
+    fieldsDraft && fieldsDraft.symbol === upperSymbol ? fieldsDraft.values : null
   const seeded = useRef(restored !== null)
+  const prevSymbolRef = useRef(upperSymbol)
+  const computeResetRef = useRef(compute.reset)
+  computeResetRef.current = compute.reset
+
+  useEffect(() => {
+    if (prevSymbolRef.current === upperSymbol) return
+    prevSymbolRef.current = upperSymbol
+    computeResetRef.current()
+    const latestDraft = useDraftStore.getState().dcfDraft as DcfDraft | null
+    if (latestDraft && latestDraft.symbol === upperSymbol) {
+      seeded.current = true
+      setFieldsDraft(latestDraft)
+    } else {
+      seeded.current = false
+      setFieldsDraft(null)
+    }
+    setLoadedScenario(null)
+    setPendingLoad(null)
+    appliedRequestedScenario.current = false
+  }, [upperSymbol])
 
   useEffect(() => {
     if (!baseline || seeded.current) return
     seeded.current = true
     // A missing canonical fact is seeded empty, never zero-filled (UXR-VAL-009).
-    setFields(paramsToFieldsAllowingMissing(baseline.params))
-  }, [baseline])
+    setFieldsDraft({
+      symbol: upperSymbol,
+      values: paramsToFieldsAllowingMissing(baseline.params),
+    })
+  }, [baseline, upperSymbol])
 
   // Persist the draft so navigation and the auth hop cannot lose it (UXR-G-021).
   const setDcfDraft = useDraftStore((state) => state.setDcfDraft)
   useEffect(() => {
-    if (fields) setDcfDraft({ symbol: upperSymbol, values: fields } satisfies DcfDraft)
-  }, [fields, upperSymbol, setDcfDraft])
+    if (fieldsDraft && fieldsDraft.symbol === upperSymbol) {
+      setDcfDraft(fieldsDraft)
+    }
+  }, [fieldsDraft, upperSymbol, setDcfDraft])
 
   // Scenario save/load state (FR-VAL-009/010; UXR-VAL-012..015/021).
   const [name, setName] = useState(() => useDraftStore.getState().dcfDraftName)
@@ -139,10 +166,10 @@ export function DcfCalculatorScreen() {
     const requested = scenarios.find((candidate) => candidate.id === requestedScenarioId)
     if (!requested) return
     appliedRequestedScenario.current = true
-    setFields(paramsToFields(requested.params))
+    setFieldsDraft({ symbol: upperSymbol, values: paramsToFields(requested.params) })
     setLoadedScenario(requested)
     setPendingLoad(null)
-  }, [requestedScenarioId, scenarios])
+  }, [requestedScenarioId, scenarios, upperSymbol])
 
   const validation = useMemo(
     () => (fields ? validateFields(fields) : { params: null, errors: {} }),
@@ -181,6 +208,8 @@ export function DcfCalculatorScreen() {
   // so the user can supply the missing value and compute their own model.
   const missingInputs = baselineQuery.data?.missingInputs ?? []
   const isMissing = baselineQuery.data?.state === 'missing_inputs'
+  const isSectorNotApplicable =
+    baselineQuery.data?.state === 'sector_not_applicable'
   const missingLabels = missingInputs
     .map((key) => t(DCF_PARAM_BY_KEY[key].labelKey))
     .join(', ')
@@ -230,12 +259,19 @@ export function DcfCalculatorScreen() {
         : 'idle'
 
   function updateField(key: keyof DcfFieldMap, value: string) {
-    setFields((current) => (current ? { ...current, [key]: value } : current))
+    setFieldsDraft((current) =>
+      current && current.symbol === upperSymbol
+        ? { symbol: upperSymbol, values: { ...current.values, [key]: value } }
+        : current,
+    )
   }
 
   function resetToBaseline() {
     if (!baseline) return
-    setFields(paramsToFieldsAllowingMissing(baseline.params))
+    setFieldsDraft({
+      symbol: upperSymbol,
+      values: paramsToFieldsAllowingMissing(baseline.params),
+    })
     setLoadedScenario(null)
   }
 
@@ -246,7 +282,7 @@ export function DcfCalculatorScreen() {
 
   /** Load a scenario: seed its params exactly, then recompute (FR-VAL-010). */
   function applyLoad(scenario: SavedScenario) {
-    setFields(paramsToFields(scenario.params))
+    setFieldsDraft({ symbol: upperSymbol, values: paramsToFields(scenario.params) })
     setLoadedScenario(scenario)
     setPendingLoad(null)
   }
@@ -314,6 +350,59 @@ export function DcfCalculatorScreen() {
           <Button variant="outline" onClick={() => void baselineQuery.refetch()}>
             {t('common.retry')}
           </Button>
+        </div>
+      ) : null}
+
+      {isSectorNotApplicable ? (
+        <div
+          data-testid="dcf-sector-not-applicable"
+          role="status"
+          className="flex flex-col gap-4 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-5"
+        >
+          <div className="flex flex-col gap-1.5">
+            <h2 className="text-h3 font-semibold text-foreground">
+              {t('dcf.sectorNotApplicable.title')}
+            </h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              {t('dcf.sectorNotApplicable.body', { symbol: upperSymbol })}
+            </p>
+          </div>
+          {baselineQuery.data?.price ? (
+            <div className="flex flex-wrap items-baseline gap-3 border-t border-border pt-3">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                {t('dcf.price')}
+              </span>
+              <span
+                data-testid="dcf-price"
+                className="font-mono text-xl font-bold tabular-nums text-foreground"
+              >
+                {formatDecimal(locale, baselineQuery.data.price.value, 2, 2)}
+              </span>
+              <span
+                data-testid="dcf-price-asof"
+                className="font-mono text-xs text-muted-foreground"
+              >
+                <AsOfDate asOf={baselineQuery.data.price.asOf} />
+              </span>
+              {baselineQuery.data.price.stale ? <StaleBadge /> : null}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {upperSymbol ? (
+              <Link
+                to={`/stocks/${encodeURIComponent(upperSymbol)}`}
+                className={buttonVariants({ size: 'sm' })}
+              >
+                {t('dcf.backToStock', { symbol: upperSymbol })}
+              </Link>
+            ) : null}
+            <Link
+              to="/stocks"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              {t('dcf.sectorNotApplicable.browseStocks')}
+            </Link>
+          </div>
         </div>
       ) : null}
 
@@ -420,7 +509,7 @@ export function DcfCalculatorScreen() {
                 </p>
                 <p
                   data-testid="dcf-fair-value"
-                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
+                  className="font-mono text-[2.25rem] sm:text-[2.75rem] leading-none font-bold tabular-nums text-foreground"
                 >
                   {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
                 </p>
@@ -431,7 +520,7 @@ export function DcfCalculatorScreen() {
                 </p>
                 <p
                   data-testid="dcf-price"
-                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
+                  className="font-mono text-[1.75rem] leading-none font-bold tabular-nums text-foreground"
                 >
                   {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
                 </p>
@@ -471,14 +560,22 @@ export function DcfCalculatorScreen() {
               </div>
             </div>
 
-            {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
+            {/* EOD Price vs. Sensitivity Range gauge + 5×5 sensitivity table (FR-VAL-007, UXR-VAL-006). */}
             {result ? (
-              <SensitivityTable
-                sensitivity={result.sensitivity}
-                locale={locale}
-                discountRate={currentDiscountRate}
-                terminalGrowth={currentTerminalGrowth}
-              />
+              <>
+                <SensitivityRangeGauge
+                  sensitivity={result.sensitivity}
+                  fairValue={result.fairValuePerShare}
+                  eodPrice={price?.value}
+                  locale={locale}
+                />
+                <SensitivityTable
+                  sensitivity={result.sensitivity}
+                  locale={locale}
+                  discountRate={currentDiscountRate}
+                  terminalGrowth={currentTerminalGrowth}
+                />
+              </>
             ) : null}
 
             {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
@@ -683,6 +780,110 @@ export function DcfCalculatorScreen() {
         }}
       />
     </section>
+  )
+}
+
+/** EOD price vs. sensitivity range visual gauge derived strictly from served grid values. */
+function SensitivityRangeGauge({
+  sensitivity,
+  fairValue,
+  eodPrice,
+  locale,
+}: {
+  sensitivity: DcfSensitivity
+  fairValue: number
+  eodPrice: number | undefined
+  locale: string
+}) {
+  const { t } = useTranslation()
+  const finiteValues = sensitivity.fairValues
+    .flat()
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+
+  if (finiteValues.length < 2 || !Number.isFinite(fairValue)) return null
+
+  const bear = Math.min(...finiteValues)
+  const bull = Math.max(...finiteValues)
+  const points = [bear, bull, fairValue]
+  if (typeof eodPrice === 'number' && Number.isFinite(eodPrice)) {
+    points.push(eodPrice)
+  }
+  const minDomain = Math.min(...points)
+  const maxDomain = Math.max(...points)
+  const span = maxDomain - minDomain
+  if (!Number.isFinite(span) || span <= 0) return null
+
+  const pct = (v: number) =>
+    Math.min(100, Math.max(0, ((v - minDomain) / span) * 100))
+
+  const rawBandLeft = pct(bear)
+  const bandWidth = Math.min(100, Math.max(2, pct(bull) - rawBandLeft))
+  const bandLeft = Math.min(rawBandLeft, 100 - bandWidth)
+  const impliedPos = pct(fairValue)
+  const eodPos =
+    typeof eodPrice === 'number' && Number.isFinite(eodPrice)
+      ? pct(eodPrice)
+      : null
+
+  return (
+    <div
+      data-slot="dcf-range-gauge"
+      className="flex flex-col gap-3 border-b border-border pb-6"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+          {t('dcf.range.title')}
+        </span>
+        <span
+          aria-hidden="true"
+          className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted-foreground"
+        >
+          {eodPos !== null ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-[3px] bg-foreground" />
+              {t('dcf.range.eod')}
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-[2px] bg-[var(--brand-accent)]" />
+            {t('dcf.range.implied')}
+          </span>
+        </span>
+      </div>
+
+      <div aria-hidden="true" className="relative h-6 w-full">
+        <div className="absolute inset-x-0 top-1/2 h-[6px] -translate-y-1/2 bg-secondary" />
+        <div
+          className="absolute top-1/2 h-[10px] -translate-y-1/2 border border-[var(--brand-accent)] bg-[var(--accent-soft)]"
+          style={{ left: `${bandLeft}%`, width: `${bandWidth}%` }}
+        />
+        <div
+          className="absolute top-0.5 bottom-0.5 w-[2px] -translate-x-1/2 bg-[var(--brand-accent)]"
+          style={{ left: `${impliedPos}%` }}
+        />
+        {eodPos !== null ? (
+          <div
+            className="absolute top-0 bottom-0 w-[3px] -translate-x-1/2 bg-foreground"
+            style={{ left: `${eodPos}%` }}
+          />
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs tabular-nums text-muted-foreground">
+        <span>
+          {t('dcf.range.bear')}:{' '}
+          <strong className="font-medium text-foreground">
+            {formatDecimal(locale, bear, 2, 2)}
+          </strong>
+        </span>
+        <span>
+          {t('dcf.range.bull')}:{' '}
+          <strong className="font-medium text-foreground">
+            {formatDecimal(locale, bull, 2, 2)}
+          </strong>
+        </span>
+      </div>
+    </div>
   )
 }
 

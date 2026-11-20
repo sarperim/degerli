@@ -47,15 +47,18 @@ export function AdminScreen() {
     return <AdminAccessDenied />
   }
 
-  const items = (Object.keys(ADMIN_SECTION_KEYS) as AdminSectionId[]).map((id) => ({
-    id,
-    label: t(ADMIN_SECTION_KEYS[id]),
-  }))
+  const items = (Object.keys(ADMIN_SECTION_KEYS) as AdminSectionId[]).map(
+    (id, index) => ({
+      id,
+      index: String(index + 1).padStart(2, '0'),
+      label: t(ADMIN_SECTION_KEYS[id]),
+    }),
+  )
   const ActiveSection = ADMIN_SECTION_COMPONENTS[activeSection]
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1 border-b border-border pb-4">
+      <header className="flex flex-col gap-1.5 border-b border-border pb-5">
         <h1 className="text-h1 font-semibold tracking-tight text-foreground">
           {t('screens.admin.title')}
         </h1>

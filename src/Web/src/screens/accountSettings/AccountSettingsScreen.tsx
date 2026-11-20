@@ -50,7 +50,7 @@ export function AccountSettingsScreen() {
     <section
       data-screen="SCR-010"
       data-route-id="accountSettings"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-5xl flex-col gap-6"
     >
       <header className="flex flex-col gap-1 border-b border-border pb-5">
         <h1 className="text-h1 font-semibold tracking-tight text-foreground">
@@ -70,17 +70,21 @@ export function AccountSettingsScreen() {
       ) : me.isError || !me.data ? (
         <LoadErrorState onRetry={() => void me.refetch()} />
       ) : (
-        <div className="flex flex-col gap-8">
-          <LanguageSection
-            current={currentLanguage(me.data.languagePref)}
-          />
-          <PasswordSection />
-          <EntryPointsSection />
-          <DeletionSection />
-          <VerificationSection
-            email={me.data.email}
-            verified={me.data.verified}
-          />
+        <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
+          <div className="flex flex-col gap-8">
+            <LanguageSection
+              current={currentLanguage(me.data.languagePref)}
+            />
+            <EntryPointsSection />
+            <VerificationSection
+              email={me.data.email}
+              verified={me.data.verified}
+            />
+          </div>
+          <div className="flex flex-col gap-8">
+            <PasswordSection />
+            <DeletionSection />
+          </div>
         </div>
       )}
     </section>

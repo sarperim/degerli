@@ -204,6 +204,46 @@ export function StockListPage() {
             </Button>
           </div>
         ) : null}
+
+        {sectorOptions.length > 0 ? (
+          <div
+            data-slot="sector-chip-row"
+            className="flex w-full flex-wrap items-center gap-1.5 pt-1"
+          >
+            <button
+              type="button"
+              data-magnetic=""
+              aria-pressed={sector === null}
+              onClick={() => setSector(null)}
+              className={
+                sector === null
+                  ? 'rounded-[2px] border border-[var(--brand-accent)] bg-[var(--accent-soft)] px-2.5 py-1 font-mono text-[11px] font-medium text-foreground transition-colors'
+                  : 'rounded-[2px] border border-[var(--border-strong)] bg-transparent px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground'
+              }
+            >
+              {t('stockList.sectorAll')}
+            </button>
+            {sectorOptions.map((option) => {
+              const active = sector === option
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  data-magnetic=""
+                  aria-pressed={active}
+                  onClick={() => setSector(active ? null : option)}
+                  className={
+                    active
+                      ? 'rounded-[2px] border border-[var(--brand-accent)] bg-[var(--accent-soft)] px-2.5 py-1 font-mono text-[11px] font-medium text-foreground transition-colors'
+                      : 'rounded-[2px] border border-[var(--border-strong)] bg-transparent px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground'
+                  }
+                >
+                  {option}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
       </div>
 
       {listQuery.isPending ? (
