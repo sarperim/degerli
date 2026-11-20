@@ -265,7 +265,7 @@ export function DcfCalculatorScreen() {
 
   return (
     <section data-screen="SCR-006" data-route-id="dcfCalculator" className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+      <header className="flex flex-col gap-3 border-b border-border pb-5">
         {upperSymbol ? (
           <Link
             to={`/stocks/${encodeURIComponent(upperSymbol)}`}
@@ -279,8 +279,8 @@ export function DcfCalculatorScreen() {
             {t('dcf.backToStock', { symbol: upperSymbol })}
           </Link>
         ) : null}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-h1 font-semibold tracking-tight">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-h1 font-semibold tracking-tight text-foreground">
             {t('screens.dcfCalculator.title')}
           </h1>
           {upperSymbol ? (
@@ -288,18 +288,18 @@ export function DcfCalculatorScreen() {
               {upperSymbol}
             </Badge>
           ) : null}
+          {baseline ? (
+            <span
+              data-testid="dcf-baseline-version"
+              className="font-mono text-xs text-muted-foreground"
+            >
+              {t('dcf.baselineVersion', { version: baseline.version })}
+            </span>
+          ) : null}
         </div>
-        <p className="max-w-2xl text-muted-foreground">
+        <p className="max-w-2xl text-sm text-muted-foreground">
           {t('screens.dcfCalculator.description')}
         </p>
-        {baseline ? (
-          <span
-            data-testid="dcf-baseline-version"
-            className="text-xs text-muted-foreground"
-          >
-            {t('dcf.baselineVersion', { version: baseline.version })}
-          </span>
-        ) : null}
       </header>
 
       {baselineQuery.isPending ? (
@@ -318,328 +318,348 @@ export function DcfCalculatorScreen() {
       ) : null}
 
       {baseline && fields ? (
-        <>
-          {/* Parameter panel — all eight visible and editable (UXR-VAL-003). */}
-          <div
-            data-testid="dcf-params"
-            className="grid grid-cols-1 gap-4 rounded-lg border bg-card text-card-foreground p-4 sm:grid-cols-2"
-          >
-            {DCF_PARAMS.map((def) => {
-              const unit = def.unitKey ? ` (${t(def.unitKey)})` : ''
-              const errorKey = fieldErrors[def.key]
-              return (
-                <FormField
-                  key={def.key}
-                  id={`dcf-${def.key}`}
-                  label={`${t(def.labelKey)}${unit}`}
-                  error={errorKey ? t(errorKey) : undefined}
-                >
-                  {(control) => (
-                    <Input
-                      {...control}
-                      data-testid={`dcf-param-${def.key}`}
-                      inputMode="decimal"
-                      value={fields[def.key]}
-                      onChange={(event) => updateField(def.key, event.target.value)}
-                    />
-                  )}
-                </FormField>
-              )
-            })}
-          </div>
-
-          {/* Canonical-fact provenance + restatement markings (UXR-VAL-010). */}
-          <div data-testid="dcf-sources" className="flex flex-col gap-1">
-            {DCF_PARAMS.filter((def) => def.canonicalFact).map((def) => {
-              const ref = baseline.canonicalFactRefs?.[def.key]
-              return (
-                <p
-                  key={def.key}
-                  data-testid={`dcf-param-source-${def.key}`}
-                  className="text-xs text-muted-foreground"
-                >
-                  {t(def.labelKey)}:{' '}
-                  {ref
-                    ? t('dcf.canonicalSource', { date: formatAsOfDate(locale, ref.asOf) })
-                    : t('dcf.baselineDefault')}
-                  {ref?.restated ? (
-                    <span data-testid={`dcf-param-restated-${def.key}`}>
-                      {' '}
-                      <RestatedMarker description={t('honestData.restated')} />
-                    </span>
-                  ) : null}
-                </p>
-              )
-            })}
-          </div>
-
-          {anyRestated ? <RestatedNotice /> : null}
-
-          {/* Missing statement inputs: explain, never compute on partial data. */}
-          {isMissing ? (
+        <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:gap-12">
+          <div className="flex min-w-0 flex-col gap-6">
+            {/* Parameter panel — all eight visible and editable (UXR-VAL-003). */}
             <div
-              data-testid="dcf-missing-inputs"
-              role="status"
-              className="flex flex-col gap-1 rounded-lg border border-dashed p-4"
+              data-testid="dcf-params"
+              className="grid grid-cols-1 gap-4 border-b border-border pb-6 sm:grid-cols-2"
             >
-              <p className="font-medium">{t('dcf.missingInputs.title')}</p>
-              <p className="text-sm text-muted-foreground">
-                {t('dcf.missingInputs.body', { fields: missingLabels })}
-              </p>
+              {DCF_PARAMS.map((def) => {
+                const unit = def.unitKey ? ` (${t(def.unitKey)})` : ''
+                const errorKey = fieldErrors[def.key]
+                return (
+                  <FormField
+                    key={def.key}
+                    id={`dcf-${def.key}`}
+                    label={`${t(def.labelKey)}${unit}`}
+                    error={errorKey ? t(errorKey) : undefined}
+                  >
+                    {(control) => (
+                      <Input
+                        {...control}
+                        data-testid={`dcf-param-${def.key}`}
+                        inputMode="decimal"
+                        className="font-mono tabular-nums"
+                        value={fields[def.key]}
+                        onChange={(event) => updateField(def.key, event.target.value)}
+                      />
+                    )}
+                  </FormField>
+                )
+              })}
             </div>
-          ) : null}
 
-          {/* Controls: unsaved-changes indication + reset (UXR-G-021, UX §5). */}
-          <div className="flex flex-wrap items-center gap-3">
-            {modified ? (
-              <Badge data-testid="dcf-unsaved" variant="warning">
-                {t('dcf.unsaved')}
-              </Badge>
-            ) : null}
-            {modified ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="dcf-reset"
-                onClick={resetToBaseline}
+            {/* Canonical-fact provenance + restatement markings (UXR-VAL-010). */}
+            <div
+              data-testid="dcf-sources"
+              className="border-l-2 border-[var(--brand-accent)] pl-3 flex flex-col gap-1 font-mono text-xs text-muted-foreground"
+            >
+              {DCF_PARAMS.filter((def) => def.canonicalFact).map((def) => {
+                const ref = baseline.canonicalFactRefs?.[def.key]
+                return (
+                  <p key={def.key} data-testid={`dcf-param-source-${def.key}`}>
+                    {t(def.labelKey)}:{' '}
+                    {ref
+                      ? t('dcf.canonicalSource', { date: formatAsOfDate(locale, ref.asOf) })
+                      : t('dcf.baselineDefault')}
+                    {ref?.restated ? (
+                      <span data-testid={`dcf-param-restated-${def.key}`}>
+                        {' '}
+                        <RestatedMarker description={t('honestData.restated')} />
+                      </span>
+                    ) : null}
+                  </p>
+                )
+              })}
+            </div>
+
+            {anyRestated ? <RestatedNotice /> : null}
+
+            {/* Missing statement inputs: explain, never compute on partial data. */}
+            {isMissing ? (
+              <div
+                data-testid="dcf-missing-inputs"
+                role="status"
+                className="border-l-2 border-[var(--brand-accent)] bg-[var(--stale)] p-4 flex flex-col gap-1"
               >
-                {t('dcf.resetToBaseline')}
-              </Button>
-            ) : null}
-          </div>
-
-          {/* Results — fair value, price with as-of, plain-language verdict. */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border bg-card text-card-foreground p-4">
-              <p className="text-xs text-muted-foreground">{t('dcf.fairValue')}</p>
-              <p data-testid="dcf-fair-value" className="text-h2 font-semibold tabular-nums">
-                {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
-              </p>
-            </div>
-            <div className="rounded-lg border bg-card text-card-foreground p-4">
-              <p className="text-xs text-muted-foreground">{t('dcf.price')}</p>
-              <p data-testid="dcf-price" className="text-h2 font-semibold tabular-nums">
-                {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
-              </p>
-              <span className="flex items-center gap-2">
-                {price ? (
-                  <span data-testid="dcf-price-asof">
-                    <AsOfDate asOf={price.asOf} />
-                  </span>
-                ) : null}
-                {price?.stale ? <StaleBadge /> : null}
-              </span>
-            </div>
-            <div className="rounded-lg border bg-card text-card-foreground p-4">
-              <Badge variant="info">{t('dcf.framing')}</Badge>
-              {result ? (
-                <p
-                  data-testid="dcf-verdict"
-                  data-direction={
-                    result.marginOfSafety > 0
-                      ? 'below'
-                      : result.marginOfSafety < 0
-                        ? 'above'
-                        : 'equal'
-                  }
-                  className="mt-2 text-sm"
-                >
-                  {t(verdictKey(result.marginOfSafety), {
-                    percent: formatPercent(locale, Math.abs(result.marginOfSafety)),
-                  })}
+                <p className="font-medium">{t('dcf.missingInputs.title')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('dcf.missingInputs.body', { fields: missingLabels })}
                 </p>
+              </div>
+            ) : null}
+
+            {/* Controls: unsaved-changes indication + reset (UXR-G-021, UX §5). */}
+            <div className="flex flex-wrap items-center gap-3">
+              {modified ? (
+                <Badge data-testid="dcf-unsaved" variant="warning">
+                  {t('dcf.unsaved')}
+                </Badge>
+              ) : null}
+              {modified ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid="dcf-reset"
+                  onClick={resetToBaseline}
+                >
+                  {t('dcf.resetToBaseline')}
+                </Button>
               ) : null}
             </div>
           </div>
 
-          {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
-          {result ? (
-            <SensitivityTable
-              sensitivity={result.sensitivity}
-              locale={locale}
-              discountRate={currentDiscountRate}
-              terminalGrowth={currentTerminalGrowth}
-            />
-          ) : null}
-
-          {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
-          <div
-            data-testid="dcf-scenario-panel"
-            className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4"
-          >
-            <h2 className="text-h3 font-medium text-foreground">
-              {t('dcf.scenario.heading')}
-            </h2>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-                <label
-                  htmlFor="dcf-scenario-name"
-                  className="text-sm font-medium text-foreground"
+          <div className="flex min-w-0 flex-col gap-6">
+            {/* Results — fair value, price with as-of, plain-language verdict. */}
+            <div className="grid grid-cols-1 gap-6 border-b border-border pb-6 sm:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  {t('dcf.fairValue')}
+                </p>
+                <p
+                  data-testid="dcf-fair-value"
+                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
                 >
-                  {t('dcf.scenario.nameLabel')}
-                </label>
-                <Input
-                  id="dcf-scenario-name"
-                  data-testid="dcf-scenario-name"
-                  value={name}
-                  disabled={save.isPending}
-                  onChange={(event) => setName(event.target.value)}
-                />
+                  {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
+                </p>
               </div>
-              <Button
-                type="button"
-                data-testid="dcf-scenario-save"
-                disabled={
-                  validation.params === null || name.trim() === '' || save.isPending
-                }
-                aria-busy={save.isPending || undefined}
-                onClick={handleSave}
-              >
-                {save.isPending ? t('dcf.scenario.saving') : t('dcf.scenario.saveButton')}
-              </Button>
+              <div className="flex flex-col gap-1.5">
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  {t('dcf.price')}
+                </p>
+                <p
+                  data-testid="dcf-price"
+                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
+                >
+                  {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
+                </p>
+                <span className="flex items-center gap-2">
+                  {price ? (
+                    <span
+                      data-testid="dcf-price-asof"
+                      className="font-mono text-xs text-muted-foreground"
+                    >
+                      <AsOfDate asOf={price.asOf} />
+                    </span>
+                  ) : null}
+                  {price?.stale ? <StaleBadge /> : null}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Badge variant="info" className="w-fit">
+                  {t('dcf.framing')}
+                </Badge>
+                {result ? (
+                  <p
+                    data-testid="dcf-verdict"
+                    data-direction={
+                      result.marginOfSafety > 0
+                        ? 'below'
+                        : result.marginOfSafety < 0
+                          ? 'above'
+                          : 'equal'
+                    }
+                    className="text-sm text-foreground"
+                  >
+                    {t(verdictKey(result.marginOfSafety), {
+                      percent: formatPercent(locale, Math.abs(result.marginOfSafety)),
+                    })}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
-            {saveView === 'saved' && save.data ? (
-              <p
-                data-testid="dcf-scenario-saved"
-                role="status"
-                className="rounded-md border bg-accent/40 p-3 text-sm"
-              >
-                {t('dcf.scenario.savedConfirmation', { name: save.data.name })}
-              </p>
+            {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
+            {result ? (
+              <SensitivityTable
+                sensitivity={result.sensitivity}
+                locale={locale}
+                discountRate={currentDiscountRate}
+                terminalGrowth={currentTerminalGrowth}
+              />
             ) : null}
 
-            {saveView === 'anonymous' ? (
-              <div
-                data-testid="dcf-scenario-anonymous"
-                className="flex flex-col gap-2 rounded-md border p-3"
-              >
-                <p className="font-medium">{t('dcf.scenario.anonymousTitle')}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t('dcf.scenario.anonymousBody')}
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    className="text-sm underline"
-                    to={`/sign-in?returnUrl=${encodedReturn}`}
+            {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
+            <div
+              data-testid="dcf-scenario-panel"
+              className="flex flex-col gap-4 border-t border-border pt-6"
+            >
+              <h2 className="text-h3 font-medium text-foreground">
+                {t('dcf.scenario.heading')}
+              </h2>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                  <label
+                    htmlFor="dcf-scenario-name"
+                    className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground"
                   >
-                    {t('dcf.scenario.signIn')}
-                  </Link>
-                  <Link
-                    className="text-sm underline"
-                    to={`/register?returnUrl=${encodedReturn}`}
-                  >
-                    {t('dcf.scenario.register')}
-                  </Link>
+                    {t('dcf.scenario.nameLabel')}
+                  </label>
+                  <Input
+                    id="dcf-scenario-name"
+                    data-testid="dcf-scenario-name"
+                    className="font-mono tabular-nums"
+                    value={name}
+                    disabled={save.isPending}
+                    onChange={(event) => setName(event.target.value)}
+                  />
                 </div>
-              </div>
-            ) : null}
-
-            {saveView === 'unverified' ? (
-              <div
-                data-testid="dcf-scenario-unverified"
-                className="flex flex-col gap-2 rounded-md border p-3"
-              >
-                <p className="font-medium">{t('dcf.scenario.unverifiedTitle')}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t('dcf.scenario.unverifiedBody')}
-                </p>
-                <Link className="text-sm underline" to="/settings">
-                  {t('dcf.scenario.unverifiedLink')}
-                </Link>
-              </div>
-            ) : null}
-
-            {saveView === 'duplicate' ? (
-              <p
-                data-testid="dcf-scenario-duplicate"
-                role="alert"
-                className="text-sm font-medium text-destructive"
-              >
-                {t('dcf.scenario.duplicateName', { name: name.trim() })}
-              </p>
-            ) : null}
-
-            {saveView === 'error' ? (
-              <div
-                role="alert"
-                data-testid="dcf-scenario-error"
-                className="flex flex-col gap-2"
-              >
-                <p className="font-medium text-destructive">
-                  {t('dcf.scenario.saveErrorTitle')}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('dcf.scenario.saveErrorBody')}
-                </p>
-                <Button variant="outline" onClick={handleSave}>
-                  {t('common.retry')}
+                <Button
+                  type="button"
+                  data-testid="dcf-scenario-save"
+                  disabled={
+                    validation.params === null || name.trim() === '' || save.isPending
+                  }
+                  aria-busy={save.isPending || undefined}
+                  onClick={handleSave}
+                >
+                  {save.isPending ? t('dcf.scenario.saving') : t('dcf.scenario.saveButton')}
                 </Button>
               </div>
-            ) : null}
 
-            <div data-testid="dcf-scenario-picker" className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-foreground">
-                {t('dcf.scenario.pickerLabel')}
-              </span>
-              {session.isPending ? null : !authenticated ? (
+              {saveView === 'saved' && save.data ? (
                 <p
-                  data-testid="dcf-scenario-picker-anonymous"
-                  className="text-sm text-muted-foreground"
+                  data-testid="dcf-scenario-saved"
+                  role="status"
+                  className="border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3 text-sm"
                 >
-                  {t('dcf.scenario.pickerAnonymous')}
+                  {t('dcf.scenario.savedConfirmation', { name: save.data.name })}
                 </p>
-              ) : scenariosQuery.isError ? (
+              ) : null}
+
+              {saveView === 'anonymous' ? (
+                <div
+                  data-testid="dcf-scenario-anonymous"
+                  className="flex flex-col gap-2 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
+                >
+                  <p className="font-medium">{t('dcf.scenario.anonymousTitle')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('dcf.scenario.anonymousBody')}
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <Link
+                      className="text-sm underline"
+                      to={`/sign-in?returnUrl=${encodedReturn}`}
+                    >
+                      {t('dcf.scenario.signIn')}
+                    </Link>
+                    <Link
+                      className="text-sm underline"
+                      to={`/register?returnUrl=${encodedReturn}`}
+                    >
+                      {t('dcf.scenario.register')}
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+
+              {saveView === 'unverified' ? (
+                <div
+                  data-testid="dcf-scenario-unverified"
+                  className="flex flex-col gap-2 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
+                >
+                  <p className="font-medium">{t('dcf.scenario.unverifiedTitle')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('dcf.scenario.unverifiedBody')}
+                  </p>
+                  <Link className="text-sm underline" to="/settings">
+                    {t('dcf.scenario.unverifiedLink')}
+                  </Link>
+                </div>
+              ) : null}
+
+              {saveView === 'duplicate' ? (
+                <p
+                  data-testid="dcf-scenario-duplicate"
+                  role="alert"
+                  className="text-sm font-medium text-destructive"
+                >
+                  {t('dcf.scenario.duplicateName', { name: name.trim() })}
+                </p>
+              ) : null}
+
+              {saveView === 'error' ? (
                 <div
                   role="alert"
-                  data-testid="dcf-scenario-picker-error"
-                  className="flex flex-col items-start gap-2"
+                  data-testid="dcf-scenario-error"
+                  className="flex flex-col gap-2"
                 >
-                  <p className="text-sm text-muted-foreground">
-                    {t('dcf.scenario.pickerError')}
+                  <p className="font-medium text-destructive">
+                    {t('dcf.scenario.saveErrorTitle')}
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void scenariosQuery.refetch()}
-                  >
+                  <p className="text-sm text-muted-foreground">
+                    {t('dcf.scenario.saveErrorBody')}
+                  </p>
+                  <Button variant="outline" onClick={handleSave}>
                     {t('common.retry')}
                   </Button>
                 </div>
-              ) : scenarios.length === 0 ? (
-                <p
-                  data-testid="dcf-scenario-picker-empty"
-                  className="text-sm text-muted-foreground"
-                >
-                  {t('dcf.scenario.pickerEmpty')}
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {scenarios.map((scenario) => (
-                    <li
-                      key={scenario.id}
-                      data-testid={`dcf-scenario-item-${scenario.id}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
+              ) : null}
+
+              <div data-testid="dcf-scenario-picker" className="flex flex-col gap-2">
+                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  {t('dcf.scenario.pickerLabel')}
+                </span>
+                {session.isPending ? null : !authenticated ? (
+                  <p
+                    data-testid="dcf-scenario-picker-anonymous"
+                    className="text-sm text-muted-foreground"
+                  >
+                    {t('dcf.scenario.pickerAnonymous')}
+                  </p>
+                ) : scenariosQuery.isError ? (
+                  <div
+                    role="alert"
+                    data-testid="dcf-scenario-picker-error"
+                    className="flex flex-col items-start gap-2"
+                  >
+                    <p className="text-sm text-muted-foreground">
+                      {t('dcf.scenario.pickerError')}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void scenariosQuery.refetch()}
                     >
-                      <span className="text-sm">{scenario.name}</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        data-testid={`dcf-scenario-load-${scenario.id}`}
-                        onClick={() => requestLoad(scenario)}
+                      {t('common.retry')}
+                    </Button>
+                  </div>
+                ) : scenarios.length === 0 ? (
+                  <p
+                    data-testid="dcf-scenario-picker-empty"
+                    className="text-sm text-muted-foreground"
+                  >
+                    {t('dcf.scenario.pickerEmpty')}
+                  </p>
+                ) : (
+                  <ul className="flex flex-col">
+                    {scenarios.map((scenario) => (
+                      <li
+                        key={scenario.id}
+                        data-testid={`dcf-scenario-item-${scenario.id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2"
                       >
-                        {t('dcf.scenario.load')}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                        <span className="text-sm">{scenario.name}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          data-testid={`dcf-scenario-load-${scenario.id}`}
+                          onClick={() => requestLoad(scenario)}
+                        >
+                          {t('dcf.scenario.load')}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* Load-over-unsaved-changes discard confirmation (UXR-VAL-014). */}
@@ -685,10 +705,10 @@ function SensitivityTable({
       : null
 
   return (
-    <TableContainer>
+    <TableContainer className="rounded-none border-0">
       <Table data-testid="dcf-sensitivity">
         <TableCaption>{t('dcf.sensitivity.title')}</TableCaption>
-        <TableHeader>
+        <TableHeader className="bg-transparent">
           <TableRow>
             <TableHead scope="col" data-testid="dcf-sensitivity-corner">
               {t('dcf.sensitivity.axisLabel')}
@@ -720,9 +740,9 @@ function SensitivityTable({
                     data-testid={`dcf-sensitivity-cell-${row}-${column}`}
                     data-current={isCurrent ? 'true' : undefined}
                     className={cn(
-                      'text-right tabular-nums',
+                      'text-right font-mono tabular-nums',
                       isCurrent &&
-                        'bg-primary/15 font-semibold text-foreground ring-1 ring-inset ring-primary/40',
+                        'bg-[var(--accent-soft)] font-semibold text-foreground ring-1 ring-inset ring-[var(--brand-accent)]',
                     )}
                   >
                     {cell === null ? (

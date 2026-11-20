@@ -49,6 +49,7 @@
   --ink-muted: #7C848E;
   --brand-accent: #9B6123;
   --brand-accent-soft: rgba(155, 97, 35, 0.09);
+  --accent-soft: var(--brand-accent-soft);
   --brand-accent-border: rgba(155, 97, 35, 0.36);
   --regime: #3E5D82;
   --regime-soft: rgba(62, 93, 130, 0.09);
@@ -154,6 +155,7 @@
   --ink-muted: #5F6873;
   --brand-accent: #C68B49;
   --brand-accent-soft: rgba(198, 139, 73, 0.12);
+  --accent-soft: var(--brand-accent-soft);
   --brand-accent-border: rgba(198, 139, 73, 0.40);
   --regime: #7E97B8;
   --regime-soft: rgba(126, 151, 184, 0.12);

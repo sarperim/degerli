@@ -41,7 +41,7 @@ export function PasswordResetScreen() {
   return (
     <section
       data-screen="SCR-009"
-      className="mx-auto flex w-full max-w-md flex-col gap-6"
+      className="mx-auto flex w-full max-w-[450px] flex-col gap-6 rounded-[2px] border border-[var(--border-strong)] bg-card p-6 text-card-foreground"
     >
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -88,7 +88,7 @@ function RequestStage() {
       <div
         data-testid="password-reset-confirmation"
         role="status"
-        className="flex flex-col gap-3 rounded-md border bg-accent/40 p-4"
+        className="flex flex-col gap-3 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
       >
         <h2 className="font-medium">{t('passwordReset.neutralTitle')}</h2>
         {/* Fixed, address-independent copy — never reveals whether the address
@@ -183,7 +183,7 @@ function SetPasswordStage({ token }: { token: string }) {
       <div
         data-testid="password-reset-success"
         role="status"
-        className="flex flex-col gap-3 rounded-md border bg-accent/40 p-4"
+        className="flex flex-col gap-3 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
       >
         <h2 className="font-medium">{t('passwordReset.successTitle')}</h2>
         <p className="text-sm text-muted-foreground">
@@ -201,7 +201,7 @@ function SetPasswordStage({ token }: { token: string }) {
       <div
         data-testid="password-reset-expired"
         role="alert"
-        className="flex flex-col gap-3 rounded-md border p-4"
+        className="flex flex-col gap-3 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
       >
         <div className="flex flex-col gap-1">
           <h2 className="font-medium">{t('passwordReset.expiredTitle')}</h2>

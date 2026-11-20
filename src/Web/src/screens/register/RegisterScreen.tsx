@@ -6,6 +6,7 @@ import { isApiErrorCode } from '@/lib/api/client'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { FormField } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useRegister } from '@/screens/register/api'
 import {
   isSiteRelativePath,
@@ -84,7 +85,7 @@ export function RegisterScreen() {
     return (
       <section
         data-screen="SCR-007"
-        className="mx-auto flex w-full max-w-md flex-col gap-4"
+        className="mx-auto flex w-full max-w-[450px] flex-col gap-6 rounded-[2px] border border-[var(--border-strong)] bg-card p-6 text-card-foreground"
       >
         <h1 className="text-2xl font-semibold tracking-tight">
           {t('register.successTitle')}
@@ -92,7 +93,7 @@ export function RegisterScreen() {
         <div
           data-testid="registration-verification-notice"
           role="status"
-          className="flex flex-col gap-1 rounded-md border bg-accent/40 p-4"
+          className="flex flex-col gap-1 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
         >
           <h2 className="font-medium">{t('register.verificationSentTitle')}</h2>
           <p className="text-sm text-muted-foreground">
@@ -109,7 +110,7 @@ export function RegisterScreen() {
   return (
     <section
       data-screen="SCR-007"
-      className="mx-auto flex w-full max-w-md flex-col gap-6"
+      className="mx-auto flex w-full max-w-[450px] flex-col gap-6 rounded-[2px] border border-[var(--border-strong)] bg-card p-6 text-card-foreground"
     >
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -166,7 +167,7 @@ export function RegisterScreen() {
 
         <section
           aria-labelledby="privacy-notice-title"
-          className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3"
+          className="flex flex-col gap-2 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
         >
           <h2 id="privacy-notice-title" className="text-sm font-medium">
             {t('register.privacyNoticeTitle')}
@@ -179,23 +180,36 @@ export function RegisterScreen() {
           </p>
         </section>
 
-        <FormField
-          id="register-consent"
-          label={t('register.consentLabel')}
-          required
-          error={showConsentError ? t('register.consentInvalid') : undefined}
-        >
-          {(control) => (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-start gap-2">
             <input
-              {...control}
+              id="register-consent"
               type="checkbox"
-              className="size-4 rounded border-input"
+              required
+              aria-invalid={showConsentError ? true : undefined}
+              aria-describedby={showConsentError ? 'register-consent-error' : undefined}
+              className="mt-0.5 size-4 rounded border-input"
               disabled={register.isPending}
               checked={consent}
               onChange={(event) => setConsent(event.target.checked)}
             />
-          )}
-        </FormField>
+            <Label htmlFor="register-consent" className="leading-snug">
+              {t('register.consentLabel')}
+              <span aria-hidden="true" className="text-destructive">
+                *
+              </span>
+            </Label>
+          </div>
+          {showConsentError ? (
+            <p
+              id="register-consent-error"
+              role="alert"
+              className="text-xs font-medium text-destructive"
+            >
+              {t('register.consentInvalid')}
+            </p>
+          ) : null}
+        </div>
 
         {register.isError ? (
           <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">

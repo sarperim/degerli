@@ -55,7 +55,14 @@ export function AdminScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-h2 font-semibold">{t('screens.admin.title')}</h1>
+      <header className="flex flex-col gap-1 border-b border-border pb-4">
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">
+          {t('screens.admin.title')}
+        </h1>
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          {t('screens.admin.description')}
+        </p>
+      </header>
       <SectionNav
         items={items}
         activeId={activeSection}
