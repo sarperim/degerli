@@ -336,33 +336,58 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
     /// </summary>
     private static void RecordMetrics(string jobCode, IngestResult? result, TimeSpan elapsed)
     {
-        DegerliIngestionMetrics.JobDuration.Record(
-            elapsed.TotalSeconds,
-            new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
-            new KeyValuePair<string, object?>(DegerliIngestionMetrics.OutcomeTag, result?.Status ?? IngestResult.Failed));
+        var scope = DegerliIngestionMetrics.CurrentScope.Value;
+        var outcome = result?.Status ?? IngestResult.Failed;
+
+        if (scope is null)
+        {
+            DegerliIngestionMetrics.JobDuration.Record(
+                elapsed.TotalSeconds,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.OutcomeTag, outcome));
+        }
+        else
+        {
+            DegerliIngestionMetrics.JobDuration.Record(
+                elapsed.TotalSeconds,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.OutcomeTag, outcome),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.ScopeTag, scope));
+        }
 
         if (result is null)
         {
             return;
         }
 
-        ReportRows(jobCode, DegerliIngestionMetrics.Written, result.Written);
-        ReportRows(jobCode, DegerliIngestionMetrics.Unchanged, result.Unchanged);
-        ReportRows(jobCode, DegerliIngestionMetrics.Quarantined, result.Quarantined);
-        ReportRows(jobCode, DegerliIngestionMetrics.Skipped, result.Skipped);
+        ReportRows(jobCode, DegerliIngestionMetrics.Written, result.Written, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Unchanged, result.Unchanged, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Quarantined, result.Quarantined, scope);
+        ReportRows(jobCode, DegerliIngestionMetrics.Skipped, result.Skipped, scope);
     }
 
-    private static void ReportRows(string jobCode, string disposition, int count)
+    private static void ReportRows(string jobCode, string disposition, int count, string? scope)
     {
         if (count <= 0)
         {
             return;
         }
 
-        DegerliIngestionMetrics.JobRows.Add(
-            count,
-            new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
-            new KeyValuePair<string, object?>(DegerliIngestionMetrics.DispositionTag, disposition));
+        if (scope is null)
+        {
+            DegerliIngestionMetrics.JobRows.Add(
+                count,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.DispositionTag, disposition));
+        }
+        else
+        {
+            DegerliIngestionMetrics.JobRows.Add(
+                count,
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.JobCodeTag, jobCode),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.DispositionTag, disposition),
+                new KeyValuePair<string, object?>(DegerliIngestionMetrics.ScopeTag, scope));
+        }
     }
 
     private async Task RecordAsync(

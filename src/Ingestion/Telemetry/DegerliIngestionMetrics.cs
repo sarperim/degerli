@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 namespace Degerli.Ingestion.Telemetry;
@@ -36,6 +37,19 @@ public static class DegerliIngestionMetrics
 
     /// <summary>The <c>disposition</c> tag: which row count a measurement reports.</summary>
     public const string DispositionTag = "disposition";
+
+    /// <summary>
+    /// Optional ambient correlation tag key. Populated only when
+    /// <see cref="CurrentScope"/> has a non-null value on the active async flow (used by L2
+    /// tests so parallel xUnit test classes sharing the process-wide static <see cref="Meter"/>
+    /// can filter to their own run's measurements without adding cardinality in production).
+    /// </summary>
+    public const string ScopeTag = "telemetry_scope";
+
+    /// <summary>
+    /// Ambient scope identifier for the current async execution flow. Null in production.
+    /// </summary>
+    public static readonly AsyncLocal<string?> CurrentScope = new();
 
     /// <summary>A fact was written.</summary>
     public const string Written = "written";

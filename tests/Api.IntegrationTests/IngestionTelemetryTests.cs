@@ -222,12 +222,15 @@ public sealed class IngestionTelemetryTests : IClassFixture<PostgresFixture>, IC
     /// </summary>
     private sealed class IngestionMeterCollector : IDisposable
     {
+        private readonly string _scope = Guid.NewGuid().ToString("N");
         private readonly MeterListener _listener;
         private readonly List<RecordedMeasurement> _durations = [];
         private readonly List<RecordedRow> _rows = [];
 
         public IngestionMeterCollector()
         {
+            DegerliIngestionMetrics.CurrentScope.Value = _scope;
+
             _listener = new MeterListener
             {
                 InstrumentPublished = (instrument, listener) =>
@@ -243,7 +246,11 @@ public sealed class IngestionTelemetryTests : IClassFixture<PostgresFixture>, IC
             {
                 if (instrument.Name == "degerli.ingestion.job.duration")
                 {
-                    _durations.Add(new RecordedMeasurement(measurement, Snapshot(tags)));
+                    var snapshot = Snapshot(tags);
+                    if (snapshot.TryGetValue(DegerliIngestionMetrics.ScopeTag, out var scope) && scope == _scope)
+                    {
+                        _durations.Add(new RecordedMeasurement(measurement, snapshot));
+                    }
                 }
             });
 
@@ -251,7 +258,11 @@ public sealed class IngestionTelemetryTests : IClassFixture<PostgresFixture>, IC
             {
                 if (instrument.Name == "degerli.ingestion.job.rows")
                 {
-                    _rows.Add(new RecordedRow(measurement, Snapshot(tags)));
+                    var snapshot = Snapshot(tags);
+                    if (snapshot.TryGetValue(DegerliIngestionMetrics.ScopeTag, out var scope) && scope == _scope)
+                    {
+                        _rows.Add(new RecordedRow(measurement, snapshot));
+                    }
                 }
             });
 
@@ -262,7 +273,11 @@ public sealed class IngestionTelemetryTests : IClassFixture<PostgresFixture>, IC
 
         public IReadOnlyList<RecordedRow> Rows => _rows;
 
-        public void Dispose() => _listener.Dispose();
+        public void Dispose()
+        {
+            DegerliIngestionMetrics.CurrentScope.Value = null;
+            _listener.Dispose();
+        }
 
         private static IReadOnlyDictionary<string, string?> Snapshot(
             ReadOnlySpan<KeyValuePair<string, object?>> tags)
