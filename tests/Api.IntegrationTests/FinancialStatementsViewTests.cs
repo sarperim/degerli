@@ -276,10 +276,14 @@ public sealed class FinancialStatementsViewTests : IClassFixture<PostgresFixture
         Assert.Equal("no-data", derived.GetProperty("tangibleBookValue").GetProperty("state").GetString());
         Assert.Equal(JsonValueKind.Null, derived.GetProperty("tbvPerShare").GetProperty("value").ValueKind);
 
-        // EBITDA is not reported and the statement carries no D&A line, so the margin is null;
-        // the gross margin (its operands present) is served.
-        Assert.Equal(JsonValueKind.Null, derived.GetProperty("ebitdaMargin").GetProperty("value").ValueKind);
+        // EBITDA is derived from EBIT + CF DEPR_AMORT (standard TFRS/KAP placement), so
+        // `ebitdaMargin` is served alongside `grossMargin`.
         var lines = fy2025.GetProperty("lines");
+        var expectedEbitda = lines.GetProperty("IS").GetProperty("EBIT").GetProperty("value").GetDecimal()
+            + lines.GetProperty("CF").GetProperty("DEPR_AMORT").GetProperty("value").GetDecimal();
+        Assert.Equal(
+            expectedEbitda / lines.GetProperty("IS").GetProperty("REV").GetProperty("value").GetDecimal(),
+            derived.GetProperty("ebitdaMargin").GetProperty("value").GetDecimal());
         Assert.NotEqual(JsonValueKind.Null, derived.GetProperty("grossMargin").GetProperty("value").ValueKind);
         Assert.Equal(
             lines.GetProperty("IS").GetProperty("GROSS_PROFIT").GetProperty("value").GetDecimal()

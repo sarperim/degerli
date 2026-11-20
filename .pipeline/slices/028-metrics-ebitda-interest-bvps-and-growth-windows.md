@@ -8,6 +8,8 @@ scope:
   - src/Api/Stocks/StockFundamentalsEndpoints.cs
   - src/Web/src/screens/stock-page/StockSections.tsx
   - tests/Core.UnitTests/Metrics/ProfileMetricMatrixTests.cs
+  - tests/Api.IntegrationTests/FinancialStatementsViewTests.cs
+  - tests/Api.IntegrationTests/DcfBaselineEndpointTests.cs
 ---
 
 # SLICE-028 — Fix EBITDA (`DEPR_AMORT` on CF), Interest Coverage (`FIN_EXP` sign), Balance-Sheet BVPS Fallback & Growth Matrix Deduplication

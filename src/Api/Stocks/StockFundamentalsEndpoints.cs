@@ -278,7 +278,7 @@ public static class StockFundamentalsEndpoints
                     isRestated || IsRestated(prior?.IncomeStatement)),
                 ["grossMargin"] = Figure(Ratio(grossProfit, revenue), isRestated),
                 ["operatingMargin"] = Figure(Ratio(ebit, revenue), isRestated),
-                ["ebitdaMargin"] = Figure(Ratio(ebitda, revenue), isRestated),
+                ["ebitdaMargin"] = Figure(Ratio(ebitda, revenue), ebitdaRestated),
                 ["effectiveTaxRate"] = Figure(Ratio(tax, pretax), isRestated),
                 ["netMarginParent"] = Figure(Ratio(niParent, revenue), isRestated),
                 ["netWorkingCapital"] = Figure(nwc, bsRestated),
