@@ -86,22 +86,27 @@ export function DcfCalculatorScreen() {
 
   // Seed from the persisted draft exactly once, else from the served baseline.
   const storedDraft = useRef(useDraftStore.getState().dcfDraft as DcfDraft | null).current
-  const restored =
-    storedDraft && storedDraft.symbol === upperSymbol ? storedDraft.values : null
-  const [fields, setFields] = useState<DcfFieldMap | null>(restored)
+  const restored: DcfDraft | null =
+    storedDraft && storedDraft.symbol === upperSymbol ? storedDraft : null
+  const [fieldsDraft, setFieldsDraft] = useState<DcfDraft | null>(restored)
+  const fields: DcfFieldMap | null =
+    fieldsDraft && fieldsDraft.symbol === upperSymbol ? fieldsDraft.values : null
   const seeded = useRef(restored !== null)
   const prevSymbolRef = useRef(upperSymbol)
+  const computeResetRef = useRef(compute.reset)
+  computeResetRef.current = compute.reset
 
   useEffect(() => {
     if (prevSymbolRef.current === upperSymbol) return
     prevSymbolRef.current = upperSymbol
+    computeResetRef.current()
     const latestDraft = useDraftStore.getState().dcfDraft as DcfDraft | null
     if (latestDraft && latestDraft.symbol === upperSymbol) {
       seeded.current = true
-      setFields(latestDraft.values)
+      setFieldsDraft(latestDraft)
     } else {
       seeded.current = false
-      setFields(null)
+      setFieldsDraft(null)
     }
     setLoadedScenario(null)
     setPendingLoad(null)
@@ -112,14 +117,19 @@ export function DcfCalculatorScreen() {
     if (!baseline || seeded.current) return
     seeded.current = true
     // A missing canonical fact is seeded empty, never zero-filled (UXR-VAL-009).
-    setFields(paramsToFieldsAllowingMissing(baseline.params))
-  }, [baseline])
+    setFieldsDraft({
+      symbol: upperSymbol,
+      values: paramsToFieldsAllowingMissing(baseline.params),
+    })
+  }, [baseline, upperSymbol])
 
   // Persist the draft so navigation and the auth hop cannot lose it (UXR-G-021).
   const setDcfDraft = useDraftStore((state) => state.setDcfDraft)
   useEffect(() => {
-    if (fields) setDcfDraft({ symbol: upperSymbol, values: fields } satisfies DcfDraft)
-  }, [fields, upperSymbol, setDcfDraft])
+    if (fieldsDraft && fieldsDraft.symbol === upperSymbol) {
+      setDcfDraft(fieldsDraft)
+    }
+  }, [fieldsDraft, upperSymbol, setDcfDraft])
 
   // Scenario save/load state (FR-VAL-009/010; UXR-VAL-012..015/021).
   const [name, setName] = useState(() => useDraftStore.getState().dcfDraftName)
@@ -156,10 +166,10 @@ export function DcfCalculatorScreen() {
     const requested = scenarios.find((candidate) => candidate.id === requestedScenarioId)
     if (!requested) return
     appliedRequestedScenario.current = true
-    setFields(paramsToFields(requested.params))
+    setFieldsDraft({ symbol: upperSymbol, values: paramsToFields(requested.params) })
     setLoadedScenario(requested)
     setPendingLoad(null)
-  }, [requestedScenarioId, scenarios])
+  }, [requestedScenarioId, scenarios, upperSymbol])
 
   const validation = useMemo(
     () => (fields ? validateFields(fields) : { params: null, errors: {} }),
@@ -249,12 +259,19 @@ export function DcfCalculatorScreen() {
         : 'idle'
 
   function updateField(key: keyof DcfFieldMap, value: string) {
-    setFields((current) => (current ? { ...current, [key]: value } : current))
+    setFieldsDraft((current) =>
+      current && current.symbol === upperSymbol
+        ? { symbol: upperSymbol, values: { ...current.values, [key]: value } }
+        : current,
+    )
   }
 
   function resetToBaseline() {
     if (!baseline) return
-    setFields(paramsToFieldsAllowingMissing(baseline.params))
+    setFieldsDraft({
+      symbol: upperSymbol,
+      values: paramsToFieldsAllowingMissing(baseline.params),
+    })
     setLoadedScenario(null)
   }
 
@@ -265,7 +282,7 @@ export function DcfCalculatorScreen() {
 
   /** Load a scenario: seed its params exactly, then recompute (FR-VAL-010). */
   function applyLoad(scenario: SavedScenario) {
-    setFields(paramsToFields(scenario.params))
+    setFieldsDraft({ symbol: upperSymbol, values: paramsToFields(scenario.params) })
     setLoadedScenario(scenario)
     setPendingLoad(null)
   }
@@ -350,7 +367,7 @@ export function DcfCalculatorScreen() {
               {t('dcf.sectorNotApplicable.body', { symbol: upperSymbol })}
             </p>
           </div>
-          {price ? (
+          {baselineQuery.data?.price ? (
             <div className="flex flex-wrap items-baseline gap-3 border-t border-border pt-3">
               <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
                 {t('dcf.price')}
@@ -359,15 +376,15 @@ export function DcfCalculatorScreen() {
                 data-testid="dcf-price"
                 className="font-mono text-xl font-bold tabular-nums text-foreground"
               >
-                {formatDecimal(locale, price.value, 2, 2)}
+                {formatDecimal(locale, baselineQuery.data.price.value, 2, 2)}
               </span>
               <span
                 data-testid="dcf-price-asof"
                 className="font-mono text-xs text-muted-foreground"
               >
-                <AsOfDate asOf={price.asOf} />
+                <AsOfDate asOf={baselineQuery.data.price.asOf} />
               </span>
-              {price.stale ? <StaleBadge /> : null}
+              {baselineQuery.data.price.stale ? <StaleBadge /> : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -783,7 +800,7 @@ function SensitivityRangeGauge({
     .flat()
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
 
-  if (finiteValues.length < 2) return null
+  if (finiteValues.length < 2 || !Number.isFinite(fairValue)) return null
 
   const bear = Math.min(...finiteValues)
   const bull = Math.max(...finiteValues)
@@ -794,13 +811,14 @@ function SensitivityRangeGauge({
   const minDomain = Math.min(...points)
   const maxDomain = Math.max(...points)
   const span = maxDomain - minDomain
-  if (span <= 0) return null
+  if (!Number.isFinite(span) || span <= 0) return null
 
   const pct = (v: number) =>
     Math.min(100, Math.max(0, ((v - minDomain) / span) * 100))
 
-  const bandLeft = pct(bear)
-  const bandWidth = Math.max(2, pct(bull) - bandLeft)
+  const rawBandLeft = pct(bear)
+  const bandWidth = Math.min(100, Math.max(2, pct(bull) - rawBandLeft))
+  const bandLeft = Math.min(rawBandLeft, 100 - bandWidth)
   const impliedPos = pct(fairValue)
   const eodPos =
     typeof eodPrice === 'number' && Number.isFinite(eodPrice)
