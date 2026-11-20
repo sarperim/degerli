@@ -408,6 +408,8 @@
     }
   },
   "stockList": {
+    "kicker": "Kapsanan evren",
+    "backToOverview": "Genel Bakış",
     "searchLabel": "Hisse adı veya koduna göre ara",
     "searchPlaceholder": "Kod veya şirket adı",
     "sectorLabel": "Sektör",
@@ -431,6 +433,7 @@
     "errorBody": "Liste yüklenirken bir sorun oluştu. Lütfen tekrar deneyin."
   },
   "screener": {
+    "kicker": "Temel tarayıcı",
     "families": {
       "valuation": "Değerleme",
       "quality": "Kalite",
@@ -454,8 +457,10 @@
     "clearAll": "Tümünü temizle",
     "run": "Taramayı çalıştır",
     "running": "Taranıyor…",
+    "runValidationHint": "Çalıştırmak için tüm ölçütlere geçerli sayısal sınırlar girin.",
     "runErrorTitle": "Tarama çalıştırılamadı",
     "runErrorBody": "Tarama çalıştırılırken bir sorun oluştu. Ölçütleriniz korundu; lütfen tekrar deneyin.",
+    "resultsInitialSummary": "Ölçüt ekleyip çalıştırın",
     "initialTitle": "Henüz sonuç yok",
     "initialBody": "Ölçüt ekleyip taramayı çalıştırdığınızda eşleşen hisseler burada listelenir.",
     "resultsTitle": "Eşleşen hisseler",
