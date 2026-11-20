@@ -658,7 +658,10 @@
       "eyebrow": "BIST 100 · GÜN SONU",
       "eyebrowIntraday": "BIST 100 · GÜN İÇİ",
       "primaryCta": "Hisseleri tara",
-      "secondaryCta": "Hisse listesini incele"
+      "secondaryCta": "Hisse listesini incele",
+      "scrubHint": "64 seanslık BIST 100 EOD eğrisini incelemek için imleci arka plan üzerinde gezdirin",
+      "plateCaption": "ŞEK. 01 — İSTANBUL FİNANS ARŞİVİ",
+      "swapPhoto": "Görsel değiştir"
     },
     "macro": {
       "title": "Makro göstergeler",
