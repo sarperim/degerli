@@ -360,6 +360,7 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
             .GroupBy(row => row.Installment!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First().Row, StringComparer.OrdinalIgnoreCase);
 
+        var seen = new HashSet<(DateOnly ExDate, decimal Amount)>();
         foreach (var row in ReadRows(fields.GetValueOrDefault("cashDividendList")))
         {
             var installment = Text(row, "installmentOrder");
@@ -383,15 +384,21 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
                 throw new SourcePayloadException(raw, new JsonException("VYK dividend row carries no parseable gross amount."));
             }
 
-            // Without the proposed ex-date the instalment has no calendar position: leave it out
-            // rather than invent one (the source simply did not place it yet).
+            // Without the ex-date the instalment has no calendar position: leave it out rather
+            // than invent one (the source simply did not place it yet). Prefer confirmed
+            // `usageDate` when present, falling back to proposed `advisedUsageDate`.
             if (!paymentDates.TryGetValue(installment, out var payment))
             {
                 continue;
             }
 
-            var exDate = ParseDate(Text(payment, "advisedUsageDate"));
+            var exDate = ParseDate(Text(payment, "usageDate")) ?? ParseDate(Text(payment, "advisedUsageDate"));
             if (exDate is null)
+            {
+                continue;
+            }
+
+            if (!seen.Add((exDate.Value, amount)))
             {
                 continue;
             }
@@ -442,41 +449,69 @@ public sealed class DividendsSourceAdapter : ISourceAdapter<DividendsPayload>, I
         return fields;
     }
 
-    /// <summary>The row list of a table field (<c>{object:{void:[{object:{void:[…fields]}}]}}</c>).</summary>
+    /// <summary>
+    /// The row list of a table field (<c>{object:{void:[{object:{void:[…fields]}}]}}</c>).
+    /// MKK VYK's XML-to-JSON bridge serializes single-row tables as a single JSON object
+    /// (<c>{object:{void:{object:{void:[…fields]}}}}</c>) instead of an array; both forms are read.
+    /// </summary>
     private static IEnumerable<Dictionary<string, JsonElement>> ReadRows(JsonElement table)
     {
         if (table.ValueKind != JsonValueKind.Object
             || !table.TryGetProperty("object", out var wrapper)
             || wrapper.ValueKind != JsonValueKind.Object
-            || !wrapper.TryGetProperty("void", out var rows)
-            || rows.ValueKind != JsonValueKind.Array)
+            || !wrapper.TryGetProperty("void", out var rows))
+        {
+            yield break;
+        }
+
+        if (rows.ValueKind == JsonValueKind.Object)
+        {
+            var single = ReadRowFields(rows);
+            if (single is not null)
+            {
+                yield return single;
+            }
+
+            yield break;
+        }
+
+        if (rows.ValueKind != JsonValueKind.Array)
         {
             yield break;
         }
 
         foreach (var row in rows.EnumerateArray())
         {
-            if (row.ValueKind != JsonValueKind.Object
-                || !row.TryGetProperty("object", out var body)
-                || body.ValueKind != JsonValueKind.Object
-                || !body.TryGetProperty("void", out var fields)
-                || fields.ValueKind != JsonValueKind.Array)
+            var map = ReadRowFields(row);
+            if (map is not null)
             {
-                continue;
+                yield return map;
             }
-
-            var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-            foreach (var field in fields.EnumerateArray())
-            {
-                var name = ReadString(field, "property");
-                if (name is not null)
-                {
-                    map[name] = field.Clone();
-                }
-            }
-
-            yield return map;
         }
+    }
+
+    private static Dictionary<string, JsonElement>? ReadRowFields(JsonElement row)
+    {
+        if (row.ValueKind != JsonValueKind.Object
+            || !row.TryGetProperty("object", out var body)
+            || body.ValueKind != JsonValueKind.Object
+            || !body.TryGetProperty("void", out var fields)
+            || fields.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var field in fields.EnumerateArray())
+        {
+            var name = ReadString(field, "property");
+            if (name is not null)
+            {
+                map[name] = field.Clone();
+            }
+        }
+
+        return map;
     }
 
     /// <summary>One named field's scalar text (the deepest <c>string</c> member of its wrapper).</summary>
