@@ -31,7 +31,6 @@ export function LanguageToggle() {
           <button
             key={lng}
             type="button"
-            aria-label={labelFor[lng]}
             aria-pressed={active}
             lang={lng}
             onClick={() => {
@@ -45,7 +44,7 @@ export function LanguageToggle() {
                 : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
             )}
           >
-            {lng.toUpperCase()}
+            {labelFor[lng]}
           </button>
         )
       })}
