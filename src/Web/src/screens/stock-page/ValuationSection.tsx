@@ -165,6 +165,18 @@ export function ValuationHistoryChart({
   )
 }
 
+/** Percentage geometry for a bullet track: both endpoints scale to the larger magnitude. */
+function bulletPercents(value: number, median: number) {
+  const scale = Math.max(Math.abs(value), Math.abs(median))
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return { fill: 0, median: 0 }
+  }
+  return {
+    fill: Math.min(100, (Math.abs(value) / scale) * 100),
+    median: Math.min(100, (Math.abs(median) / scale) * 100),
+  }
+}
+
 /** One strip cell: own value, sector median, peer count (UXR-RES-013/024/025). */
 function StripMetric({
   code,
@@ -177,6 +189,11 @@ function StripMetric({
 }) {
   const { t } = useTranslation()
   const label = t(VALUATION_METRIC_LABEL_KEYS[code])
+  const value = entry.notMeaningful ? null : entry.value
+  const bullet =
+    value !== null && entry.sectorMedian !== null
+      ? bulletPercents(value, entry.sectorMedian)
+      : null
   return (
     <div
       data-metric={code}
@@ -202,6 +219,29 @@ function StripMetric({
             formatMetric(locale, code, entry.value)
           )}
         </span>
+        {/*
+          A bullet track is drawn only when both the stock multiple and the
+          sector median are served; siblings without a comparison keep their
+          text rows and no gauge (nothing fabricated).
+        */}
+        {bullet !== null ? (
+          <span
+            data-slot="bullet-track"
+            aria-hidden="true"
+            className="relative mt-1 block h-1.5 w-full bg-secondary"
+          >
+            <span
+              data-slot="bullet-fill"
+              className="absolute inset-y-0 left-0 bg-[var(--brand-accent)]"
+              style={{ width: `${bullet.fill}%` }}
+            />
+            <span
+              data-slot="bullet-median"
+              className="absolute -top-1 -bottom-1 w-0.5 bg-foreground"
+              style={{ left: `calc(${bullet.median}% - 1px)` }}
+            />
+          </span>
+        ) : null}
         <span data-slot="sector-median" className="text-xs text-muted-foreground">
           {entry.sectorMedian === null
             ? t('stockPage.valuation.strip.noMedian')

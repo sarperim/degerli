@@ -54,7 +54,7 @@ export function SectionNav({
                   'inline-flex whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors',
                   'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   active
-                    ? 'border-primary text-foreground'
+                    ? 'border-[var(--brand-accent)] text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >

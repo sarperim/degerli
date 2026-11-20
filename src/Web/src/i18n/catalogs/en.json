@@ -120,6 +120,7 @@
     "sectionErrorTitle": "This section could not be loaded",
     "sectionErrorBody": "Something went wrong while loading this section. The other sections are unaffected.",
     "dcfHandoff": "Open DCF calculator",
+    "backToStockList": "← Stock List",
     "valuation": {
       "current": {
         "title": "Current multiples"
