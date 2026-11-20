@@ -230,8 +230,11 @@ public static class StockFundamentalsEndpoints
             var bsRestated = IsRestated(bs0);
 
             var ebit = Line(is0, Ebit, lines);
-            var depr = Line(is0, DeprAmort, lines);
-            var ebitda = Line(is0, Ebitda, lines) ?? Sum(ebit, depr);
+            var isDepr = Line(is0, DeprAmort, lines);
+            var depr = isDepr ?? Line(cf0, DeprAmort, lines);
+            var directEbitda = Line(is0, Ebitda, lines);
+            var ebitda = directEbitda ?? Sum(ebit, depr);
+            var ebitdaRestated = isRestated || (directEbitda is null && isDepr is null && IsRestated(cf0));
             var ni = Line(is0, Ni, lines);
             var fcf = CanonicalMetrics.FreeCashFlow(Line(cf0, Ocf, lines), Line(cf0, Capex, lines));
 
@@ -275,7 +278,7 @@ public static class StockFundamentalsEndpoints
                     isRestated || IsRestated(prior?.IncomeStatement)),
                 ["grossMargin"] = Figure(Ratio(grossProfit, revenue), isRestated),
                 ["operatingMargin"] = Figure(Ratio(ebit, revenue), isRestated),
-                ["ebitdaMargin"] = Figure(Ratio(ebitda, revenue), isRestated),
+                ["ebitdaMargin"] = Figure(Ratio(ebitda, revenue), ebitdaRestated),
                 ["effectiveTaxRate"] = Figure(Ratio(tax, pretax), isRestated),
                 ["netMarginParent"] = Figure(Ratio(niParent, revenue), isRestated),
                 ["netWorkingCapital"] = Figure(nwc, bsRestated),
@@ -293,7 +296,7 @@ public static class StockFundamentalsEndpoints
                 ["fiscalYear"] = entry.FiscalYear,
                 ["periodEndDate"] = entry.PeriodEndDate,
                 ["revenue"] = Figure(revenue, isRestated),
-                ["ebitda"] = Figure(ebitda, isRestated),
+                ["ebitda"] = Figure(ebitda, ebitdaRestated),
                 ["ebit"] = Figure(ebit, isRestated),
                 ["netIncome"] = Figure(ni, isRestated),
                 ["fcf"] = Figure(fcf, fcfRestated),
@@ -543,7 +546,6 @@ public static class StockFundamentalsEndpoints
 
         var equity = Line(sheet, TotalEquity, lines);
         var shares = Line(sheet, SharesDiluted, lines);
-        var bvps = equity is not null && shares is > 0m ? equity.Value / shares.Value : (decimal?)null;
 
         // The market-data facts (TKT-foundation-086, 01 v1.5.60 §10.9.11), two distinct stores
         // and two distinct units:
@@ -559,6 +561,12 @@ public static class StockFundamentalsEndpoints
         var derivedCount = await db.PriceDerivedShareCounts
             .AsNoTracking()
             .FirstOrDefaultAsync(row => row.InstrumentId == instrument.Id, cancellationToken);
+        var effectiveShares = shares is > 0m
+            ? shares
+            : (derivedCount?.SharesOutstanding is > 0 ? (decimal?)derivedCount.SharesOutstanding : null);
+        var bvps = equity is not null && effectiveShares is > 0m
+            ? equity.Value / effectiveShares.Value
+            : (decimal?)null;
         var shareCount = new
         {
             paidInCapital = storedCapital?.PaidInCapital,

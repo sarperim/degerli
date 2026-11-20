@@ -577,10 +577,9 @@ public sealed class DcfBaselineEndpointTests : IClassFixture<PostgresFixture>
                 Assert.Equal(income["REV"], serving.GetProperty("revenue").GetProperty("value").GetDecimal());
                 Assert.Equal(income["NI"], serving.GetProperty("netIncome").GetProperty("value").GetDecimal());
 
-                // The IS row carries neither `EBITDA` nor `DEPR_AMORT`, so the pinned
-                // `Line(EBITDA) ?? Sum(EBIT, DEPR_AMORT)` seam answers null — honestly null,
-                // never a figure guessed from the cash-flow statement's own D&A.
-                Assert.Equal(JsonValueKind.Null, serving.GetProperty("ebitda").GetProperty("value").ValueKind);
+                // Under TFRS/KAP, `DEPR_AMORT` is reported on the cash-flow statement; EBITDA is
+                // derived canonically as `EBIT + CF DEPR_AMORT` (SLICE-028).
+                Assert.Equal(JsonValueKind.Number, serving.GetProperty("ebitda").GetProperty("value").ValueKind);
             }
         }
 

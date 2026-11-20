@@ -210,6 +210,9 @@ public static class CanonicalMetrics
         // CFO/cash interest compares a flow with the CF statement's own interest paid line,
         // whose KAP sign is an outflow — the ratio's denominator is the absolute figure.
         decimal? cashInterest = t.CashInterest is null ? null : Math.Abs(t.CashInterest.Value);
+        // KAP reports financial expenses (`FIN_EXP`) as negative outflows; take the magnitude
+        // so interest coverage is `EBIT / |FIN_EXP|` (NULL when |FIN_EXP| == 0).
+        decimal? finExp = t.FinExp is null ? null : Math.Abs(t.FinExp.Value);
 
         var metrics = new List<ComputedMetric>(MetricCodes.All.Count)
         {
@@ -254,7 +257,7 @@ public static class CanonicalMetrics
                 input),
 
             Add(MetricCodes.NetDebtEbitda, (ebitda is > 0m && debt is not null && t.Cash is not null) ? (debt.Value - t.Cash.Value) / ebitda.Value : null, input),
-            Add(MetricCodes.InterestCoverage, (t.FinExp is > 0m && ebit is not null) ? ebit.Value / t.FinExp.Value : null, input),
+            Add(MetricCodes.InterestCoverage, (finExp is > 0m && ebit is not null) ? ebit.Value / finExp.Value : null, input),
             Add(MetricCodes.CurrentRatio, (t.CurLiab is > 0m && t.CurAssets is not null) ? t.CurAssets.Value / t.CurLiab.Value : null, input),
 
             Add(MetricCodes.DivYield, (input.HasEverPaidDividend && price > 0m && input.DividendTtmPerShare is not null) ? input.DividendTtmPerShare.Value / price : null, input),
