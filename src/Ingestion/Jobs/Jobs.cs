@@ -328,7 +328,7 @@ public sealed class IngestionJobRunner : IIngestionJobRunner
     }
 
     /// <summary>
-    /// Emits the ingestion meters (SLICE-014) for one run — the single instrumentation seam.
+    /// Emits the ingestion meters (SLICE-023) for one run — the single instrumentation seam.
     /// A null <paramref name="result"/> is a thrown run: its outcome is
     /// <see cref="IngestResult.Failed"/> and it accounts for no rows. The instruments are
     /// no-ops when nothing listens, and the tag vocabulary is bounded (<c>job_code</c> /

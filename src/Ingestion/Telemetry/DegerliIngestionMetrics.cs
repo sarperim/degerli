@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 namespace Degerli.Ingestion.Telemetry;
 
 /// <summary>
-/// The ingestion lane's <see cref="System.Diagnostics.Metrics"/> instruments (SLICE-014).
+/// The ingestion lane's <see cref="System.Diagnostics.Metrics"/> instruments (SLICE-023).
 /// <para>
 /// <b>Instrumentation is unconditional, export is gated.</b> These instruments always exist,
 /// but <see cref="System.Diagnostics.Metrics"/> instruments are no-ops without a listener, so

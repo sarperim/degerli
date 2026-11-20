@@ -11,7 +11,7 @@ using OpenTelemetry.Trace;
 namespace Degerli.Api.Infrastructure;
 
 /// <summary>
-/// OpenTelemetry composition for the API host (SLICE-014).
+/// OpenTelemetry composition for the API host (SLICE-023).
 /// <para>
 /// <b>The gating rule:</b> nothing is registered unless <c>OpenTelemetry:Enabled</c> is
 /// <c>true</c>. Instrumentation in the ingestion lane is unconditional
@@ -24,7 +24,7 @@ namespace Degerli.Api.Infrastructure;
 /// <para>
 /// When enabled it subscribes AspNetCore + HttpClient + System.Runtime instrumentation, the
 /// <c>Degerli.Ingestion</c> meter, an EOD-session freshness gauge and the OTLP exporter
-/// pointed at <c>OpenTelemetry:OtlpEndpoint</c> (the dev Aspire dashboard's OTLP listener).
+/// pointed at <c>OpenTelemetry:OtlpEndpoint</c> (the dev Grafana LGTM OTLP collector).
 /// </para>
 /// </summary>
 public static class OpenTelemetrySetup
@@ -32,7 +32,7 @@ public static class OpenTelemetrySetup
     /// <summary>The configuration key that turns the whole pipeline on.</summary>
     public const string EnabledKey = "OpenTelemetry:Enabled";
 
-    /// <summary>The OTLP endpoint the exporter ships to (the dev Aspire dashboard's listener).</summary>
+    /// <summary>The OTLP endpoint the exporter ships to (the dev Grafana LGTM OTLP collector).</summary>
     public const string OtlpEndpointKey = "OpenTelemetry:OtlpEndpoint";
 
     /// <summary>The gauge's instrument name: the EOD display lag, in seconds.</summary>
@@ -91,7 +91,7 @@ public static class OpenTelemetrySetup
 }
 
 /// <summary>
-/// Owns the EOD-session display-lag gauge (SLICE-014): an
+/// Owns the EOD-session display-lag gauge (SLICE-023): an
 /// <see cref="ObservableGauge{T}"/> on the <c>Degerli.Ingestion</c> meter named
 /// <c>degerli.market.eod_session_lag_seconds</c>.
 /// <para>

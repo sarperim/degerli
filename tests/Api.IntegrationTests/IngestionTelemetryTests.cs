@@ -137,7 +137,7 @@ public sealed class IngestionTelemetryTests : IClassFixture<PostgresFixture>, IC
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["OpenTelemetry:Enabled"] = enabled ? "true" : "false",
-                    ["OpenTelemetry:OtlpEndpoint"] = "http://localhost:18889",
+                    ["OpenTelemetry:OtlpEndpoint"] = "http://localhost:4317",
                 })
                 .Build();
 

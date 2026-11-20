@@ -521,8 +521,8 @@ The API carries OpenTelemetry instrumentation (`src/Api/Infrastructure/OpenTelem
 whose **export is off by default** — nothing is shipped, and `compose.prod.yml` is
 untouched, so the VPS stack runs byte-identically whether or not you read this paragraph.
 Local debugging is opt-in: run `docker compose -f compose.dev.yml --profile tools up -d
-aspire-dashboard`, set `OpenTelemetry__Enabled=true` in `.env` (the OTLP endpoint defaults to
-`http://aspire-dashboard:18889`), and open the dashboard at `http://localhost:18888` — the
+grafana`, set `OpenTelemetry__Enabled=true` in `.env` (the OTLP endpoint defaults to
+`http://grafana:4317`), and open Grafana at `http://localhost:3000` — the
 `Degerli.Ingestion` meters (job duration and per-disposition row counts) plus the EOD
 session lag gauge appear there. Turning telemetry on in production is an explicit `.env`
 decision, not a default this stack makes for you.
