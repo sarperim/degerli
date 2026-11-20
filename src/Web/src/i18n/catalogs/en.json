@@ -658,7 +658,10 @@
       "eyebrow": "BIST 100 · EOD",
       "eyebrowIntraday": "BIST 100 · INTRADAY",
       "primaryCta": "Screen BIST 100",
-      "secondaryCta": "Browse stock list"
+      "secondaryCta": "Browse stock list",
+      "scrubHint": "Move cursor across the backdrop to scrub the 64-session BIST 100 EOD curve",
+      "plateCaption": "FIG. 01 — İSTANBUL FINANCIAL ARCHIVE",
+      "swapPhoto": "Swap photo"
     },
     "macro": {
       "title": "Macro indicators",
