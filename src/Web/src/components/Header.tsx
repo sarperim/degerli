@@ -41,7 +41,7 @@ export function Header() {
       className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md"
     >
       <div className="mx-auto flex max-w-content flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0">
-        <NavLink to="/" className="flex shrink-0 items-baseline gap-2">
+        <NavLink to="/" data-magnetic="" className="flex shrink-0 items-baseline gap-2">
           <span
             lang="tr"
             className="text-sm font-bold tracking-[0.12em] uppercase text-foreground"
@@ -62,6 +62,7 @@ export function Header() {
               key={route.id}
               to={route.path}
               end={route.path === '/'}
+              data-magnetic=""
               className={({ isActive }) =>
                 cn(
                   'shrink-0 whitespace-nowrap border-b-[1.5px] py-1 text-[13px] transition-colors hover:text-foreground',

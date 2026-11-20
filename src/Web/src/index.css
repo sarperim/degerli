@@ -41,3 +41,78 @@
     outline-color: var(--color-ring);
   }
 }
+
+/* Tactile atmosphere from geminisonuiux.html: interactive canvas grid, film grain & magnetic reticle */
+#global-grid-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.cursor-reticle {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 100;
+  transform: translate3d(-100px, -100px, 0);
+  opacity: 0;
+  transition: opacity 160ms ease;
+  will-change: transform, width, height;
+}
+
+.cursor-reticle.visible {
+  opacity: 1;
+}
+
+.cursor-reticle span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-color: var(--brand-accent);
+  border-style: solid;
+}
+
+.cursor-reticle .tl {
+  top: 0;
+  left: 0;
+  border-width: 1.5px 0 0 1.5px;
+}
+
+.cursor-reticle .tr {
+  top: 0;
+  right: 0;
+  border-width: 1.5px 1.5px 0 0;
+}
+
+.cursor-reticle .bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 1.5px 1.5px;
+}
+
+.cursor-reticle .br {
+  bottom: 0;
+  right: 0;
+  border-width: 0 1.5px 1.5px 0;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .cursor-reticle {
+    display: none !important;
+  }
+}
