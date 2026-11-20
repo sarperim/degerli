@@ -115,8 +115,8 @@ function ChangeValue({ value, className }: { value: number; className?: string }
     <span
       className={cn(
         'inline-flex items-center gap-1 tabular-nums',
-        value > 0 && 'text-emerald-700 dark:text-emerald-400',
-        value < 0 && 'text-rose-600 dark:text-rose-400',
+        value > 0 && 'text-[var(--pos)]',
+        value < 0 && 'text-[var(--neg)]',
         className,
       )}
     >
