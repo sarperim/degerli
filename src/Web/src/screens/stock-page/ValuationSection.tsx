@@ -197,13 +197,15 @@ function StripMetric({
   return (
     <div
       data-metric={code}
-      className="flex flex-col gap-1 rounded-md border p-2"
+      className="flex flex-col gap-1.5 border-b border-border pb-4 lg:border-b-0 lg:pb-0"
     >
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="flex flex-col gap-0.5">
+      <dt className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="flex flex-col gap-1">
         <span
           data-slot="stock-value"
-          className="text-sm font-medium tabular-nums text-foreground"
+          className="font-mono text-2xl font-medium tracking-tight tabular-nums text-foreground"
         >
           {/*
             "Anlamsız" is a verdict about the metric (e.g. P/E on negative
@@ -228,7 +230,7 @@ function StripMetric({
           <span
             data-slot="bullet-track"
             aria-hidden="true"
-            className="relative mt-1 block h-1.5 w-full bg-secondary"
+            className="relative my-1 block h-1.5 w-full bg-secondary"
           >
             <span
               data-slot="bullet-fill"
@@ -242,7 +244,7 @@ function StripMetric({
             />
           </span>
         ) : null}
-        <span data-slot="sector-median" className="text-xs text-muted-foreground">
+        <span data-slot="sector-median" className="font-mono text-[11px] text-muted-foreground">
           {entry.sectorMedian === null
             ? t('stockPage.valuation.strip.noMedian')
             : `${t('stockPage.valuation.strip.sectorMedian')}: ${formatMetric(
@@ -253,7 +255,7 @@ function StripMetric({
         </span>
         {/* A median over zero peers is not a comparison basis — never "0 emsal". */}
         {entry.peerCount !== null && entry.peerCount > 0 ? (
-          <span data-slot="peer-count" className="text-xs text-muted-foreground">
+          <span data-slot="peer-count" className="font-mono text-[10px] text-muted-foreground">
             {t('stockPage.valuation.strip.peerCount', { count: entry.peerCount })}
           </span>
         ) : null}
@@ -296,7 +298,7 @@ export function VsSectorStrip({ strip }: { strip: Record<string, SectorStripEntr
       </h3>
       {hasComparablePeers ? (
         <>
-          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
             {VALUATION_METRIC_ORDER.map((code) => {
               const entry = strip[code]
               if (entry === undefined) return null
@@ -304,7 +306,10 @@ export function VsSectorStrip({ strip }: { strip: Record<string, SectorStripEntr
             })}
           </dl>
           {peExcluded > 0 ? (
-            <p data-slot="pe-exclusion" className="text-xs text-muted-foreground">
+            <p
+              data-slot="pe-exclusion"
+              className="border-l-2 border-[var(--border-strong)] pl-3 font-mono text-xs text-muted-foreground"
+            >
               {t('stockPage.valuation.strip.exclusionDisclosure', { count: peExcluded })}
             </p>
           ) : null}

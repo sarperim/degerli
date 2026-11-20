@@ -88,8 +88,9 @@ export function StockPage() {
   const activeSection = useDraftStore((state) => state.activeStockSection)
   const setActiveSection = useDraftStore((state) => state.setActiveStockSection)
 
-  const sectionItems = SECTION_ORDER.map((id) => ({
+  const sectionItems = SECTION_ORDER.map((id, idx) => ({
     id,
+    index: String(idx + 1).padStart(2, '0'),
     label: t(SECTION_TITLE_KEYS[id]),
   }))
 
@@ -150,22 +151,25 @@ export function StockPage() {
         </div>
       </header>
 
-      <SectionNav
-        items={sectionItems}
-        activeId={activeSection}
-        onSelect={handleSelect}
-        ariaLabel={t('stockPage.sectionsLabel')}
-        className="lg:sticky lg:top-[54px] z-30 bg-background/90 backdrop-blur"
-      />
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[200px_1fr] lg:gap-12">
+        <SectionNav
+          items={sectionItems}
+          activeId={activeSection}
+          onSelect={handleSelect}
+          ariaLabel={t('stockPage.sectionsLabel')}
+          orientation="rail"
+          className="lg:sticky lg:top-[76px]"
+        />
 
-      <div className="flex flex-col gap-6">
-        <OverviewSection symbol={symbol} />
-        <ValuationSection symbol={symbol} />
-        <FinancialsSection symbol={symbol} />
-        <ProfitabilitySection symbol={symbol} />
-        <GrowthSection symbol={symbol} />
-        <BalanceSheetSection symbol={symbol} />
-        <DividendsSection symbol={symbol} />
+        <div className="flex min-w-0 flex-col gap-8">
+          <OverviewSection symbol={symbol} />
+          <ValuationSection symbol={symbol} />
+          <FinancialsSection symbol={symbol} />
+          <ProfitabilitySection symbol={symbol} />
+          <GrowthSection symbol={symbol} />
+          <BalanceSheetSection symbol={symbol} />
+          <DividendsSection symbol={symbol} />
+        </div>
       </div>
     </section>
   )
