@@ -57,7 +57,7 @@ export function VerifyEmailScreen() {
   return (
     <section
       data-screen="SCR-007"
-      className="mx-auto flex w-full max-w-md flex-col gap-4"
+      className="mx-auto flex w-full max-w-[450px] flex-col gap-6 rounded-[2px] border border-[var(--border-strong)] bg-card p-6 text-card-foreground"
     >
       <h1 className="text-2xl font-semibold tracking-tight">
         {t('verifyEmail.title')}
@@ -70,14 +70,20 @@ export function VerifyEmailScreen() {
       ) : null}
 
       {verify.isSuccess ? (
-        <div role="status" className="flex flex-col gap-1 rounded-md border bg-accent/40 p-4">
+        <div
+          role="status"
+          className="flex flex-col gap-1 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
+        >
           <h2 className="font-medium">{t('verifyEmail.verifiedTitle')}</h2>
           <p className="text-sm text-muted-foreground">{t('verifyEmail.verifiedBody')}</p>
         </div>
       ) : null}
 
       {failed ? (
-        <div role="alert" className="flex flex-col gap-3 rounded-md border p-4">
+        <div
+          role="alert"
+          className="flex flex-col gap-3 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
+        >
           <div className="flex flex-col gap-1">
             <h2 className="font-medium">
               {unauthenticated

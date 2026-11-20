@@ -52,11 +52,11 @@ export function AccountSettingsScreen() {
       data-route-id="accountSettings"
       className="mx-auto flex w-full max-w-2xl flex-col gap-6"
     >
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
+      <header className="flex flex-col gap-1 border-b border-border pb-5">
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">
           {t('screens.accountSettings.title')}
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {t('screens.accountSettings.description')}
         </p>
       </header>
@@ -146,7 +146,7 @@ function LanguageSection({ current }: { current: SupportedLanguage }) {
     <section
       data-settings-section="language"
       data-testid="settings-language"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 border-b border-border pb-6"
     >
       <h2 className="text-lg font-semibold">{t('accountSettings.languageTitle')}</h2>
       <div
@@ -239,7 +239,7 @@ function PasswordSection() {
     <section
       data-settings-section="password"
       data-testid="settings-password"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 border-b border-border pb-6"
     >
       <h2 className="text-lg font-semibold">{t('accountSettings.passwordTitle')}</h2>
       <form
@@ -355,7 +355,7 @@ function EntryPointsSection() {
     <section
       data-settings-section="entry-points"
       data-testid="settings-entry-points"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 border-b border-border pb-6"
     >
       <h2 className="text-lg font-semibold">{t('accountSettings.entryPointsTitle')}</h2>
       <div className="flex flex-wrap gap-3">
@@ -391,7 +391,7 @@ function DeletionSection() {
     <section
       data-settings-section="deletion"
       data-testid="settings-deletion"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 border-b border-border pb-6"
     >
       <h2 className="text-lg font-semibold">{t('accountSettings.deletionTitle')}</h2>
       <p className="text-sm text-muted-foreground">
@@ -448,7 +448,7 @@ function VerificationSection({ email, verified }: { email: string; verified: boo
     <section
       data-settings-section="verification"
       data-testid="settings-verification"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 border-b border-border pb-6"
     >
       <h2 className="text-lg font-semibold">{t('accountSettings.verificationTitle')}</h2>
       <p data-testid="verification-email" className="text-sm">

@@ -138,11 +138,11 @@ export function DcfScenariosScreen() {
       data-route-id="dcfScenarios"
       className="flex flex-col gap-6"
     >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
+      <header className="flex flex-col gap-2 border-b border-border pb-5">
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">
           {t('screens.dcfScenarios.title')}
         </h1>
-        <p className="max-w-2xl text-muted-foreground">
+        <p className="max-w-2xl text-sm text-muted-foreground">
           {t('screens.dcfScenarios.description')}
         </p>
       </header>
@@ -202,16 +202,16 @@ export function DcfScenariosScreen() {
                   <h2
                     id={`dcf-scenarios-group-${group.symbol}-heading`}
                     data-testid={`dcf-scenarios-group-${group.symbol}-heading`}
-                    className="text-h3 font-medium text-foreground"
+                    className="font-mono text-sm font-semibold uppercase tracking-[0.06em] text-foreground"
                   >
                     {group.symbol}
                   </h2>
-                  <TableContainer>
+                  <TableContainer className="rounded-none border-0">
                     <Table>
                       <TableCaption>
                         {t('dcfScenarios.groupLabel', { symbol: group.symbol })}
                       </TableCaption>
-                      <TableHeader>
+                      <TableHeader className="bg-transparent">
                         <TableRow>
                           <TableHead>{t('dcfScenarios.columns.name')}</TableHead>
                           <TableHead>{t('dcfScenarios.columns.actions')}</TableHead>

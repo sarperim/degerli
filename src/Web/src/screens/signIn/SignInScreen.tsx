@@ -79,7 +79,7 @@ export function SignInScreen() {
   return (
     <section
       data-screen="SCR-008"
-      className="mx-auto flex w-full max-w-md flex-col gap-6"
+      className="mx-auto flex w-full max-w-[450px] flex-col gap-6 rounded-[2px] border border-[var(--border-strong)] bg-card p-6 text-card-foreground"
     >
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">

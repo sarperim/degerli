@@ -164,11 +164,11 @@ export function SavedScreensScreen() {
       data-route-id="savedScreens"
       className="flex flex-col gap-6"
     >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
+      <header className="flex flex-col gap-2 border-b border-border pb-5">
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">
           {t('screens.savedScreens.title')}
         </h1>
-        <p className="max-w-2xl text-muted-foreground">
+        <p className="max-w-2xl text-sm text-muted-foreground">
           {t('screens.savedScreens.description')}
         </p>
       </header>
@@ -240,10 +240,10 @@ export function SavedScreensScreen() {
               }
             />
           ) : (
-            <TableContainer>
+            <TableContainer className="rounded-none border-0">
               <Table>
                 <TableCaption>{t('savedScreens.listLabel')}</TableCaption>
-                <TableHeader>
+                <TableHeader className="bg-transparent">
                   <TableRow>
                     <TableHead>{t('savedScreens.columns.name')}</TableHead>
                     <TableHead>{t('savedScreens.columns.actions')}</TableHead>
