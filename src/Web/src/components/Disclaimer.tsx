@@ -32,7 +32,7 @@ export function Disclaimer({
       {...(isNote ? { role: 'note' } : {})}
       aria-label={t('disclaimer.label')}
       className={cn(
-        'flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground',
+        'flex items-start gap-2.5 rounded-[2px] border border-border border-l-2 border-l-[var(--border-strong)] bg-card px-3 py-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground',
         className,
       )}
     >

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '@/i18n'
+import { cn } from '@/lib/utils'
 
 /**
  * Header language toggle (UXR-G-013/014).
@@ -23,24 +23,29 @@ export function LanguageToggle() {
     <div
       role="group"
       aria-label={t('header.languageToggle')}
-      className="inline-flex items-center rounded-md border p-0.5"
+      className="inline-flex h-[30px] shrink-0 items-center overflow-hidden rounded-[2px] border border-border bg-transparent font-mono text-[10px]"
     >
-      {SUPPORTED_LANGUAGES.map((lng) => {
+      {SUPPORTED_LANGUAGES.map((lng, index) => {
         const active = lng === current
         return (
-          <Button
+          <button
             key={lng}
             type="button"
-            size="sm"
-            variant={active ? 'default' : 'ghost'}
             aria-pressed={active}
             lang={lng}
             onClick={() => {
               if (!active) void i18n.changeLanguage(lng)
             }}
+            className={cn(
+              'h-full cursor-pointer px-2 font-mono text-[10px] tracking-wide transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+              index > 0 && 'border-l border-border',
+              active
+                ? 'bg-accent font-medium text-foreground'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+            )}
           >
             {labelFor[lng]}
-          </Button>
+          </button>
         )
       })}
     </div>

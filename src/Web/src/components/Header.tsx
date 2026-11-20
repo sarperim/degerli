@@ -38,13 +38,18 @@ export function Header() {
   return (
     <header
       aria-label={t('header.ariaLabel')}
-      className="border-b bg-background"
+      className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md"
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2.5 px-4 py-2.5 lg:min-h-16 lg:flex-nowrap lg:items-center lg:gap-4">
-        <NavLink to="/" className="flex shrink-0 flex-col leading-tight">
-          <span className="text-lg font-semibold">{t('app.name')}</span>
-          <span className="hidden text-[11px] leading-tight text-muted-foreground xl:block">
-            {t('app.tagline')}
+      <div className="mx-auto flex max-w-content flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0">
+        <NavLink to="/" className="flex shrink-0 items-baseline gap-2">
+          <span
+            lang="tr"
+            className="text-sm font-bold tracking-[0.12em] uppercase text-foreground"
+          >
+            {t('app.name')}
+          </span>
+          <span className="hidden font-mono text-[10px] tracking-[0.06em] text-muted-foreground sm:inline">
+            BIST EOD
           </span>
         </NavLink>
 
@@ -59,10 +64,10 @@ export function Header() {
               end={route.path === '/'}
               className={({ isActive }) =>
                 cn(
-                  'shrink-0 whitespace-nowrap text-sm transition-colors hover:text-foreground',
+                  'shrink-0 whitespace-nowrap border-b-[1.5px] py-1 text-[13px] transition-colors hover:text-foreground',
                   isActive
-                    ? 'font-medium text-foreground'
-                    : 'text-muted-foreground',
+                    ? 'border-[var(--brand-accent)] font-medium text-foreground'
+                    : 'border-transparent text-muted-foreground',
                 )
               }
             >

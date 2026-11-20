@@ -27,16 +27,17 @@ export function AuthState() {
       <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
         <span
           data-testid="auth-email"
-          className="hidden max-w-[12rem] truncate text-xs text-muted-foreground sm:inline"
+          className="hidden max-w-[12rem] truncate font-mono text-[11px] text-muted-foreground sm:inline"
         >
           {data.email}
         </span>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           disabled={logout.isPending}
           onClick={() => logout.mutate()}
+          className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
         >
           {t('header.signOut')}
         </Button>
@@ -45,15 +46,16 @@ export function AuthState() {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
-      <span className="hidden text-xs text-muted-foreground sm:inline">
+    <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs">
+      <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
         {t('header.anonymous')}
       </span>
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => window.location.assign('/sign-in')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
       >
         {t('header.signIn')}
       </Button>
@@ -61,6 +63,7 @@ export function AuthState() {
         type="button"
         size="sm"
         onClick={() => window.location.assign('/register')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
       >
         {t('header.register')}
       </Button>

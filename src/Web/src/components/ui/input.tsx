@@ -33,9 +33,9 @@ export function Input({
       type={type}
       aria-invalid={isInvalid ? true : undefined}
       className={cn(
-        'h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow]',
+        'h-9 w-full min-w-0 rounded-[2px] border border-[var(--border-strong)] bg-card px-3 py-1 text-sm text-foreground outline-none transition-[color,border-color,box-shadow]',
         'placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+        'focus-visible:border-[var(--brand-accent)] focus-visible:ring-ring/40 focus-visible:ring-[2px]',
         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
         'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
         'file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium',
