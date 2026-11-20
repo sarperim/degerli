@@ -151,9 +151,8 @@ describe('TC-MOV-016 equity blocks render with values', () => {
     // Cap-weighted sector daily performance is a fraction (0.00253 = +0,25%).
     expect(sectorA).toHaveTextContent('+0,25%')
     expect(sectorA).toHaveTextContent(signedPct(0.00253))
-    expect(sectorA).toHaveAccessibleName(
-      tr('marketOverview.blocks.sectors.linkLabel').replace('{{sector}}', 'A'),
-    )
+    expect(sectorA).not.toHaveAttribute('aria-label')
+    expect(sectorA).toHaveAccessibleName(/^A\s*\+0,25%$/)
   })
 
   it('renders market breadth counts', async () => {
@@ -699,6 +698,9 @@ describe('TKT-foundation-049 — SCR-001 price state (TC-MOV-016 extension)', ()
 
     await screen.findByTestId('price-state')
     expect(screen.queryByTestId('market-asof-explanation')).toBeNull()
+    const eyebrow = screen.getByTestId('market-hero-eyebrow')
+    expect(eyebrow).toHaveTextContent(tr('marketOverview.hero.eyebrowIntraday'))
+    expect(eyebrow).not.toHaveTextContent(/GÜN SONU|EOD/i)
   })
 
   it('keeps the closing-values claim once the served price is the completed close', async () => {
@@ -708,6 +710,9 @@ describe('TKT-foundation-049 — SCR-001 price state (TC-MOV-016 extension)', ()
     expect(await screen.findByTestId('price-state')).toHaveAttribute(
       'data-price-state',
       'close',
+    )
+    expect(screen.getByTestId('market-hero-eyebrow')).toHaveTextContent(
+      tr('marketOverview.hero.eyebrow'),
     )
     expect(
       await screen.findByTestId('market-asof-explanation'),
@@ -732,6 +737,51 @@ describe('SLICE-019 editorial hero, breadth bar, and a11y', () => {
 
     const violations = await runA11y(container)
     expect(violations, formatA11yViolations(violations)).toEqual([])
+  })
+
+  it('renders proportional breadth bar segments and omits the bar when total is zero', async () => {
+    server.use(marketOverviewHandler(), marketMacroHandler(MACRO_STRIP_FIXTURE))
+    const { unmount } = renderPage()
+
+    const bar = await screen.findByTestId('breadth-bar')
+    const segments = bar.querySelectorAll('span')
+    expect(segments).toHaveLength(3)
+    expect(segments[0]).toHaveStyle({ width: '62.5%' })
+    expect(segments[1]).toHaveStyle({ width: '6.25%' })
+    expect(segments[2]).toHaveStyle({ width: '31.25%' })
+    unmount()
+
+    server.use(
+      marketOverviewHandler({
+        ...MARKET_OVERVIEW_FIXTURE,
+        breadth: { advancing: 0, declining: 0, unchanged: 0 },
+      }),
+      marketMacroHandler(MACRO_STRIP_FIXTURE),
+    )
+    renderPage()
+    await screen.findByTestId('market-block-breadth')
+    expect(screen.queryByTestId('breadth-bar')).toBeNull()
+  })
+
+  it('renders diverging positive and negative sector return bars', async () => {
+    server.use(
+      marketOverviewHandler({
+        ...MARKET_OVERVIEW_FIXTURE,
+        sectorPerformance: { A: 0.04, B: -0.02 },
+      }),
+      marketMacroHandler(MACRO_STRIP_FIXTURE),
+    )
+    renderPage()
+
+    const posBar = await screen.findByTestId('sector-bar-A')
+    expect(posBar.className).toContain('left-1/2')
+    expect(posBar.className).toContain('bg-[var(--pos)]')
+    expect(posBar).toHaveStyle({ width: '50%' })
+
+    const negBar = await screen.findByTestId('sector-bar-B')
+    expect(negBar.className).toContain('right-1/2')
+    expect(negBar.className).toContain('bg-[var(--neg)]')
+    expect(negBar).toHaveStyle({ width: '25%' })
   })
 })
 

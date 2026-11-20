@@ -282,7 +282,10 @@ function InflationPair({
           {t('marketOverview.macro.inflationTitle')}
         </h3>
         {spread !== null ? (
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          <span
+            data-testid="macro-inflation-spread"
+            className="font-mono text-xs text-muted-foreground tabular-nums"
+          >
             {t('marketOverview.macro.spread', {
               value: formatNumber(locale, spread, {
                 maximumFractionDigits: 2,

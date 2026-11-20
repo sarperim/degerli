@@ -445,4 +445,13 @@ describe('SLICE-019 editorial inflation pair & a11y', () => {
     const violations = await runA11y(container)
     expect(violations, formatA11yViolations(violations)).toEqual([])
   })
+
+  it('omits the inflation spread when the independent measure is unavailable', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_DEGRADED_FIXTURE))
+    renderStrip()
+
+    await screen.findByTestId('macro-TUIK_CPI')
+    expect(screen.queryByTestId('macro-inflation-spread')).toBeNull()
+    expect(screen.getByTestId('macro-independent-unavailable')).toBeInTheDocument()
+  })
 })

@@ -163,7 +163,7 @@ function IndexLevelsBlock({ query }: { query: BlockQuery }) {
     <section
       data-testid="market-block-indices"
       aria-label={t('marketOverview.blocks.indices.title')}
-      className="sm:col-span-2 lg:col-span-2 flex flex-col justify-center"
+      className="sm:col-span-2 lg:col-span-2 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-border"
     >
       <h2 className="sr-only">{t('marketOverview.blocks.indices.title')}</h2>
       {query.isPending ? (
@@ -310,9 +310,6 @@ function SectorPerformanceBlock({
                       <Link
                         data-testid={`sector-entry-${code}`}
                         to={`/stocks?sector=${encodeURIComponent(code)}`}
-                        aria-label={t('marketOverview.blocks.sectors.linkLabel', {
-                          sector: code,
-                        })}
                         className="grid grid-cols-[minmax(88px,140px)_1fr_auto] sm:grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-3 sm:gap-4 px-2 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span className="truncate font-medium text-foreground">
@@ -325,11 +322,13 @@ function SectorPerformanceBlock({
                           <span className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--border-strong)]" />
                           {change >= 0 ? (
                             <span
+                              data-testid={`sector-bar-${code}`}
                               className="absolute left-1/2 h-2 bg-[var(--pos)]"
                               style={{ width: `${pctWidth}%` }}
                             />
                           ) : (
                             <span
+                              data-testid={`sector-bar-${code}`}
                               className="absolute right-1/2 h-2 bg-[var(--neg)]"
                               style={{ width: `${pctWidth}%` }}
                             />
@@ -380,7 +379,7 @@ function BreadthBlock({ query }: { query: BlockQuery }) {
     <section
       data-testid="market-block-breadth"
       aria-label={t('marketOverview.blocks.breadth.title')}
-      className="flex flex-col justify-between gap-3 p-4 sm:p-5"
+      className="flex flex-col justify-between gap-3 p-4 sm:p-5 border-b sm:border-b-0 sm:border-r border-border"
     >
       <h2
         lang={lang}
@@ -417,6 +416,7 @@ function BreadthBlock({ query }: { query: BlockQuery }) {
               </dl>
               {total > 0 ? (
                 <div
+                  data-testid="breadth-bar"
                   className="flex h-1 w-full overflow-hidden bg-border"
                   aria-hidden="true"
                 >
@@ -732,10 +732,13 @@ export function MarketOverviewPage() {
         <div className="relative z-10 flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <span
+              data-testid="market-hero-eyebrow"
               lang={lang}
               className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-[var(--stale-foreground)]"
             >
-              {t('marketOverview.hero.eyebrow')}
+              {envelope?.priceState?.state === 'intraday'
+                ? t('marketOverview.hero.eyebrowIntraday')
+                : t('marketOverview.hero.eyebrow')}
             </span>
             {envelope ? (
               <>
@@ -812,7 +815,7 @@ export function MarketOverviewPage() {
       </header>
 
       {/* 4-Column KPI Ribbon */}
-      <div className="border-y border-border bg-card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+      <div className="border-y border-border bg-card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <IndexLevelsBlock query={indices} />
         <BreadthBlock query={breadth} />
         <MarketVolumeBlock query={volume} />

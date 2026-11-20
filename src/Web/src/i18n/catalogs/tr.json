@@ -650,6 +650,7 @@
     "errorBody": "Bu bölüm yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.",
     "hero": {
       "eyebrow": "BIST 100 · GÜN SONU",
+      "eyebrowIntraday": "BIST 100 · GÜN İÇİ",
       "primaryCta": "Hisseleri tara",
       "secondaryCta": "Hisse listesini incele"
     },
@@ -684,7 +685,6 @@
         "kicker": "Sektörler",
         "title": "Sektör performansı",
         "subtitle": "Dönem seçin veya hisse listesini filtrelemek için bir sektöre tıklayın.",
-        "linkLabel": "{{sector}} sektörü — hisse listesini aç",
         "periodLabel": "Dönem",
         "period": {
           "daily": "1G",

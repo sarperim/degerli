@@ -650,6 +650,7 @@
     "errorBody": "Something went wrong while loading this section. Please try again.",
     "hero": {
       "eyebrow": "BIST 100 · EOD",
+      "eyebrowIntraday": "BIST 100 · INTRADAY",
       "primaryCta": "Screen BIST 100",
       "secondaryCta": "Browse stock list"
     },
@@ -684,7 +685,6 @@
         "kicker": "Sectors",
         "title": "Sector performance",
         "subtitle": "Select a timeframe or choose any sector bar to filter the stock list.",
-        "linkLabel": "{{sector}} sector — open the stock list",
         "periodLabel": "Period",
         "period": {
           "daily": "1D",

@@ -3,6 +3,7 @@ id: SLICE-019
 status: done
 scope:
   - .pipeline/slices/019-editorial-market-overview.md
+  - src/Web/src/index.css
   - src/Web/src/routes/MarketOverviewPage.tsx
   - src/Web/src/routes/MacroStrip.tsx
   - src/Web/src/i18n/catalogs/tr.json
@@ -47,6 +48,16 @@ Redesign `SCR-001` (`MarketOverviewPage.tsx` and `MacroStrip.tsx`) from the unif
 
 ## Verification
 
-- [ ] `cd src/Web && npm run build` passes.
-- [ ] `cd src/Web && npx vitest run src/routes/MarketOverviewPage.test.tsx src/routes/MacroStrip.test.tsx src/test/i18nParity.test.ts src/test/adviceVocabulary.test.ts` passes.
-- [ ] Playwright visual check on `/` (dark & light, desktop & `375px` mobile).
+- [x] `cd src/Web && npm run build && npm run lint && npm run check:i18n && npm run check:advice` passes.
+- [x] `cd src/Web && npx vitest run src/routes/MarketOverviewPage.test.tsx src/routes/MacroStrip.test.tsx src/test/i18nParity.test.ts src/test/adviceVocabulary.test.ts` passes (4 files, 61 tests).
+- [x] Playwright verification on `/` (`1280×400`, `768×800`, `375×800` against `vite preview`) confirms 0 axe-core violations, `0px` scroll shift on TR↔EN toggle at `1280×400`, and responsive KPI ribbon borders.
+
+## Result
+
+- Implemented the borderless editorial layout for `SCR-001` (`MarketOverviewPage.tsx` and `MacroStrip.tsx`) with editorial hero + 4-column KPI ribbon, Market Valuation + paired inflation tracks + 4-column macro row, diverging sector return bars, and open movers ledgers while preserving all honest-data invariants and `data-testid` contracts.
+- Resolved Review Round 1 findings on PR #195:
+  - **CI-1:** Removed `aria-label` from `sector-entry-*` `<Link>` elements in `MarketOverviewPage.tsx` (and unused `marketOverview.blocks.sectors.linkLabel` from `tr.json`/`en.json`) so visible text matches the accessible name (`label-content-name-mismatch` clean).
+  - **CI-2:** Added `overflow-anchor: none` on `body` in `src/Web/src/index.css` so Chromium viewport scroll anchoring does not shift `window.scrollY` when TR/EN hero copy changes line wrap height (`0px` shift at `1280×400`).
+  - **DR-1:** Added `marketOverview.hero.eyebrowIntraday` in `tr.json`/`en.json` and switched the hero eyebrow away from `EOD` / `GÜN SONU` when `envelope?.priceState?.state === 'intraday'`.
+  - **DR-2:** Replaced `divide-y sm:divide-y-0 sm:divide-x` on the KPI ribbon with explicit responsive borders on `IndexLevelsBlock` and `BreadthBlock`.
+  - **DR-3 / DR-4:** Added unit tests for proportional/empty breadth bar, diverging positive/negative sector bars, intraday eyebrow, and omitted inflation spread when `INDEP_CPI` is unavailable; updated this slice doc.
