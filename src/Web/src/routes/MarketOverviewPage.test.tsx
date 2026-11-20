@@ -10,15 +10,18 @@ import { catalogValue } from '@/test/i18n'
 import { fillTemplate, sessionClockTime } from '@/test/priceState'
 import {
   API_BASE,
+  MACRO_STRIP_FIXTURE,
   MARKET_OVERVIEW_FIXTURE,
   MARKET_PRICE_STATE_CLOSE,
   MARKET_PRICE_STATE_INTRADAY,
   MARKET_PRICE_STATE_INTRADAY_AFTER_CLOSE,
+  marketMacroHandler,
   marketOverviewHandler,
   problemResponse,
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import { renderWithProviders } from '@/test/render'
+import { formatA11yViolations, runA11y } from '@/test/a11y'
 
 /**
  * TC-MOV-016 (equity blocks, L3 portion) and TC-MOV-025 (per-block independence,
@@ -709,6 +712,26 @@ describe('TKT-foundation-049 — SCR-001 price state (TC-MOV-016 extension)', ()
     expect(
       await screen.findByTestId('market-asof-explanation'),
     ).toHaveTextContent(tr('screens.marketOverview.asOfExplanation'))
+  })
+})
+
+describe('SLICE-019 editorial hero, breadth bar, and a11y', () => {
+  it('renders hero CTA links to /screener and /stocks and passes axe-core', async () => {
+    server.use(marketOverviewHandler(), marketMacroHandler(MACRO_STRIP_FIXTURE))
+    const { container } = renderPage()
+
+    await screen.findByTestId('market-block-indices')
+    await screen.findByTestId('macro-TUIK_CPI')
+
+    expect(
+      screen.getByRole('link', { name: tr('marketOverview.hero.primaryCta') }),
+    ).toHaveAttribute('href', '/screener')
+    expect(
+      screen.getByRole('link', { name: tr('marketOverview.hero.secondaryCta') }),
+    ).toHaveAttribute('href', '/stocks')
+
+    const violations = await runA11y(container)
+    expect(violations, formatA11yViolations(violations)).toEqual([])
   })
 })
 

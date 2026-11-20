@@ -15,6 +15,7 @@ import {
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import { renderWithProviders } from '@/test/render'
+import { formatA11yViolations, runA11y } from '@/test/a11y'
 
 /**
  * TC-MOV-016 (macro-strip half, L3 portion), TC-MOV-017 (L3 portion), TC-MOV-018
@@ -429,5 +430,19 @@ describe('TKT-foundation-072 (i) — macro-strip units are localized labels, not
     const unit = await screen.findByTestId('macro-unit-GOLD')
     expect(unit).toHaveTextContent(catalogValue('en', 'units.unknown'))
     expect(unit).not.toHaveTextContent('XAU/ons_v2')
+  })
+})
+
+describe('SLICE-019 editorial inflation pair & a11y', () => {
+  it('renders spread note when both inflation measures are available and passes axe-core', async () => {
+    server.use(marketMacroHandler(MACRO_STRIP_FIXTURE))
+    const { container } = renderStrip()
+
+    await screen.findByTestId('macro-TUIK_CPI')
+    // 58.3 - 45.2 = 13.1 (formatted in TR locale with +13,1)
+    expect(screen.getByTestId('macro-inflation')).toHaveTextContent('+13,1')
+
+    const violations = await runA11y(container)
+    expect(violations, formatA11yViolations(violations)).toEqual([])
   })
 })

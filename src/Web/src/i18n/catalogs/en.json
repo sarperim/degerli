@@ -648,9 +648,15 @@
     "moverLinkLabel": "{{symbol}} {{change}} {{volume}} — change, volume",
     "errorTitle": "This section could not be loaded",
     "errorBody": "Something went wrong while loading this section. Please try again.",
+    "hero": {
+      "eyebrow": "BIST 100 · EOD",
+      "primaryCta": "Screen BIST 100",
+      "secondaryCta": "Browse stock list"
+    },
     "macro": {
       "title": "Macro indicators",
       "inflationTitle": "Inflation",
+      "spread": "Spread: {{value}} pp",
       "eodNote": "Macro data are end-of-day (EOD) values; they are not real-time.",
       "cadence": {
         "monthly": "Latest published value — this series is published monthly.",
@@ -675,7 +681,9 @@
         "xu30": "BIST 30"
       },
       "sectors": {
+        "kicker": "Sectors",
         "title": "Sector performance",
+        "subtitle": "Select a timeframe or choose any sector bar to filter the stock list.",
         "linkLabel": "{{sector}} sector — open the stock list",
         "periodLabel": "Period",
         "period": {
@@ -692,9 +700,13 @@
         "unchanged": "Unchanged"
       },
       "movers": {
+        "kicker": "Volume-qualified movers",
         "title": "Top movers",
         "gainers": "Gainers",
         "losers": "Losers",
+        "symbolCol": "Stock",
+        "changeCol": "1D %",
+        "volumeCol": "Volume",
         "empty": "There are no movers to show."
       },
       "volume": {

@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 
 import { AsOfDate, NoDataState, StaleBadge } from '@/components/honest-data'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { MacroStrip } from '@/routes/MacroStrip'
 import { PriceStateHeader } from '@/screens/price-state/PriceStateHeader'
@@ -23,13 +23,13 @@ import { cn } from '@/lib/utils'
  * SCR-001 — Market Overview (Home) equity blocks, navigation and disclaimer
  * (UX `market-overview.md`; FR-MOV-001..006, 011..013, 020, 021; UC-MOV-001/004).
  *
- * The daily "discover" entry point: index levels, sector performance (entries link
- * to the Stock List pre-filtered), market breadth, top movers with volume (entries
- * link to the stock page), total market volume, and the market-valuation block with
- * its loss-maker exclusion disclosure. The macro strip (TKT-mov-006) is rendered
- * below the equity grid from its own endpoint (separate failure domain); the
- * informational-only disclaimer is rendered by the shell footer for research routes
- * (UXR-G-016).
+ * The daily "discover" entry point: editorial hero + 4-column KPI ribbon
+ * (indices, breadth, volume), Band 01 pairing market valuation with the macro
+ * strip (TKT-mov-006, separate failure domain), Band 02 diverging sector
+ * return bars (entries link to the Stock List pre-filtered), and Band 03 open
+ * borderless movers ledgers (entries link to the stock page). The
+ * informational-only disclaimer is rendered by the shell footer for research
+ * routes (UXR-G-016).
  *
  * Each block is its own query instance against the snapshot endpoint (M-5,
  * architecture §8.1), so a block loads, fails and retries independently — a single
@@ -80,30 +80,18 @@ function Unavailable() {
   return <NoDataState state="unavailable" />
 }
 
-/** A dashboard block: its own heading + independent loading/error/success states. */
-function Block({
-  title,
-  testId,
+/** Query state switcher shared across borderless bands and KPI cells. */
+function BlockContent({
   query,
   children,
 }: {
-  title: string
-  testId: string
   query: BlockQuery
   children: (data: MarketOverviewResponse) => ReactNode
 }) {
-  return (
-    <section
-      data-testid={testId}
-      aria-label={title}
-      className="flex flex-col gap-3 rounded-lg border bg-card text-card-foreground p-4"
-    >
-      <h2 className="text-h3 font-semibold tracking-tight">{title}</h2>
-      {query.isPending ? <BlockSkeleton /> : null}
-      {query.isError ? <BlockError onRetry={() => void query.refetch()} /> : null}
-      {query.isSuccess ? children(query.data) : null}
-    </section>
-  )
+  if (query.isPending) return <BlockSkeleton />
+  if (query.isError) return <BlockError onRetry={() => void query.refetch()} />
+  if (query.isSuccess) return <>{children(query.data)}</>
+  return null
 }
 
 /** A daily % change with its sign and an arrow — never colour-only (SCR-001 §9). */
@@ -126,31 +114,44 @@ function ChangeValue({ value, className }: { value: number; className?: string }
   )
 }
 
-function IndexRow({
+function IndexCell({
   id,
   label,
   index,
+  lead = false,
 }: {
   id: string
   label: string
   index: IndexLevel
+  lead?: boolean
 }) {
   const { i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
+  const lang = i18n.resolvedLanguage ?? 'tr'
   return (
     <div
       data-testid={`index-${id}`}
-      className="flex items-baseline justify-between gap-3"
+      className="flex flex-col justify-between gap-2 p-4 sm:p-5"
     >
-      <dt className="font-medium text-foreground">{label}</dt>
-      <dd className="flex items-baseline gap-3">
-        <span className="tabular-nums">
+      <dt
+        lang={lang}
+        className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      >
+        {label}
+      </dt>
+      <dd className="flex flex-col gap-1">
+        <span
+          className={cn(
+            'font-mono font-medium leading-none tracking-tight tabular-nums text-foreground',
+            lead ? 'text-[26px] sm:text-[28px]' : 'text-[22px]',
+          )}
+        >
           {formatNumber(locale, index.level, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}
         </span>
-        <ChangeValue value={index.changePct} />
+        <ChangeValue value={index.changePct} className="font-mono text-xs font-medium" />
       </dd>
     </div>
   )
@@ -159,30 +160,44 @@ function IndexRow({
 function IndexLevelsBlock({ query }: { query: BlockQuery }) {
   const { t } = useTranslation()
   return (
-    <Block
-      title={t('marketOverview.blocks.indices.title')}
-      testId="market-block-indices"
-      query={query}
+    <section
+      data-testid="market-block-indices"
+      aria-label={t('marketOverview.blocks.indices.title')}
+      className="sm:col-span-2 lg:col-span-2 flex flex-col justify-center"
     >
-      {(data) =>
-        data.indices ? (
-          <dl className="flex flex-col gap-2">
-            <IndexRow
+      <h2 className="sr-only">{t('marketOverview.blocks.indices.title')}</h2>
+      {query.isPending ? (
+        <div className="p-4 sm:p-5">
+          <BlockSkeleton />
+        </div>
+      ) : null}
+      {query.isError ? (
+        <div className="p-4 sm:p-5">
+          <BlockError onRetry={() => void query.refetch()} />
+        </div>
+      ) : null}
+      {query.isSuccess ? (
+        query.data.indices ? (
+          <dl className="grid h-full grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
+            <IndexCell
               id="xu100"
               label={t('marketOverview.blocks.indices.xu100')}
-              index={data.indices.xu100}
+              index={query.data.indices.xu100}
+              lead
             />
-            <IndexRow
+            <IndexCell
               id="xu30"
               label={t('marketOverview.blocks.indices.xu30')}
-              index={data.indices.xu30}
+              index={query.data.indices.xu30}
             />
           </dl>
         ) : (
-          <Unavailable />
+          <div className="p-4 sm:p-5">
+            <Unavailable />
+          </div>
         )
-      }
-    </Block>
+      ) : null}
+    </section>
   )
 }
 
@@ -212,7 +227,7 @@ function SectorPeriodSelector({
     <div
       role="group"
       aria-label={t('marketOverview.blocks.sectors.periodLabel')}
-      className="inline-flex items-center rounded-md border p-0.5"
+      className="inline-flex w-fit items-center rounded-[2px] border border-border bg-card p-0.5"
     >
       {options.map(({ value, labelKey }) => {
         const active = value === period
@@ -224,6 +239,7 @@ function SectorPeriodSelector({
             variant={active ? 'default' : 'ghost'}
             aria-pressed={active}
             data-testid={`sector-period-${value}`}
+            className="font-mono text-xs"
             onClick={() => {
               if (!active) onPeriodChange(value)
             }}
@@ -245,54 +261,93 @@ function SectorPerformanceBlock({
   period: SectorPeriod
   onPeriodChange: (next: SectorPeriod) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <Block
-      title={t('marketOverview.blocks.sectors.title')}
-      testId="market-block-sectors"
-      query={query}
+    <section
+      data-testid="market-block-sectors"
+      aria-label={t('marketOverview.blocks.sectors.title')}
+      className="border-b border-border py-10 grid grid-cols-1 lg:grid-cols-[0.29fr_0.71fr] gap-8 lg:gap-10 items-start"
     >
-      {(data) => {
-        const entries = Object.entries(data.sectorPerformance)
-        return (
-          <div className="flex flex-col gap-3">
-            <SectorPeriodSelector period={period} onPeriodChange={onPeriodChange} />
-            {entries.length === 0 ? (
-              <Unavailable />
-            ) : (
-              <ul className="flex flex-col divide-y">
-                {entries.map(([code, change]) => (
-                  <li key={code}>
-                    <Link
-                      data-testid={`sector-entry-${code}`}
-                      to={`/stocks?sector=${encodeURIComponent(code)}`}
-                      aria-label={t('marketOverview.blocks.sectors.linkLabel', {
-                        sector: code,
-                      })}
-                      className="flex items-baseline justify-between gap-3 py-2 underline-offset-4 hover:underline focus-visible:underline"
-                    >
-                      <span className="font-medium text-foreground">{code}</span>
-                      {/*
-                        The daily change is supplementary to the link's purpose (open
-                        the filtered list). Presenting it as a parenthetical aside keeps
-                        the link's accessible name (sector + intent) stable while the
-                        visible non-parenthetical text stays contained in that name
-                        (WCAG 2.5.3 Label in Name; UXR-G-027).
-                      */}
-                      <span className="text-muted-foreground">
-                        {'('}
-                        <ChangeValue value={change} />
-                        {')'}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+      <div className="flex flex-col gap-3">
+        <span
+          lang={lang}
+          className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+        >
+          {t('marketOverview.blocks.sectors.kicker')}
+        </span>
+        <h2 className="text-h2 font-semibold tracking-tight text-foreground">
+          {t('marketOverview.blocks.sectors.title')}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {t('marketOverview.blocks.sectors.subtitle')}
+        </p>
+        <div className="pt-1">
+          <SectorPeriodSelector period={period} onPeriodChange={onPeriodChange} />
+        </div>
+      </div>
+
+      <div>
+        <BlockContent query={query}>
+          {(data) => {
+            const entries = Object.entries(data.sectorPerformance)
+            if (entries.length === 0) return <Unavailable />
+            const maxAbs = Math.max(
+              ...entries.map(([, val]) => Math.abs(val)),
+              0.0001,
+            )
+
+            return (
+              <ul className="flex flex-col border-y border-border divide-y divide-border">
+                {entries.map(([code, change]) => {
+                  const pctWidth =
+                    change === 0
+                      ? 0
+                      : Math.max((Math.abs(change) / maxAbs) * 50, 1.5)
+                  return (
+                    <li key={code}>
+                      <Link
+                        data-testid={`sector-entry-${code}`}
+                        to={`/stocks?sector=${encodeURIComponent(code)}`}
+                        aria-label={t('marketOverview.blocks.sectors.linkLabel', {
+                          sector: code,
+                        })}
+                        className="grid grid-cols-[minmax(88px,140px)_1fr_auto] sm:grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-3 sm:gap-4 px-2 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="truncate font-medium text-foreground">
+                          {code}
+                        </span>
+                        <div
+                          className="relative flex h-4 items-center"
+                          aria-hidden="true"
+                        >
+                          <span className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--border-strong)]" />
+                          {change >= 0 ? (
+                            <span
+                              className="absolute left-1/2 h-2 bg-[var(--pos)]"
+                              style={{ width: `${pctWidth}%` }}
+                            />
+                          ) : (
+                            <span
+                              className="absolute right-1/2 h-2 bg-[var(--neg)]"
+                              style={{ width: `${pctWidth}%` }}
+                            />
+                          )}
+                        </div>
+                        <span className="font-mono text-sm text-right">
+                          <ChangeValue value={change} />
+                        </span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
-            )}
-          </div>
-        )
-      }}
-    </Block>
+            )
+          }}
+        </BlockContent>
+      </div>
+    </section>
   )
 }
 
@@ -300,51 +355,90 @@ function BreadthStat({
   testId,
   label,
   value,
+  valueClassName,
 }: {
   testId: string
   label: string
   value: number
+  valueClassName?: string
 }) {
   return (
-    <div data-testid={testId} className="flex flex-col">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-h2 tabular-nums">{value}</dd>
+    <div data-testid={testId} className="flex flex-col gap-0.5">
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className={cn('font-mono text-lg font-medium tabular-nums', valueClassName)}>
+        {value}
+      </dd>
     </div>
   )
 }
 
 function BreadthBlock({ query }: { query: BlockQuery }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <Block
-      title={t('marketOverview.blocks.breadth.title')}
-      testId="market-block-breadth"
-      query={query}
+    <section
+      data-testid="market-block-breadth"
+      aria-label={t('marketOverview.blocks.breadth.title')}
+      className="flex flex-col justify-between gap-3 p-4 sm:p-5"
     >
-      {(data) =>
-        data.breadth ? (
-          <dl className="flex flex-wrap gap-x-8 gap-y-3">
-            <BreadthStat
-              testId="breadth-advancing"
-              label={t('marketOverview.blocks.breadth.advancing')}
-              value={data.breadth.advancing}
-            />
-            <BreadthStat
-              testId="breadth-declining"
-              label={t('marketOverview.blocks.breadth.declining')}
-              value={data.breadth.declining}
-            />
-            <BreadthStat
-              testId="breadth-unchanged"
-              label={t('marketOverview.blocks.breadth.unchanged')}
-              value={data.breadth.unchanged}
-            />
-          </dl>
-        ) : (
-          <Unavailable />
-        )
-      }
-    </Block>
+      <h2
+        lang={lang}
+        className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      >
+        {t('marketOverview.blocks.breadth.title')}
+      </h2>
+      <BlockContent query={query}>
+        {(data) => {
+          if (!data.breadth) return <Unavailable />
+          const { advancing, declining, unchanged } = data.breadth
+          const total = advancing + declining + unchanged
+          return (
+            <div className="flex flex-col gap-2.5">
+              <dl className="grid grid-cols-3 gap-2">
+                <BreadthStat
+                  testId="breadth-advancing"
+                  label={t('marketOverview.blocks.breadth.advancing')}
+                  value={advancing}
+                  valueClassName="text-[var(--pos)]"
+                />
+                <BreadthStat
+                  testId="breadth-declining"
+                  label={t('marketOverview.blocks.breadth.declining')}
+                  value={declining}
+                  valueClassName="text-[var(--neg)]"
+                />
+                <BreadthStat
+                  testId="breadth-unchanged"
+                  label={t('marketOverview.blocks.breadth.unchanged')}
+                  value={unchanged}
+                  valueClassName="text-muted-foreground"
+                />
+              </dl>
+              {total > 0 ? (
+                <div
+                  className="flex h-1 w-full overflow-hidden bg-border"
+                  aria-hidden="true"
+                >
+                  <span
+                    className="bg-[var(--pos)]"
+                    style={{ width: `${(advancing / total) * 100}%` }}
+                  />
+                  <span
+                    className="bg-muted-foreground"
+                    style={{ width: `${(unchanged / total) * 100}%` }}
+                  />
+                  <span
+                    className="bg-[var(--neg)]"
+                    style={{ width: `${(declining / total) * 100}%` }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          )
+        }}
+      </BlockContent>
+    </section>
   )
 }
 
@@ -359,155 +453,238 @@ function MoverList({
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-body font-medium text-foreground">{title}</h3>
+    <div className="flex flex-col">
+      <div
+        className={cn(
+          'flex items-baseline justify-between border-b-2 pb-2.5',
+          kind === 'gainer' ? 'border-[var(--pos)]' : 'border-[var(--neg)]',
+        )}
+      >
+        <h3
+          lang={locale}
+          className="font-mono text-xs font-medium uppercase tracking-[0.08em] text-foreground"
+        >
+          {title}
+        </h3>
+        <span
+          aria-hidden="true"
+          className={cn(
+            'font-mono text-[11px]',
+            kind === 'gainer' ? 'text-[var(--pos)]' : 'text-[var(--neg)]',
+          )}
+        >
+          {kind === 'gainer' ? '▲' : '▼'} {t('marketOverview.blocks.movers.changeCol')}
+        </span>
+      </div>
+
       {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="py-4 text-sm text-muted-foreground">
           {t('marketOverview.blocks.movers.empty')}
         </p>
       ) : (
-        <ul className="flex flex-col divide-y">
-          {entries.map((entry) => (
-            <li key={entry.symbol}>
-              <Link
-                data-testid={`mover-${kind}-${entry.symbol}`}
-                to={`/stocks/${entry.symbol}`}
-                aria-label={t('marketOverview.moverLinkLabel', {
-                  symbol: entry.symbol,
-                  change: formatSignedPercent(locale, entry.changePct),
-                  volume: formatNumber(locale, entry.volume),
-                })}
-                className="flex items-baseline justify-between gap-3 py-2 underline-offset-4 hover:underline focus-visible:underline"
-              >
-                <span className="font-mono text-sm font-medium text-foreground">
-                  {entry.symbol}
-                </span>
-                <span className="flex items-baseline gap-3">
-                  <ChangeValue value={entry.changePct} />
+        <>
+          <div
+            aria-hidden="true"
+            lang={locale}
+            className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-[var(--border-strong)] px-1 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-muted-foreground"
+          >
+            <span>{t('marketOverview.blocks.movers.symbolCol')}</span>
+            <span className="text-right">
+              {t('marketOverview.blocks.movers.changeCol')}
+            </span>
+            <span className="min-w-[88px] text-right">
+              {t('marketOverview.blocks.movers.volumeCol')}
+            </span>
+          </div>
+          <ul className="flex flex-col divide-y divide-border">
+            {entries.map((entry) => (
+              <li key={entry.symbol}>
+                <Link
+                  data-testid={`mover-${kind}-${entry.symbol}`}
+                  to={`/stocks/${entry.symbol}`}
+                  aria-label={t('marketOverview.moverLinkLabel', {
+                    symbol: entry.symbol,
+                    change: formatSignedPercent(locale, entry.changePct),
+                    volume: formatNumber(locale, entry.volume),
+                  })}
+                  className="grid grid-cols-[1fr_auto_auto] items-baseline gap-4 px-1 py-2.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="font-mono text-sm font-semibold text-foreground">
+                    {entry.symbol}
+                  </span>
+                  <ChangeValue
+                    value={entry.changePct}
+                    className="justify-end font-mono text-sm"
+                  />
                   <span
                     data-testid={`mover-volume-${entry.symbol}`}
-                    className="text-sm text-muted-foreground tabular-nums"
+                    className="min-w-[88px] text-right font-mono text-sm text-muted-foreground tabular-nums"
                   >
                     {formatNumber(locale, entry.volume)}
                   </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   )
 }
 
 function TopMoversBlock({ query }: { query: BlockQuery }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <Block
-      title={t('marketOverview.blocks.movers.title')}
-      testId="market-block-movers"
-      query={query}
+    <section
+      data-testid="market-block-movers"
+      aria-label={t('marketOverview.blocks.movers.title')}
+      className="py-10 flex flex-col gap-6"
     >
-      {(data) => (
-        <div className="grid gap-5 sm:grid-cols-2">
-          <MoverList
-            kind="gainer"
-            title={t('marketOverview.blocks.movers.gainers')}
-            entries={data.gainers}
-          />
-          <MoverList
-            kind="loser"
-            title={t('marketOverview.blocks.movers.losers')}
-            entries={data.losers}
-          />
-        </div>
-      )}
-    </Block>
+      <div className="flex flex-col gap-1.5">
+        <span
+          lang={lang}
+          className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+        >
+          {t('marketOverview.blocks.movers.kicker')}
+        </span>
+        <h2 className="text-h2 font-semibold tracking-tight text-foreground">
+          {t('marketOverview.blocks.movers.title')}
+        </h2>
+      </div>
+      <BlockContent query={query}>
+        {(data) => (
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
+            <MoverList
+              kind="gainer"
+              title={t('marketOverview.blocks.movers.gainers')}
+              entries={data.gainers}
+            />
+            <MoverList
+              kind="loser"
+              title={t('marketOverview.blocks.movers.losers')}
+              entries={data.losers}
+            />
+          </div>
+        )}
+      </BlockContent>
+    </section>
   )
 }
 
 function MarketVolumeBlock({ query }: { query: BlockQuery }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <Block
-      title={t('marketOverview.blocks.volume.title')}
-      testId="market-block-volume"
-      query={query}
+    <section
+      data-testid="market-block-volume"
+      aria-label={t('marketOverview.blocks.volume.title')}
+      className="flex flex-col justify-between gap-2 p-4 sm:p-5"
     >
-      {(data) =>
-        data.volumeTotal !== null ? (
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">
-              {t('marketOverview.blocks.volume.label')}
-            </span>
-            <span data-testid="market-volume-total" className="text-h2 tabular-nums">
-              {formatNumber(locale, data.volumeTotal)}
-            </span>
-          </div>
-        ) : (
-          <Unavailable />
-        )
-      }
-    </Block>
+      <h2
+        lang={locale}
+        className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      >
+        {t('marketOverview.blocks.volume.title')}
+      </h2>
+      <BlockContent query={query}>
+        {(data) =>
+          data.volumeTotal !== null ? (
+            <div className="flex flex-col gap-1">
+              <span
+                data-testid="market-volume-total"
+                className="font-mono text-2xl font-medium tracking-tight tabular-nums text-foreground"
+              >
+                {formatNumber(locale, data.volumeTotal)}
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {t('marketOverview.blocks.volume.label')}
+              </span>
+            </div>
+          ) : (
+            <Unavailable />
+          )
+        }
+      </BlockContent>
+    </section>
   )
 }
 
 function MarketValuationBlock({ query }: { query: BlockQuery }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
+
   return (
-    <Block
-      title={t('marketOverview.blocks.valuation.title')}
-      testId="market-block-valuation"
-      query={query}
+    <section
+      data-testid="market-block-valuation"
+      aria-label={t('marketOverview.blocks.valuation.title')}
+      className="flex flex-col gap-5"
     >
-      {(data) => (
-        <div className="flex flex-col gap-3">
-          <dl className="flex flex-wrap gap-x-8 gap-y-3">
-            <div className="flex flex-col">
-              <dt className="text-sm text-muted-foreground">
-                {t('marketOverview.blocks.valuation.marketPe')}
-              </dt>
-              <dd data-testid="market-pe" className="text-h3 tabular-nums">
-                {data.marketPe !== null
-                  ? formatNumber(locale, data.marketPe, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : t('honestData.unavailableTitle')}
-              </dd>
+      <h2
+        lang={locale}
+        className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      >
+        {t('marketOverview.blocks.valuation.title')}
+      </h2>
+      <BlockContent query={query}>
+        {(data) => (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <dl className="flex flex-col gap-2">
+                <dt className="font-mono text-xs text-muted-foreground">
+                  {t('marketOverview.blocks.valuation.marketPe')}
+                </dt>
+                <dd
+                  data-testid="market-pe"
+                  className="font-mono text-4xl sm:text-[44px] font-medium leading-none tracking-tight tabular-nums text-foreground"
+                >
+                  {data.marketPe !== null
+                    ? formatNumber(locale, data.marketPe, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : t('honestData.unavailableTitle')}
+                </dd>
+              </dl>
+              {data.marketPeExcludedCount !== null ? (
+                <p
+                  data-testid="market-pe-disclosure"
+                  className="font-mono text-xs leading-relaxed text-muted-foreground"
+                >
+                  {t('marketOverview.blocks.valuation.exclusion', {
+                    count: data.marketPeExcludedCount,
+                  })}
+                </p>
+              ) : null}
             </div>
-            <div className="flex flex-col">
-              <dt className="text-sm text-muted-foreground">
+
+            <dl className="flex flex-col gap-2 border-t border-border pt-5">
+              <dt className="font-mono text-xs text-muted-foreground">
                 {t('marketOverview.blocks.valuation.marketDivYield')}
               </dt>
-              <dd data-testid="market-div-yield" className="text-h3 tabular-nums">
+              <dd
+                data-testid="market-div-yield"
+                className="font-mono text-3xl font-medium leading-none tracking-tight tabular-nums text-foreground"
+              >
                 {data.marketDivYield !== null
                   ? formatRatioPercent(locale, data.marketDivYield)
                   : t('honestData.unavailableTitle')}
               </dd>
-            </div>
-          </dl>
-          {data.marketPeExcludedCount !== null ? (
-            <p
-              data-testid="market-pe-disclosure"
-              className="text-xs text-muted-foreground"
-            >
-              {t('marketOverview.blocks.valuation.exclusion', {
-                count: data.marketPeExcludedCount,
-              })}
-            </p>
-          ) : null}
-        </div>
-      )}
-    </Block>
+            </dl>
+          </div>
+        )}
+      </BlockContent>
+    </section>
   )
 }
 
 export function MarketOverviewPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage ?? 'tr'
   // The sector-performance period is session-scoped UI state (UXR-MOV-012 §6):
   // never persisted server-side, reset on reload.
   const [sectorPeriod, setSectorPeriod] = useState<SectorPeriod>('daily')
@@ -528,75 +705,134 @@ export function MarketOverviewPage() {
     <section
       data-screen="SCR-001"
       data-route-id="marketOverview"
-      className="flex flex-col gap-6"
+      className="flex flex-col"
     >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
-          {t('screens.marketOverview.title')}
-        </h1>
-        <p className="max-w-2xl text-muted-foreground">
-          {t('screens.marketOverview.description')}
-        </p>
-        {envelope ? (
-          <div className="flex flex-col gap-1">
-            {/* TKT-foundation-049: the price header renders the served
-                intraday/close state. Its stale flag is left to the envelope row
-                immediately below (one envelope, one badge). */}
-            <PriceStateHeader
-              priceState={envelope.priceState}
-              asOf={envelope.asOf}
-              stale={envelope.stale}
-              showStale={false}
-            />
-            <div className="flex flex-wrap items-center gap-3">
-              {/* TKT-foundation-073: the as-of marker carries its own explanation,
-                  and the recency half only while the row really is the latest
-                  publication — suppressed on a stale envelope and while an intraday
-                  price stands in for the completed close (the same two conditions
-                  the paragraph below uses). */}
-              <AsOfDate
-                asOf={envelope.asOf}
-                fresh={
-                  !envelope.stale &&
-                  envelope.priceState?.state !== 'intraday'
-                }
-              />
-              {envelope.stale ? <StaleBadge /> : null}
-            </div>
-            {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
-                completed session" — stated, so a fresh-but-not-today row is never
-                read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
-                suppresses the recency claim: 037's stale means a newer stored
-                session exists that this row lacks, so the badge beside it is the
-                honest statement (review round 1, DR-1). TKT-foundation-049: an
-                intraday price on the screen also falsifies the "closing values /
-                no intraday prices" claim, so it is suppressed there too. */}
-            {envelope.stale || envelope.priceState?.state === 'intraday' ? null : (
-              <p
-                data-testid="market-asof-explanation"
-                className="text-xs text-muted-foreground"
-              >
-                {t('screens.marketOverview.asOfExplanation')}
-              </p>
-            )}
+      <header className="relative overflow-hidden pb-8 pt-2">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 1200 260"
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-25 motion-reduce:hidden"
+        >
+          <path
+            d="M0 215 Q 180 195 320 170 T 640 135 T 940 92 T 1200 56"
+            fill="none"
+            stroke="var(--border-strong)"
+            strokeWidth="1.5"
+          />
+          <path
+            d="M0 240 Q 220 220 410 198 T 780 155 T 1200 96"
+            fill="none"
+            stroke="var(--brand-accent)"
+            strokeOpacity="0.45"
+            strokeWidth="1"
+          />
+        </svg>
+
+        <div className="relative z-10 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              lang={lang}
+              className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-[var(--stale-foreground)]"
+            >
+              {t('marketOverview.hero.eyebrow')}
+            </span>
+            {envelope ? (
+              <>
+                {/* TKT-foundation-073: the as-of marker carries its own explanation,
+                    and the recency half only while the row really is the latest
+                    publication — suppressed on a stale envelope and while an intraday
+                    price stands in for the completed close (the same two conditions
+                    the paragraph below uses). */}
+                <AsOfDate
+                  asOf={envelope.asOf}
+                  fresh={
+                    !envelope.stale &&
+                    envelope.priceState?.state !== 'intraday'
+                  }
+                />
+                {envelope.stale ? <StaleBadge /> : null}
+              </>
+            ) : null}
           </div>
-        ) : null}
+
+          <h1 className="max-w-2xl text-display font-semibold tracking-tight text-foreground sm:text-[2.5rem] sm:leading-[1.1]">
+            {t('screens.marketOverview.title')}
+          </h1>
+
+          <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+            {t('screens.marketOverview.description')}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <Link
+              to="/screener"
+              className={buttonVariants({ variant: 'default', size: 'default' })}
+            >
+              {t('marketOverview.hero.primaryCta')}
+            </Link>
+            <Link
+              to="/stocks"
+              className={buttonVariants({ variant: 'outline', size: 'default' })}
+            >
+              {t('marketOverview.hero.secondaryCta')}
+            </Link>
+          </div>
+
+          {envelope ? (
+            <div className="flex flex-col gap-1 pt-1">
+              {/* TKT-foundation-049: the price header renders the served
+                  intraday/close state. Its stale flag is left to the envelope row
+                  above (one envelope, one badge). */}
+              <PriceStateHeader
+                priceState={envelope.priceState}
+                asOf={envelope.asOf}
+                stale={envelope.stale}
+                showStale={false}
+              />
+              {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
+                  completed session" — stated, so a fresh-but-not-today row is never
+                  read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
+                  suppresses the recency claim: 037's stale means a newer stored
+                  session exists that this row lacks, so the badge beside it is the
+                  honest statement (review round 1, DR-1). TKT-foundation-049: an
+                  intraday price on the screen also falsifies the "closing values /
+                  no intraday prices" claim, so it is suppressed there too. */}
+              {envelope.stale || envelope.priceState?.state === 'intraday' ? null : (
+                <p
+                  data-testid="market-asof-explanation"
+                  className="text-xs text-muted-foreground"
+                >
+                  {t('screens.marketOverview.asOfExplanation')}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* 4-Column KPI Ribbon */}
+      <div className="border-y border-border bg-card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
         <IndexLevelsBlock query={indices} />
-        <SectorPerformanceBlock
-          query={sectors}
-          period={sectorPeriod}
-          onPeriodChange={setSectorPeriod}
-        />
         <BreadthBlock query={breadth} />
-        <TopMoversBlock query={movers} />
         <MarketVolumeBlock query={volume} />
-        <MarketValuationBlock query={valuation} />
       </div>
 
-      <MacroStrip />
+      {/* Band 01: Market Valuation + Paired Inflation & Macro */}
+      <div className="border-b border-border py-10 grid grid-cols-1 lg:grid-cols-[0.36fr_0.64fr] gap-10 items-start">
+        <MarketValuationBlock query={valuation} />
+        <MacroStrip />
+      </div>
+
+      {/* Band 02: Diverging Sector Return Bars */}
+      <SectorPerformanceBlock
+        query={sectors}
+        period={sectorPeriod}
+        onPeriodChange={setSectorPeriod}
+      />
+
+      {/* Band 03: Open Borderless Movers Ledgers */}
+      <TopMoversBlock query={movers} />
     </section>
   )
 }
