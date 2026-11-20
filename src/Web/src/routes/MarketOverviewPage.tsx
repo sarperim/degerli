@@ -272,84 +272,86 @@ function SectorPerformanceBlock({
     <section
       data-testid="market-block-sectors"
       aria-label={t('marketOverview.blocks.sectors.title')}
-      className="border-b border-border py-10 grid grid-cols-1 lg:grid-cols-[0.29fr_0.71fr] gap-8 lg:gap-10 items-start"
+      className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen border-b border-border py-12"
     >
-      <div className="flex flex-col gap-3">
-        <span
-          lang={lang}
-          className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
-        >
-          {t('marketOverview.blocks.sectors.kicker')}
-        </span>
-        <h2 className="text-h2 font-semibold tracking-tight text-foreground">
-          {t('marketOverview.blocks.sectors.title')}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {t('marketOverview.blocks.sectors.subtitle')}
-        </p>
-        <div className="pt-1">
-          <SectorPeriodSelector period={period} onPeriodChange={onPeriodChange} />
+      <div className="mx-auto grid w-full max-w-content grid-cols-1 items-start gap-8 px-4 sm:px-8 lg:grid-cols-[0.29fr_0.71fr] lg:gap-12">
+        <div className="flex flex-col gap-3">
+          <span
+            lang={lang}
+            className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {t('marketOverview.blocks.sectors.kicker')}
+          </span>
+          <h2 className="text-h2 font-semibold tracking-tight text-foreground">
+            {t('marketOverview.blocks.sectors.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {t('marketOverview.blocks.sectors.subtitle')}
+          </p>
+          <div className="pt-1">
+            <SectorPeriodSelector period={period} onPeriodChange={onPeriodChange} />
+          </div>
         </div>
-      </div>
 
-      <div>
-        <BlockContent query={query}>
-          {(data) => {
-            const entries = Object.entries(data.sectorPerformance)
-            if (entries.length === 0) return <Unavailable />
-            const maxAbs = Math.max(
-              ...entries.map(([, val]) => Math.abs(val)),
-              0.0001,
-            )
+        <div>
+          <BlockContent query={query}>
+            {(data) => {
+              const entries = Object.entries(data.sectorPerformance)
+              if (entries.length === 0) return <Unavailable />
+              const maxAbs = Math.max(
+                ...entries.map(([, val]) => Math.abs(val)),
+                0.0001,
+              )
 
-            return (
-              <ul className="flex flex-col border-y border-border divide-y divide-border">
-                {entries.map(([code, change]) => {
-                  const pctWidth =
-                    change === 0
-                      ? 0
-                      : Math.max((Math.abs(change) / maxAbs) * 50, 1.5)
-                  return (
-                    <li key={code}>
-                      <Link
-                        data-testid={`sector-entry-${code}`}
-                        data-sector-bar-row=""
-                        to={`/stocks?sector=${encodeURIComponent(code)}`}
-                        className="grid grid-cols-[minmax(88px,140px)_1fr_auto] sm:grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-3 sm:gap-4 px-2 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <span className="truncate font-medium text-foreground">
-                          {code}
-                        </span>
-                        <div
-                          className="relative flex h-4 items-center"
-                          aria-hidden="true"
+              return (
+                <ul className="flex flex-col border-y border-border divide-y divide-border">
+                  {entries.map(([code, change]) => {
+                    const pctWidth =
+                      change === 0
+                        ? 0
+                        : Math.max((Math.abs(change) / maxAbs) * 50, 1.5)
+                    return (
+                      <li key={code}>
+                        <Link
+                          data-testid={`sector-entry-${code}`}
+                          data-sector-bar-row=""
+                          to={`/stocks?sector=${encodeURIComponent(code)}`}
+                          className="grid grid-cols-[minmax(88px,140px)_1fr_auto] sm:grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-3 sm:gap-4 px-2 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          <span className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--border-strong)]" />
-                          {change >= 0 ? (
-                            <span
-                              data-testid={`sector-bar-${code}`}
-                              className="absolute left-1/2 h-2 bg-[var(--pos)]"
-                              style={{ width: `${pctWidth}%` }}
-                            />
-                          ) : (
-                            <span
-                              data-testid={`sector-bar-${code}`}
-                              className="absolute right-1/2 h-2 bg-[var(--neg)]"
-                              style={{ width: `${pctWidth}%` }}
-                            />
-                          )}
-                        </div>
-                        <span className="font-mono text-sm text-right">
-                          <ChangeValue value={change} />
-                        </span>
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )
-          }}
-        </BlockContent>
+                          <span className="truncate font-medium text-foreground">
+                            {code}
+                          </span>
+                          <div
+                            className="relative flex h-4 items-center"
+                            aria-hidden="true"
+                          >
+                            <span className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--border-strong)]" />
+                            {change >= 0 ? (
+                              <span
+                                data-testid={`sector-bar-${code}`}
+                                className="absolute left-1/2 h-2 bg-[var(--pos)]"
+                                style={{ width: `${pctWidth}%` }}
+                              />
+                            ) : (
+                              <span
+                                data-testid={`sector-bar-${code}`}
+                                className="absolute right-1/2 h-2 bg-[var(--neg)]"
+                                style={{ width: `${pctWidth}%` }}
+                              />
+                            )}
+                          </div>
+                          <span className="font-mono text-sm text-right">
+                            <ChangeValue value={change} />
+                          </span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )
+            }}
+          </BlockContent>
+        </div>
       </div>
     </section>
   )
@@ -594,35 +596,37 @@ function TopMoversBlock({ query }: { query: BlockQuery }) {
     <section
       data-testid="market-block-movers"
       aria-label={t('marketOverview.blocks.movers.title')}
-      className="py-10 flex flex-col gap-6"
+      className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen py-12"
     >
-      <div className="flex flex-col gap-1.5">
-        <span
-          lang={lang}
-          className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
-        >
-          {t('marketOverview.blocks.movers.kicker')}
-        </span>
-        <h2 className="text-h2 font-semibold tracking-tight text-foreground">
-          {t('marketOverview.blocks.movers.title')}
-        </h2>
+      <div className="mx-auto flex w-full max-w-content flex-col gap-6 px-4 sm:px-8">
+        <div className="flex flex-col gap-1.5">
+          <span
+            lang={lang}
+            className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {t('marketOverview.blocks.movers.kicker')}
+          </span>
+          <h2 className="text-h2 font-semibold tracking-tight text-foreground">
+            {t('marketOverview.blocks.movers.title')}
+          </h2>
+        </div>
+        <BlockContent query={query}>
+          {(data) => (
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
+              <MoverList
+                kind="gainer"
+                title={t('marketOverview.blocks.movers.gainers')}
+                entries={data.gainers}
+              />
+              <MoverList
+                kind="loser"
+                title={t('marketOverview.blocks.movers.losers')}
+                entries={data.losers}
+              />
+            </div>
+          )}
+        </BlockContent>
       </div>
-      <BlockContent query={query}>
-        {(data) => (
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
-            <MoverList
-              kind="gainer"
-              title={t('marketOverview.blocks.movers.gainers')}
-              entries={data.gainers}
-            />
-            <MoverList
-              kind="loser"
-              title={t('marketOverview.blocks.movers.losers')}
-              entries={data.losers}
-            />
-          </div>
-        )}
-      </BlockContent>
     </section>
   )
 }
@@ -769,133 +773,140 @@ export function MarketOverviewPage() {
       data-route-id="marketOverview"
       className="flex flex-col"
     >
-      <header
-        ref={heroRef}
-        id="hero-section"
-        className="relative overflow-hidden pb-10 pt-4"
-      >
-        <canvas
-          ref={heroCanvasRef}
-          id="hero-bg-canvas"
-          data-testid="hero-bg-canvas"
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 h-full w-full"
-        />
+      {/* Full-bleed sweeping hero: canvas curve + 4-col KPI ribbon span 100vw edge-to-edge */}
+      <div className="relative left-1/2 right-1/2 -mt-section -ml-[50vw] -mr-[50vw] w-screen border-b border-border overflow-hidden">
+        <header
+          ref={heroRef}
+          id="hero-section"
+          className="relative overflow-hidden pb-12 pt-10"
+        >
+          <canvas
+            ref={heroCanvasRef}
+            id="hero-bg-canvas"
+            data-testid="hero-bg-canvas"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+          />
 
-        <div className="relative z-10 grid grid-cols-1 items-center gap-10 lg:grid-cols-[1.20fr_0.80fr] lg:gap-12">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <span
-                data-testid="market-hero-eyebrow"
-                lang={lang}
-                className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-[var(--stale-foreground)]"
+          <div className="relative z-10 mx-auto grid w-full max-w-content grid-cols-1 items-center gap-10 px-4 sm:px-8 lg:grid-cols-[1.20fr_0.80fr] lg:gap-12">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  data-testid="market-hero-eyebrow"
+                  lang={lang}
+                  className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-[var(--stale-foreground)]"
+                >
+                  {envelope?.priceState?.state === 'intraday'
+                    ? t('marketOverview.hero.eyebrowIntraday')
+                    : t('marketOverview.hero.eyebrow')}
+                </span>
+                {envelope ? (
+                  <>
+                    {/* TKT-foundation-073: the as-of marker carries its own explanation,
+                        and the recency half only while the row really is the latest
+                        publication — suppressed on a stale envelope and while an intraday
+                        price stands in for the completed close (the same two conditions
+                        the paragraph below uses). */}
+                    <AsOfDate
+                      asOf={envelope.asOf}
+                      fresh={
+                        !envelope.stale &&
+                        envelope.priceState?.state !== 'intraday'
+                      }
+                    />
+                    {envelope.stale ? <StaleBadge /> : null}
+                  </>
+                ) : null}
+              </div>
+
+              <h1 className="max-w-2xl text-display font-semibold tracking-tight text-foreground sm:text-[2.5rem] sm:leading-[1.1]">
+                {t('screens.marketOverview.title')}
+              </h1>
+
+              <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+                {t('screens.marketOverview.description')}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Link
+                  to="/screener"
+                  data-magnetic=""
+                  className={buttonVariants({ variant: 'default', size: 'default' })}
+                >
+                  {t('marketOverview.hero.primaryCta')}
+                </Link>
+                <Link
+                  to="/stocks"
+                  data-magnetic=""
+                  className={buttonVariants({ variant: 'outline', size: 'default' })}
+                >
+                  {t('marketOverview.hero.secondaryCta')}
+                </Link>
+              </div>
+
+              <div
+                data-testid="hero-scrub-hint"
+                className="inline-flex w-fit items-center gap-2 border border-border bg-card/90 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground"
               >
-                {envelope?.priceState?.state === 'intraday'
-                  ? t('marketOverview.hero.eyebrowIntraday')
-                  : t('marketOverview.hero.eyebrow')}
-              </span>
+                <span aria-hidden="true" className="text-[var(--stale-foreground)]">
+                  +
+                </span>
+                <span id="hero-live-readout">
+                  {scrubReadout ?? t('marketOverview.hero.scrubHint')}
+                </span>
+              </div>
+
               {envelope ? (
-                <>
-                  {/* TKT-foundation-073: the as-of marker carries its own explanation,
-                      and the recency half only while the row really is the latest
-                      publication — suppressed on a stale envelope and while an intraday
-                      price stands in for the completed close (the same two conditions
-                      the paragraph below uses). */}
-                  <AsOfDate
+                <div className="flex flex-col gap-1 pt-1">
+                  {/* TKT-foundation-049: the price header renders the served
+                      intraday/close state. Its stale flag is left to the envelope row
+                      above (one envelope, one badge). */}
+                  <PriceStateHeader
+                    priceState={envelope.priceState}
                     asOf={envelope.asOf}
-                    fresh={
-                      !envelope.stale &&
-                      envelope.priceState?.state !== 'intraday'
-                    }
+                    stale={envelope.stale}
+                    showStale={false}
                   />
-                  {envelope.stale ? <StaleBadge /> : null}
-                </>
+                  {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
+                      completed session" — stated, so a fresh-but-not-today row is never
+                      read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
+                      suppresses the recency claim: 037's stale means a newer stored
+                      session exists that this row lacks, so the badge beside it is the
+                      honest statement (review round 1, DR-1). TKT-foundation-049: an
+                      intraday price on the screen also falsifies the "closing values /
+                      no intraday prices" claim, so it is suppressed there too. */}
+                  {envelope.stale || envelope.priceState?.state === 'intraday' ? null : (
+                    <p
+                      data-testid="market-asof-explanation"
+                      className="text-xs text-muted-foreground"
+                    >
+                      {t('screens.marketOverview.asOfExplanation')}
+                    </p>
+                  )}
+                </div>
               ) : null}
             </div>
 
-            <h1 className="max-w-2xl text-display font-semibold tracking-tight text-foreground sm:text-[2.5rem] sm:leading-[1.1]">
-              {t('screens.marketOverview.title')}
-            </h1>
-
-            <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
-              {t('screens.marketOverview.description')}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <Link
-                to="/screener"
-                data-magnetic=""
-                className={buttonVariants({ variant: 'default', size: 'default' })}
-              >
-                {t('marketOverview.hero.primaryCta')}
-              </Link>
-              <Link
-                to="/stocks"
-                data-magnetic=""
-                className={buttonVariants({ variant: 'outline', size: 'default' })}
-              >
-                {t('marketOverview.hero.secondaryCta')}
-              </Link>
-            </div>
-
-            <div
-              data-testid="hero-scrub-hint"
-              className="inline-flex w-fit items-center gap-2 border border-border bg-card/90 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground"
-            >
-              <span aria-hidden="true" className="text-[var(--stale-foreground)]">
-                +
-              </span>
-              <span id="hero-live-readout">
-                {scrubReadout ?? t('marketOverview.hero.scrubHint')}
-              </span>
-            </div>
-
-            {envelope ? (
-              <div className="flex flex-col gap-1 pt-1">
-                {/* TKT-foundation-049: the price header renders the served
-                    intraday/close state. Its stale flag is left to the envelope row
-                    above (one envelope, one badge). */}
-                <PriceStateHeader
-                  priceState={envelope.priceState}
-                  asOf={envelope.asOf}
-                  stale={envelope.stale}
-                  showStale={false}
-                />
-                {/* TKT-foundation-039 (finding B3): the as-of date means "the latest
-                    completed session" — stated, so a fresh-but-not-today row is never
-                    read as a data error (FR-MOV-010/020, UXR-MOV-010). A stale row
-                    suppresses the recency claim: 037's stale means a newer stored
-                    session exists that this row lacks, so the badge beside it is the
-                    honest statement (review round 1, DR-1). TKT-foundation-049: an
-                    intraday price on the screen also falsifies the "closing values /
-                    no intraday prices" claim, so it is suppressed there too. */}
-                {envelope.stale || envelope.priceState?.state === 'intraday' ? null : (
-                  <p
-                    data-testid="market-asof-explanation"
-                    className="text-xs text-muted-foreground"
-                  >
-                    {t('screens.marketOverview.asOfExplanation')}
-                  </p>
-                )}
-              </div>
-            ) : null}
+            <HeroInteractivePlate />
           </div>
+        </header>
 
-          <HeroInteractivePlate />
+        {/* Full-bleed 4-Column KPI Ribbon */}
+        <div className="relative z-10 border-t border-border bg-card">
+          <div className="mx-auto grid w-full max-w-content grid-cols-1 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-4">
+            <IndexLevelsBlock query={indices} />
+            <BreadthBlock query={breadth} />
+            <MarketVolumeBlock query={volume} />
+          </div>
         </div>
-      </header>
-
-      {/* 4-Column KPI Ribbon */}
-      <div className="border-y border-border bg-card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <IndexLevelsBlock query={indices} />
-        <BreadthBlock query={breadth} />
-        <MarketVolumeBlock query={volume} />
       </div>
 
       {/* Band 01: Market Valuation + Paired Inflation & Macro */}
-      <div className="border-b border-border py-10 grid grid-cols-1 lg:grid-cols-[0.36fr_0.64fr] gap-10 items-start">
-        <MarketValuationBlock query={valuation} />
-        <MacroStrip />
+      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen border-b border-border py-12">
+        <div className="mx-auto grid w-full max-w-content grid-cols-1 items-start gap-10 px-4 sm:px-8 lg:grid-cols-[0.36fr_0.64fr] lg:gap-14">
+          <MarketValuationBlock query={valuation} />
+          <MacroStrip />
+        </div>
       </div>
 
       {/* Band 02: Diverging Sector Return Bars */}
