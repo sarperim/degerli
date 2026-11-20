@@ -408,6 +408,8 @@
     }
   },
   "stockList": {
+    "kicker": "Covered universe",
+    "backToOverview": "Overview",
     "searchLabel": "Search by stock name or code",
     "searchPlaceholder": "Code or company name",
     "sectorLabel": "Sector",
@@ -431,6 +433,7 @@
     "errorBody": "Something went wrong while loading the list. Please try again."
   },
   "screener": {
+    "kicker": "Fundamental screener",
     "families": {
       "valuation": "Valuation",
       "quality": "Quality",
@@ -454,8 +457,10 @@
     "clearAll": "Clear all",
     "run": "Run screen",
     "running": "Running…",
+    "runValidationHint": "Enter valid numeric bounds for every criterion to run.",
     "runErrorTitle": "The screen could not be run",
     "runErrorBody": "Something went wrong while running the screen. Your criteria were preserved; please try again.",
+    "resultsInitialSummary": "Add criteria and run",
     "initialTitle": "No results yet",
     "initialBody": "Add criteria and run the screen to list matching stocks here.",
     "resultsTitle": "Matching stocks",

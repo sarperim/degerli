@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { SearchX } from 'lucide-react'
 
 import { AsOfDate, StaleBadge } from '@/components/honest-data'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
@@ -36,8 +36,9 @@ import { useDraftStore } from '@/store/draftStore'
  * search widget itself is the shared-shell component; this route is its landing.
  */
 export function StockListPage() {
-  const { t } = useTranslation()
-  const [searchParams] = useSearchParams()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage ?? 'tr'
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Initial state comes from the M-3 draft store so the active filter/search
   // survives in-session navigation (UXR-G-021).
@@ -81,6 +82,9 @@ export function StockListPage() {
   const clearFilters = () => {
     setSector(null)
     setQuery('')
+    if (searchParams.has('sector') || searchParams.has('q')) {
+      setSearchParams({}, { replace: true })
+    }
   }
 
   return (
@@ -89,21 +93,46 @@ export function StockListPage() {
       data-route-id="stockList"
       className="flex flex-col gap-6"
     >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
-          {t('screens.stockList.title')}
-        </h1>
-        <p className="max-w-2xl text-muted-foreground">
-          {t('screens.stockList.description')}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
+        <div className="flex flex-col gap-1.5">
+          <span
+            lang={lang}
+            className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-[var(--stale-foreground)]"
+          >
+            {t('stockList.kicker')}
+          </span>
+          <h1 className="text-h1 font-semibold tracking-tight text-foreground">
+            {t('screens.stockList.title')}
+          </h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            {t('screens.stockList.description')}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {listQuery.isSuccess ? (
+            <>
+              <AsOfDate asOf={listQuery.data.asOf} />
+              {listQuery.data.stale ? <StaleBadge /> : null}
+            </>
+          ) : null}
+          <Link
+            to="/"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <span aria-hidden="true">←</span>
+            {t('stockList.backToOverview')}
+          </Link>
+        </div>
       </header>
 
-      <div className="flex flex-col gap-4 rounded-lg border bg-card text-card-foreground p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
+        <div className="flex w-full flex-wrap items-end gap-4 sm:w-auto">
+          <div className="flex w-full max-w-[280px] flex-col gap-1.5 sm:w-[280px]">
             <label
               htmlFor="stock-list-search"
-              className="text-sm font-medium text-foreground"
+              lang={lang}
+              className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground"
             >
               {t('stockList.searchLabel')}
             </label>
@@ -113,13 +142,15 @@ export function StockListPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t('stockList.searchPlaceholder')}
+              className="max-w-[280px] font-mono text-xs"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex w-full flex-col gap-1.5 sm:w-auto">
             <label
               htmlFor="stock-list-sector"
-              className="text-sm font-medium text-foreground"
+              lang={lang}
+              className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground"
             >
               {t('stockList.sectorLabel')}
             </label>
@@ -127,7 +158,7 @@ export function StockListPage() {
               id="stock-list-sector"
               value={sector ?? ''}
               onChange={(event) => setSector(event.target.value || null)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="h-9 w-full min-w-[180px] rounded-[2px] border border-[var(--border-strong)] bg-card px-3 font-mono text-xs text-foreground outline-none transition-[color,border-color,box-shadow] focus-visible:border-[var(--brand-accent)] focus-visible:ring-ring/40 focus-visible:ring-[2px] sm:w-auto"
             >
               <option value="">{t('stockList.sectorAll')}</option>
               {sectorOptions.map((option) => (
@@ -146,16 +177,29 @@ export function StockListPage() {
             className="flex flex-wrap items-center gap-2"
           >
             {sector !== null ? (
-              <Badge data-testid="active-sector" variant="secondary">
+              <Badge
+                data-testid="active-sector"
+                variant="secondary"
+                className="font-mono text-xs"
+              >
                 {t('stockList.activeSector', { sector })}
               </Badge>
             ) : null}
             {query.trim() !== '' ? (
-              <Badge data-testid="active-search" variant="secondary">
+              <Badge
+                data-testid="active-search"
+                variant="secondary"
+                className="font-mono text-xs"
+              >
                 {t('stockList.activeSearch', { query })}
               </Badge>
             ) : null}
-            <Button variant="link" size="sm" onClick={clearFilters}>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={clearFilters}
+              className="h-auto px-1 font-mono text-xs"
+            >
               {t('stockList.clearFilters')}
             </Button>
           </div>
@@ -171,7 +215,7 @@ export function StockListPage() {
       {listQuery.isError ? (
         <div
           role="alert"
-          className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center"
+          className="flex flex-col items-center gap-3 border-t border-border px-0 py-10 text-center"
         >
           <p className="text-h3 font-medium text-foreground">
             {t('stockList.errorTitle')}
@@ -188,6 +232,7 @@ export function StockListPage() {
       {listQuery.isSuccess && listQuery.data.stocks.length === 0 ? (
         <EmptyState
           data-testid="no-match-state"
+          className="rounded-none border-0 border-t border-border px-0 py-10"
           icon={<SearchX />}
           title={
             hasActiveFilter
@@ -210,52 +255,51 @@ export function StockListPage() {
       ) : null}
 
       {listQuery.isSuccess && listQuery.data.stocks.length > 0 ? (
-        <div className="flex flex-col gap-3">
-          <TableContainer>
-            <Table>
-              <TableCaption>
-                {t('stockList.resultsCount', {
-                  count: listQuery.data.stocks.length,
-                })}
-              </TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('stockList.columns.name')}</TableHead>
-                  <TableHead>{t('stockList.columns.symbol')}</TableHead>
-                  <TableHead>{t('stockList.columns.sector')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {listQuery.data.stocks.map((stock) => (
-                  <TableRow key={stock.symbol} data-testid={`stock-row-${stock.symbol}`}>
-                    <TableHead
-                      scope="row"
-                      className="font-medium text-foreground"
+        <TableContainer className="rounded-none border-0">
+          <Table>
+            <TableCaption className="px-0">
+              {t('stockList.resultsCount', {
+                count: listQuery.data.stocks.length,
+              })}
+            </TableCaption>
+            <TableHeader className="bg-transparent">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-0">{t('stockList.columns.symbol')}</TableHead>
+                <TableHead>{t('stockList.columns.name')}</TableHead>
+                <TableHead className="pr-0">{t('stockList.columns.sector')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {listQuery.data.stocks.map((stock) => (
+                <TableRow key={stock.symbol} data-testid={`stock-row-${stock.symbol}`}>
+                  <TableCell className="pl-0 font-mono tabular-nums">
+                    <Link
+                      to={`/stocks/${stock.symbol}`}
+                      className="font-mono font-semibold text-foreground underline-offset-4 hover:text-[var(--stale-foreground)] hover:underline focus-visible:underline"
                     >
-                      <Link
-                        to={`/stocks/${stock.symbol}`}
-                        aria-label={`${stock.name} (${stock.symbol})`}
-                        className="underline-offset-4 hover:underline focus-visible:underline"
-                      >
-                        {stock.name}
-                      </Link>
-                    </TableHead>
-                    <TableCell className="font-mono tabular-nums">
                       {stock.symbol}
-                    </TableCell>
-                    <TableCell>
-                      {stock.sector ?? t('stockList.unclassified')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <div className="flex flex-wrap items-center gap-3">
-            <AsOfDate asOf={listQuery.data.asOf} />
-            {listQuery.data.stale ? <StaleBadge /> : null}
-          </div>
-        </div>
+                    </Link>
+                  </TableCell>
+                  <TableHead
+                    scope="row"
+                    className="font-medium text-foreground"
+                  >
+                    <Link
+                      to={`/stocks/${stock.symbol}`}
+                      aria-label={`${stock.name} (${stock.symbol})`}
+                      className="underline-offset-4 hover:underline focus-visible:underline"
+                    >
+                      {stock.name}
+                    </Link>
+                  </TableHead>
+                  <TableCell className="pr-0 text-muted-foreground">
+                    {stock.sector ?? t('stockList.unclassified')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : null}
     </section>
   )

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Link, MemoryRouter, Route, Routes, useParams } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router'
 
 import { StockListPage } from '@/routes/StockListPage'
 import { catalogValue } from '@/test/i18n'
@@ -32,9 +32,15 @@ function StockPageStub() {
   )
 }
 
+function LocationEcho() {
+  const { pathname, search } = useLocation()
+  return <span data-testid="location-echo">{`${pathname}${search}`}</span>
+}
+
 function renderStockList(initialEntries: string[] = ['/stocks']) {
   return renderWithProviders(
     <MemoryRouter initialEntries={initialEntries}>
+      <LocationEcho />
       <Routes>
         <Route path="/stocks" element={<StockListPage />} />
         <Route path="/stocks/:symbol" element={<StockPageStub />} />
@@ -202,5 +208,23 @@ describe('TC-RES-022 stock list component', () => {
     expect(await screen.findByTestId('stock-page-symbol')).toHaveTextContent(
       'ALFA',
     )
+  })
+
+  it('clears ?sector= from the URL when filters are cleared', async () => {
+    const user = userEvent.setup()
+    renderStockList(['/stocks?sector=A'])
+
+    await screen.findByTestId('stock-row-ALFA')
+    expect(screen.getByTestId('location-echo')).toHaveTextContent('/stocks?sector=A')
+
+    await user.click(
+      within(screen.getByTestId('active-filters')).getByRole('button', {
+        name: TR('stockList.clearFilters'),
+      }),
+    )
+
+    expect(await screen.findByTestId('stock-row-ZETA')).toBeInTheDocument()
+    expect(screen.getByTestId('location-echo')).toHaveTextContent('/stocks')
+    expect(screen.getByTestId('location-echo').textContent).not.toContain('sector=')
   })
 })
