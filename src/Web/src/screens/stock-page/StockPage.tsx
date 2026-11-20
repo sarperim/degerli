@@ -63,7 +63,7 @@ function StockIdentity({ symbol }: { symbol: string }) {
   return (
     <p
       data-testid="stock-page-identity"
-      className="text-h3 font-semibold text-foreground"
+      className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl"
     >
       {name
         ? t('stockPage.identity.withName', { symbol: resolvedSymbol, name })
@@ -109,32 +109,44 @@ export function StockPage() {
       data-route-id="stockPage"
       className="flex flex-col gap-6"
     >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-h1 font-semibold tracking-tight">
+      <header className="flex flex-col gap-5 border-b border-[var(--border-strong)] pb-6">
+        {/* The screen title stays the single level-1 heading; the company identity
+            below it carries the visual weight (editorial stock hero). */}
+        <h1 className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {t('screens.stockPage.title')}
         </h1>
-        {/*
-          The identity anchor (TKT-foundation-057) carries the stock's movement
-          beside it (TKT-foundation-055(b)): symbol + name + the day's served
-          price/change read as one glanceable unit, ahead of the description.
-        */}
-        <div
-          data-testid="stock-page-identity-anchor"
-          className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
-        >
-          <StockIdentity symbol={symbol} />
-          <StockPriceHeader symbol={symbol} />
-        </div>
-        <p className="max-w-2xl text-muted-foreground">
-          {t('screens.stockPage.description')}
-        </p>
-        <div>
-          <Link
-            to={`/stocks/${encodeURIComponent(symbol)}/dcf`}
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
-            {t('stockPage.dcfHandoff')}
-          </Link>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3">
+            {/*
+              The identity anchor (TKT-foundation-057) carries the stock's movement
+              beside it (TKT-foundation-055(b)): symbol + name + the day's served
+              price/change read as one glanceable unit, ahead of the description.
+            */}
+            <div
+              data-testid="stock-page-identity-anchor"
+              className="flex flex-col gap-2"
+            >
+              <StockIdentity symbol={symbol} />
+              <StockPriceHeader symbol={symbol} />
+            </div>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              {t('screens.stockPage.description')}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/stocks"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              {t('stockPage.backToStockList')}
+            </Link>
+            <Link
+              to={`/stocks/${encodeURIComponent(symbol)}/dcf`}
+              className={buttonVariants({ size: 'sm' })}
+            >
+              {t('stockPage.dcfHandoff')}
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -143,6 +155,7 @@ export function StockPage() {
         activeId={activeSection}
         onSelect={handleSelect}
         ariaLabel={t('stockPage.sectionsLabel')}
+        className="lg:sticky lg:top-[54px] z-30 bg-background/90 backdrop-blur"
       />
 
       <div className="flex flex-col gap-6">

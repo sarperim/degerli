@@ -27,6 +27,7 @@ export function StockPriceHeader({ symbol }: { symbol: string }) {
       asOf={query.data.asOf}
       stale={query.data.stale}
       symbol={symbol}
+      valueClassName="font-mono text-4xl font-medium tracking-tight sm:text-5xl"
       showEodFallback
     />
   )

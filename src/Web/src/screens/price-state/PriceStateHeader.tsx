@@ -24,6 +24,8 @@ export interface PriceStateHeaderProps {
   showEodFallback?: boolean
   /** Suppress the stale badge where a sibling already states the same envelope. */
   showStale?: boolean
+  /** Extra classes for the served last-price value (surfaces set their own scale). */
+  valueClassName?: string
   className?: string
 }
 
@@ -55,6 +57,7 @@ export function PriceStateHeader({
   symbol,
   showEodFallback = false,
   showStale = true,
+  valueClassName,
   className,
 }: PriceStateHeaderProps) {
   const { t, i18n } = useTranslation()
@@ -108,7 +111,7 @@ export function PriceStateHeader({
               </span>
               <span
                 data-testid="price-state-value"
-                className="text-h2 font-semibold tabular-nums"
+                className={cn('text-h2 font-semibold tabular-nums', valueClassName)}
               >
                 {formatNumber(locale, lastPrice, {
                   minimumFractionDigits: 2,

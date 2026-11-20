@@ -120,6 +120,7 @@
     "sectionErrorTitle": "Bu bölüm yüklenemedi",
     "sectionErrorBody": "Bu bölüm yüklenirken bir sorun oluştu. Diğer bölümler etkilenmedi.",
     "dcfHandoff": "DCF hesaplayıcıyı aç",
+    "backToStockList": "← Hisse Senetleri",
     "valuation": {
       "current": {
         "title": "Güncel çarpanlar"

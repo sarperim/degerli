@@ -444,7 +444,7 @@ export function KeyMetricsPanel({ symbol }: { symbol: string }) {
                         <TableHead
                           scope="rowgroup"
                           colSpan={4}
-                          className="text-xs uppercase tracking-wide text-muted-foreground"
+                          className="font-mono text-xs uppercase tracking-wide text-[var(--stale-foreground)]"
                         >
                           {t(group.labelKey)}
                         </TableHead>

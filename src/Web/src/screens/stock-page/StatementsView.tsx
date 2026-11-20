@@ -255,7 +255,7 @@ function StatementTable({
                     <TableHead
                       scope="rowgroup"
                       colSpan={periods.length + 1}
-                      className="text-xs uppercase tracking-wide text-muted-foreground"
+                      className="font-mono text-xs uppercase tracking-wide text-[var(--stale-foreground)]"
                     >
                       {t(group.labelKey)}
                     </TableHead>
