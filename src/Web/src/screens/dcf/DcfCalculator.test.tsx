@@ -366,3 +366,39 @@ describe('TC-VAL-020 — sensitivity table component', () => {
     )
   })
 })
+
+describe('SLICE-027 — financial-sector not applicable state & sensitivity range gauge', () => {
+  it('renders an explicit explanation with the served EOD price when state is sector_not_applicable', async () => {
+    let computeCalls = 0
+    server.use(
+      dcfBaselineHandler({
+        symbol: 'GARAN',
+        state: 'sector_not_applicable',
+        reason: 'financial_sector',
+        price: { value: 144.2, asOf: '2026-11-20', stale: false },
+      }),
+      dcfComputeHandler(() => {
+        computeCalls += 1
+        return DCF_COMPUTE_FIXTURE
+      }),
+    )
+
+    renderDcf(['/stocks/GARAN/dcf'])
+
+    const notice = await screen.findByTestId('dcf-sector-not-applicable')
+    expect(notice).toHaveTextContent(TR('dcf.sectorNotApplicable.title'))
+    expect(screen.getByTestId('dcf-price')).toHaveTextContent(
+      formatDecimal('tr', 144.2, 2, 2),
+    )
+    expect(screen.queryByTestId('dcf-params')).not.toBeInTheDocument()
+    expect(computeCalls).toBe(0)
+  })
+
+  it('renders the EOD price vs. sensitivity range gauge from served sensitivity bounds', async () => {
+    renderDcf()
+    await screen.findByTestId('dcf-sensitivity')
+    const gauge = document.querySelector('[data-slot="dcf-range-gauge"]')
+    expect(gauge).toBeInTheDocument()
+    expect(gauge).toHaveTextContent(TR('dcf.range.title'))
+  })
+})

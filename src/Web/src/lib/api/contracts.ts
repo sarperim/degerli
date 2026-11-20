@@ -1162,7 +1162,8 @@ export interface DcfBaselineResponse {
   symbol: string
   baseline?: DcfBaseline
   price?: DcfPrice
-  state?: 'missing_inputs'
+  state?: 'missing_inputs' | 'sector_not_applicable'
+  reason?: string
   missingInputs?: DcfParamKey[]
 }
 

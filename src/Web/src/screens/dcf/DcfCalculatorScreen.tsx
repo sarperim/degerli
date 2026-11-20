@@ -90,6 +90,23 @@ export function DcfCalculatorScreen() {
     storedDraft && storedDraft.symbol === upperSymbol ? storedDraft.values : null
   const [fields, setFields] = useState<DcfFieldMap | null>(restored)
   const seeded = useRef(restored !== null)
+  const prevSymbolRef = useRef(upperSymbol)
+
+  useEffect(() => {
+    if (prevSymbolRef.current === upperSymbol) return
+    prevSymbolRef.current = upperSymbol
+    const latestDraft = useDraftStore.getState().dcfDraft as DcfDraft | null
+    if (latestDraft && latestDraft.symbol === upperSymbol) {
+      seeded.current = true
+      setFields(latestDraft.values)
+    } else {
+      seeded.current = false
+      setFields(null)
+    }
+    setLoadedScenario(null)
+    setPendingLoad(null)
+    appliedRequestedScenario.current = false
+  }, [upperSymbol])
 
   useEffect(() => {
     if (!baseline || seeded.current) return
@@ -181,6 +198,8 @@ export function DcfCalculatorScreen() {
   // so the user can supply the missing value and compute their own model.
   const missingInputs = baselineQuery.data?.missingInputs ?? []
   const isMissing = baselineQuery.data?.state === 'missing_inputs'
+  const isSectorNotApplicable =
+    baselineQuery.data?.state === 'sector_not_applicable'
   const missingLabels = missingInputs
     .map((key) => t(DCF_PARAM_BY_KEY[key].labelKey))
     .join(', ')
@@ -317,6 +336,59 @@ export function DcfCalculatorScreen() {
         </div>
       ) : null}
 
+      {isSectorNotApplicable ? (
+        <div
+          data-testid="dcf-sector-not-applicable"
+          role="status"
+          className="flex flex-col gap-4 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-5"
+        >
+          <div className="flex flex-col gap-1.5">
+            <h2 className="text-h3 font-semibold text-foreground">
+              {t('dcf.sectorNotApplicable.title')}
+            </h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              {t('dcf.sectorNotApplicable.body', { symbol: upperSymbol })}
+            </p>
+          </div>
+          {price ? (
+            <div className="flex flex-wrap items-baseline gap-3 border-t border-border pt-3">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                {t('dcf.price')}
+              </span>
+              <span
+                data-testid="dcf-price"
+                className="font-mono text-xl font-bold tabular-nums text-foreground"
+              >
+                {formatDecimal(locale, price.value, 2, 2)}
+              </span>
+              <span
+                data-testid="dcf-price-asof"
+                className="font-mono text-xs text-muted-foreground"
+              >
+                <AsOfDate asOf={price.asOf} />
+              </span>
+              {price.stale ? <StaleBadge /> : null}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {upperSymbol ? (
+              <Link
+                to={`/stocks/${encodeURIComponent(upperSymbol)}`}
+                className={buttonVariants({ size: 'sm' })}
+              >
+                {t('dcf.backToStock', { symbol: upperSymbol })}
+              </Link>
+            ) : null}
+            <Link
+              to="/stocks"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              {t('dcf.sectorNotApplicable.browseStocks')}
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
       {baseline && fields ? (
         <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:gap-12">
           <div className="flex min-w-0 flex-col gap-6">
@@ -420,7 +492,7 @@ export function DcfCalculatorScreen() {
                 </p>
                 <p
                   data-testid="dcf-fair-value"
-                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
+                  className="font-mono text-[2.25rem] sm:text-[2.75rem] leading-none font-bold tabular-nums text-foreground"
                 >
                   {result ? formatDecimal(locale, result.fairValuePerShare, 4, 2) : '—'}
                 </p>
@@ -431,7 +503,7 @@ export function DcfCalculatorScreen() {
                 </p>
                 <p
                   data-testid="dcf-price"
-                  className="font-mono text-3xl font-bold tabular-nums text-foreground"
+                  className="font-mono text-[1.75rem] leading-none font-bold tabular-nums text-foreground"
                 >
                   {price ? formatDecimal(locale, price.value, 2, 2) : '—'}
                 </p>
@@ -471,14 +543,22 @@ export function DcfCalculatorScreen() {
               </div>
             </div>
 
-            {/* Sensitivity table (FR-VAL-007, UXR-VAL-006). */}
+            {/* EOD Price vs. Sensitivity Range gauge + 5×5 sensitivity table (FR-VAL-007, UXR-VAL-006). */}
             {result ? (
-              <SensitivityTable
-                sensitivity={result.sensitivity}
-                locale={locale}
-                discountRate={currentDiscountRate}
-                terminalGrowth={currentTerminalGrowth}
-              />
+              <>
+                <SensitivityRangeGauge
+                  sensitivity={result.sensitivity}
+                  fairValue={result.fairValuePerShare}
+                  eodPrice={price?.value}
+                  locale={locale}
+                />
+                <SensitivityTable
+                  sensitivity={result.sensitivity}
+                  locale={locale}
+                  discountRate={currentDiscountRate}
+                  terminalGrowth={currentTerminalGrowth}
+                />
+              </>
             ) : null}
 
             {/* Scenario actions: save + this stock's picker (UXR-VAL-012..015). */}
@@ -683,6 +763,109 @@ export function DcfCalculatorScreen() {
         }}
       />
     </section>
+  )
+}
+
+/** EOD price vs. sensitivity range visual gauge derived strictly from served grid values. */
+function SensitivityRangeGauge({
+  sensitivity,
+  fairValue,
+  eodPrice,
+  locale,
+}: {
+  sensitivity: DcfSensitivity
+  fairValue: number
+  eodPrice: number | undefined
+  locale: string
+}) {
+  const { t } = useTranslation()
+  const finiteValues = sensitivity.fairValues
+    .flat()
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+
+  if (finiteValues.length < 2) return null
+
+  const bear = Math.min(...finiteValues)
+  const bull = Math.max(...finiteValues)
+  const points = [bear, bull, fairValue]
+  if (typeof eodPrice === 'number' && Number.isFinite(eodPrice)) {
+    points.push(eodPrice)
+  }
+  const minDomain = Math.min(...points)
+  const maxDomain = Math.max(...points)
+  const span = maxDomain - minDomain
+  if (span <= 0) return null
+
+  const pct = (v: number) =>
+    Math.min(100, Math.max(0, ((v - minDomain) / span) * 100))
+
+  const bandLeft = pct(bear)
+  const bandWidth = Math.max(2, pct(bull) - bandLeft)
+  const impliedPos = pct(fairValue)
+  const eodPos =
+    typeof eodPrice === 'number' && Number.isFinite(eodPrice)
+      ? pct(eodPrice)
+      : null
+
+  return (
+    <div
+      data-slot="dcf-range-gauge"
+      className="flex flex-col gap-3 border-b border-border pb-6"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+          {t('dcf.range.title')}
+        </span>
+        <span
+          aria-hidden="true"
+          className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted-foreground"
+        >
+          {eodPos !== null ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-[3px] bg-foreground" />
+              {t('dcf.range.eod')}
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-[2px] bg-[var(--brand-accent)]" />
+            {t('dcf.range.implied')}
+          </span>
+        </span>
+      </div>
+
+      <div aria-hidden="true" className="relative h-6 w-full">
+        <div className="absolute inset-x-0 top-1/2 h-[6px] -translate-y-1/2 bg-secondary" />
+        <div
+          className="absolute top-1/2 h-[10px] -translate-y-1/2 border border-[var(--brand-accent)] bg-[var(--accent-soft)]"
+          style={{ left: `${bandLeft}%`, width: `${bandWidth}%` }}
+        />
+        <div
+          className="absolute top-0.5 bottom-0.5 w-[2px] -translate-x-1/2 bg-[var(--brand-accent)]"
+          style={{ left: `${impliedPos}%` }}
+        />
+        {eodPos !== null ? (
+          <div
+            className="absolute top-0 bottom-0 w-[3px] -translate-x-1/2 bg-foreground"
+            style={{ left: `${eodPos}%` }}
+          />
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs tabular-nums text-muted-foreground">
+        <span>
+          {t('dcf.range.bear')}:{' '}
+          <strong className="font-medium text-foreground">
+            {formatDecimal(locale, bear, 2, 2)}
+          </strong>
+        </span>
+        <span>
+          {t('dcf.range.bull')}:{' '}
+          <strong className="font-medium text-foreground">
+            {formatDecimal(locale, bull, 2, 2)}
+          </strong>
+        </span>
+      </div>
+    </div>
   )
 }
 

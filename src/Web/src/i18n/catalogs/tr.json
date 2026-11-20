@@ -796,6 +796,18 @@
       "title": "Eksik girdiler",
       "body": "Bu hissenin hesaplanması için gereken bazı girdiler veri kaynaklarında eksik: {{fields}}. Eksik değerleri siz sağlayana kadar hesaplama yapılmaz; girdiğiniz değerlerle model çalışır."
     },
+    "sectorNotApplicable": {
+      "title": "Finans sektörü için İNA uygulanamaz",
+      "body": "Bankalar, sigorta şirketleri ve finansal kurumlarda serbest nakit akışı geleneksel sanayi şirketlerinden farklı işlediğinden İNA modeli uygulanmaz. {{symbol}} için PD/DD, Özsermaye Kârlılığı (ROE) ve sektör medyanlarını hisse sayfasından inceleyebilirsiniz.",
+      "browseStocks": "Hisse listesine git"
+    },
+    "range": {
+      "title": "Kapanış fiyatı ve duyarlılık aralığı",
+      "bear": "Alt sınır",
+      "bull": "Üst sınır",
+      "eod": "Kapanış",
+      "implied": "Adil değer"
+    },
     "sensitivity": {
       "title": "Duyarlılık tablosu",
       "axisLabel": "İskonto oranı \\ nihai büyüme",
