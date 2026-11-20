@@ -25,18 +25,20 @@ export function AppShell() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-content flex-1 px-gutter py-section">
+      <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-section sm:px-8">
         <Suspense fallback={<LoadingScreen />}>
           <Outlet />
         </Suspense>
       </main>
-      <footer className="border-t bg-background">
-        <div className="mx-auto flex w-full max-w-content flex-col gap-3 px-gutter py-6 text-xs text-muted-foreground">
+      <footer className="border-t border-border bg-background/80">
+        <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-4 px-4 py-8 text-xs text-muted-foreground sm:px-8">
           {isResearch ? <Disclaimer /> : null}
-          <DataSourceDisclaimer />
-          <p>
-            {t('app.name')} — {t('app.tagline')}
-          </p>
+          <div className="grid gap-6 md:grid-cols-[1.4fr_0.6fr] md:items-start">
+            <DataSourceDisclaimer />
+            <p className="font-mono text-[11px] leading-relaxed text-muted-foreground md:text-right">
+              {t('app.name')} — {t('app.tagline')}
+            </p>
+          </div>
         </div>
       </footer>
     </div>

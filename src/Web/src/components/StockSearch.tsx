@@ -27,6 +27,7 @@ export function StockSearch() {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const term = headerSearch.trim()
   const debouncedTerm = useDebouncedValue(term, 250)
@@ -50,6 +51,29 @@ export function StockSearch() {
     }
     document.addEventListener('mousedown', handlePointerDown)
     return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [])
+
+  // Global `/` shortcut to focus search when not already typing in a form field.
+  useEffect(() => {
+    function handleGlobalKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) {
+        return
+      }
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      event.preventDefault()
+      inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', handleGlobalKeyDown)
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown)
   }, [])
 
   const showPanel = open && term.length > 0
@@ -119,11 +143,15 @@ export function StockSearch() {
   }
 
   return (
-    <div ref={containerRef} className="relative w-full shrink-0 sm:w-56 lg:w-60">
+    <div
+      ref={containerRef}
+      className="relative w-full shrink-0 transition-[width] duration-150 sm:w-48 sm:focus-within:w-60"
+    >
       <label htmlFor="header-stock-search" className="sr-only">
         {t('header.searchLabel')}
       </label>
       <input
+        ref={inputRef}
         id="header-stock-search"
         type="search"
         role="combobox"
@@ -141,30 +169,38 @@ export function StockSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+        className="h-[30px] w-full rounded-[2px] border border-border bg-card pr-6 pl-2.5 font-mono text-xs text-foreground outline-none placeholder:text-[var(--ink-muted)] focus:border-[var(--brand-accent)] focus-visible:ring-1 focus-visible:ring-[var(--brand-accent)]"
       />
+      {term.length === 0 ? (
+        <kbd
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 font-mono text-[10px] text-[var(--ink-muted)] sm:inline"
+        >
+          /
+        </kbd>
+      ) : null}
 
       {showPanel ? (
         <div
           id="header-stock-search-results"
           role="listbox"
           aria-label={t('headerSearch.resultsLabel')}
-          className="absolute z-20 mt-1 flex w-full flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+          className="absolute z-50 mt-1 flex w-full flex-col overflow-hidden rounded-[2px] border border-[var(--border-strong)] bg-popover text-popover-foreground shadow-md"
         >
           {searchQuery.isPending ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">
+            <p className="px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
               {t('common.loading')}
             </p>
           ) : null}
 
           {searchQuery.isError ? (
-            <p role="alert" className="px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="px-2.5 py-2 font-mono text-[11px] text-destructive">
               {t('common.error')}
             </p>
           ) : null}
 
           {searchQuery.isSuccess && matches.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">
+            <p className="px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
               {t('headerSearch.noMatches')}
             </p>
           ) : null}
@@ -179,12 +215,12 @@ export function StockSearch() {
               aria-label={`${match.name} (${match.symbol})`}
               onClick={() => openStock(match.symbol)}
               className={cn(
-                'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
+                'flex w-full items-center justify-between gap-2 border-b border-border px-2.5 py-2 text-left text-xs last:border-b-0 hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
                 index === highlightedIndex && 'bg-accent',
               )}
             >
               <span className="truncate">{match.name}</span>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                 {match.symbol}
               </span>
             </button>
@@ -194,7 +230,7 @@ export function StockSearch() {
             <button
               type="button"
               onClick={viewAllMatches}
-              className="border-t px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+              className="border-t border-border bg-secondary/70 px-2.5 py-2 text-left font-mono text-[11px] font-medium text-[var(--brand-accent)] hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
             >
               {t('headerSearch.viewAll')}
             </button>

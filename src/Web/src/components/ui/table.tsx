@@ -23,7 +23,7 @@ export function TableContainer({
     <div
       data-slot="table-container"
       className={cn(
-        'relative w-full overflow-x-auto rounded-lg border',
+        'relative w-full overflow-x-auto rounded-[2px] border border-border',
         className,
       )}
       {...props}
@@ -48,7 +48,7 @@ export function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn('mt-3 px-3 text-left text-xs text-muted-foreground', className)}
+      className={cn('mt-3 px-3 text-left font-mono text-[11px] text-muted-foreground', className)}
       {...props}
     />
   )
@@ -61,7 +61,7 @@ export function TableHeader({
   return (
     <thead
       data-slot="table-header"
-      className={cn('bg-muted/50 [&_tr]:border-b', className)}
+      className={cn('border-b border-[var(--border-strong)] bg-muted/40 [&_tr]:border-b', className)}
       {...props}
     />
   )
@@ -87,7 +87,7 @@ export function TableFooter({
   return (
     <tfoot
       data-slot="table-footer"
-      className={cn('border-t bg-muted/50 font-medium', className)}
+      className={cn('border-t border-border bg-muted/40 font-medium', className)}
       {...props}
     />
   )
@@ -98,7 +98,7 @@ export function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
     <tr
       data-slot="table-row"
       className={cn(
-        'border-b transition-colors hover:bg-muted/40 data-[state=selected]:bg-muted',
+        'border-b border-border transition-colors hover:bg-accent/50 data-[state=selected]:bg-muted',
         className,
       )}
       {...props}
@@ -120,7 +120,7 @@ export function TableHead({ className, scope = 'col', ...props }: TableHeadProps
         'px-3 text-left align-middle',
         scope === 'row'
           ? 'py-2.5 whitespace-normal text-sm font-medium text-foreground'
-          : 'h-10 whitespace-nowrap text-xs font-medium text-muted-foreground',
+          : 'h-9 whitespace-nowrap font-mono text-[10px] font-medium tracking-[0.06em] uppercase text-[var(--ink-muted)]',
         className,
       )}
       {...props}
@@ -132,7 +132,7 @@ export function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   return (
     <td
       data-slot="table-cell"
-      className={cn('px-3 py-2.5 align-middle', className)}
+      className={cn('px-3 py-2.5 align-middle tabular-nums', className)}
       {...props}
     />
   )

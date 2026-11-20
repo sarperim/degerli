@@ -17,7 +17,7 @@ export function ThemeToggle() {
       aria-label={`${t('header.themeToggle')}: ${modeLabel}`}
       aria-pressed={isDark}
       onClick={toggleTheme}
-      className="gap-1.5"
+      className="h-[30px] gap-1.5 rounded-[2px] border-border bg-transparent px-2 font-mono text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       {isDark ? (
         <svg

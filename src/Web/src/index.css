@@ -3,6 +3,11 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme inline {
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -11,16 +16,29 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    overflow-anchor: none;
   }
 
   body {
     background-color: var(--color-background);
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: top center;
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-size: var(--text-body-lg);
     line-height: var(--text-body-lg--line-height);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body {
+      transition: none;
+    }
   }
 
   :focus-visible {

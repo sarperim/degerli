@@ -64,7 +64,7 @@ export function AsOfDate({
     <span
       data-slot="as-of-date"
       title={explanation}
-      className={cn('text-xs text-muted-foreground', className)}
+      className={cn('font-mono text-xs text-muted-foreground', className)}
     >
       {t('honestData.asOf', { date: formatAsOfDate(locale, asOf) })}
       <span className="sr-only"> ({explanation})</span>
@@ -98,7 +98,10 @@ export function StaleBadge({
       data-slot="stale-badge"
       role="note"
       variant="stale"
-      className={className}
+      className={cn(
+        'rounded-[2px] border-[var(--brand-accent-border)] bg-[var(--brand-accent-soft)] font-mono text-[10px] tracking-wider text-[var(--brand-accent)]',
+        className,
+      )}
       title={explanation}
       aria-label={`${text} — ${explanation}`}
     >
@@ -123,7 +126,7 @@ export function NotMeaningful({
       data-slot="not-meaningful"
       title={t('honestData.notMeaningfulTitle')}
       className={cn(
-        'rounded-md border border-border bg-not-meaningful px-2 py-0.5 text-xs text-not-meaningful-foreground',
+        'rounded-[2px] border border-border bg-not-meaningful px-2 py-0.5 font-mono text-[11px] text-not-meaningful-foreground',
         className,
       )}
     >
@@ -148,7 +151,7 @@ export function RestatedMarker({
   return (
     <span
       data-slot="restated-marker"
-      className={cn('font-semibold text-restated-foreground', className)}
+      className={cn('font-mono text-[10px] font-semibold text-[var(--brand-accent)]', className)}
       title={description ?? t('honestData.restated')}
     >
       <span aria-hidden="true">*</span>

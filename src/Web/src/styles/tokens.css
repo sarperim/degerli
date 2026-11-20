@@ -21,57 +21,70 @@
  * applies Turkish casing rules (dotted/dotless i).
  */
 
-/* 1. Primitive + semantic tokens (shadcn/ui-compatible, light) */
+/* 1. Primitive + semantic tokens (shadcn/ui-compatible, archival paper light) */
 :root {
   color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: #F4F3EF;
+  --foreground: #171A1E;
+  --card: #FAF9F6;
+  --card-foreground: #171A1E;
+  --popover: #FAF9F6;
+  --popover-foreground: #171A1E;
+  --primary: #171A1E;
+  --primary-foreground: #FAF9F6;
+  --secondary: #EAEAE4;
+  --secondary-foreground: #171A1E;
+  --muted: #EAEAE4;
+  --muted-foreground: #505862;
+  --accent: #EAEAE4;
+  --accent-foreground: #171A1E;
+  --destructive: #A94141;
+  --destructive-foreground: #FAF9F6;
+  --border: #D9DBD3;
+  --border-strong: #B6BBB1;
+  --input: #B6BBB1;
+  --ring: #9B6123;
+
+  /* Editorial palette extensions (degerlilatest.html) */
+  --ink-muted: #7C848E;
+  --brand-accent: #9B6123;
+  --brand-accent-soft: rgba(155, 97, 35, 0.09);
+  --brand-accent-border: rgba(155, 97, 35, 0.36);
+  --regime: #3E5D82;
+  --regime-soft: rgba(62, 93, 130, 0.09);
+  --regime-border: rgba(62, 93, 130, 0.38);
+  --pos: #267349;
+  --neg: #A94141;
+  --grid-line: rgba(23, 26, 30, 0.038);
 
   /* 2. Honest-data / status tokens. Surfaces pair a soft background with a dark
    * foreground so text and asterisks keep contrast without relying on colour
    * alone (UXR-G-009 requires the restatement marker to be textual, not
    * colour-only). */
-  --success: oklch(0.93 0.06 150);
-  --success-foreground: oklch(0.32 0.08 150);
-  --warning: oklch(0.94 0.09 80);
-  --warning-foreground: oklch(0.38 0.09 65);
-  --info: oklch(0.93 0.05 245);
-  --info-foreground: oklch(0.36 0.09 250);
+  --success: rgba(38, 115, 73, 0.11);
+  --success-foreground: #1E5C3A;
+  --warning: rgba(155, 97, 35, 0.11);
+  --warning-foreground: #7D4D1A;
+  --info: rgba(62, 93, 130, 0.10);
+  --info-foreground: #324C6B;
 
   /* stale — last-known-good data past its freshness window (UXR-G-008). */
-  --stale: oklch(0.94 0.09 80);
-  --stale-foreground: oklch(0.38 0.09 65);
+  --stale: var(--brand-accent-soft);
+  --stale-foreground: #7D4D1A;
   /* restated — figures a company has restated (UXR-G-009). */
-  --restated: oklch(0.93 0.08 45);
-  --restated-foreground: oklch(0.40 0.12 40);
+  --restated: var(--brand-accent-soft);
+  --restated-foreground: #7D4D1A;
   /* adjusted — corporate-action-adjusted historical series (UXR-G-010). */
-  --adjusted: oklch(0.93 0.05 245);
-  --adjusted-foreground: oklch(0.36 0.09 250);
+  --adjusted: var(--regime-soft);
+  --adjusted-foreground: #324C6B;
   /* not-meaningful — a metric with no meaningful value (UXR-RES-025). */
-  --not-meaningful: oklch(0.96 0 0);
-  --not-meaningful-foreground: oklch(0.5 0 0);
+  --not-meaningful: #EAEAE4;
+  --not-meaningful-foreground: #505862;
 
-  --radius: 0.625rem;
+  --radius: 2px;
 
   /* 3. Layout */
-  --width-content: 72rem; /* max-w-6xl; the shell content width */
+  --width-content: 1240px; /* editorial max container width */
   --width-prose: 42rem;
 
   /* Spacing scale (rem). Semantic names sit alongside Tailwind's numeric scale. */
@@ -91,11 +104,9 @@
 
   /* Type scale (TR + EN). Each size carries its own line-height. */
   --font-family-sans:
-    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Turkish', sans-serif;
+    'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-family-mono:
-    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-    'Liberation Mono', monospace;
+    'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
   --font-size-caption: 0.75rem;
   --line-height-caption: 1.35;
@@ -115,44 +126,56 @@
   --line-height-display: 1.15;
 }
 
-/* Dark theme token set (shadcn `.dark` convention). Toggled via `<html class="dark">`
- * by `@/lib/theme`. */
+/* Dark theme token set (shadcn `.dark` convention, warm obsidian). Toggled via
+ * `<html class="dark">` by `@/lib/theme`. */
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.556 0 0);
+  --background: #111316;
+  --foreground: #DCE1E6;
+  --card: #16191E;
+  --card-foreground: #DCE1E6;
+  --popover: #16191E;
+  --popover-foreground: #DCE1E6;
+  --primary: #DCE1E6;
+  --primary-foreground: #111316;
+  --secondary: #1B1F25;
+  --secondary-foreground: #DCE1E6;
+  --muted: #1B1F25;
+  --muted-foreground: #909AA5;
+  --accent: #21262E;
+  --accent-foreground: #DCE1E6;
+  --destructive: #C86A6A;
+  --destructive-foreground: #111316;
+  --border: #252A32;
+  --border-strong: #37404C;
+  --input: #37404C;
+  --ring: #C68B49;
 
-  --success: oklch(0.35 0.07 150);
-  --success-foreground: oklch(0.9 0.06 150);
-  --warning: oklch(0.38 0.08 75);
-  --warning-foreground: oklch(0.92 0.07 80);
-  --info: oklch(0.36 0.07 245);
-  --info-foreground: oklch(0.9 0.05 245);
-  --stale: oklch(0.38 0.08 75);
-  --stale-foreground: oklch(0.92 0.07 80);
-  --restated: oklch(0.38 0.09 45);
-  --restated-foreground: oklch(0.92 0.07 55);
-  --adjusted: oklch(0.36 0.07 245);
-  --adjusted-foreground: oklch(0.9 0.05 245);
-  --not-meaningful: oklch(0.269 0 0);
-  --not-meaningful-foreground: oklch(0.708 0 0);
+  --ink-muted: #5F6873;
+  --brand-accent: #C68B49;
+  --brand-accent-soft: rgba(198, 139, 73, 0.12);
+  --brand-accent-border: rgba(198, 139, 73, 0.40);
+  --regime: #7E97B8;
+  --regime-soft: rgba(126, 151, 184, 0.12);
+  --regime-border: rgba(126, 151, 184, 0.42);
+  --pos: #5FA57C;
+  --neg: #C86A6A;
+  --grid-line: rgba(220, 225, 230, 0.028);
+
+  --success: rgba(95, 165, 124, 0.14);
+  --success-foreground: #7CC097;
+  --warning: rgba(198, 139, 73, 0.14);
+  --warning-foreground: #DDA567;
+  --info: rgba(126, 151, 184, 0.14);
+  --info-foreground: #9FB5D2;
+  --stale: var(--brand-accent-soft);
+  --stale-foreground: #DDA567;
+  --restated: var(--brand-accent-soft);
+  --restated-foreground: #DDA567;
+  --adjusted: var(--regime-soft);
+  --adjusted-foreground: #9FB5D2;
+  --not-meaningful: #1B1F25;
+  --not-meaningful-foreground: #909AA5;
 }
 
 /* 4. Expose tokens as Tailwind utilities (bg-*, text-*, border-*, font-*, text-*
@@ -176,8 +199,15 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --color-brand-accent: var(--brand-accent);
+  --color-regime: var(--regime);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-ink-muted: var(--ink-muted);
 
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
@@ -194,10 +224,10 @@
   --color-not-meaningful: var(--not-meaningful);
   --color-not-meaningful-foreground: var(--not-meaningful-foreground);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 2px);
 
   --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
