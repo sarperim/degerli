@@ -4,20 +4,26 @@ import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 
 import { formatAsOfDate } from '@/lib/format'
+import { useDraftStore, type StockPageSection } from '@/store/draftStore'
 import { catalogValue } from '@/test/i18n'
 import { problemHandler } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import {
   BALANCE_SHEET_FIXTURE,
+  BANK_FINANCIALS_FIXTURE,
   fill,
   GROWTH_FIXTURE,
   PREPARING_OVERVIEW,
   PUBLISHED_OVERVIEW,
   renderStockPage,
   resetStockPageTest,
+  STATEMENTS_ANNUAL_PERIOD,
+  STATEMENTS_FINANCIALS_FIXTURE,
   stockBalanceSheetHandler,
   stockFinancialsHandler,
   stockOverviewHandler,
+  stockValuationHandler,
+  VALUATION_FIXTURE,
 } from '@/screens/stock-page/testSupport'
 
 /**
@@ -40,14 +46,23 @@ function region(name: string): HTMLElement {
 beforeEach(resetStockPageTest)
 
 describe('TC-RES-023 — section independence and per-section retry', () => {
-  it('shows one failing section’s own error while the other six render', async () => {
+  it('shows one failing section’s own error while the other seven render', async () => {
+    const user = userEvent.setup()
     server.use(problemHandler('/api/v1/stocks/:symbol/financials', 'INTERNAL'))
     renderStockPage()
 
     // The screen mounted and the overview rendered.
     expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(
+      within(region(TR('stockPage.sections.overview'))).getByText(
+        PUBLISHED_OVERVIEW.textTr!,
+      ),
+    ).toBeInTheDocument()
 
     // The failing section owns its plain-language error and retry…
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.financials') }),
+    )
     const financials = region(TR('stockPage.sections.financials'))
     expect(await within(financials).findByRole('alert')).toBeInTheDocument()
     expect(
@@ -60,34 +75,48 @@ describe('TC-RES-023 — section independence and per-section retry', () => {
       within(financials).getByRole('button', { name: TR('common.retry') }),
     ).toBeInTheDocument()
 
-    // …while the other six sections render normally.
-    expect(
-      within(region(TR('stockPage.sections.overview'))).getByText(
-        PUBLISHED_OVERVIEW.textTr!,
-      ),
-    ).toBeInTheDocument()
+    // …while the other sections render normally when selected.
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.valuation') }),
+    )
     expect(
       await within(region(TR('stockPage.sections.valuation'))).findByText(
         TR('stockPage.valuation.strip.title'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.profitability') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.profitability'))).getByText(
+      await within(region(TR('stockPage.sections.profitability'))).findByText(
         TR('stockPage.profitability.metrics.roic'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.growth') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.growth'))).getByText(
+      await within(region(TR('stockPage.sections.growth'))).findByText(
         TR('stockPage.growth.families.rev'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.balanceSheet') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.balanceSheet'))).getByText(
+      await within(region(TR('stockPage.sections.balanceSheet'))).findByText(
         TR('stockPage.balanceSheet.bookValue'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.dividends') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.dividends'))).getByText(
+      await within(region(TR('stockPage.sections.dividends'))).findByText(
         TR('stockPage.dividends.columns.exDate'),
       ),
     ).toBeInTheDocument()
@@ -98,6 +127,9 @@ describe('TC-RES-023 — section independence and per-section retry', () => {
     server.use(problemHandler('/api/v1/stocks/:symbol/financials', 'INTERNAL'))
     renderStockPage()
 
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.financials') }),
+    )
     const financials = region(TR('stockPage.sections.financials'))
     await within(financials).findByRole('alert')
 
@@ -115,6 +147,7 @@ describe('TC-RES-023 — section independence and per-section retry', () => {
   })
 
   it('loads sections with independent loading states', async () => {
+    const user = userEvent.setup()
     // Growth is slow; every other section resolves immediately.
     server.use(
       http.get('/api/v1/stocks/:symbol/growth', async () => {
@@ -126,17 +159,28 @@ describe('TC-RES-023 — section independence and per-section retry', () => {
 
     await screen.findByText(PUBLISHED_OVERVIEW.textTr!)
 
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.growth') }),
+    )
     const growth = region(TR('stockPage.sections.growth'))
     expect(within(growth).getByRole('status')).toBeInTheDocument()
 
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.balanceSheet') }),
+    )
     const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
     expect(within(balanceSheet).queryByRole('status')).not.toBeInTheDocument()
     expect(
-      within(balanceSheet).getByText(TR('stockPage.balanceSheet.bookValue')),
+      await within(balanceSheet).findByText(TR('stockPage.balanceSheet.bookValue')),
     ).toBeInTheDocument()
 
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.growth') }),
+    )
     expect(
-      await within(growth).findByText(TR('stockPage.growth.families.rev')),
+      await within(region(TR('stockPage.sections.growth'))).findByText(
+        TR('stockPage.growth.families.rev'),
+      ),
     ).toBeInTheDocument()
   })
 })
@@ -172,6 +216,7 @@ describe('TC-RES-026 — description rendering and preparing state', () => {
   })
 
   it('shows the preparing state while the numbers sections stay fully populated', async () => {
+    const user = userEvent.setup()
     server.use(stockOverviewHandler(PREPARING_OVERVIEW))
     renderStockPage()
 
@@ -182,18 +227,29 @@ describe('TC-RES-026 — description rendering and preparing state', () => {
       await within(overview).findByText(TR('honestData.preparingTitle')),
     ).toBeInTheDocument()
 
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.financials') }),
+    )
     expect(
       await within(region(TR('stockPage.sections.financials'))).findByText(
         TR('stockPage.financials.columns.revenue'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.profitability') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.profitability'))).getByText(
+      await within(region(TR('stockPage.sections.profitability'))).findByText(
         TR('stockPage.profitability.metrics.roic'),
       ),
     ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: TR('stockPage.sections.balanceSheet') }),
+    )
     expect(
-      within(region(TR('stockPage.sections.balanceSheet'))).getByText(
+      await within(region(TR('stockPage.sections.balanceSheet'))).findByText(
         TR('stockPage.balanceSheet.bookValue'),
       ),
     ).toBeInTheDocument()
@@ -224,7 +280,9 @@ describe('TC-RES-027 — active-section preservation', () => {
     expect(await screen.findByTestId('dcf-stub')).toBeInTheDocument()
     await user.click(screen.getByRole('link', { name: 'back-to-stock' }))
 
-    await screen.findByText(PUBLISHED_OVERVIEW.textTr!)
+    await within(region(TR('stockPage.sections.balanceSheet'))).findByText(
+      TR('stockPage.balanceSheet.bookValue'),
+    )
     expect(
       screen.getByRole('button', {
         name: TR('stockPage.sections.balanceSheet'),
@@ -244,7 +302,7 @@ describe('TC-RES-027 — active-section preservation', () => {
  */
 describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantics', () => {
   it('labels the row as a share count with a count unit, never as paid-in capital', async () => {
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'balanceSheet' })
 
     const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
     await within(balanceSheet).findByText(TR('stockPage.balanceSheet.bookValue'))
@@ -275,7 +333,7 @@ describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantic
         },
       }),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'balanceSheet' })
 
     const balanceSheet = region(TR('stockPage.sections.balanceSheet'))
     await within(balanceSheet).findByText(TR('stockPage.balanceSheet.bookValue'))
@@ -301,7 +359,7 @@ describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantic
 
   it('carries the English count label and count unit too', async () => {
     const EN = (key: string) => catalogValue('en', key)
-    renderStockPage(['/stocks/ALFA'], { language: 'en' })
+    renderStockPage(['/stocks/ALFA'], { language: 'en', section: 'balanceSheet' })
 
     const balanceSheet = screen.getByRole('region', {
       name: EN('stockPage.sections.balanceSheet'),
@@ -315,5 +373,183 @@ describe('TC-MDF-115 (v) — the balance-sheet shares row carries count semantic
     expect(row).toHaveTextContent(EN('units.count'))
     expect(row).not.toHaveTextContent(EN('units.currencyTry'))
     expect(row).not.toHaveTextContent(/paid-in capital/i)
+  })
+})
+
+describe('SLICE-033 — part-by-part tabs and KAP jump buttons', () => {
+  it('mounts only the active section panel and unmounts previous panels on tab switch', async () => {
+    const user = userEvent.setup()
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(
+      screen.getByRole('region', { name: TR('stockPage.sections.overview') }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: TR('stockPage.sections.valuation') }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: TR('stockPage.sections.financials') }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: TR('stockPage.sections.kapReports') }),
+    ).not.toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.valuation'),
+      }),
+    )
+
+    expect(
+      await within(region(TR('stockPage.sections.valuation'))).findByText(
+        TR('stockPage.valuation.strip.title'),
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: TR('stockPage.sections.overview') }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('activates the kapReports rail tab from both overview and financials jump buttons', async () => {
+    const user = userEvent.setup()
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: TR('stockPage.overview.openKapReports'),
+      }),
+    )
+
+    expect(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+    expect(region(TR('stockPage.sections.kapReports'))).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.financials'),
+      }),
+    )
+    const financials = region(TR('stockPage.sections.financials'))
+    const financialsKapButton = await within(financials).findByRole('button', {
+      name: TR('stockPage.financials.openKapReports'),
+    })
+    await user.click(financialsKapButton)
+
+    expect(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+    expect(region(TR('stockPage.sections.kapReports'))).toBeInTheDocument()
+  })
+
+  it('suppresses industrial chart, summary table, and restated notice when FinancialsSection renders a bank layout notice', async () => {
+    server.use(stockFinancialsHandler(BANK_FINANCIALS_FIXTURE))
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
+
+    const financials = region(TR('stockPage.sections.financials'))
+    expect(await within(financials).findByTestId('layout-notice')).toBeInTheDocument()
+    expect(
+      financials.querySelector('[data-slot="financials-grouped-chart"]'),
+    ).toBeNull()
+    expect(financials.querySelector('table')).toBeNull()
+    expect(
+      within(financials).queryByText(TR('honestData.restatedNotice')),
+    ).not.toBeInTheDocument()
+  })
+
+  it('falls back safely to overview when persisted activeStockSection is invalid', async () => {
+    useDraftStore.setState({ activeStockSection: 'invalid' as StockPageSection })
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(region(TR('stockPage.sections.overview'))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.overview'),
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('hides the empty historical chart wrapper when valuation historical series is empty', async () => {
+    server.use(
+      stockValuationHandler({
+        ...VALUATION_FIXTURE,
+        historical: { adjusted: false, series: [] },
+      }),
+    )
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(
+      region(TR('stockPage.sections.overview')).querySelector(
+        '[data-testid="valuation-history-chart"]',
+      ),
+    ).toBeNull()
+  })
+
+  it('keeps the chart asOf and stale envelope when overview text is preparing', async () => {
+    server.use(
+      stockOverviewHandler(PREPARING_OVERVIEW),
+      stockValuationHandler({ ...VALUATION_FIXTURE, stale: true }),
+    )
+    renderStockPage()
+
+    const overview = await screen.findByRole('region', {
+      name: TR('stockPage.sections.overview'),
+    })
+    expect(
+      await within(overview).findByText(TR('honestData.preparingTitle')),
+    ).toBeInTheDocument()
+    expect(
+      await within(overview).findByTestId('valuation-history-chart'),
+    ).toBeInTheDocument()
+    expect(overview.querySelector('[data-slot="as-of-date"]')).toBeInTheDocument()
+    expect(overview.querySelector('[data-slot="stale-badge"]')).toBeInTheDocument()
+  })
+
+  it('scopes statement-only restatements to 08 KAP Reports rather than 03 Financials', async () => {
+    const baseLines = STATEMENTS_ANNUAL_PERIOD.lines!
+    const deepRestatedPayload = {
+      ...STATEMENTS_FINANCIALS_FIXTURE,
+      periods: [
+        {
+          ...STATEMENTS_ANNUAL_PERIOD,
+          lines: {
+            ...baseLines,
+            IS: {
+              ...baseLines.IS,
+              COGS: { value: 600_000, restated: true },
+            },
+          },
+        },
+      ],
+    }
+    server.use(stockFinancialsHandler(deepRestatedPayload))
+    const user = userEvent.setup()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
+
+    const financials = region(TR('stockPage.sections.financials'))
+    await within(financials).findByText(TR('stockPage.financials.columns.revenue'))
+    expect(
+      within(financials).queryByText(TR('honestData.restatedNotice')),
+    ).not.toBeInTheDocument()
+
+    await user.click(
+      within(financials).getByRole('button', {
+        name: TR('stockPage.financials.openKapReports'),
+      }),
+    )
+
+    const kapReports = region(TR('stockPage.sections.kapReports'))
+    expect(
+      await within(kapReports).findByText(TR('honestData.restatedNotice')),
+    ).toBeInTheDocument()
   })
 })

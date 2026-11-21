@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { RestatedMarker } from '@/components/honest-data'
@@ -109,7 +109,7 @@ function EvValue({ fact, locale }: { fact: EvFact | null; locale: string }) {
 }
 
 /** The financial-sector layout notice — an honest verdict, never a half-filled table. */
-function LayoutNoticeBlock({ notice }: { notice: LayoutNotice }) {
+export function LayoutNoticeBlock({ notice }: { notice: LayoutNotice }) {
   const { t } = useTranslation()
   return (
     <div
@@ -278,6 +278,17 @@ function StatementTable({
   )
 }
 
+const STATEMENT_FILTER_OPTIONS = ['all', 'IS', 'BS', 'CF'] as const
+type StatementFilter = (typeof STATEMENT_FILTER_OPTIONS)[number]
+
+/** Full label keys for statement filter sub-tabs (literals, so i18n parity sees them). */
+const SUBTAB_LABEL_KEYS: Record<StatementFilter, string> = {
+  all: 'stockPage.statements.subtabs.all',
+  IS: 'stockPage.statements.subtabs.IS',
+  BS: 'stockPage.statements.subtabs.BS',
+  CF: 'stockPage.statements.subtabs.CF',
+}
+
 /**
  * The statements view for a 094-shaped payload. A payload that carries no served
  * line set is a pre-094 payload: the caller renders the legacy five-figure summary
@@ -294,6 +305,7 @@ export function StatementsView({
 }) {
   const { t } = useTranslation()
   const [basis, setBasis] = useStatementBasis()
+  const [statementFilter, setStatementFilter] = useState<StatementFilter>('all')
   const notice = data.layoutNotice?.applies ? data.layoutNotice : null
   const periods = periodsForBasis(data.periods, basis)
 
@@ -301,6 +313,10 @@ export function StatementsView({
     { value: 'annual' as const, labelKey: 'stockPage.financials.basis.annual' },
     { value: 'quarterly' as const, labelKey: 'stockPage.financials.basis.quarterly' },
   ]
+
+  const visibleSections = STATEMENT_SECTIONS.filter(
+    (section) => statementFilter === 'all' || section.key === statementFilter,
+  )
 
   return (
     <div className="flex flex-col gap-4">
@@ -345,13 +361,42 @@ export function StatementsView({
         <EnterpriseValueHeader evHeader={data.evHeader} locale={locale} />
       ) : null}
 
+      {!notice && periods.length > 0 ? (
+        <div
+          data-slot="statement-subtabs"
+          role="group"
+          aria-label={t('stockPage.statements.subtabs.label')}
+          className="inline-flex flex-wrap items-center gap-1 font-mono text-[11px]"
+        >
+          {STATEMENT_FILTER_OPTIONS.map((option) => {
+            const active = statementFilter === option
+            return (
+              <button
+                key={option}
+                type="button"
+                data-magnetic=""
+                aria-pressed={active}
+                onClick={() => setStatementFilter(option)}
+                className={
+                  active
+                    ? 'rounded-[2px] border border-[var(--brand-accent)] bg-[var(--accent-soft)] px-2.5 py-1 font-medium text-foreground'
+                    : 'rounded-[2px] border border-transparent px-2.5 py-1 text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                {t(SUBTAB_LABEL_KEYS[option])}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+
       {!notice ? (
         periods.length === 0 ? (
           <p data-testid="statements-empty" className="text-sm text-muted-foreground">
             {t('stockPage.financials.emptyBasis')}
           </p>
         ) : (
-          STATEMENT_SECTIONS.map((section) => (
+          visibleSections.map((section) => (
             <StatementTable
               key={section.key}
               section={section}

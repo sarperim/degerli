@@ -116,7 +116,7 @@ beforeEach(resetStockPageTest)
 describe('TC-RES-041 (a) — both row sets are complete', () => {
   it('renders every served panel code and every capital-tracker row', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -161,7 +161,7 @@ describe('TC-RES-041 (a) — both row sets are complete', () => {
 describe('TC-RES-041 (b) — served value vs. the honest dash', () => {
   it('renders the served current value and "—" for a served-null code, never 0', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -206,7 +206,7 @@ describe('TC-RES-041 (b) — served value vs. the honest dash', () => {
       },
     }
     server.use(stockKeyMetricsHandler(unserved))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const track = await screen.findByTestId('capital-tracker')
     for (const key of ['paidInCapital', 'sharesOutstanding', 'payoutRatio']) {
@@ -220,7 +220,7 @@ describe('TC-RES-041 (b) — served value vs. the honest dash', () => {
 describe('TC-RES-041 (c) — the 5Y company median is honest about its depth', () => {
   it('renders the served disclosure and withholds a thin median as a dash', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -257,7 +257,7 @@ describe('TC-RES-041 (c) — the 5Y company median is honest about its depth', (
 describe('TC-RES-041 (d) — sector median with peer and exclusion counts', () => {
   it('renders the served median, the peer count and the gated exclusion disclosure', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -281,7 +281,7 @@ describe('TC-RES-041 (d) — sector median with peer and exclusion counts', () =
 describe('TC-RES-041 (e) — the regime-break marker and the served growth window', () => {
   it('marks a spanning CAGR, leaves a one-side CAGR unmarked, and discloses a short window', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -327,7 +327,7 @@ describe('TC-RES-041 (e) — the regime-break marker and the served growth windo
 describe('TC-RES-041 (f) — the TMS 29 distortion alert', () => {
   it('renders the alert from the served monetary-gain ratio and not when unserved', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
     // The fixture's monetary_gain_pretax is honestly unserved → no alert.
@@ -346,7 +346,7 @@ describe('TC-RES-041 (f) — the TMS 29 distortion alert', () => {
         },
       }),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const alert = await screen.findByTestId('tms29-alert')
     expect(alert).toHaveTextContent(TR('stockPage.keyMetrics.tms29Alert.title'))
@@ -357,7 +357,7 @@ describe('TC-RES-041 (f) — the TMS 29 distortion alert', () => {
 describe('TC-RES-041 (g) — the bedelli/bedelsiz history', () => {
   it('renders the dated served actions with the corporate-action-adjusted disclaimer', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const track = await screen.findByTestId('capital-tracker')
 
@@ -378,7 +378,7 @@ describe('TC-RES-041 (g) — the bedelli/bedelsiz history', () => {
 describe('TC-RES-041 (h) — the share-count Y/Y N/M', () => {
   it('renders the honest no-count-history state, never a guessed change', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const track = await screen.findByTestId('capital-tracker')
 
@@ -394,7 +394,7 @@ describe('TC-RES-041 (h) — the share-count Y/Y N/M', () => {
 describe('TC-RES-041 (i) — basis honesty on ROE and EPS CAGR', () => {
   it('labels the served group-basis rows as group/consolidated, never Parent', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -414,7 +414,7 @@ describe('TC-RES-041 (i) — basis honesty on ROE and EPS CAGR', () => {
 describe('TC-RES-041 (j) — a financial-sector profile', () => {
   it('shows the notice and only the profile-appropriate rows', async () => {
     server.use(stockKeyMetricsHandler(BANK_KEY_METRICS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 
@@ -440,7 +440,7 @@ describe('TC-RES-041 (j) — a financial-sector profile', () => {
 describe('TC-RES-041 (k) — EN labels the same row set', () => {
   it('renders the EN catalog copy in both blocks', async () => {
     server.use(stockKeyMetricsHandler(KEY_METRICS_FIXTURE))
-    renderStockPage(['/stocks/ALFA'], { language: 'en' })
+    renderStockPage(['/stocks/ALFA'], { language: 'en', section: 'kapReports' })
 
     await screen.findByTestId('key-metrics-panel')
 

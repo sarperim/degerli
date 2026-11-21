@@ -69,7 +69,7 @@
     },
     "stockPage": {
       "title": "Stock Page",
-      "description": "Business description, valuation, financials, profitability, growth, balance sheet and dividend sections for one stock."
+      "description": "Business description, valuation, financials, profitability, growth, balance sheet, dividend and KAP report sections for one stock."
     },
     "dcfCalculator": {
       "title": "DCF Calculator",
@@ -114,7 +114,11 @@
       "profitability": "Profitability",
       "growth": "Growth",
       "balanceSheet": "Balance Sheet",
-      "dividends": "Dividends"
+      "dividends": "Dividends",
+      "kapReports": "KAP Reports"
+    },
+    "overview": {
+      "openKapReports": "Open KAP Reports ↗"
     },
     "descriptionLastReviewed": "Last reviewed: {{date}}",
     "sectionErrorTitle": "This section could not be loaded",
@@ -154,6 +158,7 @@
       }
     },
     "financials": {
+      "openKapReports": "Full KAP Reports ↗",
       "period": "FY{{year}}",
       "periodQuarter": "Q{{quarter}} {{year}}",
       "periodEnding": "Period ending {{date}}",
@@ -283,6 +288,15 @@
       "layoutNotice": {
         "title": "Bank/insurance layout",
         "body": "This company reports under a bank or insurance accounting profile; the industrial statements layout does not apply. Bank-format statements are a later slice, so no half-filled table is shown here."
+      }
+    },
+    "statements": {
+      "subtabs": {
+        "label": "Statement view",
+        "all": "All statements",
+        "IS": "Income (IS)",
+        "BS": "Balance sheet (BS)",
+        "CF": "Cash flow (CF)"
       }
     },
     "profitability": {

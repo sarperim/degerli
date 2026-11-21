@@ -99,6 +99,12 @@ test.describe('TC-XC-008 cross-surface metric equality', () => {
     const peFromValuationApi = valuation.current.pe
     expect(peFromValuationApi).toBeCloseTo(ALFA_PE, 4)
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.valuation'),
+        exact: true,
+      })
+      .click()
     const valuationRegion = page.getByRole('region', {
       name: TR('stockPage.sections.valuation'),
     })

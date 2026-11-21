@@ -126,7 +126,7 @@ describe('TKT-foundation-055 (TC-RES-025 extension) — vs.-sector honest emptie
 
   it('TC-RES-025 — the section renders the honest empty for a no-peers payload', async () => {
     server.use(stockValuationHandler(NO_PEERS_VALUATION_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'valuation' })
 
     const valuation = await screen.findByRole('region', {
       name: TR('stockPage.sections.valuation'),

@@ -67,7 +67,7 @@ beforeEach(resetStockPageTest)
 describe('TKT-foundation-057(i) — period-type-aware financials labels', () => {
   it('labels a Q period as the quarter derived from periodEndDate, not a fiscal year (TR)', async () => {
     server.use(stockFinancialsHandler(QUARTER_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = financialsRegion()
     const quarterRow = await within(financials).findByText(quarterLabel(1, 2023))
@@ -81,7 +81,7 @@ describe('TKT-foundation-057(i) — period-type-aware financials labels', () => 
 
   it('labels the same Q period in the EN catalog without refetching', async () => {
     server.use(stockFinancialsHandler(QUARTER_FINANCIALS_FIXTURE))
-    const { i18n } = renderStockPage()
+    const { i18n } = renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = financialsRegion()
     expect(await within(financials).findByText(quarterLabel(1, 2023))).toBeInTheDocument()
@@ -123,7 +123,7 @@ describe('TKT-foundation-057(i) — period-type-aware financials labels', () => 
         })),
       }),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = financialsRegion()
     for (const { quarter } of quarters) {
@@ -135,7 +135,7 @@ describe('TKT-foundation-057(i) — period-type-aware financials labels', () => 
 
   it('keeps the fiscal-year label for an FY period', async () => {
     server.use(stockFinancialsHandler(financialsWith(FY_PERIOD)))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     expect(await within(financialsRegion()).findByText(fyLabel(2025))).toBeInTheDocument()
   })
@@ -144,7 +144,7 @@ describe('TKT-foundation-057(i) — period-type-aware financials labels', () => 
     const untyped = { ...FY_PERIOD } as Record<string, unknown>
     delete untyped.periodType
     server.use(stockFinancialsHandler(financialsWith(untyped as unknown as FinancialPeriod)))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = financialsRegion()
     expect(
@@ -160,7 +160,7 @@ describe('TKT-foundation-057(i) — period-type-aware financials labels', () => 
         financialsWith({ ...FY_PERIOD, periodType: 'H1', periodEndDate: '2025-06-30' }),
       ),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = financialsRegion()
     expect(await within(financials).findByText(endingLabel('2025-06-30'))).toBeInTheDocument()

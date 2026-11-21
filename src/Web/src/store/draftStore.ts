@@ -21,6 +21,7 @@ export type StockPageSection =
   | 'growth'
   | 'balanceSheet'
   | 'dividends'
+  | 'kapReports'
 
 export interface DraftState {
   /** SCR-003 criteria builder draft (owned by the stock-screening tickets). */

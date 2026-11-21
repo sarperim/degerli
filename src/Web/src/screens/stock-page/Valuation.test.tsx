@@ -17,6 +17,7 @@ import {
   stockValuationHandler,
   VALUATION_FIXTURE,
 } from '@/screens/stock-page/testSupport'
+import { OverviewSection } from '@/screens/stock-page/StockSections'
 import {
   ValuationHistoryChart,
   ValuationSection,
@@ -184,7 +185,7 @@ describe('TC-RES-032 — adjusted historical data', () => {
 
   it('renders the adjusted series and carries the adjusted-data disclaimer for a split history', async () => {
     server.use(stockValuationHandler(EPSL_VALUATION_FIXTURE))
-    renderWithProviders(<ValuationSection symbol="EPSL" />)
+    renderWithProviders(<OverviewSection symbol="EPSL" />)
 
     const chart = await screen.findByTestId('valuation-history-chart')
     expect(chart).toHaveAttribute('data-basis', 'adjusted')
@@ -194,7 +195,7 @@ describe('TC-RES-032 — adjusted historical data', () => {
 
   it('does not claim the adjusted disclaimer over a raw-basis series', async () => {
     server.use(stockValuationHandler(RAW_VALUATION_FIXTURE))
-    renderWithProviders(<ValuationSection symbol="ALFA" />)
+    renderWithProviders(<OverviewSection symbol="ALFA" />)
 
     const chart = await screen.findByTestId('valuation-history-chart')
     expect(chart).toHaveAttribute('data-basis', 'raw')

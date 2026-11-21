@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -12,12 +13,13 @@ import {
   DividendsSection,
   FinancialsSection,
   GrowthSection,
+  KapReportsSection,
   OverviewSection,
   ProfitabilitySection,
 } from '@/screens/stock-page/StockSections'
 import { ValuationSection } from '@/screens/stock-page/ValuationSection'
 
-/** The seven sections in presentation order; labels are resolved from the catalogs. */
+/** The eight sections in presentation order; labels are resolved from the catalogs. */
 const SECTION_ORDER: StockPageSection[] = [
   'overview',
   'valuation',
@@ -26,6 +28,7 @@ const SECTION_ORDER: StockPageSection[] = [
   'growth',
   'balanceSheet',
   'dividends',
+  'kapReports',
 ]
 
 const SECTION_TITLE_KEYS: Record<StockPageSection, string> = {
@@ -36,6 +39,7 @@ const SECTION_TITLE_KEYS: Record<StockPageSection, string> = {
   growth: 'stockPage.sections.growth',
   balanceSheet: 'stockPage.sections.balanceSheet',
   dividends: 'stockPage.sections.dividends',
+  kapReports: 'stockPage.sections.kapReports',
 }
 
 /**
@@ -75,7 +79,7 @@ function StockIdentity({ symbol }: { symbol: string }) {
 /**
  * SCR-005 — Stock Page (UX `stock-research.md` §SCR-005; FR-RES-005..012/014..016/026/027).
  *
- * One screen hosting the seven content sections as discrete navigable units, with
+ * One screen hosting the eight content sections as discrete navigable units, with
  * the current section indicated and preserved across in-session navigation
  * (UXR-RES-008, UXR-G-021). Every section is its own endpoint and query (M-5), so
  * sections load, fail and retry independently (UXR-G-003); the active section lives
@@ -87,6 +91,21 @@ export function StockPage() {
   const { symbol = '' } = useParams()
   const activeSection = useDraftStore((state) => state.activeStockSection)
   const setActiveSection = useDraftStore((state) => state.setActiveStockSection)
+  const resolvedActiveSection: StockPageSection = SECTION_ORDER.includes(activeSection)
+    ? activeSection
+    : 'overview'
+  const pendingScrollSectionRef = useRef<StockPageSection | null>(null)
+
+  useEffect(() => {
+    if (pendingScrollSectionRef.current === resolvedActiveSection) {
+      pendingScrollSectionRef.current = null
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`stock-section-${resolvedActiveSection}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }, [resolvedActiveSection])
 
   const sectionItems = SECTION_ORDER.map((id, idx) => ({
     id,
@@ -95,12 +114,49 @@ export function StockPage() {
   }))
 
   const handleSelect = (id: string) => {
-    const section = id as StockPageSection
+    const section: StockPageSection = SECTION_ORDER.includes(id as StockPageSection)
+      ? (id as StockPageSection)
+      : 'overview'
+    if (section === resolvedActiveSection) {
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`stock-section-${section}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      return
+    }
+    pendingScrollSectionRef.current = section
     setActiveSection(section)
-    if (typeof document !== 'undefined') {
-      document
-        .getElementById(`stock-section-${id}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const renderActiveSection = () => {
+    switch (resolvedActiveSection) {
+      case 'overview':
+        return (
+          <OverviewSection
+            symbol={symbol}
+            onOpenKapReports={() => handleSelect('kapReports')}
+          />
+        )
+      case 'valuation':
+        return <ValuationSection symbol={symbol} />
+      case 'financials':
+        return (
+          <FinancialsSection
+            symbol={symbol}
+            onOpenKapReports={() => handleSelect('kapReports')}
+          />
+        )
+      case 'profitability':
+        return <ProfitabilitySection symbol={symbol} />
+      case 'growth':
+        return <GrowthSection symbol={symbol} />
+      case 'balanceSheet':
+        return <BalanceSheetSection symbol={symbol} />
+      case 'dividends':
+        return <DividendsSection symbol={symbol} />
+      case 'kapReports':
+        return <KapReportsSection symbol={symbol} />
     }
   }
 
@@ -154,22 +210,14 @@ export function StockPage() {
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[200px_1fr] lg:gap-12">
         <SectionNav
           items={sectionItems}
-          activeId={activeSection}
+          activeId={resolvedActiveSection}
           onSelect={handleSelect}
           ariaLabel={t('stockPage.sectionsLabel')}
           orientation="rail"
           className="lg:sticky lg:top-[76px]"
         />
 
-        <div className="flex min-w-0 flex-col gap-8">
-          <OverviewSection symbol={symbol} />
-          <ValuationSection symbol={symbol} />
-          <FinancialsSection symbol={symbol} />
-          <ProfitabilitySection symbol={symbol} />
-          <GrowthSection symbol={symbol} />
-          <BalanceSheetSection symbol={symbol} />
-          <DividendsSection symbol={symbol} />
-        </div>
+        <div className="flex min-w-0 flex-col gap-8">{renderActiveSection()}</div>
       </div>
     </section>
   )

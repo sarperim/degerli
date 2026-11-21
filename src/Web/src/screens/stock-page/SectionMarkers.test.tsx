@@ -171,7 +171,7 @@ describe('TC-RES-024 honest-data markers', () => {
     }
 
     it('renders no as-of marker on the stock page without its explanation', async () => {
-      renderStockPage()
+      renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
       const financials = await screen.findByRole('region', {
         name: TR('stockPage.sections.financials'),
@@ -197,7 +197,7 @@ describe('TC-RES-024 honest-data markers', () => {
      */
     it('bounds the dividends never-paid claim with its coverage period', async () => {
       server.use(stockDividendsHandler(ZERO_DIVIDENDS_FIXTURE))
-      renderStockPage(['/stocks/NEWP'])
+      renderStockPage(['/stocks/NEWP'], { section: 'dividends' })
 
       const dividends = await screen.findByRole('region', {
         name: TR('stockPage.sections.dividends'),
@@ -220,7 +220,7 @@ describe('TC-RES-024 honest-data markers', () => {
 
   it('places the restatement asterisk on the affected figures of a section', async () => {
     server.use(stockFinancialsHandler(RESTATED_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
 
     const financials = await screen.findByRole('region', {
       name: TR('stockPage.sections.financials'),

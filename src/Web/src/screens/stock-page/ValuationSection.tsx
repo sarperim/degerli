@@ -30,14 +30,14 @@ import {
 /**
  * SCR-005 §2 — Valuation (FR-RES-006/007/013, UXR-RES-012/013/024/025).
  *
- * The section shows the current canonical multiples, the historical price series
- * on its honest basis (adjusted when the served rows carry an adjusted close —
- * BR-MDF-010) with the adjusted-data disclaimer, and the vs.-sector strip: the
+ * The section shows the current canonical multiples and the vs.-sector strip: the
  * stock's five valuation-family multiples next to their sector medians, each with
- * its peer count and — for P/E — the loss-maker exclusion disclosure. A metric
- * with no meaningful own value shows the explicit not-meaningful state; a metric
- * with no available sector median degrades to an honest no-data state. Copy is
- * read from the catalogs; the chart is a Recharts line (architecture §5).
+ * its peer count and — for P/E — the loss-maker exclusion disclosure (the
+ * historical price chart lives in `OverviewSection`). A metric with no meaningful
+ * own value shows the explicit not-meaningful state; a metric with no available
+ * sector median degrades to an honest no-data state. Copy is read from the
+ * catalogs; `ValuationHistoryChart` (used by `OverviewSection`) is a Recharts
+ * line (architecture §5).
  */
 
 /** Full label keys for the five strip metrics (literals, so i18n parity sees them). */
@@ -431,15 +431,9 @@ export function ValuationSection({ symbol }: { symbol: string }) {
               </dl>
             </div>
 
-            <ValuationHistoryChart historical={data.historical} />
-
             <VsSectorStrip strip={data.strip} />
 
-            <SectionMarkers
-              asOf={data.asOf}
-              stale={data.stale}
-              adjusted={data.historical.adjusted}
-            />
+            <SectionMarkers asOf={data.asOf} stale={data.stale} />
           </div>
         ) : null}
       </SectionBody>

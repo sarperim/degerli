@@ -11,7 +11,7 @@ import {
 /**
  * TC-RES-028 (L4) — research hand-off (SC-002 research stage).
  *
- * From a screener result row the stock page opens; all seven sections are
+ * From a screener result row the stock page opens; all eight sections are
  * available and navigable; canonical figures carry their as-of dates; the DCF
  * hand-off opens the calculator for this stock.
  *
@@ -23,7 +23,7 @@ import {
 const tr = loadCatalog('tr')
 const TR = (key: string) => catalogValue(tr, key)
 
-const SEVEN_SECTIONS = [
+const EIGHT_SECTIONS = [
   TR('stockPage.sections.overview'),
   TR('stockPage.sections.valuation'),
   TR('stockPage.sections.financials'),
@@ -31,10 +31,11 @@ const SEVEN_SECTIONS = [
   TR('stockPage.sections.growth'),
   TR('stockPage.sections.balanceSheet'),
   TR('stockPage.sections.dividends'),
+  TR('stockPage.sections.kapReports'),
 ]
 
 test.describe('TC-RES-028 research hand-off', () => {
-  test('screener row → stock page with seven sections → DCF hand-off', async ({
+  test('screener row → stock page with eight sections → DCF hand-off', async ({
     page,
   }) => {
     // Every browser request carries its own client IP so the global/auth rate
@@ -55,10 +56,10 @@ test.describe('TC-RES-028 research hand-off', () => {
       }),
     ).toBeVisible()
 
-    // ---- All seven sections available and navigable. ------------------------
-    expect(SEVEN_SECTIONS).toHaveLength(7)
-    for (const label of SEVEN_SECTIONS) {
-      const navButton = page.getByRole('button', { name: label })
+    // ---- All eight sections available and navigable. ------------------------
+    expect(EIGHT_SECTIONS).toHaveLength(8)
+    for (const label of EIGHT_SECTIONS) {
+      const navButton = page.getByRole('button', { name: label, exact: true })
       await expect(navButton).toBeVisible()
       await navButton.click()
       await expect(navButton).toHaveAttribute('aria-current', 'true')
@@ -66,6 +67,12 @@ test.describe('TC-RES-028 research hand-off', () => {
     }
 
     // ---- Canonical figures with their as-of dates. --------------------------
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.valuation'),
+        exact: true,
+      })
+      .click()
     const valuation = page.getByRole('region', {
       name: TR('stockPage.sections.valuation'),
     })
@@ -82,6 +89,12 @@ test.describe('TC-RES-028 research hand-off', () => {
       valuation.locator('[data-slot="as-of-date"]').first(),
     ).toBeVisible()
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.financials'),
+        exact: true,
+      })
+      .click()
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })

@@ -3,7 +3,14 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
-import { NotMeaningful, RestatedMarker } from '@/components/honest-data'
+import {
+  AdjustedNotice,
+  AsOfDate,
+  NotMeaningful,
+  RestatedMarker,
+  StaleBadge,
+} from '@/components/honest-data'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   Table,
@@ -24,7 +31,8 @@ import {
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import { KeyMetricsPanel } from '@/screens/stock-page/KeyMetricsPanel'
-import { StatementsView } from '@/screens/stock-page/StatementsView'
+import { LayoutNoticeBlock, StatementsView } from '@/screens/stock-page/StatementsView'
+import { ValuationHistoryChart } from '@/screens/stock-page/ValuationSection'
 import { servesStatements } from '@/screens/stock-page/statementsView'
 
 import {
@@ -34,6 +42,7 @@ import {
   fetchStockGrowth,
   fetchStockOverview,
   fetchStockProfitability,
+  fetchStockValuation,
   isDividendsMissing,
   isMissingData,
   stockPageQueryKeys,
@@ -119,13 +128,23 @@ const FINANCIAL_COLUMN_KEYS: Record<(typeof FINANCIAL_COLUMNS)[number], string> 
 }
 
 /** SCR-005 §1 — Overview & Business Description (FR-RES-005/022/026). */
-export function OverviewSection({ symbol }: { symbol: string }) {
+export function OverviewSection({
+  symbol,
+  onOpenKapReports,
+}: {
+  symbol: string
+  onOpenKapReports?: () => void
+}) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
   const label = t('stockPage.sections.overview')
   const query = useQuery({
     queryKey: stockPageQueryKeys.overview(symbol),
     queryFn: ({ signal }) => fetchStockOverview(symbol, signal),
+  })
+  const valuationQuery = useQuery({
+    queryKey: stockPageQueryKeys.valuation(symbol),
+    queryFn: ({ signal }) => fetchStockValuation(symbol, signal),
   })
 
   return (
@@ -137,29 +156,56 @@ export function OverviewSection({ symbol }: { symbol: string }) {
         onRetry={() => void query.refetch()}
       >
         {query.data ? (
-          query.data.status === 'preparing' ? (
-            <div className="flex flex-col gap-3">
-              <SectionMarkers
-                asOf={query.data.asOf}
-                stale={query.data.stale}
-                state="preparing"
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="max-w-prose text-sm text-foreground">
-                {locale === 'en' ? query.data.textEn : query.data.textTr}
-              </p>
-              {query.data.lastReviewedAt ? (
-                <p className="text-xs text-muted-foreground">
-                  {t('stockPage.descriptionLastReviewed', {
-                    date: formatAsOfDate(locale, query.data.lastReviewedAt),
-                  })}
+          <div className="flex flex-col gap-5">
+            {valuationQuery.data && valuationQuery.data.historical.series.length > 0 ? (
+              <div className="flex flex-col gap-2 border-b border-border pb-5">
+                <ValuationHistoryChart historical={valuationQuery.data.historical} />
+                {valuationQuery.data.historical.adjusted ? <AdjustedNotice /> : null}
+                {query.data.status === 'preparing' ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <AsOfDate asOf={valuationQuery.data.asOf} />
+                    {valuationQuery.data.stale ? <StaleBadge /> : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {query.data.status === 'preparing' ? (
+              <div className="flex flex-col gap-3">
+                <SectionMarkers
+                  asOf={query.data.asOf}
+                  stale={query.data.stale}
+                  state="preparing"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="max-w-prose text-sm text-foreground">
+                  {locale === 'en' ? query.data.textEn : query.data.textTr}
                 </p>
-              ) : null}
-              <SectionMarkers asOf={query.data.asOf} stale={query.data.stale} />
-            </div>
-          )
+                {query.data.lastReviewedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('stockPage.descriptionLastReviewed', {
+                      date: formatAsOfDate(locale, query.data.lastReviewedAt),
+                    })}
+                  </p>
+                ) : null}
+                <SectionMarkers asOf={query.data.asOf} stale={query.data.stale} />
+              </div>
+            )}
+
+            {onOpenKapReports ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit font-mono text-xs"
+                onClick={onOpenKapReports}
+              >
+                {t('stockPage.overview.openKapReports')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </SectionBody>
     </SectionShell>
@@ -213,6 +259,19 @@ function financialPeriodLabel(
 }
 
 /**
+ * True when any of the five executive summary columns (`FINANCIAL_COLUMNS`) is
+ * restated. Deep statement-only restatements only badge `08 KAP Reports`, never
+ * `03 Financials` where those lines are not rendered.
+ */
+function anySummaryFigureRestated(periods: FinancialPeriod[]): boolean {
+  return periods.some((period) =>
+    // `?.` on the compat column: a malformed payload may omit a figure, and an absent
+    // figure is not restated (it must not throw either — no ErrorBoundary above here).
+    FINANCIAL_COLUMNS.some((column) => period[column]?.restated === true),
+  )
+}
+
+/**
  * True when any served figure the statements view renders is restated — the compat
  * five figures, any served canonical line or the `OTHER_*` passthrough, or any [C]
  * row. The footnote is a claim about the display, so it covers the whole display.
@@ -223,33 +282,74 @@ function anyServedFigureRestated(periods: FinancialPeriod[]): boolean {
       ? Object.values(map).some((figure) => figure?.restated === true)
       : false
 
-  return periods.some((period) => {
-    // `?.` on the compat column: a malformed payload may omit a figure, and an absent
-    // figure is not restated (it must not throw either — no ErrorBoundary above here).
-    const compat = FINANCIAL_COLUMNS.some((column) => period[column]?.restated === true)
-    const blocks = [period.lines, period.otherLines]
-    return (
-      compat ||
-      blocks.some(
-        (lines) =>
-          restatedIn(lines?.IS) || restatedIn(lines?.BS) || restatedIn(lines?.CF),
-      ) ||
-      restatedIn(period.derived)
-    )
-  })
+  return (
+    anySummaryFigureRestated(periods) ||
+    periods.some((period) => {
+      const blocks = [period.lines, period.otherLines]
+      return (
+        blocks.some(
+          (lines) =>
+            restatedIn(lines?.IS) || restatedIn(lines?.BS) || restatedIn(lines?.CF),
+        ) ||
+        restatedIn(period.derived)
+      )
+    })
+  )
+}
+
+/** Shared five-figure executive summary table for Financials and pre-094 KAP fallback. */
+function FinancialsSummaryTable({
+  periods,
+  t,
+  locale,
+}: {
+  periods: FinancialPeriod[]
+  t: TFunction
+  locale: string
+}) {
+  return (
+    <TableContainer>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('stockPage.financials.columns.period')}</TableHead>
+            {FINANCIAL_COLUMNS.map((column) => (
+              <TableHead key={column}>{t(FINANCIAL_COLUMN_KEYS[column])}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {periods.map((period) => (
+            <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
+              <TableHead scope="row" className="font-medium text-foreground">
+                {financialPeriodLabel(period, t, locale)}
+              </TableHead>
+              {FINANCIAL_COLUMNS.map((column) => (
+                <TableCell key={column}>
+                  <FigureValue figure={period[column]} locale={locale} />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
 }
 
 /**
  * SCR-005 §3 — Financials (FR-RES-008/014).
  *
- * Two shapes are served on this seam, and both are rendered honestly:
- * - a **TKT-foundation-094 payload** (`periods[].lines`, `derived`, `filing`,
- *   `evHeader`, `layoutNotice`) renders the full statements view — controls bar,
- *   EV header and the three tables (TKT-foundation-095);
- * - a **pre-094 payload** carries only the five compat figures, and the section
- *   keeps the legacy five-column summary rather than an empty statement skeleton.
+ * Simplified executive view: FY grouped bar chart + five-figure summary table
+ * + jump button to `08 KAP Reports` (`KapReportsSection`) for full KAP statements.
  */
-export function FinancialsSection({ symbol }: { symbol: string }) {
+export function FinancialsSection({
+  symbol,
+  onOpenKapReports,
+}: {
+  symbol: string
+  onOpenKapReports?: () => void
+}) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
   const label = t('stockPage.sections.financials')
@@ -261,10 +361,9 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
   const data = query.data
   const missingData = data !== undefined && isMissingData(data) ? data : null
   const sectionData = data !== undefined && !isMissingData(data) ? data : null
-  const anyRestated = sectionData ? anyServedFigureRestated(sectionData.periods) : false
-  const statementsView =
-    sectionData !== null &&
-    (servesStatements(sectionData.periods) || sectionData.layoutNotice?.applies === true)
+  const notice = sectionData?.layoutNotice?.applies ? sectionData.layoutNotice : null
+  const anyRestated =
+    sectionData && !notice ? anySummaryFigureRestated(sectionData.periods) : false
 
   return (
     <SectionShell section="financials" titleKey="stockPage.sections.financials">
@@ -285,165 +384,222 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
 
         {sectionData ? (
           <div className="flex flex-col gap-5">
-            {(() => {
-              const chartPeriods = sectionData.periods
-                .filter(
-                  (p) =>
-                    p.periodType?.trim().toUpperCase() === 'FY' &&
-                    (p.revenue?.value != null ||
-                      p.ebitda?.value != null ||
-                      p.netIncome?.value != null),
-                )
-                .slice(0, 6)
-                .reverse()
-              if (chartPeriods.length < 2) return null
-              const maxVal = Math.max(
-                1,
-                ...chartPeriods.flatMap((p) => [
-                  Math.abs(p.revenue?.value ?? 0),
-                  Math.abs(p.ebitda?.value ?? 0),
-                  Math.abs(p.netIncome?.value ?? 0),
-                ]),
-              )
-              const W = 540
-              const H = 136
-              const pB = 22
-              const pT = 10
-              const slotW = W / chartPeriods.length
-              const barW = Math.min(24, Math.max(10, Math.floor((slotW - 22) / 3)))
-              const barH = (v: number | null | undefined) =>
-                v === null || v === undefined
-                  ? 0
-                  : Math.max(2, (Math.abs(v) / maxVal) * (H - pB - pT))
-              return (
-                <div
-                  data-slot="financials-grouped-chart"
-                  className="border-b border-border pb-5"
+            {onOpenKapReports ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit font-mono text-xs"
+                  onClick={onOpenKapReports}
                 >
-                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[11px] text-muted-foreground">
-                    <span>
-                      {t('stockPage.financials.columns.revenue')} ·{' '}
-                      {t('stockPage.financials.columns.ebitda')} ·{' '}
-                      {t('stockPage.financials.columns.netIncome')}
-                    </span>
-                    <span aria-hidden="true" className="flex items-center gap-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--border-strong)]">■</span>
-                        {` ${t('stockPage.financials.columns.revenue')}`}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--brand-accent)]">■</span>
-                        {` ${t('stockPage.financials.columns.ebitda')}`}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--pos)]">■</span>
-                        {` ${t('stockPage.financials.columns.netIncome')}`}
-                      </span>
-                    </span>
-                  </div>
-                  <svg
-                    viewBox={`0 0 ${W} ${H}`}
-                    width="100%"
-                    height={H}
-                    aria-hidden="true"
-                  >
-                    <line
-                      x1={0}
-                      y1={H - pB}
-                      x2={W}
-                      y2={H - pB}
-                      stroke="var(--border-strong)"
-                    />
-                    {chartPeriods.map((period, idx) => {
-                      const groupW = barW * 3 + 8
-                      const x = idx * slotW + (slotW - groupW) / 2
-                      const rH = barH(period.revenue?.value)
-                      const eH = barH(period.ebitda?.value)
-                      const nH = barH(period.netIncome?.value)
-                      const eNeg = (period.ebitda?.value ?? 0) < 0
-                      const nNeg = (period.netIncome?.value ?? 0) < 0
-                      return (
-                        <g key={`${period.periodType}-${period.periodEndDate}`}>
-                          {rH > 0 ? (
-                            <rect
-                              x={x}
-                              y={H - pB - rH}
-                              width={barW}
-                              height={rH}
-                              fill="var(--border-strong)"
-                            />
-                          ) : null}
-                          {eH > 0 ? (
-                            <rect
-                              x={x + barW + 4}
-                              y={H - pB - eH}
-                              width={barW}
-                              height={eH}
-                              fill={eNeg ? 'var(--neg)' : 'var(--brand-accent)'}
-                            />
-                          ) : null}
-                          {nH > 0 ? (
-                            <rect
-                              x={x + (barW + 4) * 2}
-                              y={H - pB - nH}
-                              width={barW}
-                              height={nH}
-                              fill={nNeg ? 'var(--neg)' : 'var(--pos)'}
-                            />
-                          ) : null}
-                          <text
-                            x={x + groupW / 2}
-                            y={H - 5}
-                            textAnchor="middle"
-                            fill="var(--muted-foreground)"
-                            fontFamily="var(--font-mono)"
-                            fontSize="10"
-                          >
-                            {financialPeriodLabel(period, t, locale)}
-                          </text>
-                        </g>
-                      )
-                    })}
-                  </svg>
-                </div>
-              )
-            })()}
+                  {t('stockPage.financials.openKapReports')}
+                </Button>
+              </div>
+            ) : null}
+            {notice ? <LayoutNoticeBlock notice={notice} /> : null}
+            {!notice
+              ? (() => {
+                  const chartPeriods = sectionData.periods
+                    .filter(
+                      (p) =>
+                        p.periodType?.trim().toUpperCase() === 'FY' &&
+                        (p.revenue?.value != null ||
+                          p.ebitda?.value != null ||
+                          p.netIncome?.value != null),
+                    )
+                    .slice(0, 6)
+                    .reverse()
+                  if (chartPeriods.length < 2) return null
+                  const maxVal = Math.max(
+                    1,
+                    ...chartPeriods.flatMap((p) => [
+                      Math.abs(p.revenue?.value ?? 0),
+                      Math.abs(p.ebitda?.value ?? 0),
+                      Math.abs(p.netIncome?.value ?? 0),
+                    ]),
+                  )
+                  const W = 540
+                  const H = 136
+                  const pB = 22
+                  const pT = 10
+                  const slotW = W / chartPeriods.length
+                  const barW = Math.min(24, Math.max(10, Math.floor((slotW - 22) / 3)))
+                  const barH = (v: number | null | undefined) =>
+                    v === null || v === undefined
+                      ? 0
+                      : Math.max(2, (Math.abs(v) / maxVal) * (H - pB - pT))
+                  return (
+                    <div
+                      data-slot="financials-grouped-chart"
+                      className="border-b border-border pb-5"
+                    >
+                      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[11px] text-muted-foreground">
+                        <span>
+                          {t('stockPage.financials.columns.revenue')} ·{' '}
+                          {t('stockPage.financials.columns.ebitda')} ·{' '}
+                          {t('stockPage.financials.columns.netIncome')}
+                        </span>
+                        <span aria-hidden="true" className="flex items-center gap-3">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--border-strong)]">■</span>
+                            {` ${t('stockPage.financials.columns.revenue')}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--brand-accent)]">■</span>
+                            {` ${t('stockPage.financials.columns.ebitda')}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--pos)]">■</span>
+                            {` ${t('stockPage.financials.columns.netIncome')}`}
+                          </span>
+                        </span>
+                      </div>
+                      <svg
+                        viewBox={`0 0 ${W} ${H}`}
+                        width="100%"
+                        height={H}
+                        aria-hidden="true"
+                      >
+                        <line
+                          x1={0}
+                          y1={H - pB}
+                          x2={W}
+                          y2={H - pB}
+                          stroke="var(--border-strong)"
+                        />
+                        {chartPeriods.map((period, idx) => {
+                          const groupW = barW * 3 + 8
+                          const x = idx * slotW + (slotW - groupW) / 2
+                          const rH = barH(period.revenue?.value)
+                          const eH = barH(period.ebitda?.value)
+                          const nH = barH(period.netIncome?.value)
+                          const eNeg = (period.ebitda?.value ?? 0) < 0
+                          const nNeg = (period.netIncome?.value ?? 0) < 0
+                          return (
+                            <g key={`${period.periodType}-${period.periodEndDate}`}>
+                              {rH > 0 ? (
+                                <rect
+                                  x={x}
+                                  y={H - pB - rH}
+                                  width={barW}
+                                  height={rH}
+                                  fill="var(--border-strong)"
+                                />
+                              ) : null}
+                              {eH > 0 ? (
+                                <rect
+                                  x={x + barW + 4}
+                                  y={H - pB - eH}
+                                  width={barW}
+                                  height={eH}
+                                  fill={eNeg ? 'var(--neg)' : 'var(--brand-accent)'}
+                                />
+                              ) : null}
+                              {nH > 0 ? (
+                                <rect
+                                  x={x + (barW + 4) * 2}
+                                  y={H - pB - nH}
+                                  width={barW}
+                                  height={nH}
+                                  fill={nNeg ? 'var(--neg)' : 'var(--pos)'}
+                                />
+                              ) : null}
+                              <text
+                                x={x + groupW / 2}
+                                y={H - 5}
+                                textAnchor="middle"
+                                fill="var(--muted-foreground)"
+                                fontFamily="var(--font-mono)"
+                                fontSize="10"
+                              >
+                                {financialPeriodLabel(period, t, locale)}
+                              </text>
+                            </g>
+                          )
+                        })}
+                      </svg>
+                    </div>
+                  )
+                })()
+              : null}
+            {!notice && sectionData.periods.length > 0 ? (
+              <FinancialsSummaryTable
+                periods={sectionData.periods}
+                t={t}
+                locale={locale}
+              />
+            ) : null}
+            <SectionMarkers
+              asOf={sectionData.asOf}
+              stale={sectionData.stale}
+              restated={anyRestated}
+            />
+          </div>
+        ) : null}
+      </SectionBody>
+    </SectionShell>
+  )
+}
+
+/**
+ * SCR-005 §8 — KAP Reports (TKT-foundation-094/095/097).
+ *
+ * Dedicated home for full multi-period KAP financial statements (`StatementsView`),
+ * key value metrics & moat indicators, and the capital & dilution tracker.
+ */
+export function KapReportsSection({ symbol }: { symbol: string }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'tr'
+  const label = t('stockPage.sections.kapReports')
+  const query = useQuery({
+    queryKey: stockPageQueryKeys.financials(symbol),
+    queryFn: ({ signal }) => fetchStockFinancials(symbol, signal),
+  })
+
+  const data = query.data
+  const missingData = data !== undefined && isMissingData(data) ? data : null
+  const sectionData = data !== undefined && !isMissingData(data) ? data : null
+  const anyRestated =
+    sectionData && !sectionData.layoutNotice?.applies
+      ? anyServedFigureRestated(sectionData.periods)
+      : false
+  const statementsView =
+    sectionData !== null &&
+    (servesStatements(sectionData.periods) || sectionData.layoutNotice?.applies === true)
+
+  return (
+    <SectionShell section="kapReports" titleKey="stockPage.sections.kapReports">
+      <SectionBody
+        label={label}
+        isPending={query.isPending}
+        isError={query.isError}
+        onRetry={() => void query.refetch()}
+      >
+        {missingData ? (
+          <SectionMarkers
+            asOf={missingData.asOf}
+            stale={missingData.stale}
+            state={missingData.state}
+            coverage={missingData.coverage}
+          />
+        ) : null}
+
+        {sectionData ? (
+          <div className="flex flex-col gap-5">
             {statementsView ? (
               <StatementsView
                 data={sectionData}
                 asOf={sectionData.asOf}
                 locale={locale}
               />
-            ) : (
-              <TableContainer>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('stockPage.financials.columns.period')}</TableHead>
-                      {FINANCIAL_COLUMNS.map((column) => (
-                        <TableHead key={column}>
-                          {t(FINANCIAL_COLUMN_KEYS[column])}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sectionData.periods.map((period) => (
-                      <TableRow key={`${period.periodType}-${period.periodEndDate}`}>
-                        <TableHead scope="row" className="font-medium text-foreground">
-                          {financialPeriodLabel(period, t, locale)}
-                        </TableHead>
-                        {FINANCIAL_COLUMNS.map((column) => (
-                          <TableCell key={column}>
-                            <FigureValue figure={period[column]} locale={locale} />
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+            ) : sectionData.periods.length > 0 ? (
+              <FinancialsSummaryTable
+                periods={sectionData.periods}
+                t={t}
+                locale={locale}
+              />
+            ) : null}
             <SectionMarkers
               asOf={sectionData.asOf}
               stale={sectionData.stale}
