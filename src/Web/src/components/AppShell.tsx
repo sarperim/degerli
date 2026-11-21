@@ -7,6 +7,7 @@ import { Disclaimer } from '@/components/Disclaimer'
 import { Header } from '@/components/Header'
 import { LoadingScreen } from '@/components/LoadingScreen'
 import { TactileBackdrop } from '@/components/TactileBackdrop'
+import { ViewportScrollRail } from '@/components/ViewportScrollRail'
 
 /**
  * Application shell: the persistent global header surrounds the routed screen
@@ -27,10 +28,14 @@ export function AppShell() {
     <div className="relative flex min-h-screen flex-col">
       <TactileBackdrop />
       <Header />
-      <main className="relative z-10 mx-auto w-full max-w-content flex-1 px-4 py-section sm:px-8">
+      <main
+        id="app-main"
+        className="relative z-10 mx-auto w-full max-w-content flex-1 px-4 py-section sm:px-8"
+      >
         <Suspense fallback={<LoadingScreen />}>
           <Outlet />
         </Suspense>
+        <ViewportScrollRail />
       </main>
       <footer className="relative z-10 border-t border-border bg-background/80">
         <div className="mx-auto flex w-full max-w-content flex-col gap-4 px-4 py-8 text-xs text-muted-foreground sm:px-8">
