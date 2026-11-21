@@ -31,7 +31,7 @@ import {
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import { renderWithProviders } from '@/test/render'
-import { useDraftStore } from '@/store/draftStore'
+import { useDraftStore, type StockPageSection } from '@/store/draftStore'
 
 /**
  * Shared harness for the SCR-005 component tests (TKT-res-008).
@@ -900,8 +900,11 @@ function DcfStub() {
 /** Render the SCR-005 route (plus a DCF hand-off landing) in memory. */
 export function renderStockPage(
   initialEntries: string[] = ['/stocks/ALFA'],
-  options: { language?: 'tr' | 'en' } = {},
+  options: { language?: 'tr' | 'en'; section?: StockPageSection } = {},
 ) {
+  if (options.section !== undefined) {
+    useDraftStore.getState().setActiveStockSection(options.section)
+  }
   return renderWithProviders(
     <MemoryRouter initialEntries={initialEntries}>
       <Routes>

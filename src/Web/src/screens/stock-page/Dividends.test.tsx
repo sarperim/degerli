@@ -33,7 +33,7 @@ beforeEach(resetStockPageTest)
 
 describe('TC-RES-038 dividends section honesty states', () => {
   it('renders the dated history when the data is available and rows exist', async () => {
-    renderStockPage(['/stocks/ALFA'], { language: 'tr' })
+    renderStockPage(['/stocks/ALFA'], { language: 'tr', section: 'dividends' })
     const dividends = dividendsRegion(TR('stockPage.sections.dividends'))
 
     // The history table renders with the served row.
@@ -58,7 +58,7 @@ describe('TC-RES-038 dividends section honesty states', () => {
 
   it('renders the backed never-paid state only when the server reports the data available', async () => {
     server.use(stockDividendsHandler(ZERO_DIVIDENDS_FIXTURE))
-    renderStockPage(['/stocks/NEWP'], { language: 'tr' })
+    renderStockPage(['/stocks/NEWP'], { language: 'tr', section: 'dividends' })
     const dividends = dividendsRegion(TR('stockPage.sections.dividends'))
 
     // Processed and genuinely zero: the existing never-paid wording is now backed.
@@ -82,7 +82,7 @@ describe('TC-RES-038 dividends section honesty states', () => {
 
   it('renders the neutral no-data state when the dividends lane has no coverage', async () => {
     server.use(stockDividendsHandler(DIVIDENDS_UNAVAILABLE_FIXTURE))
-    renderStockPage(['/stocks/AEFES'], { language: 'tr' })
+    renderStockPage(['/stocks/AEFES'], { language: 'tr', section: 'dividends' })
     const dividends = dividendsRegion(TR('stockPage.sections.dividends'))
 
     // The honest neutral state — a statement about the platform's data, not the company.
@@ -108,7 +108,7 @@ describe('TC-RES-038 dividends section honesty states', () => {
     // A pre-052 payload carries no signal: absence of evidence must never render as
     // evidence of absence (the degradation case).
     server.use(stockDividendsHandler(LEGACY_DIVIDENDS_FIXTURE))
-    renderStockPage(['/stocks/AEFES'], { language: 'tr' })
+    renderStockPage(['/stocks/AEFES'], { language: 'tr', section: 'dividends' })
     const dividends = dividendsRegion(TR('stockPage.sections.dividends'))
 
     expect(
@@ -121,7 +121,7 @@ describe('TC-RES-038 dividends section honesty states', () => {
 
   it('serves both empty states in English as well', async () => {
     server.use(stockDividendsHandler(ZERO_DIVIDENDS_FIXTURE))
-    const backed = renderStockPage(['/stocks/NEWP'], { language: 'en' })
+    const backed = renderStockPage(['/stocks/NEWP'], { language: 'en', section: 'dividends' })
     expect(
       await within(
         dividendsRegion(EN('stockPage.sections.dividends')),
@@ -130,7 +130,7 @@ describe('TC-RES-038 dividends section honesty states', () => {
     backed.unmount()
 
     server.use(stockDividendsHandler(DIVIDENDS_UNAVAILABLE_FIXTURE))
-    renderStockPage(['/stocks/AEFES'], { language: 'en' })
+    renderStockPage(['/stocks/AEFES'], { language: 'en', section: 'dividends' })
     expect(
       await within(
         dividendsRegion(EN('stockPage.sections.dividends')),

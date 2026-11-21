@@ -431,15 +431,9 @@ export function ValuationSection({ symbol }: { symbol: string }) {
               </dl>
             </div>
 
-            <ValuationHistoryChart historical={data.historical} />
-
             <VsSectorStrip strip={data.strip} />
 
-            <SectionMarkers
-              asOf={data.asOf}
-              stale={data.stale}
-              adjusted={data.historical.adjusted}
-            />
+            <SectionMarkers asOf={data.asOf} stale={data.stale} />
           </div>
         ) : null}
       </SectionBody>

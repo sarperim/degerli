@@ -114,7 +114,11 @@
       "profitability": "Kârlılık",
       "growth": "Büyüme",
       "balanceSheet": "Bilanço",
-      "dividends": "Temettüler"
+      "dividends": "Temettüler",
+      "kapReports": "KAP Raporları"
+    },
+    "overview": {
+      "openKapReports": "KAP Raporlarını aç ↗"
     },
     "descriptionLastReviewed": "Son inceleme: {{date}}",
     "sectionErrorTitle": "Bu bölüm yüklenemedi",
@@ -154,6 +158,7 @@
       }
     },
     "financials": {
+      "openKapReports": "Tam KAP Raporları ↗",
       "period": "FY{{year}}",
       "periodQuarter": "Ç{{quarter}} {{year}}",
       "periodEnding": "{{date}} biten dönem",
@@ -283,6 +288,15 @@
       "layoutNotice": {
         "title": "Banka/sigorta düzeni",
         "body": "Bu şirket banka veya sigorta muhasebe düzeninde raporluyor; sanayi şirketleri için hazırlanan tablo düzeni bu şirkete uygulanmaz. Banka formatındaki tablolar ayrı bir adımda eklenecek, bu yüzden burada yarım doldurulmuş bir tablo gösterilmiyor."
+      }
+    },
+    "statements": {
+      "subtabs": {
+        "label": "Tablo görünümü",
+        "all": "Tüm tablolar",
+        "IS": "Gelir (IS)",
+        "BS": "Bilanço (BS)",
+        "CF": "Nakit akış (CF)"
       }
     },
     "profitability": {

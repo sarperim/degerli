@@ -42,7 +42,7 @@ const TR = (key: string) => catalogValue('tr', key)
 const EN = (key: string) => catalogValue('en', key)
 
 function financialsRegion(): HTMLElement {
-  return screen.getByRole('region', { name: TR('stockPage.sections.financials') })
+  return screen.getByRole('region', { name: TR('stockPage.sections.kapReports') })
 }
 
 function table(region: HTMLElement, statement: string): HTMLElement {
@@ -84,7 +84,7 @@ beforeEach(resetStockPageTest)
 describe('TC-RES-039 (a) — the served statements render as three full tables', () => {
   it('binds the income statement to the served line set and the served [C] rows', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -153,7 +153,7 @@ describe('TC-RES-039 (a) — the served statements render as three full tables',
 
   it('binds each table to its as-of date (UXR-RES-021)', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.balanceSheet'))
@@ -172,7 +172,7 @@ describe('TC-RES-039 (b)(c) — the page computes nothing and invents no zero', 
   it('renders a served-null derived row as the honest dash beside its served operands', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
     const user = userEvent.setup()
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -198,7 +198,7 @@ describe('TC-RES-039 (b)(c) — the page computes nothing and invents no zero', 
   it('renders an unserved row and an absent code as the honest dash, never a zero', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
     const user = userEvent.setup()
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -227,7 +227,7 @@ describe('TC-RES-039 (b)(c) — the page computes nothing and invents no zero', 
 describe('TC-RES-039 (d)(e)(f) — the period toggle and its honest labels', () => {
   it('defaults to Yıllık and filters the served interims out', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -246,7 +246,7 @@ describe('TC-RES-039 (d)(e)(f) — the period toggle and its honest labels', () 
   it('labels a cumulative interim by its served span and degrades honestly without one', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
     const user = userEvent.setup()
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -272,7 +272,7 @@ describe('TC-RES-039 (d)(e)(f) — the period toggle and its honest labels', () 
   it('preserves the chosen basis across navigation away and back (UXR-G-021)', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
     const user = userEvent.setup()
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -301,7 +301,7 @@ describe('TC-RES-039 (d)(e)(f) — the period toggle and its honest labels', () 
 describe('TC-RES-039 (g) — badges render only on served evidence', () => {
   it('renders Konsolide, TMS 29 and KAP Kaynak from the served filing', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -331,7 +331,7 @@ describe('TC-RES-039 (g) — badges render only on served evidence', () => {
         },
       }),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -348,7 +348,7 @@ describe('TC-RES-039 (g) — badges render only on served evidence', () => {
     server.use(
       stockFinancialsHandler({ ...STATEMENTS_FINANCIALS_FIXTURE, filing: null }),
     )
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -362,7 +362,7 @@ describe('TC-RES-039 (g) — badges render only on served evidence', () => {
 describe('TC-RES-039 (h) — the financial-sector layout notice', () => {
   it('renders the served notice instead of half-filled industrial tables', async () => {
     server.use(stockFinancialsHandler(BANK_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     const notice = await within(region).findByTestId('layout-notice')
@@ -384,7 +384,7 @@ describe('TC-RES-039 (i) — per-share rows are honest where no count exists', (
   it('renders BVPS and FCF/share as the dash while the served count is absent', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
     const user = userEvent.setup()
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
@@ -413,7 +413,7 @@ describe('TC-RES-039 (i) — per-share rows are honest where no count exists', (
 describe('TC-RES-039 (j) — the market & enterprise value header', () => {
   it('renders the served operands with their own as-of and computes no total', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const header = await screen.findByTestId('ev-header')
     const sharePrice = header.querySelector('[data-ev="sharePrice"]') as HTMLElement
@@ -451,7 +451,7 @@ describe('TC-RES-039 (j) — the market & enterprise value header', () => {
 
   it('serves no EV header for a financial-sector layout', async () => {
     server.use(stockFinancialsHandler(BANK_FINANCIALS_FIXTURE))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     await within(financialsRegion()).findByTestId('layout-notice')
     expect(screen.queryByTestId('ev-header')).toBeNull()
@@ -477,7 +477,7 @@ describe('TC-RES-039 (k) — a pre-094 payload keeps the legacy summary', () => 
       ],
     }
     server.use(stockFinancialsHandler(legacy))
-    renderStockPage()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
 
     const region = financialsRegion()
     expect(
@@ -492,10 +492,10 @@ describe('TC-RES-039 (k) — a pre-094 payload keeps the legacy summary', () => 
 describe('TC-RES-039 (l) — both catalogs label the served row set', () => {
   it('renders the EN row labels and the EN period vocabulary', async () => {
     server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
-    renderStockPage(['/stocks/ALFA'], { language: 'en' })
+    renderStockPage(['/stocks/ALFA'], { language: 'en', section: 'kapReports' })
 
     const region = screen.getByRole('region', {
-      name: EN('stockPage.sections.financials'),
+      name: EN('stockPage.sections.kapReports'),
     })
     await within(region).findByText(EN('stockPage.financials.tables.incomeStatement'))
 
@@ -518,5 +518,61 @@ describe('TC-RES-039 (l) — both catalogs label the served row set', () => {
         fill(EN('stockPage.financials.period'), { year: 2025 }),
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('SLICE-033 — statement sub-tabs filter IS, BS, and CF tables', () => {
+  it('shows all three tables by default and filters individually via statement-subtabs', async () => {
+    server.use(stockFinancialsHandler(STATEMENTS_FINANCIALS_FIXTURE))
+    const user = userEvent.setup()
+    renderStockPage(['/stocks/ALFA'], { section: 'kapReports' })
+
+    const region = financialsRegion()
+    await within(region).findByText(TR('stockPage.financials.tables.incomeStatement'))
+
+    const subtabs = region.querySelector('[data-slot="statement-subtabs"]')
+    expect(subtabs).not.toBeNull()
+    const subtabsEl = subtabs as HTMLElement
+
+    // Default 'all' renders IS, BS, and CF.
+    expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()
+
+    await user.click(
+      within(subtabsEl).getByRole('button', {
+        name: TR('stockPage.statements.subtabs.IS'),
+      }),
+    )
+    expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="BS"]')).toBeNull()
+    expect(region.querySelector('[data-statement="CF"]')).toBeNull()
+
+    await user.click(
+      within(subtabsEl).getByRole('button', {
+        name: TR('stockPage.statements.subtabs.BS'),
+      }),
+    )
+    expect(region.querySelector('[data-statement="IS"]')).toBeNull()
+    expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="CF"]')).toBeNull()
+
+    await user.click(
+      within(subtabsEl).getByRole('button', {
+        name: TR('stockPage.statements.subtabs.CF'),
+      }),
+    )
+    expect(region.querySelector('[data-statement="IS"]')).toBeNull()
+    expect(region.querySelector('[data-statement="BS"]')).toBeNull()
+    expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()
+
+    await user.click(
+      within(subtabsEl).getByRole('button', {
+        name: TR('stockPage.statements.subtabs.all'),
+      }),
+    )
+    expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
+    expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()
   })
 })

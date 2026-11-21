@@ -40,6 +40,12 @@ test.describe('TC-RES-029 description in preparation', () => {
     })
     await expect(overview.getByText(TR('honestData.preparingTitle'))).toBeVisible()
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.financials'),
+        exact: true,
+      })
+      .click()
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })
@@ -49,10 +55,20 @@ test.describe('TC-RES-029 description in preparation', () => {
         exact: true,
       }),
     ).toBeVisible()
+
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
+    })
     // The fiscal-year label repeats in each statement's header row, so the period
     // claim is scoped to the income statement's single annual column.
     await expect(
-      financials
+      kapReports
         .locator('[data-statement="IS"]')
         .getByText(TR('stockPage.financials.period').replace('{{year}}', '2025')),
     ).toBeVisible()
@@ -65,6 +81,12 @@ test.describe('TC-RES-030 restatement marking visible', () => {
   }) => {
     await page.goto('/stocks/REST')
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.financials'),
+        exact: true,
+      })
+      .click()
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })
@@ -84,6 +106,9 @@ test.describe('TC-RES-031 short history', () => {
   test('ZETA indicates the actual growth windows used', async ({ page }) => {
     await page.goto('/stocks/ZETA')
 
+    await page
+      .getByRole('button', { name: TR('stockPage.sections.growth'), exact: true })
+      .click()
     const growth = page.getByRole('region', {
       name: TR('stockPage.sections.growth'),
     })
@@ -101,6 +126,9 @@ test.describe('TC-RES-031 short history', () => {
   }) => {
     await page.goto('/stocks/NEWP')
 
+    await page
+      .getByRole('button', { name: TR('stockPage.sections.growth'), exact: true })
+      .click()
     const growth = page.getByRole('region', {
       name: TR('stockPage.sections.growth'),
     })
@@ -116,33 +144,39 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
   }) => {
     await page.goto('/stocks/ALFA')
 
-    const financials = page.getByRole('region', {
-      name: TR('stockPage.sections.financials'),
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
     })
 
     // The three statement tables replace the retired five-figure summary.
     await expect(
-      financials.locator('[data-statement="IS"]'),
+      kapReports.locator('[data-statement="IS"]'),
     ).toBeVisible()
     await expect(
-      financials.locator('[data-statement="BS"]'),
+      kapReports.locator('[data-statement="BS"]'),
     ).toBeVisible()
     await expect(
-      financials.locator('[data-statement="CF"]'),
+      kapReports.locator('[data-statement="CF"]'),
     ).toBeVisible()
 
     // The served fiscal-year columns, labelled from the catalog.
     await expect(
-      financials.locator('[data-statement="IS"]'),
+      kapReports.locator('[data-statement="IS"]'),
     ).toContainText(TR('stockPage.financials.period').replace('{{year}}', '2025'))
 
     // The annual basis is the default; the interim columns are not shown beside it.
     await expect(
-      financials.getByRole('button', {
+      kapReports.getByRole('button', {
         name: TR('stockPage.financials.basis.annual'),
       }),
     ).toHaveAttribute('aria-pressed', 'true')
-    await expect(financials.locator('[data-period="2025-06-30"]')).toHaveCount(0)
+    await expect(kapReports.locator('[data-period="2025-06-30"]')).toHaveCount(0)
   })
 
   test('the Çeyreklik toggle shows the served interims, labelled without a fabricated range', async ({
@@ -150,17 +184,23 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
   }) => {
     await page.goto('/stocks/ALFA')
 
-    const financials = page.getByRole('region', {
-      name: TR('stockPage.sections.financials'),
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
     })
     const annual = TR('stockPage.financials.period').replace('{{year}}', '2025')
-    await expect(financials.locator('[data-statement="IS"]')).toContainText(annual)
+    await expect(kapReports.locator('[data-statement="IS"]')).toContainText(annual)
 
-    await financials
+    await kapReports
       .getByRole('button', { name: TR('stockPage.financials.basis.quarterly') })
       .click()
 
-    const income = financials.locator('[data-statement="IS"]')
+    const income = kapReports.locator('[data-statement="IS"]')
     // The 2025-06-30 interim is served as a column: every income-statement row carries
     // its own value cell for it, so the claim is scoped to one row — the interim column
     // is present, once, beside the other served interims.
@@ -176,7 +216,7 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
     // Under this basis the annual column is filtered out.
     await expect(income).not.toContainText(annual)
     await expect(
-      financials.getByRole('button', {
+      kapReports.getByRole('button', {
         name: TR('stockPage.financials.basis.quarterly'),
       }),
     ).toHaveAttribute('aria-pressed', 'true')
@@ -187,17 +227,23 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
   }) => {
     await page.goto('/stocks/ALFA')
 
-    const financials = page.getByRole('region', {
-      name: TR('stockPage.sections.financials'),
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
     })
-    const row = financials.locator('[data-row="stInvestments"]')
+    const row = kapReports.locator('[data-row="stInvestments"]')
     await expect(row).toBeVisible()
     await expect(row.getByText(TR('stockPage.financials.rows.stInvestments'))).toBeVisible()
     await expect(row.locator('[data-slot="no-value"]').first()).toBeVisible()
     await expect(row.locator('[data-slot="no-value"]').first()).toHaveText('—')
 
     // The EV header renders the served operands and no computed total.
-    const ev = financials.getByTestId('ev-header')
+    const ev = kapReports.getByTestId('ev-header')
     await expect(ev).toBeVisible()
     await expect(ev.locator('[data-ev="sharePrice"]')).toBeVisible()
     // The total's value slot is the honest dash — the row also carries its label.
@@ -209,23 +255,30 @@ test.describe('TC-RES-040 the statements view on the fixture world', () => {
   test('the chosen basis survives navigation away and back', async ({ page }) => {
     await page.goto('/stocks/ALFA')
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+
     const quarterly = TR('stockPage.financials.basis.quarterly')
     await page
-      .getByRole('region', { name: TR('stockPage.sections.financials') })
+      .getByRole('region', { name: TR('stockPage.sections.kapReports') })
       .getByRole('button', { name: quarterly })
       .click()
 
     await page.goto('/')
     await page.goto('/stocks/ALFA')
 
-    const financials = page.getByRole('region', {
-      name: TR('stockPage.sections.financials'),
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
     })
     await expect(
-      financials.getByRole('button', { name: quarterly }),
+      kapReports.getByRole('button', { name: quarterly }),
     ).toHaveAttribute('aria-pressed', 'true')
     await expect(
-      financials.locator('[data-statement="IS"]'),
+      kapReports.locator('[data-statement="IS"]'),
     ).toContainText(
       TR('stockPage.financials.periodQuarter')
         .replace('{{quarter}}', '2')
@@ -241,7 +294,10 @@ test.describe('TC-RES-033 back-navigation preserves section', () => {
     await page.goto('/stocks/REST')
 
     const balanceSheet = TR('stockPage.sections.balanceSheet')
-    const navButton = page.getByRole('button', { name: balanceSheet })
+    const navButton = page.getByRole('button', {
+      name: balanceSheet,
+      exact: true,
+    })
     await navButton.click()
     await expect(navButton).toHaveAttribute('aria-current', 'true')
 
@@ -249,10 +305,9 @@ test.describe('TC-RES-033 back-navigation preserves section', () => {
     await page.goto('/')
     await page.goto('/stocks/REST')
 
-    await expect(page.getByRole('button', { name: balanceSheet })).toHaveAttribute(
-      'aria-current',
-      'true',
-    )
+    await expect(
+      page.getByRole('button', { name: balanceSheet, exact: true }),
+    ).toHaveAttribute('aria-current', 'true')
   })
 })
 
@@ -262,10 +317,16 @@ test.describe('TC-RES-041 key metrics & capital tracker on the fixture world', (
   }) => {
     await page.goto('/stocks/ALFA')
 
-    const financials = page.getByRole('region', {
-      name: TR('stockPage.sections.financials'),
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.kapReports'),
+        exact: true,
+      })
+      .click()
+    const kapReports = page.getByRole('region', {
+      name: TR('stockPage.sections.kapReports'),
     })
-    const panel = financials.getByTestId('key-metrics-panel')
+    const panel = kapReports.getByTestId('key-metrics-panel')
     await expect(panel).toBeVisible()
 
     // The served current value (ALFA's CROIC from its own fixture lines, 250/1,200).
@@ -305,7 +366,7 @@ test.describe('TC-RES-041 key metrics & capital tracker on the fixture world', (
       'Ana Ortaklık',
     )
 
-    const tracker = financials.getByTestId('capital-tracker')
+    const tracker = kapReports.getByTestId('capital-tracker')
     await expect(tracker).toBeVisible()
     // No share-count history is stored → the Y/Y change is the honest N/M.
     const change = tracker.locator('[data-row="shareCountChangeYoy"]')

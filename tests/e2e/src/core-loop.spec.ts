@@ -83,7 +83,7 @@ test.describe('TC-XC-001 SC-002 core loop, anonymous, end-to-end', () => {
     await page.getByTestId('result-row-ALFA').getByRole('link').click()
     await expect(page).toHaveURL(/\/stocks\/ALFA$/)
 
-    // ---- 5. Move through the seven sections (canonical figures, honest marks).
+    // ---- 5. Move through the eight sections (canonical figures, honest marks).
     const sectionLabels = [
       TR('stockPage.sections.overview'),
       TR('stockPage.sections.valuation'),
@@ -92,15 +92,22 @@ test.describe('TC-XC-001 SC-002 core loop, anonymous, end-to-end', () => {
       TR('stockPage.sections.growth'),
       TR('stockPage.sections.balanceSheet'),
       TR('stockPage.sections.dividends'),
+      TR('stockPage.sections.kapReports'),
     ]
     for (const label of sectionLabels) {
-      const navButton = page.getByRole('button', { name: label })
+      const navButton = page.getByRole('button', { name: label, exact: true })
       await navButton.click()
       await expect(navButton).toHaveAttribute('aria-current', 'true')
       await expect(page.getByRole('region', { name: label })).toBeVisible()
     }
 
     // A canonical figure and its honest as-of marker are present (valuation P/E).
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.valuation'),
+        exact: true,
+      })
+      .click()
     const valuation = page.getByRole('region', {
       name: TR('stockPage.sections.valuation'),
     })

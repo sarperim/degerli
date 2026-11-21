@@ -23,7 +23,7 @@ import {
 const tr = loadCatalog('tr')
 const TR = (key: string) => catalogValue(tr, key)
 
-const SEVEN_SECTIONS = [
+const EIGHT_SECTIONS = [
   TR('stockPage.sections.overview'),
   TR('stockPage.sections.valuation'),
   TR('stockPage.sections.financials'),
@@ -31,6 +31,7 @@ const SEVEN_SECTIONS = [
   TR('stockPage.sections.growth'),
   TR('stockPage.sections.balanceSheet'),
   TR('stockPage.sections.dividends'),
+  TR('stockPage.sections.kapReports'),
 ]
 
 test.describe('TC-RES-028 research hand-off', () => {
@@ -55,10 +56,10 @@ test.describe('TC-RES-028 research hand-off', () => {
       }),
     ).toBeVisible()
 
-    // ---- All seven sections available and navigable. ------------------------
-    expect(SEVEN_SECTIONS).toHaveLength(7)
-    for (const label of SEVEN_SECTIONS) {
-      const navButton = page.getByRole('button', { name: label })
+    // ---- All eight sections available and navigable. ------------------------
+    expect(EIGHT_SECTIONS).toHaveLength(8)
+    for (const label of EIGHT_SECTIONS) {
+      const navButton = page.getByRole('button', { name: label, exact: true })
       await expect(navButton).toBeVisible()
       await navButton.click()
       await expect(navButton).toHaveAttribute('aria-current', 'true')
@@ -66,6 +67,12 @@ test.describe('TC-RES-028 research hand-off', () => {
     }
 
     // ---- Canonical figures with their as-of dates. --------------------------
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.valuation'),
+        exact: true,
+      })
+      .click()
     const valuation = page.getByRole('region', {
       name: TR('stockPage.sections.valuation'),
     })
@@ -82,6 +89,12 @@ test.describe('TC-RES-028 research hand-off', () => {
       valuation.locator('[data-slot="as-of-date"]').first(),
     ).toBeVisible()
 
+    await page
+      .getByRole('button', {
+        name: TR('stockPage.sections.financials'),
+        exact: true,
+      })
+      .click()
     const financials = page.getByRole('region', {
       name: TR('stockPage.sections.financials'),
     })
