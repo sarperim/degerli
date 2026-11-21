@@ -57,17 +57,25 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  html.cursorless-active,
+  html.cursorless-active * {
+    cursor: none !important;
+  }
+}
+
 .cursor-reticle {
   position: fixed;
   top: 0;
   left: 0;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   pointer-events: none;
   z-index: 100;
   transform: translate3d(-100px, -100px, 0);
   opacity: 0;
-  transition: opacity 160ms ease;
+  transition: opacity 140ms ease;
+  filter: drop-shadow(0 0 1px rgba(10, 10, 12, 0.95)) drop-shadow(0 1px 2px rgba(10, 10, 12, 0.7));
   will-change: transform, width, height;
 }
 
@@ -75,40 +83,72 @@
   opacity: 1;
 }
 
+.cursor-reticle.is-text {
+  opacity: 0 !important;
+}
+
 .cursor-reticle span {
   position: absolute;
   width: 6px;
   height: 6px;
-  border-color: var(--brand-accent);
+  border-color: #f59e0b;
   border-style: solid;
 }
 
 .cursor-reticle .tl {
   top: 0;
   left: 0;
-  border-width: 1.5px 0 0 1.5px;
+  border-width: 2px 0 0 2px;
 }
 
 .cursor-reticle .tr {
   top: 0;
   right: 0;
-  border-width: 1.5px 1.5px 0 0;
+  border-width: 2px 2px 0 0;
 }
 
 .cursor-reticle .bl {
   bottom: 0;
   left: 0;
-  border-width: 0 0 1.5px 1.5px;
+  border-width: 0 0 2px 2px;
 }
 
 .cursor-reticle .br {
   bottom: 0;
   right: 0;
-  border-width: 0 1.5px 1.5px 0;
+  border-width: 0 2px 2px 0;
+}
+
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(10, 10, 12, 0.95), 0 1px 2px rgba(10, 10, 12, 0.7);
+  pointer-events: none;
+  z-index: 101;
+  transform: translate3d(-100px, -100px, 0) translate(-50%, -50%);
+  opacity: 0;
+  transition: width 120ms ease, height 120ms ease, border-radius 120ms ease, opacity 120ms ease;
+  will-change: transform;
+}
+
+.cursor-dot.visible {
+  opacity: 1;
+}
+
+.cursor-dot.is-text {
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
 }
 
 @media (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .cursor-reticle {
+  .cursor-reticle,
+  .cursor-dot {
     display: none !important;
   }
 }
