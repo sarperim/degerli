@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { formatAsOfDate, formatNumber } from '@/lib/format'
 import { catalogValue } from '@/test/i18n'
@@ -22,7 +23,11 @@ import {
   ValuationTooltipContent,
   VsSectorStrip,
 } from '@/screens/stock-page/ValuationSection'
-import { valuationHistoryPoints } from '@/screens/stock-page/valuation'
+import {
+  aggregateValuationHistory,
+  valuationHistoryPoints,
+  type ValuationHistoryPoint,
+} from '@/screens/stock-page/valuation'
 
 /**
  * SCR-005 Valuation section component tests (TKT-res-009).
@@ -280,5 +285,93 @@ describe('TKT-res-012 — valuation history chart hover tooltip', () => {
     renderWithProviders(<ValuationTooltipContent active={false} payload={[]} />)
 
     expect(screen.queryByTestId('valuation-tooltip')).not.toBeInTheDocument()
+  })
+})
+
+describe('SLICE-032 — valuation history chart granularity aggregation & toggle', () => {
+  const samplePoints: ValuationHistoryPoint[] = [
+    { date: '2025-12-29', close: 100, adjusted: true },
+    { date: '2025-12-31', close: 102, adjusted: true },
+    { date: '2026-01-02', close: 105, adjusted: true },
+    { date: '2026-01-05', close: 106, adjusted: true },
+    { date: '2026-01-09', close: 110, adjusted: true },
+    { date: '2026-02-03', close: 115, adjusted: false },
+    { date: '2026-02-10', close: 118, adjusted: false },
+  ]
+
+  it('returns input points unchanged for daily granularity', () => {
+    expect(aggregateValuationHistory(samplePoints, 'daily')).toBe(samplePoints)
+    expect(aggregateValuationHistory([], 'weekly')).toEqual([])
+  })
+
+  it('groups by ISO week (including year boundary) and picks the last served session', () => {
+    const weekly = aggregateValuationHistory(samplePoints, 'weekly')
+
+    expect(weekly).toEqual([
+      { date: '2026-01-02', close: 105, adjusted: true },
+      { date: '2026-01-09', close: 110, adjusted: true },
+      { date: '2026-02-03', close: 115, adjusted: false },
+      { date: '2026-02-10', close: 118, adjusted: false },
+    ])
+  })
+
+  it('groups by YYYY-MM month, keeps the last served session, and preserves adjusted flags', () => {
+    const monthly = aggregateValuationHistory(samplePoints, 'monthly')
+
+    expect(monthly).toEqual([
+      { date: '2025-12-31', close: 102, adjusted: true },
+      { date: '2026-01-09', close: 110, adjusted: true },
+      { date: '2026-02-10', close: 118, adjusted: false },
+    ])
+  })
+
+  it('switches between daily, weekly, and monthly views in ValuationHistoryChart', async () => {
+    const user = userEvent.setup()
+    const historical = {
+      adjusted: true,
+      series: samplePoints.map((point) => ({
+        date: point.date,
+        closeRaw: point.close,
+        closeAdjusted: point.adjusted ? point.close : null,
+      })),
+    }
+
+    const { container } = renderWithProviders(
+      <ValuationHistoryChart historical={historical} />,
+    )
+
+    const dailyBtn = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.granularity.daily'),
+    })
+    const weeklyBtn = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.granularity.weekly'),
+    })
+    const monthlyBtn = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.granularity.monthly'),
+    })
+
+    expect(dailyBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'false')
+
+    const caption = () => container.querySelector('figcaption')
+    expect(caption()).toHaveTextContent(
+      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 7 }),
+    )
+
+    await user.click(weeklyBtn)
+    expect(dailyBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(caption()).toHaveTextContent(
+      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 4 }),
+    )
+
+    await user.click(monthlyBtn)
+    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(caption()).toHaveTextContent(
+      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 3 }),
+    )
   })
 })

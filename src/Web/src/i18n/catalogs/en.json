@@ -129,7 +129,13 @@
         "title": "Price history",
         "captionAdjusted": "{{count}} adjusted closes",
         "captionRaw": "{{count}} closes",
-        "close": "Close"
+        "close": "Close",
+        "granularity": {
+          "label": "Chart interval",
+          "daily": "Daily",
+          "weekly": "Weekly",
+          "monthly": "Monthly"
+        }
       },
       "strip": {
         "title": "Vs. sector",

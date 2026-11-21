@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -16,9 +17,12 @@ import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import { SectionShell } from '@/screens/stock-page/StockSections'
 import { fetchStockValuation, stockPageQueryKeys } from '@/screens/stock-page/api'
 import {
+  aggregateValuationHistory,
   isPercentValuationMetric,
+  VALUATION_CHART_GRANULARITIES,
   valuationHistoryPoints,
   VALUATION_METRIC_ORDER,
+  type ValuationChartGranularity,
   type ValuationHistoryPoint,
   type ValuationMetricCode,
 } from '@/screens/stock-page/valuation'
@@ -43,6 +47,13 @@ const VALUATION_METRIC_LABEL_KEYS: Record<ValuationMetricCode, string> = {
   ev_ebitda: 'stockPage.valuation.metrics.ev_ebitda',
   ev_fcf: 'stockPage.valuation.metrics.ev_fcf',
   fcf_yield: 'stockPage.valuation.metrics.fcf_yield',
+}
+
+/** Full label keys for chart granularity options (literals, so i18n parity sees them). */
+const GRANULARITY_LABEL_KEYS: Record<ValuationChartGranularity, string> = {
+  daily: 'stockPage.valuation.history.granularity.daily',
+  weekly: 'stockPage.valuation.history.granularity.weekly',
+  monthly: 'stockPage.valuation.history.granularity.monthly',
 }
 
 /** The chart's height and minimum width for ResponsiveContainer. */
@@ -101,7 +112,12 @@ export function ValuationHistoryChart({
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
-  const points = valuationHistoryPoints(historical)
+  const [granularity, setGranularity] = useState<ValuationChartGranularity>('daily')
+  const rawPoints = useMemo(() => valuationHistoryPoints(historical), [historical])
+  const points = useMemo(
+    () => aggregateValuationHistory(rawPoints, granularity),
+    [rawPoints, granularity],
+  )
   const basis = historical.adjusted ? 'adjusted' : 'raw'
   const caption = historical.adjusted
     ? t('stockPage.valuation.history.captionAdjusted', { count: points.length })
@@ -114,11 +130,41 @@ export function ValuationHistoryChart({
       data-basis={basis}
       className="flex flex-col gap-2"
     >
-      <figcaption className="text-xs font-medium text-muted-foreground">
-        {t('stockPage.valuation.history.title')}
-        {' — '}
-        {caption}
-      </figcaption>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <figcaption className="text-xs font-medium text-muted-foreground">
+          {t('stockPage.valuation.history.title')}
+          {' — '}
+          {caption}
+        </figcaption>
+        {rawPoints.length > 0 ? (
+          <div
+            role="group"
+            aria-label={t('stockPage.valuation.history.granularity.label')}
+            data-slot="chart-granularity-toggle"
+            className="inline-flex items-center gap-1 font-mono text-[11px]"
+          >
+            {VALUATION_CHART_GRANULARITIES.map((option) => {
+              const active = granularity === option
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  data-magnetic=""
+                  aria-pressed={active}
+                  onClick={() => setGranularity(option)}
+                  className={
+                    active
+                      ? 'rounded-[2px] border border-[var(--brand-accent)] bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-foreground'
+                      : 'rounded-[2px] border border-transparent px-2 py-0.5 text-muted-foreground transition-colors hover:text-foreground'
+                  }
+                >
+                  {t(GRANULARITY_LABEL_KEYS[option])}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
       {points.length > 0 ? (
         <div className="w-full overflow-x-auto" role="img" aria-label={caption}>
           <ResponsiveContainer
