@@ -130,6 +130,7 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>).innerHeight
   delete (window as unknown as Record<string, unknown>).scrollY
   document.body.classList.remove('scroll-rail-dragging')
+  document.documentElement.classList.remove('scroll-rail-active')
   vi.restoreAllMocks()
 })
 
@@ -252,6 +253,37 @@ describe('ViewportScrollRail overflow and progress', () => {
       'true',
     )
   })
+
+  it('resets aria-valuenow and visual state when overflow disappears on resize', async () => {
+    setViewport({ height: 800, scrollY: 800 })
+    setDocumentScrollHeight(2400)
+    const { container } = render(<ViewportScrollRail />)
+    const track = container.querySelector<HTMLElement>('.viewport-scroll-rail__track')
+    mockTrackRect(track as HTMLElement)
+
+    await flushFrames()
+    fireEvent.scroll(window)
+    await flushFrames()
+
+    const rail = screen.getByTestId('viewport-scroll-rail')
+    expect(rail).toHaveAttribute('aria-valuenow', '50')
+    expect(screen.getByTestId('scroll-rail-fill').style.transform).toBe('scaleY(0.5)')
+
+    setDocumentScrollHeight(800)
+    fireEvent.resize(window)
+    await flushFrames()
+
+    expect(rail).toHaveAttribute('data-overflow', 'false')
+    expect(rail).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getByTestId('scroll-rail-fill').style.transform).toBe('scaleY(0)')
+    expect(screen.getByTestId('scroll-rail-tick').style.transform).toBe(
+      'translate3d(0, 0, 0)',
+    )
+    expect(screen.getByTestId('scroll-rail-readout').style.transform).toBe(
+      'translate3d(0, 0, 0) translateY(-50%)',
+    )
+    expect(screen.getByTestId('scroll-rail-readout').textContent).toBe('0%')
+  })
 })
 
 describe('ViewportScrollRail right-edge proximity', () => {
@@ -306,6 +338,18 @@ describe('ViewportScrollRail click and drag scrubbing', () => {
 })
 
 describe('ViewportScrollRail pointer gating', () => {
+  it('toggles html.scroll-rail-active while mounted on fine pointers', async () => {
+    setViewport({ height: 800, scrollY: 0 })
+    setDocumentScrollHeight(2400)
+    const { unmount } = render(<ViewportScrollRail />)
+
+    await flushFrames()
+    expect(document.documentElement).toHaveClass('scroll-rail-active')
+
+    unmount()
+    expect(document.documentElement).not.toHaveClass('scroll-rail-active')
+  })
+
   it('does not activate on coarse pointers', async () => {
     mockMatchMedia({ fine: false, coarse: true, hover: false })
     setViewport({ height: 800, scrollY: 0 })
@@ -319,6 +363,7 @@ describe('ViewportScrollRail pointer gating', () => {
     const rail = screen.getByTestId('viewport-scroll-rail')
     expect(rail).toHaveAttribute('data-overflow', 'false')
     expect(rail).not.toHaveClass('is-visible')
+    expect(document.documentElement).not.toHaveClass('scroll-rail-active')
 
     firePointer(rail, 'pointerdown', { button: 0, clientX: 990, clientY: 300 })
     expect(window.scrollTo).not.toHaveBeenCalled()

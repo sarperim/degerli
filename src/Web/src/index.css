@@ -178,14 +178,17 @@
    A compact 1px bronze progress rail pinned to the right edge. Native main-viewport
    scrollbars are hidden on fine pointers; nested scroll surfaces keep a quiet 6px bar. */
 @media (hover: hover) and (pointer: fine) {
-  html,
-  body {
+  /* Suppress the native main-viewport scrollbar only while the rail is mounted
+     and active (html.scroll-rail-active), so non-rail desktop contexts and
+     environments where the component never mounts keep the native scrollbar. */
+  html.scroll-rail-active,
+  html.scroll-rail-active body {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
 
-  html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
+  html.scroll-rail-active::-webkit-scrollbar,
+  html.scroll-rail-active body::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
@@ -227,12 +230,9 @@
   transition: opacity 600ms ease;
 }
 
-.viewport-scroll-rail[data-overflow='true'] {
-  pointer-events: auto;
-}
-
 .viewport-scroll-rail[data-overflow='true'].is-visible {
   opacity: 1;
+  pointer-events: auto;
   transition: opacity 150ms ease-out;
 }
 
@@ -268,7 +268,6 @@
 }
 
 .viewport-scroll-rail:hover .viewport-scroll-rail__fill,
-.viewport-scroll-rail.is-hovered .viewport-scroll-rail__fill,
 .viewport-scroll-rail.is-dragging .viewport-scroll-rail__fill {
   width: 2px;
 }

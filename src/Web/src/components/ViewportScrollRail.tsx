@@ -20,6 +20,15 @@ function clamp01(value: number): number {
  *
  * The native main-viewport scrollbar is hidden in CSS while this rail is active
  * (fine pointer only); nested scroll containers keep a quiet architectural bar.
+ * The active class (`html.scroll-rail-active`) is added when the fine-pointer
+ * effect mounts and removed on cleanup, so native scrollbars are suppressed only
+ * while this component is actually running.
+ *
+ * `tabIndex` is intentionally omitted: native document keyboard scrolling
+ * (Arrow/Page/Home/End/Space) already covers keyboard users without injecting an
+ * extra tab stop into AppShell's keyboard focus order. `aria-valuenow` is owned
+ * imperatively by the rAF loop, which is the single writer per frame; React only
+ * supplies the initial `0` and the static scrollbar semantics.
  */
 export function ViewportScrollRail() {
   const railRef = useRef<HTMLDivElement | null>(null)
@@ -40,6 +49,8 @@ export function ViewportScrollRail() {
     const tick = tickRef.current
     const readout = readoutRef.current
     if (!rail || !track || !fill || !tick || !readout) return
+
+    document.documentElement.classList.add('scroll-rail-active')
 
     let rafId = 0
     let idleTimer: number | undefined
@@ -82,6 +93,11 @@ export function ViewportScrollRail() {
       setHasOverflow((prev) => (prev === overflow ? prev : overflow))
       if (!overflow) {
         setVisible(false)
+        fill.style.transform = 'scaleY(0)'
+        tick.style.transform = 'translate3d(0, 0, 0)'
+        readout.style.transform = 'translate3d(0, 0, 0) translateY(-50%)'
+        readout.textContent = '0%'
+        rail.setAttribute('aria-valuenow', '0')
         return
       }
 
@@ -218,6 +234,7 @@ export function ViewportScrollRail() {
       rail.removeEventListener('lostpointercapture', onPointerUp)
       rail.classList.remove('is-visible', 'is-dragging')
       document.body.classList.remove('scroll-rail-dragging')
+      document.documentElement.classList.remove('scroll-rail-active')
     }
   }, [])
 

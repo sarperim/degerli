@@ -45,6 +45,22 @@ expose a drag-only percentage readout next to a 4×1px split tick.
 - **Gesture parity:** pointerdown jumps to the click ratio, pointer capture +
   document-body `scroll-rail-dragging` support 1:1 scrubbing, and
   pointerup/cancel/lostpointercapture cleanly end the drag.
+- **Native scrollbar scoping:** the desktop scrollbar suppression is scoped to
+  `html.scroll-rail-active` / `html.scroll-rail-active body` (plus their
+  `::-webkit-scrollbar` pseudo-elements) inside
+  `@media (hover: hover) and (pointer: fine)`. The class is added when the
+  fine-pointer effect mounts and removed on cleanup, so native scrollbars are
+  hidden only while `ViewportScrollRail` is actually mounted and active.
+- **Pointer gating:** the rail is inert at rest (`pointer-events: none`) and only
+  becomes interactive via
+  `.viewport-scroll-rail[data-overflow='true'].is-visible { pointer-events: auto }`,
+  so the faded-out rail never intercepts right-edge clicks.
+- **Deliberate non-focusable keyboard design:** `tabIndex` is intentionally
+  omitted. Native document keyboard scrolling (Arrow/Page/Home/End/Space) is
+  preserved, so keyboard users are not injected with an extra tab stop inside
+  AppShell's focus order. `aria-valuenow` is owned imperatively by the rAF loop
+  (the single writer per frame); React supplies only the initial `0` and the
+  static scrollbar semantics.
 - **Accessibility:** `role="scrollbar"`, `aria-controls="app-main"`, vertical
   orientation, `aria-valuemin/max/now`, and a label; rendered inside `<main id="app-main">`
   so the scrollbar is owned by the main landmark without adding a second
@@ -70,7 +86,10 @@ expose a drag-only percentage readout next to a 4×1px split tick.
   src/components/TactileBackdrop.test.tsx src/components/DataSourceDisclaimer.test.tsx
   src/routes/MarketOverviewPage.test.tsx` — 57 tests pass across 4 files.
 - [x] Rail axe-core audit inside `<main id="app-main">` reports zero violations.
-- [ ] Diff review via review agents.
+- [x] Round-1 review fixes: `html.scroll-rail-active` scoping, `pointer-events`
+  gated on `.is-visible`, unused `.is-hovered` selector removed, no-overflow
+  visual/`aria-valuenow` reset, and non-focusable keyboard design documented.
+- [x] Diff review via review agents.
 - [ ] CI / Playwright e2e suite.
 
 ## Result
@@ -98,3 +117,19 @@ inside the app main landmark:
   resize recalculation, right-edge proximity, click/drag scrubbing cleanup, and
   coarse-pointer opt-out. jsdom's missing `PointerEvent` is worked around with
   pointer-typed `MouseEvent`s carrying real coordinates.
+
+### Round 1 review fixes
+
+- `html`/`body` native scrollbar suppression is now scoped to
+  `html.scroll-rail-active` (added on fine-pointer mount, removed on cleanup),
+  so it no longer leaks to desktop contexts where the rail is unmounted.
+- `pointer-events: auto` moved onto
+  `.viewport-scroll-rail[data-overflow='true'].is-visible`, so the faded-out rail
+  cannot intercept right-edge clicks; the standalone `data-overflow` rule was
+  removed.
+- Dropped the unused `.viewport-scroll-rail.is-hovered` selector (kept `:hover`
+  and `.is-dragging`).
+- `render()` now resets fill/tick/readout transforms, readout text, and
+  `aria-valuenow` to `0` when overflow disappears, avoiding stale progress.
+- Added tests for `html.scroll-rail-active` mount/unmount on fine pointers, its
+  absence on coarse pointers, and `aria-valuenow` reset on overflow removal.
