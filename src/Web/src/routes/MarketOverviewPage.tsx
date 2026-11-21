@@ -778,7 +778,7 @@ export function MarketOverviewPage() {
         <header
           ref={heroRef}
           id="hero-section"
-          className="relative flex flex-1 items-center overflow-hidden py-14 sm:py-16 lg:pt-8 lg:pb-[16svh]"
+          className="relative flex flex-1 items-center overflow-hidden py-14 sm:py-16 lg:py-16"
         >
           <canvas
             ref={heroCanvasRef}

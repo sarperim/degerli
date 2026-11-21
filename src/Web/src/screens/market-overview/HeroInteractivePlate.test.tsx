@@ -86,6 +86,77 @@ describe('HeroInteractivePlate', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps the Bayer 4x4 canvas palette dark-room duotone while the outer frame adapts via theme tokens', () => {
+    const grayscale = new Uint8ClampedArray(360 * 270 * 4)
+    for (let i = 0; i < grayscale.length; i += 4) {
+      const lum = Math.round(((i / 4) % 360) / 359 * 255)
+      grayscale[i] = lum
+      grayscale[i + 1] = lum
+      grayscale[i + 2] = lum
+      grayscale[i + 3] = 255
+    }
+    const ctxSpy = createCanvas2dSpy()
+    ctxSpy.getImageData.mockReturnValue({
+      data: grayscale,
+      width: 360,
+      height: 270,
+      colorSpace: 'srgb' as PredefinedColorSpace,
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      ctxSpy as unknown as CanvasRenderingContext2D,
+    )
+    installMockImage()
+
+    const { container } = renderWithProviders(<HeroInteractivePlate />)
+
+    const plate = container.querySelector('#photo-plate')
+    const viewport = container.querySelector('#photo-viewport')
+    expect(plate?.className).toContain('border-[var(--border-strong)]')
+    expect(plate?.className).toContain('bg-card')
+    expect(plate?.className).not.toContain('bg-[#121519]')
+    expect(viewport?.className).toContain('border-border')
+    expect(viewport?.className).toContain('bg-background')
+    expect(viewport?.className).not.toContain('bg-[#0B0D10]')
+
+    const cornerMarks = plate?.querySelectorAll('span[aria-hidden="true"]') ?? []
+    expect(cornerMarks).toHaveLength(4)
+    for (const mark of cornerMarks) {
+      expect(mark.className).toContain('text-muted-foreground')
+    }
+
+    const hudBadges = viewport?.querySelectorAll('span') ?? []
+    expect(hudBadges).toHaveLength(2)
+    expect(hudBadges[0].className).toContain('border-[var(--border-strong)]')
+    expect(hudBadges[0].className).toContain('bg-background/85')
+    expect(hudBadges[0].className).toContain('text-muted-foreground')
+    expect(hudBadges[1].className).toContain('border-[var(--border-strong)]')
+    expect(hudBadges[1].className).toContain('bg-background/85')
+    expect(hudBadges[1].className).toContain('text-[var(--stale-foreground)]')
+
+    const caption = plate?.lastElementChild
+    expect(caption?.className).toContain('text-muted-foreground')
+
+    const swapLabel = plate?.querySelector('label')
+    expect(swapLabel?.className).toContain('text-[var(--stale-foreground)]')
+    expect(swapLabel?.className).toContain('hover:text-foreground')
+
+    const darkPalette = new Set([
+      '17,19,22',
+      '68,75,84',
+      '198,139,73',
+      '224,220,212',
+    ])
+    const usedColors = new Set<string>()
+    for (let i = 0; i < grayscale.length; i += 4) {
+      usedColors.add(`${grayscale[i]},${grayscale[i + 1]},${grayscale[i + 2]}`)
+    }
+
+    expect(usedColors.has('246,245,240')).toBe(false)
+    for (const color of usedColors) {
+      expect(darkPalette.has(color)).toBe(true)
+    }
+  })
+
   it('renders procedural skyline fallback before the archival image finishes loading', () => {
     const ctxSpy = createCanvas2dSpy()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
