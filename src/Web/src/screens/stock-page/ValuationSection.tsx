@@ -17,12 +17,12 @@ import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import { SectionShell } from '@/screens/stock-page/StockSections'
 import { fetchStockValuation, stockPageQueryKeys } from '@/screens/stock-page/api'
 import {
-  aggregateValuationHistory,
+  filterValuationHistoryByRange,
   isPercentValuationMetric,
-  VALUATION_CHART_GRANULARITIES,
+  VALUATION_CHART_RANGES,
   valuationHistoryPoints,
   VALUATION_METRIC_ORDER,
-  type ValuationChartGranularity,
+  type ValuationChartRange,
   type ValuationHistoryPoint,
   type ValuationMetricCode,
 } from '@/screens/stock-page/valuation'
@@ -49,11 +49,12 @@ const VALUATION_METRIC_LABEL_KEYS: Record<ValuationMetricCode, string> = {
   fcf_yield: 'stockPage.valuation.metrics.fcf_yield',
 }
 
-/** Full label keys for chart granularity options (literals, so i18n parity sees them). */
-const GRANULARITY_LABEL_KEYS: Record<ValuationChartGranularity, string> = {
-  daily: 'stockPage.valuation.history.granularity.daily',
-  weekly: 'stockPage.valuation.history.granularity.weekly',
-  monthly: 'stockPage.valuation.history.granularity.monthly',
+/** Full label keys for chart time-range options (literals, so i18n parity sees them). */
+const RANGE_LABEL_KEYS: Record<ValuationChartRange, string> = {
+  '1W': 'stockPage.valuation.history.range.1W',
+  '1M': 'stockPage.valuation.history.range.1M',
+  '1Y': 'stockPage.valuation.history.range.1Y',
+  max: 'stockPage.valuation.history.range.max',
 }
 
 /** The chart's height and minimum width for ResponsiveContainer. */
@@ -112,11 +113,11 @@ export function ValuationHistoryChart({
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? 'tr'
-  const [granularity, setGranularity] = useState<ValuationChartGranularity>('daily')
+  const [range, setRange] = useState<ValuationChartRange>('max')
   const rawPoints = useMemo(() => valuationHistoryPoints(historical), [historical])
   const points = useMemo(
-    () => aggregateValuationHistory(rawPoints, granularity),
-    [rawPoints, granularity],
+    () => filterValuationHistoryByRange(rawPoints, range),
+    [rawPoints, range],
   )
   const basis = historical.adjusted ? 'adjusted' : 'raw'
   const caption = historical.adjusted
@@ -139,26 +140,26 @@ export function ValuationHistoryChart({
         {rawPoints.length > 0 ? (
           <div
             role="group"
-            aria-label={t('stockPage.valuation.history.granularity.label')}
-            data-slot="chart-granularity-toggle"
+            aria-label={t('stockPage.valuation.history.range.label')}
+            data-slot="chart-range-toggle"
             className="inline-flex items-center gap-1 font-mono text-[11px]"
           >
-            {VALUATION_CHART_GRANULARITIES.map((option) => {
-              const active = granularity === option
+            {VALUATION_CHART_RANGES.map((option) => {
+              const active = range === option
               return (
                 <button
                   key={option}
                   type="button"
                   data-magnetic=""
                   aria-pressed={active}
-                  onClick={() => setGranularity(option)}
+                  onClick={() => setRange(option)}
                   className={
                     active
                       ? 'rounded-[2px] border border-[var(--brand-accent)] bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-foreground'
                       : 'rounded-[2px] border border-transparent px-2 py-0.5 text-muted-foreground transition-colors hover:text-foreground'
                   }
                 >
-                  {t(GRANULARITY_LABEL_KEYS[option])}
+                  {t(RANGE_LABEL_KEYS[option])}
                 </button>
               )
             })}

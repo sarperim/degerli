@@ -56,24 +56,22 @@ export function valuationHistoryPoints(
   }))
 }
 
-/** Supported interval granularities for the historical price chart (SLICE-032). */
-export type ValuationChartGranularity = 'daily' | 'weekly' | 'monthly'
+/** Supported time-range presets for the historical price chart (SLICE-034). */
+export type ValuationChartRange = '1W' | '1M' | '1Y' | 'max'
 
-/** Display order for the historical price chart granularity selector. */
-export const VALUATION_CHART_GRANULARITIES: readonly ValuationChartGranularity[] = [
-  'daily',
-  'weekly',
-  'monthly',
+/** Display order for the historical price chart time-range selector. */
+export const VALUATION_CHART_RANGES: readonly ValuationChartRange[] = [
+  '1W',
+  '1M',
+  '1Y',
+  'max',
 ]
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
-function periodBucketKey(
-  date: string,
-  granularity: Exclude<ValuationChartGranularity, 'daily'>,
-): string {
+function parseIsoDateUtc(date: string): Date | null {
   const match = ISO_DATE_RE.exec(date)
-  if (!match) return date
+  if (!match) return null
 
   const year = Number(match[1])
   const month = Number(match[2])
@@ -85,46 +83,57 @@ function periodBucketKey(
     utc.getUTCMonth() !== month - 1 ||
     utc.getUTCDate() !== day
   ) {
-    return date
+    return null
   }
 
-  if (granularity === 'monthly') {
-    return `${match[1]}-${match[2]}`
-  }
+  return utc
+}
 
-  // Shift to Thursday of the same ISO 8601 week (1 = Mon .. 7 = Sun).
-  const dayNum = utc.getUTCDay() || 7
-  utc.setUTCDate(utc.getUTCDate() + 4 - dayNum)
-  const isoYear = utc.getUTCFullYear()
-  const yearStart = Date.UTC(isoYear, 0, 1)
-  const week = Math.ceil(((utc.getTime() - yearStart) / 86400000 + 1) / 7)
-  return `${isoYear}-W${String(week).padStart(2, '0')}`
+function subtractCalendarMonthsUtc(anchor: Date, months: number): number {
+  const totalMonths = anchor.getUTCFullYear() * 12 + anchor.getUTCMonth() - months
+  const targetYear = Math.floor(totalMonths / 12)
+  const targetMonth = totalMonths - targetYear * 12
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
+  const clampedDay = Math.min(anchor.getUTCDate(), daysInTargetMonth)
+  return Date.UTC(targetYear, targetMonth, clampedDay)
 }
 
 /**
- * Aggregate served daily history points into weekly (ISO `YYYY-Www`) or
- * monthly (`YYYY-MM`) buckets by selecting the last served session in each
- * bucket. Never interpolates or fabricates missing dates.
+ * Filter served price history points to an inclusive trailing calendar window
+ * anchored to the latest valid session date present in `points`.
+ * Never uses wall-clock `Date.now()`, never fabricates or interpolates points.
  */
-export function aggregateValuationHistory(
+export function filterValuationHistoryByRange(
   points: ValuationHistoryPoint[],
-  granularity: ValuationChartGranularity,
+  range: ValuationChartRange,
 ): ValuationHistoryPoint[] {
-  if (granularity === 'daily' || points.length === 0) return points
+  if (range === 'max' || points.length === 0) return points
 
-  const buckets: ValuationHistoryPoint[] = []
-  const indexByKey = new Map<string, number>()
-
+  let latestAnchor: Date | null = null
   for (const point of points) {
-    const key = periodBucketKey(point.date, granularity)
-    const existingIdx = indexByKey.get(key)
-    if (existingIdx === undefined) {
-      indexByKey.set(key, buckets.length)
-      buckets.push(point)
-    } else {
-      buckets[existingIdx] = point
+    const parsed = parseIsoDateUtc(point.date)
+    if (parsed !== null && (latestAnchor === null || parsed.getTime() > latestAnchor.getTime())) {
+      latestAnchor = parsed
     }
   }
 
-  return buckets
+  if (latestAnchor === null) return points
+
+  let cutoffMs: number
+  if (range === '1W') {
+    cutoffMs = Date.UTC(
+      latestAnchor.getUTCFullYear(),
+      latestAnchor.getUTCMonth(),
+      latestAnchor.getUTCDate() - 7,
+    )
+  } else if (range === '1M') {
+    cutoffMs = subtractCalendarMonthsUtc(latestAnchor, 1)
+  } else {
+    cutoffMs = subtractCalendarMonthsUtc(latestAnchor, 12)
+  }
+
+  return points.filter((point) => {
+    const d = parseIsoDateUtc(point.date)
+    return d !== null && d.getTime() >= cutoffMs
+  })
 }
