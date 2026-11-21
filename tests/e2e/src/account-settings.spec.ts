@@ -193,9 +193,11 @@ test.describe('TC-ACC-032 — delete account end-to-end (L4)', () => {
       .getByRole('button', { name: EN('accountSettings.deleteConfirm') })
       .click()
 
-    // Removed and signed out: back on the anonymous home, header shows guest.
+    // Removed and signed out: back on the anonymous home, header shows anonymous sign-in.
     await expect(pageA).toHaveURL(/\/$/)
-    await expect(pageA.getByText(EN('header.anonymous'))).toBeVisible()
+    await expect(
+      pageA.getByRole('banner').getByRole('button', { name: EN('header.signIn'), exact: true }),
+    ).toBeVisible()
 
     // Previously saved screens are no longer accessible — the signed-out visit
     // to My Saved Screens presents the sign-in path, no rows.

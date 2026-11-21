@@ -72,13 +72,17 @@ test.describe('TC-ACC-031 — Sign out anywhere; language retained device-locall
     await page.getByRole('button', { name: EN('header.signOut') }).click()
 
     // The session ends and the header reflects the anonymous state.
-    await expect(page.getByText(EN('header.anonymous'))).toBeVisible()
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: EN('header.signIn'), exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: EN('header.signOut') })).toHaveCount(0)
 
     // The language selection remains active on the device — even across a reload.
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
-    await expect(page.getByText(EN('header.anonymous'))).toBeVisible()
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: EN('header.signIn'), exact: true }),
+    ).toBeVisible()
   })
 })

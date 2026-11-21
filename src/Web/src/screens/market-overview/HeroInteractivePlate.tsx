@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { formatNumber } from '@/lib/format'
 import { useTheme } from '@/lib/theme'
+import defaultArchiveImageUrl from '@/assets/istanbul-financial-archive.webp'
 
 const BAYER_4X4 = [
   [0, 8, 2, 10],
@@ -165,8 +166,14 @@ export function useHeroBackdropCanvas({
     hero.addEventListener('mousemove', onMouseMove, { passive: true })
     hero.addEventListener('mouseleave', onMouseLeave)
     window.addEventListener('resize', resize)
+    let observer: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => resize())
+      observer.observe(hero)
+    }
 
     return () => {
+      observer?.disconnect()
       hero.removeEventListener('mousemove', onMouseMove)
       hero.removeEventListener('mouseleave', onMouseLeave)
       window.removeEventListener('resize', resize)
@@ -186,9 +193,9 @@ export function useHeroBackdropCanvas({
  *
  * - 4 corner `+` crop marks (`tl`/`tr`/`bl`/`br`)
  * - 3D perspective tilt on hover + radial bronze `.photo-loupe`
- * - Real-time 4-level Bayer 4×4 ordered-dithered İstanbul Bosphorus & financial skyline canvas
- * - HUD overlay (`41.0812° N, 29.0112° E` · `DUOTONE · BAYER 4×4`)
- * - `FIG. 01 — İSTANBUL FINANCIAL ARCHIVE` caption bar with `Swap photo` upload
+ * - Real-time 4-level Bayer 4×4 ordered-dithered İstanbul archival engraving canvas (with procedural skyline fallback while loading/offline)
+ * - HUD overlay (`41.0239° N, 28.9735° E` · `DUOTONE · BAYER 4×4`)
+ * - `Salt Galata — Former Ottoman Bank HQ (1892), Bankalar Caddesi` caption bar with `Swap photo` upload
  */
 export function HeroInteractivePlate() {
   const { t } = useTranslation()
@@ -197,8 +204,27 @@ export function HeroInteractivePlate() {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const loupeRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const defaultImageRef = useRef<HTMLImageElement | null>(null)
   const customImageRef = useRef<HTMLImageElement | null>(null)
   const [imageVersion, setImageVersion] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      const imgW = img.naturalWidth || img.width
+      const imgH = img.naturalHeight || img.height
+      if (imgW > 0 && imgH > 0) {
+        defaultImageRef.current = img
+        setImageVersion((v) => v + 1)
+      }
+    }
+    img.src = defaultArchiveImageUrl
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -224,15 +250,17 @@ export function HeroInteractivePlate() {
     }
     if (!c) return
 
-    const customImg = customImageRef.current
-    if (customImg) {
-      const s = Math.max(w / customImg.width, h / customImg.height)
+    const activeImg = customImageRef.current ?? defaultImageRef.current
+    const imgW = activeImg ? activeImg.naturalWidth || activeImg.width : 0
+    const imgH = activeImg ? activeImg.naturalHeight || activeImg.height : 0
+    if (activeImg && imgW > 0 && imgH > 0) {
+      const s = Math.max(w / imgW, h / imgH)
       c.drawImage(
-        customImg,
-        (w - customImg.width * s) / 2,
-        (h - customImg.height * s) / 2,
-        customImg.width * s,
-        customImg.height * s,
+        activeImg,
+        (w - imgW * s) / 2,
+        (h - imgH * s) / 2,
+        imgW * s,
+        imgH * s,
       )
     } else {
       const sky = c.createLinearGradient(0, 0, 0, h * 0.68)
@@ -428,7 +456,7 @@ export function HeroInteractivePlate() {
           className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 flex justify-between font-mono text-[10px]"
         >
           <span className="border border-[var(--border-strong)] bg-background/85 px-1.5 py-0.5 text-muted-foreground">
-            41.0812° N, 29.0112° E
+            41.0239° N, 28.9735° E
           </span>
           <span className="border border-[var(--border-strong)] bg-background/85 px-1.5 py-0.5 text-[var(--stale-foreground)]">
             DUOTONE · BAYER 4×4
@@ -436,11 +464,11 @@ export function HeroInteractivePlate() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2 font-mono text-[10px] text-muted-foreground">
+      <div className="flex items-start justify-between gap-3 pt-2 font-mono text-[10px] leading-snug text-muted-foreground">
         <span>{t('marketOverview.hero.plateCaption')}</span>
         <label
           data-magnetic=""
-          className="cursor-pointer font-mono text-[10px] text-[var(--stale-foreground)] underline underline-offset-4 hover:text-foreground"
+          className="shrink-0 cursor-pointer font-mono text-[10px] text-[var(--stale-foreground)] underline underline-offset-4 hover:text-foreground"
         >
           {t('marketOverview.hero.swapPhoto')}
           <input

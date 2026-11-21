@@ -74,7 +74,9 @@ test.describe('TC-RES-036 public access without an account', () => {
       TR('screens.stockList.title'),
     )
     // Anonymous header state — no sign-in prompt, no auth-wall dialog.
-    await expect(page.getByText(TR('header.anonymous'))).toBeVisible()
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: TR('header.signIn'), exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page.getByTestId('stock-row-ALFA')).toBeVisible()
 
