@@ -25,7 +25,7 @@ import {
   VsSectorStrip,
 } from '@/screens/stock-page/ValuationSection'
 import {
-  aggregateValuationHistory,
+  filterValuationHistoryByRange,
   valuationHistoryPoints,
   type ValuationHistoryPoint,
 } from '@/screens/stock-page/valuation'
@@ -289,65 +289,108 @@ describe('TKT-res-012 — valuation history chart hover tooltip', () => {
   })
 })
 
-describe('SLICE-032 — valuation history chart granularity aggregation & toggle', () => {
+describe('SLICE-034 — historical price chart time-range presets', () => {
   const samplePoints: ValuationHistoryPoint[] = [
-    { date: '2025-12-29', close: 100, adjusted: true },
-    { date: '2025-12-31', close: 102, adjusted: true },
-    { date: '2026-01-02', close: 105, adjusted: true },
-    { date: '2026-01-05', close: 106, adjusted: true },
-    { date: '2026-01-09', close: 110, adjusted: true },
-    { date: '2026-02-03', close: 115, adjusted: false },
+    { date: '2025-01-15', close: 80, adjusted: true },
+    { date: '2025-02-10', close: 85, adjusted: true },
+    { date: '2026-01-05', close: 100, adjusted: true },
+    { date: '2026-01-10', close: 102, adjusted: true },
+    { date: '2026-02-02', close: 108, adjusted: true },
+    { date: '2026-02-03', close: 110, adjusted: true },
     { date: '2026-02-10', close: 118, adjusted: false },
   ]
 
-  it('returns input points unchanged for daily granularity', () => {
-    expect(aggregateValuationHistory(samplePoints, 'daily')).toBe(samplePoints)
-    expect(aggregateValuationHistory([], 'weekly')).toEqual([])
+  it('returns input points unchanged for max range', () => {
+    expect(filterValuationHistoryByRange(samplePoints, 'max')).toBe(samplePoints)
+    expect(filterValuationHistoryByRange([], '1W')).toEqual([])
   })
 
-  it('groups by ISO week (including year boundary) and picks the last served session', () => {
-    const weekly = aggregateValuationHistory(samplePoints, 'weekly')
+  it('filters inclusively to trailing 7 calendar days anchored to the latest served date for 1W', () => {
+    const oneWeek = filterValuationHistoryByRange(samplePoints, '1W')
 
-    expect(weekly).toEqual([
-      { date: '2026-01-02', close: 105, adjusted: true },
-      { date: '2026-01-09', close: 110, adjusted: true },
-      { date: '2026-02-03', close: 115, adjusted: false },
+    expect(oneWeek).toEqual([
+      { date: '2026-02-03', close: 110, adjusted: true },
       { date: '2026-02-10', close: 118, adjusted: false },
     ])
   })
 
-  it('groups by YYYY-MM month, keeps the last served session, and preserves adjusted flags', () => {
-    const monthly = aggregateValuationHistory(samplePoints, 'monthly')
+  it('filters inclusively to trailing 1 calendar month with month-end clamping and year rollover for 1M', () => {
+    const marchEndSeries: ValuationHistoryPoint[] = [
+      { date: '2026-02-27', close: 90, adjusted: true },
+      { date: '2026-02-28', close: 95, adjusted: true },
+      { date: '2026-03-15', close: 100, adjusted: true },
+      { date: '2026-03-31', close: 105, adjusted: true },
+    ]
+    expect(filterValuationHistoryByRange(marchEndSeries, '1M')).toEqual([
+      { date: '2026-02-28', close: 95, adjusted: true },
+      { date: '2026-03-15', close: 100, adjusted: true },
+      { date: '2026-03-31', close: 105, adjusted: true },
+    ])
 
-    expect(monthly).toEqual([
-      { date: '2025-12-31', close: 102, adjusted: true },
-      { date: '2026-01-09', close: 110, adjusted: true },
-      { date: '2026-02-10', close: 118, adjusted: false },
+    const yearRolloverSeries: ValuationHistoryPoint[] = [
+      { date: '2025-12-14', close: 88, adjusted: true },
+      { date: '2025-12-15', close: 89, adjusted: true },
+      { date: '2026-01-15', close: 94, adjusted: true },
+    ]
+    expect(filterValuationHistoryByRange(yearRolloverSeries, '1M')).toEqual([
+      { date: '2025-12-15', close: 89, adjusted: true },
+      { date: '2026-01-15', close: 94, adjusted: true },
     ])
   })
 
-  it('handles single-point input across all granularities', () => {
+  it('filters inclusively to trailing 12 calendar months with leap-day clamping for 1Y', () => {
+    const leapSeries: ValuationHistoryPoint[] = [
+      { date: '2023-02-27', close: 50, adjusted: true },
+      { date: '2023-02-28', close: 52, adjusted: true },
+      { date: '2023-08-01', close: 60, adjusted: true },
+      { date: '2024-02-29', close: 75, adjusted: true },
+    ]
+
+    expect(filterValuationHistoryByRange(leapSeries, '1Y')).toEqual([
+      { date: '2023-02-28', close: 52, adjusted: true },
+      { date: '2023-08-01', close: 60, adjusted: true },
+      { date: '2024-02-29', close: 75, adjusted: true },
+    ])
+  })
+
+  it('handles single-point series, unsorted points, and invalid dates safely', () => {
     const single: ValuationHistoryPoint[] = [
       { date: '2026-02-10', close: 118, adjusted: true },
     ]
+    expect(filterValuationHistoryByRange(single, 'max')).toBe(single)
+    expect(filterValuationHistoryByRange(single, '1W')).toEqual(single)
+    expect(filterValuationHistoryByRange(single, '1M')).toEqual(single)
+    expect(filterValuationHistoryByRange(single, '1Y')).toEqual(single)
 
-    expect(aggregateValuationHistory(single, 'daily')).toBe(single)
-    expect(aggregateValuationHistory(single, 'weekly')).toEqual(single)
-    expect(aggregateValuationHistory(single, 'monthly')).toEqual(single)
-  })
+    const unsorted: ValuationHistoryPoint[] = [
+      { date: '2026-02-10', close: 118, adjusted: true },
+      { date: '2026-02-01', close: 105, adjusted: true },
+      { date: '2026-02-05', close: 112, adjusted: true },
+    ]
+    expect(filterValuationHistoryByRange(unsorted, '1W')).toEqual([
+      { date: '2026-02-10', close: 118, adjusted: true },
+      { date: '2026-02-05', close: 112, adjusted: true },
+    ])
 
-  it('preserves invalid calendar dates as their own bucket key in weekly and monthly modes', () => {
     const withInvalid: ValuationHistoryPoint[] = [
-      { date: '2026-02-28', close: 100, adjusted: true },
+      { date: '2026-02-01', close: 100, adjusted: true },
       { date: '2026-02-30', close: 105, adjusted: true },
       { date: '2026-13-01', close: 110, adjusted: true },
+      { date: 'not-a-date', close: 112, adjusted: true },
+      { date: '2026-02-10', close: 118, adjusted: true },
     ]
+    expect(filterValuationHistoryByRange(withInvalid, '1W')).toEqual([
+      { date: '2026-02-10', close: 118, adjusted: true },
+    ])
 
-    expect(aggregateValuationHistory(withInvalid, 'weekly')).toEqual(withInvalid)
-    expect(aggregateValuationHistory(withInvalid, 'monthly')).toEqual(withInvalid)
+    const onlyInvalid: ValuationHistoryPoint[] = [
+      { date: '2026-02-30', close: 105, adjusted: true },
+      { date: 'bad-date', close: 110, adjusted: true },
+    ]
+    expect(filterValuationHistoryByRange(onlyInvalid, '1W')).toBe(onlyInvalid)
   })
 
-  it('switches between daily, weekly, and monthly views in ValuationHistoryChart', async () => {
+  it('defaults to max and updates aria-pressed and plotted count across 1Y, 1M, and 1W in ValuationHistoryChart', async () => {
     const user = userEvent.setup()
     const historical = {
       adjusted: true,
@@ -362,38 +405,54 @@ describe('SLICE-032 — valuation history chart granularity aggregation & toggle
       <ValuationHistoryChart historical={historical} />,
     )
 
-    const dailyBtn = screen.getByRole('button', {
-      name: TR('stockPage.valuation.history.granularity.daily'),
+    const toggleGroup = container.querySelector('[data-slot="chart-range-toggle"]')
+    expect(toggleGroup).toHaveAttribute(
+      'aria-label',
+      TR('stockPage.valuation.history.range.label'),
+    )
+
+    const btn1W = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.range.1W'),
     })
-    const weeklyBtn = screen.getByRole('button', {
-      name: TR('stockPage.valuation.history.granularity.weekly'),
+    const btn1M = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.range.1M'),
     })
-    const monthlyBtn = screen.getByRole('button', {
-      name: TR('stockPage.valuation.history.granularity.monthly'),
+    const btn1Y = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.range.1Y'),
+    })
+    const btnMax = screen.getByRole('button', {
+      name: TR('stockPage.valuation.history.range.max'),
     })
 
-    expect(dailyBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(btnMax).toHaveAttribute('aria-pressed', 'true')
+    expect(btn1W).toHaveAttribute('aria-pressed', 'false')
+    expect(btn1M).toHaveAttribute('aria-pressed', 'false')
+    expect(btn1Y).toHaveAttribute('aria-pressed', 'false')
 
     const caption = () => container.querySelector('figcaption')
     expect(caption()).toHaveTextContent(
       fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 7 }),
     )
 
-    await user.click(weeklyBtn)
-    expect(dailyBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'false')
+    await user.click(btn1Y)
+    expect(btn1Y).toHaveAttribute('aria-pressed', 'true')
+    expect(btnMax).toHaveAttribute('aria-pressed', 'false')
+    expect(caption()).toHaveTextContent(
+      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 6 }),
+    )
+
+    await user.click(btn1M)
+    expect(btn1M).toHaveAttribute('aria-pressed', 'true')
+    expect(btn1Y).toHaveAttribute('aria-pressed', 'false')
     expect(caption()).toHaveTextContent(
       fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 4 }),
     )
 
-    await user.click(monthlyBtn)
-    expect(weeklyBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(monthlyBtn).toHaveAttribute('aria-pressed', 'true')
+    await user.click(btn1W)
+    expect(btn1W).toHaveAttribute('aria-pressed', 'true')
+    expect(btn1M).toHaveAttribute('aria-pressed', 'false')
     expect(caption()).toHaveTextContent(
-      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 3 }),
+      fill(TR('stockPage.valuation.history.captionAdjusted'), { count: 2 }),
     )
   })
 })

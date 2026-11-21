@@ -134,11 +134,12 @@
         "captionAdjusted": "{{count}} düzeltilmiş kapanış",
         "captionRaw": "{{count}} kapanış",
         "close": "Kapanış",
-        "granularity": {
-          "label": "Grafik aralığı",
-          "daily": "Günlük",
-          "weekly": "Haftalık",
-          "monthly": "Aylık"
+        "range": {
+          "label": "Zaman aralığı",
+          "1W": "1H",
+          "1M": "1A",
+          "1Y": "1Y",
+          "max": "Tümü"
         }
       },
       "strip": {

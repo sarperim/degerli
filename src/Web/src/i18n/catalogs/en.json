@@ -134,11 +134,12 @@
         "captionAdjusted": "{{count}} adjusted closes",
         "captionRaw": "{{count}} closes",
         "close": "Close",
-        "granularity": {
-          "label": "Chart interval",
-          "daily": "Daily",
-          "weekly": "Weekly",
-          "monthly": "Monthly"
+        "range": {
+          "label": "Time range",
+          "1W": "1W",
+          "1M": "1M",
+          "1Y": "1Y",
+          "max": "Max"
         }
       },
       "strip": {
