@@ -506,6 +506,22 @@ public sealed class PricesJob : IIngestJob
                     .UpsertHistoryAsync(fetched.SourceRef, _clock.GetUtcNow(), rows, cancellationToken)
                     .ConfigureAwait(false);
 
+                // Derive share counts from the most recent integral row already carried in the
+                // backfill payload (SLICE-030) — same exact `IntegralTolerance`, zero extra requests.
+                var derived = await _derivedShareCounts
+                    .UpsertHistoryAsync(fetched.SourceRef, _clock.GetUtcNow(), rows, cancellationToken)
+                    .ConfigureAwait(false);
+                if (derived.Written > 0 || derived.Stale > 0 || derived.WithheldTotal > 0)
+                {
+                    _logger.LogInformation(
+                        "prices: symbol {Symbol} backfill derived share count — written {Written}, unchanged {Unchanged}, stale {Stale}, withheld {Withheld}",
+                        symbol,
+                        derived.Written,
+                        derived.Unchanged,
+                        derived.Stale,
+                        derived.WithheldTotal);
+                }
+
                 var symbolQuarantined = await QuarantineOutcomeAsync(request, fetched.SourceRef, outcome, cancellationToken)
                     .ConfigureAwait(false);
 

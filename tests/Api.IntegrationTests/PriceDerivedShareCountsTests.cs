@@ -767,6 +767,40 @@ public sealed class PriceDerivedShareCountsTests : IClassFixture<PostgresFixture
         return await runner.RunAsync(PricesJob.Code, new IngestionRequest(date));
     }
 
+    [Fact]
+    public async Task SLICE_030_backfill_derives_from_most_recent_integral_dated_row()
+    {
+        await ResetAsync();
+        var recordedAt = new DateTimeOffset(CaptureLastDate.ToDateTime(new TimeOnly(18, 30)), TimeSpan.Zero);
+
+        // Two dated rows for GARAN: an earlier integral date (2026-10-08: 4.2B exact) paired with
+        // a later non-integral date (2026-10-09: float32 drift). Backfill selects the most recent
+        // integral row and keeps `IntegralTolerance` untouched.
+        var garanIntegral = PriceFactsOf(RealSourceCatalog.PricesGaran, "GARAN", CaptureLastDate).Single();
+        var garanNonIntegral = PriceFactsOf(RealSourceCatalog.PricesGaran, "GARAN", CaptureDate).Single();
+        var historyRows = new List<DatedPriceFact>
+        {
+            new("GARAN", CaptureLastDate, garanIntegral.Open, garanIntegral.High, garanIntegral.Low, garanIntegral.Close, garanIntegral.Volume, garanIntegral.MarketCap),
+            new("GARAN", CaptureLastDate.AddDays(1), garanNonIntegral.Open, garanNonIntegral.High, garanNonIntegral.Low, garanNonIntegral.Close, garanNonIntegral.Volume, garanNonIntegral.MarketCap),
+        };
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var result = await new PriceDerivedShareCountStore(db)
+                .UpsertHistoryAsync("isyatirim", recordedAt, historyRows);
+
+            Assert.Equal(1, result.Inserted);
+            Assert.Equal(0, result.WithheldTotal);
+        }
+
+        await using (var db = _postgres.CreateContext())
+        {
+            var row = await db.PriceDerivedShareCounts.SingleAsync();
+            Assert.Equal(4_200_000_000L, row.SharesOutstanding);
+            Assert.Equal(CaptureLastDate, row.PriceDate);
+        }
+    }
+
     private static HttpClient CreateClient(DegerliAppFactory factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions
         {
