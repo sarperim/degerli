@@ -325,6 +325,27 @@ describe('SLICE-032 — valuation history chart granularity aggregation & toggle
     ])
   })
 
+  it('handles single-point input across all granularities', () => {
+    const single: ValuationHistoryPoint[] = [
+      { date: '2026-02-10', close: 118, adjusted: true },
+    ]
+
+    expect(aggregateValuationHistory(single, 'daily')).toBe(single)
+    expect(aggregateValuationHistory(single, 'weekly')).toEqual(single)
+    expect(aggregateValuationHistory(single, 'monthly')).toEqual(single)
+  })
+
+  it('preserves invalid calendar dates as their own bucket key in weekly and monthly modes', () => {
+    const withInvalid: ValuationHistoryPoint[] = [
+      { date: '2026-02-28', close: 100, adjusted: true },
+      { date: '2026-02-30', close: 105, adjusted: true },
+      { date: '2026-13-01', close: 110, adjusted: true },
+    ]
+
+    expect(aggregateValuationHistory(withInvalid, 'weekly')).toEqual(withInvalid)
+    expect(aggregateValuationHistory(withInvalid, 'monthly')).toEqual(withInvalid)
+  })
+
   it('switches between daily, weekly, and monthly views in ValuationHistoryChart', async () => {
     const user = userEvent.setup()
     const historical = {
@@ -332,7 +353,7 @@ describe('SLICE-032 — valuation history chart granularity aggregation & toggle
       series: samplePoints.map((point) => ({
         date: point.date,
         closeRaw: point.close,
-        closeAdjusted: point.adjusted ? point.close : null,
+        closeAdjusted: point.close,
       })),
     }
 

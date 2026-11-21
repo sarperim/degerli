@@ -41,7 +41,7 @@ Currently the historical price chart in `ValuationSection.tsx` plots all raw dai
 ## Verification
 
 - [x] `cd src/Web && npm run build && npm run lint && npm run check:i18n && npm run check:advice` passes.
-- [x] `cd src/Web && npx vitest run src/screens/stock-page/Valuation.test.tsx` passes (17/17 tests).
+- [x] `cd src/Web && npx vitest run src/screens/stock-page/Valuation.test.tsx` passes (19/19 tests).
 
 ## Result
 

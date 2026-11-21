@@ -79,10 +79,6 @@ function periodBucketKey(
   const month = Number(match[2])
   const day = Number(match[3])
 
-  if (granularity === 'monthly') {
-    return `${match[1]}-${match[2]}`
-  }
-
   const utc = new Date(Date.UTC(year, month - 1, day))
   if (
     utc.getUTCFullYear() !== year ||
@@ -90,6 +86,10 @@ function periodBucketKey(
     utc.getUTCDate() !== day
   ) {
     return date
+  }
+
+  if (granularity === 'monthly') {
+    return `${match[1]}-${match[2]}`
   }
 
   // Shift to Thursday of the same ISO 8601 week (1 = Mon .. 7 = Sun).
