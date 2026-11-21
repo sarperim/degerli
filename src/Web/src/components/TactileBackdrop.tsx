@@ -32,17 +32,18 @@ function isTextEditableTarget(target: Element | null): boolean {
 }
 
 /**
- * Tactile atmospheric layers from `geminisonuiux.html` (SLICE-024 / SLICE-035):
+ * Tactile atmospheric layers from `geminisonuiux.html` (SLICE-024 / SLICE-035 / SLICE-036):
  *
  * 1. `#global-grid-canvas`: fixed 48px engineering-paper grid canvas that scrolls
  *    with the page and illuminates bronze `+` intersection crosshairs within a
  *    165px radius around the pointer.
  * 2. `.grain-overlay`: subtle fixed SVG fractalNoise film-grain layer.
- * 3. `.cursor-dot` + `.cursor-reticle`: zero-lag 1:1 center focal dot (`#cursor-dot`)
- *    paired with a trailing 4-corner amber reticle (`#cursor-reticle`) that
- *    interpolates (`requestAnimationFrame`), magnetically snaps to `[data-magnetic]`,
- *    `[data-row-link]`, and `[data-sector-bar-row]`, tightens on interactive controls,
- *    and morphs into an I-beam over text inputs. Automatically disabled on coarse
+ * 3. `.cursor-dot` + `.cursor-reticle`: zero-lag 1:1 `11px` `1.5px`-stroke white
+ *    `difference`-blend `+` tick (`#cursor-dot`) paired with trailing original `1.5px`
+ *    `var(--brand-accent)` bronze 4-corner brackets (`#cursor-reticle`) that
+ *    interpolate (`requestAnimationFrame`), magnetically snap to `[data-magnetic]`,
+ *    `[data-row-link]`, and `[data-sector-bar-row]`, tighten on interactive controls,
+ *    and morph into an I-beam over text inputs. Automatically disabled on coarse
  *    pointers and `prefers-reduced-motion: reduce`.
  */
 export function TactileBackdrop() {
@@ -168,8 +169,8 @@ export function TactileBackdrop() {
     let mouseY = -100
     let currX = -100
     let currY = -100
-    let currW = 22
-    let currH = 22
+    let currW = 24
+    let currH = 24
     let activeEl: HTMLElement | null = null
     let interactive = false
     let isText = false
@@ -193,6 +194,7 @@ export function TactileBackdrop() {
       dot.classList.remove('visible', 'is-text')
       ret.classList.remove('visible', 'is-text')
       visible = false
+      started = false
       activeEl = null
       interactive = false
       isText = false
@@ -243,8 +245,8 @@ export function TactileBackdrop() {
         activeEl = null
       }
 
-      let targetW = pressed ? 18 : 22
-      let targetH = pressed ? 18 : 22
+      let targetW = pressed ? 20 : 24
+      let targetH = pressed ? 20 : 24
       let targetX = mouseX - targetW / 2
       let targetY = mouseY - targetH / 2
 
@@ -256,8 +258,8 @@ export function TactileBackdrop() {
         targetW = rect.width + pad * 2
         targetH = rect.height + pad * 2
       } else if (!isText && interactive) {
-        targetW = pressed ? 11 : 14
-        targetH = pressed ? 11 : 14
+        targetW = pressed ? 16 : 18
+        targetH = pressed ? 16 : 18
         targetX = mouseX - targetW / 2
         targetY = mouseY - targetH / 2
       }
