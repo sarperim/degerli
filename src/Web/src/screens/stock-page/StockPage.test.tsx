@@ -4,20 +4,26 @@ import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 
 import { formatAsOfDate } from '@/lib/format'
+import { useDraftStore, type StockPageSection } from '@/store/draftStore'
 import { catalogValue } from '@/test/i18n'
 import { problemHandler } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
 import {
   BALANCE_SHEET_FIXTURE,
+  BANK_FINANCIALS_FIXTURE,
   fill,
   GROWTH_FIXTURE,
   PREPARING_OVERVIEW,
   PUBLISHED_OVERVIEW,
   renderStockPage,
   resetStockPageTest,
+  STATEMENTS_ANNUAL_PERIOD,
+  STATEMENTS_FINANCIALS_FIXTURE,
   stockBalanceSheetHandler,
   stockFinancialsHandler,
   stockOverviewHandler,
+  stockValuationHandler,
+  VALUATION_FIXTURE,
 } from '@/screens/stock-page/testSupport'
 
 /**
@@ -40,7 +46,7 @@ function region(name: string): HTMLElement {
 beforeEach(resetStockPageTest)
 
 describe('TC-RES-023 — section independence and per-section retry', () => {
-  it('shows one failing section’s own error while the other six render', async () => {
+  it('shows one failing section’s own error while the other seven render', async () => {
     const user = userEvent.setup()
     server.use(problemHandler('/api/v1/stocks/:symbol/financials', 'INTERNAL'))
     renderStockPage()
@@ -441,5 +447,109 @@ describe('SLICE-033 — part-by-part tabs and KAP jump buttons', () => {
       }),
     ).toHaveAttribute('aria-current', 'true')
     expect(region(TR('stockPage.sections.kapReports'))).toBeInTheDocument()
+  })
+
+  it('suppresses industrial chart, summary table, and restated notice when FinancialsSection renders a bank layout notice', async () => {
+    server.use(stockFinancialsHandler(BANK_FINANCIALS_FIXTURE))
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
+
+    const financials = region(TR('stockPage.sections.financials'))
+    expect(await within(financials).findByTestId('layout-notice')).toBeInTheDocument()
+    expect(
+      financials.querySelector('[data-slot="financials-grouped-chart"]'),
+    ).toBeNull()
+    expect(financials.querySelector('table')).toBeNull()
+    expect(
+      within(financials).queryByText(TR('honestData.restatedNotice')),
+    ).not.toBeInTheDocument()
+  })
+
+  it('falls back safely to overview when persisted activeStockSection is invalid', async () => {
+    useDraftStore.setState({ activeStockSection: 'invalid' as StockPageSection })
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(region(TR('stockPage.sections.overview'))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: TR('stockPage.sections.overview'),
+      }),
+    ).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('hides the empty historical chart wrapper when valuation historical series is empty', async () => {
+    server.use(
+      stockValuationHandler({
+        ...VALUATION_FIXTURE,
+        historical: { adjusted: false, series: [] },
+      }),
+    )
+    renderStockPage()
+
+    expect(await screen.findByText(PUBLISHED_OVERVIEW.textTr!)).toBeInTheDocument()
+    expect(
+      region(TR('stockPage.sections.overview')).querySelector(
+        '[data-testid="valuation-history-chart"]',
+      ),
+    ).toBeNull()
+  })
+
+  it('keeps the chart asOf and stale envelope when overview text is preparing', async () => {
+    server.use(
+      stockOverviewHandler(PREPARING_OVERVIEW),
+      stockValuationHandler({ ...VALUATION_FIXTURE, stale: true }),
+    )
+    renderStockPage()
+
+    const overview = await screen.findByRole('region', {
+      name: TR('stockPage.sections.overview'),
+    })
+    expect(
+      await within(overview).findByText(TR('honestData.preparingTitle')),
+    ).toBeInTheDocument()
+    expect(
+      await within(overview).findByTestId('valuation-history-chart'),
+    ).toBeInTheDocument()
+    expect(overview.querySelector('[data-slot="as-of-date"]')).toBeInTheDocument()
+    expect(overview.querySelector('[data-slot="stale-badge"]')).toBeInTheDocument()
+  })
+
+  it('scopes statement-only restatements to 08 KAP Reports rather than 03 Financials', async () => {
+    const baseLines = STATEMENTS_ANNUAL_PERIOD.lines!
+    const deepRestatedPayload = {
+      ...STATEMENTS_FINANCIALS_FIXTURE,
+      periods: [
+        {
+          ...STATEMENTS_ANNUAL_PERIOD,
+          lines: {
+            ...baseLines,
+            IS: {
+              ...baseLines.IS,
+              COGS: { value: 600_000, restated: true },
+            },
+          },
+        },
+      ],
+    }
+    server.use(stockFinancialsHandler(deepRestatedPayload))
+    const user = userEvent.setup()
+    renderStockPage(['/stocks/ALFA'], { section: 'financials' })
+
+    const financials = region(TR('stockPage.sections.financials'))
+    await within(financials).findByText(TR('stockPage.financials.columns.revenue'))
+    expect(
+      within(financials).queryByText(TR('honestData.restatedNotice')),
+    ).not.toBeInTheDocument()
+
+    await user.click(
+      within(financials).getByRole('button', {
+        name: TR('stockPage.financials.openKapReports'),
+      }),
+    )
+
+    const kapReports = region(TR('stockPage.sections.kapReports'))
+    expect(
+      await within(kapReports).findByText(TR('honestData.restatedNotice')),
+    ).toBeInTheDocument()
   })
 })

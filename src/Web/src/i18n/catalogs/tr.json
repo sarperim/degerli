@@ -69,7 +69,7 @@
     },
     "stockPage": {
       "title": "Hisse Sayfası",
-      "description": "Bir hissenin iş tanımı, değerleme, finansallar, kârlılık, büyüme, bilanço ve temettü bölümleri."
+      "description": "Bir hissenin iş tanımı, değerleme, finansallar, kârlılık, büyüme, bilanço, temettü ve KAP raporları bölümleri."
     },
     "dcfCalculator": {
       "title": "DCF Hesaplayıcı",

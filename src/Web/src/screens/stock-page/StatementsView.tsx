@@ -109,7 +109,7 @@ function EvValue({ fact, locale }: { fact: EvFact | null; locale: string }) {
 }
 
 /** The financial-sector layout notice — an honest verdict, never a half-filled table. */
-function LayoutNoticeBlock({ notice }: { notice: LayoutNotice }) {
+export function LayoutNoticeBlock({ notice }: { notice: LayoutNotice }) {
   const { t } = useTranslation()
   return (
     <div

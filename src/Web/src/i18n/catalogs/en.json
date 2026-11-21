@@ -69,7 +69,7 @@
     },
     "stockPage": {
       "title": "Stock Page",
-      "description": "Business description, valuation, financials, profitability, growth, balance sheet and dividend sections for one stock."
+      "description": "Business description, valuation, financials, profitability, growth, balance sheet, dividend and KAP report sections for one stock."
     },
     "dcfCalculator": {
       "title": "DCF Calculator",

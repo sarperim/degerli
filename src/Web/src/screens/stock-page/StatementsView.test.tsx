@@ -534,43 +534,52 @@ describe('SLICE-033 — statement sub-tabs filter IS, BS, and CF tables', () => 
     expect(subtabs).not.toBeNull()
     const subtabsEl = subtabs as HTMLElement
 
+    const tabButton = (key: 'all' | 'IS' | 'BS' | 'CF') =>
+      within(subtabsEl).getByRole('button', {
+        name: TR(`stockPage.statements.subtabs.${key}`),
+      })
+
     // Default 'all' renders IS, BS, and CF.
+    expect(tabButton('all')).toHaveAttribute('aria-pressed', 'true')
+    expect(tabButton('IS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('BS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('CF')).toHaveAttribute('aria-pressed', 'false')
     expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()
 
-    await user.click(
-      within(subtabsEl).getByRole('button', {
-        name: TR('stockPage.statements.subtabs.IS'),
-      }),
-    )
+    await user.click(tabButton('IS'))
+    expect(tabButton('all')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('IS')).toHaveAttribute('aria-pressed', 'true')
+    expect(tabButton('BS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('CF')).toHaveAttribute('aria-pressed', 'false')
     expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="BS"]')).toBeNull()
     expect(region.querySelector('[data-statement="CF"]')).toBeNull()
 
-    await user.click(
-      within(subtabsEl).getByRole('button', {
-        name: TR('stockPage.statements.subtabs.BS'),
-      }),
-    )
+    await user.click(tabButton('BS'))
+    expect(tabButton('all')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('IS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('BS')).toHaveAttribute('aria-pressed', 'true')
+    expect(tabButton('CF')).toHaveAttribute('aria-pressed', 'false')
     expect(region.querySelector('[data-statement="IS"]')).toBeNull()
     expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="CF"]')).toBeNull()
 
-    await user.click(
-      within(subtabsEl).getByRole('button', {
-        name: TR('stockPage.statements.subtabs.CF'),
-      }),
-    )
+    await user.click(tabButton('CF'))
+    expect(tabButton('all')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('IS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('BS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('CF')).toHaveAttribute('aria-pressed', 'true')
     expect(region.querySelector('[data-statement="IS"]')).toBeNull()
     expect(region.querySelector('[data-statement="BS"]')).toBeNull()
     expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()
 
-    await user.click(
-      within(subtabsEl).getByRole('button', {
-        name: TR('stockPage.statements.subtabs.all'),
-      }),
-    )
+    await user.click(tabButton('all'))
+    expect(tabButton('all')).toHaveAttribute('aria-pressed', 'true')
+    expect(tabButton('IS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('BS')).toHaveAttribute('aria-pressed', 'false')
+    expect(tabButton('CF')).toHaveAttribute('aria-pressed', 'false')
     expect(region.querySelector('[data-statement="IS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="BS"]')).not.toBeNull()
     expect(region.querySelector('[data-statement="CF"]')).not.toBeNull()

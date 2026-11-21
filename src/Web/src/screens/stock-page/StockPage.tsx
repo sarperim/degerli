@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -78,7 +79,7 @@ function StockIdentity({ symbol }: { symbol: string }) {
 /**
  * SCR-005 — Stock Page (UX `stock-research.md` §SCR-005; FR-RES-005..012/014..016/026/027).
  *
- * One screen hosting the seven content sections as discrete navigable units, with
+ * One screen hosting the eight content sections as discrete navigable units, with
  * the current section indicated and preserved across in-session navigation
  * (UXR-RES-008, UXR-G-021). Every section is its own endpoint and query (M-5), so
  * sections load, fail and retry independently (UXR-G-003); the active section lives
@@ -93,6 +94,18 @@ export function StockPage() {
   const resolvedActiveSection: StockPageSection = SECTION_ORDER.includes(activeSection)
     ? activeSection
     : 'overview'
+  const pendingScrollSectionRef = useRef<StockPageSection | null>(null)
+
+  useEffect(() => {
+    if (pendingScrollSectionRef.current === resolvedActiveSection) {
+      pendingScrollSectionRef.current = null
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`stock-section-${resolvedActiveSection}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }, [resolvedActiveSection])
 
   const sectionItems = SECTION_ORDER.map((id, idx) => ({
     id,
@@ -101,13 +114,19 @@ export function StockPage() {
   }))
 
   const handleSelect = (id: string) => {
-    const section = id as StockPageSection
-    setActiveSection(section)
-    if (typeof document !== 'undefined') {
-      document
-        .getElementById(`stock-section-${id}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const section: StockPageSection = SECTION_ORDER.includes(id as StockPageSection)
+      ? (id as StockPageSection)
+      : 'overview'
+    if (section === resolvedActiveSection) {
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`stock-section-${section}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      return
     }
+    pendingScrollSectionRef.current = section
+    setActiveSection(section)
   }
 
   const renderActiveSection = () => {

@@ -3,7 +3,13 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
-import { AdjustedNotice, NotMeaningful, RestatedMarker } from '@/components/honest-data'
+import {
+  AdjustedNotice,
+  AsOfDate,
+  NotMeaningful,
+  RestatedMarker,
+  StaleBadge,
+} from '@/components/honest-data'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
@@ -25,7 +31,7 @@ import {
 import { SectionBody } from '@/screens/stock-page/SectionBody'
 import { SectionMarkers } from '@/screens/stock-page/SectionMarkers'
 import { KeyMetricsPanel } from '@/screens/stock-page/KeyMetricsPanel'
-import { StatementsView } from '@/screens/stock-page/StatementsView'
+import { LayoutNoticeBlock, StatementsView } from '@/screens/stock-page/StatementsView'
 import { ValuationHistoryChart } from '@/screens/stock-page/ValuationSection'
 import { servesStatements } from '@/screens/stock-page/statementsView'
 
@@ -151,10 +157,16 @@ export function OverviewSection({
       >
         {query.data ? (
           <div className="flex flex-col gap-5">
-            {valuationQuery.data ? (
+            {valuationQuery.data && valuationQuery.data.historical.series.length > 0 ? (
               <div className="flex flex-col gap-2 border-b border-border pb-5">
                 <ValuationHistoryChart historical={valuationQuery.data.historical} />
                 {valuationQuery.data.historical.adjusted ? <AdjustedNotice /> : null}
+                {query.data.status === 'preparing' ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <AsOfDate asOf={valuationQuery.data.asOf} />
+                    {valuationQuery.data.stale ? <StaleBadge /> : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -247,6 +259,19 @@ function financialPeriodLabel(
 }
 
 /**
+ * True when any of the five executive summary columns (`FINANCIAL_COLUMNS`) is
+ * restated. Deep statement-only restatements only badge `08 KAP Reports`, never
+ * `03 Financials` where those lines are not rendered.
+ */
+function anySummaryFigureRestated(periods: FinancialPeriod[]): boolean {
+  return periods.some((period) =>
+    // `?.` on the compat column: a malformed payload may omit a figure, and an absent
+    // figure is not restated (it must not throw either — no ErrorBoundary above here).
+    FINANCIAL_COLUMNS.some((column) => period[column]?.restated === true),
+  )
+}
+
+/**
  * True when any served figure the statements view renders is restated — the compat
  * five figures, any served canonical line or the `OTHER_*` passthrough, or any [C]
  * row. The footnote is a claim about the display, so it covers the whole display.
@@ -257,20 +282,19 @@ function anyServedFigureRestated(periods: FinancialPeriod[]): boolean {
       ? Object.values(map).some((figure) => figure?.restated === true)
       : false
 
-  return periods.some((period) => {
-    // `?.` on the compat column: a malformed payload may omit a figure, and an absent
-    // figure is not restated (it must not throw either — no ErrorBoundary above here).
-    const compat = FINANCIAL_COLUMNS.some((column) => period[column]?.restated === true)
-    const blocks = [period.lines, period.otherLines]
-    return (
-      compat ||
-      blocks.some(
-        (lines) =>
-          restatedIn(lines?.IS) || restatedIn(lines?.BS) || restatedIn(lines?.CF),
-      ) ||
-      restatedIn(period.derived)
-    )
-  })
+  return (
+    anySummaryFigureRestated(periods) ||
+    periods.some((period) => {
+      const blocks = [period.lines, period.otherLines]
+      return (
+        blocks.some(
+          (lines) =>
+            restatedIn(lines?.IS) || restatedIn(lines?.BS) || restatedIn(lines?.CF),
+        ) ||
+        restatedIn(period.derived)
+      )
+    })
+  )
 }
 
 /** Shared five-figure executive summary table for Financials and pre-094 KAP fallback. */
@@ -337,7 +361,9 @@ export function FinancialsSection({
   const data = query.data
   const missingData = data !== undefined && isMissingData(data) ? data : null
   const sectionData = data !== undefined && !isMissingData(data) ? data : null
-  const anyRestated = sectionData ? anyServedFigureRestated(sectionData.periods) : false
+  const notice = sectionData?.layoutNotice?.applies ? sectionData.layoutNotice : null
+  const anyRestated =
+    sectionData && !notice ? anySummaryFigureRestated(sectionData.periods) : false
 
   return (
     <SectionShell section="financials" titleKey="stockPage.sections.financials">
@@ -371,144 +397,133 @@ export function FinancialsSection({
                 </Button>
               </div>
             ) : null}
-            {sectionData.layoutNotice?.applies ? (
-              <div
-                data-testid="layout-notice"
-                data-state={sectionData.layoutNotice.state}
-                className="flex flex-col gap-1 rounded-md border bg-muted/40 p-3"
-              >
-                <p className="text-sm font-medium text-foreground">
-                  {t('stockPage.financials.layoutNotice.title')}
-                </p>
-                <p className="max-w-prose text-sm text-muted-foreground">
-                  {t('stockPage.financials.layoutNotice.body')}
-                </p>
-              </div>
-            ) : null}
-            {(() => {
-              const chartPeriods = sectionData.periods
-                .filter(
-                  (p) =>
-                    p.periodType?.trim().toUpperCase() === 'FY' &&
-                    (p.revenue?.value != null ||
-                      p.ebitda?.value != null ||
-                      p.netIncome?.value != null),
-                )
-                .slice(0, 6)
-                .reverse()
-              if (chartPeriods.length < 2) return null
-              const maxVal = Math.max(
-                1,
-                ...chartPeriods.flatMap((p) => [
-                  Math.abs(p.revenue?.value ?? 0),
-                  Math.abs(p.ebitda?.value ?? 0),
-                  Math.abs(p.netIncome?.value ?? 0),
-                ]),
-              )
-              const W = 540
-              const H = 136
-              const pB = 22
-              const pT = 10
-              const slotW = W / chartPeriods.length
-              const barW = Math.min(24, Math.max(10, Math.floor((slotW - 22) / 3)))
-              const barH = (v: number | null | undefined) =>
-                v === null || v === undefined
-                  ? 0
-                  : Math.max(2, (Math.abs(v) / maxVal) * (H - pB - pT))
-              return (
-                <div
-                  data-slot="financials-grouped-chart"
-                  className="border-b border-border pb-5"
-                >
-                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[11px] text-muted-foreground">
-                    <span>
-                      {t('stockPage.financials.columns.revenue')} ·{' '}
-                      {t('stockPage.financials.columns.ebitda')} ·{' '}
-                      {t('stockPage.financials.columns.netIncome')}
-                    </span>
-                    <span aria-hidden="true" className="flex items-center gap-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--border-strong)]">■</span>
-                        {` ${t('stockPage.financials.columns.revenue')}`}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--brand-accent)]">■</span>
-                        {` ${t('stockPage.financials.columns.ebitda')}`}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[var(--pos)]">■</span>
-                        {` ${t('stockPage.financials.columns.netIncome')}`}
-                      </span>
-                    </span>
-                  </div>
-                  <svg
-                    viewBox={`0 0 ${W} ${H}`}
-                    width="100%"
-                    height={H}
-                    aria-hidden="true"
-                  >
-                    <line
-                      x1={0}
-                      y1={H - pB}
-                      x2={W}
-                      y2={H - pB}
-                      stroke="var(--border-strong)"
-                    />
-                    {chartPeriods.map((period, idx) => {
-                      const groupW = barW * 3 + 8
-                      const x = idx * slotW + (slotW - groupW) / 2
-                      const rH = barH(period.revenue?.value)
-                      const eH = barH(period.ebitda?.value)
-                      const nH = barH(period.netIncome?.value)
-                      const eNeg = (period.ebitda?.value ?? 0) < 0
-                      const nNeg = (period.netIncome?.value ?? 0) < 0
-                      return (
-                        <g key={`${period.periodType}-${period.periodEndDate}`}>
-                          {rH > 0 ? (
-                            <rect
-                              x={x}
-                              y={H - pB - rH}
-                              width={barW}
-                              height={rH}
-                              fill="var(--border-strong)"
-                            />
-                          ) : null}
-                          {eH > 0 ? (
-                            <rect
-                              x={x + barW + 4}
-                              y={H - pB - eH}
-                              width={barW}
-                              height={eH}
-                              fill={eNeg ? 'var(--neg)' : 'var(--brand-accent)'}
-                            />
-                          ) : null}
-                          {nH > 0 ? (
-                            <rect
-                              x={x + (barW + 4) * 2}
-                              y={H - pB - nH}
-                              width={barW}
-                              height={nH}
-                              fill={nNeg ? 'var(--neg)' : 'var(--pos)'}
-                            />
-                          ) : null}
-                          <text
-                            x={x + groupW / 2}
-                            y={H - 5}
-                            textAnchor="middle"
-                            fill="var(--muted-foreground)"
-                            fontFamily="var(--font-mono)"
-                            fontSize="10"
-                          >
-                            {financialPeriodLabel(period, t, locale)}
-                          </text>
-                        </g>
-                      )
-                    })}
-                  </svg>
-                </div>
-              )
-            })()}
-            {sectionData.periods.length > 0 ? (
+            {notice ? <LayoutNoticeBlock notice={notice} /> : null}
+            {!notice
+              ? (() => {
+                  const chartPeriods = sectionData.periods
+                    .filter(
+                      (p) =>
+                        p.periodType?.trim().toUpperCase() === 'FY' &&
+                        (p.revenue?.value != null ||
+                          p.ebitda?.value != null ||
+                          p.netIncome?.value != null),
+                    )
+                    .slice(0, 6)
+                    .reverse()
+                  if (chartPeriods.length < 2) return null
+                  const maxVal = Math.max(
+                    1,
+                    ...chartPeriods.flatMap((p) => [
+                      Math.abs(p.revenue?.value ?? 0),
+                      Math.abs(p.ebitda?.value ?? 0),
+                      Math.abs(p.netIncome?.value ?? 0),
+                    ]),
+                  )
+                  const W = 540
+                  const H = 136
+                  const pB = 22
+                  const pT = 10
+                  const slotW = W / chartPeriods.length
+                  const barW = Math.min(24, Math.max(10, Math.floor((slotW - 22) / 3)))
+                  const barH = (v: number | null | undefined) =>
+                    v === null || v === undefined
+                      ? 0
+                      : Math.max(2, (Math.abs(v) / maxVal) * (H - pB - pT))
+                  return (
+                    <div
+                      data-slot="financials-grouped-chart"
+                      className="border-b border-border pb-5"
+                    >
+                      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[11px] text-muted-foreground">
+                        <span>
+                          {t('stockPage.financials.columns.revenue')} ·{' '}
+                          {t('stockPage.financials.columns.ebitda')} ·{' '}
+                          {t('stockPage.financials.columns.netIncome')}
+                        </span>
+                        <span aria-hidden="true" className="flex items-center gap-3">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--border-strong)]">■</span>
+                            {` ${t('stockPage.financials.columns.revenue')}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--brand-accent)]">■</span>
+                            {` ${t('stockPage.financials.columns.ebitda')}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[var(--pos)]">■</span>
+                            {` ${t('stockPage.financials.columns.netIncome')}`}
+                          </span>
+                        </span>
+                      </div>
+                      <svg
+                        viewBox={`0 0 ${W} ${H}`}
+                        width="100%"
+                        height={H}
+                        aria-hidden="true"
+                      >
+                        <line
+                          x1={0}
+                          y1={H - pB}
+                          x2={W}
+                          y2={H - pB}
+                          stroke="var(--border-strong)"
+                        />
+                        {chartPeriods.map((period, idx) => {
+                          const groupW = barW * 3 + 8
+                          const x = idx * slotW + (slotW - groupW) / 2
+                          const rH = barH(period.revenue?.value)
+                          const eH = barH(period.ebitda?.value)
+                          const nH = barH(period.netIncome?.value)
+                          const eNeg = (period.ebitda?.value ?? 0) < 0
+                          const nNeg = (period.netIncome?.value ?? 0) < 0
+                          return (
+                            <g key={`${period.periodType}-${period.periodEndDate}`}>
+                              {rH > 0 ? (
+                                <rect
+                                  x={x}
+                                  y={H - pB - rH}
+                                  width={barW}
+                                  height={rH}
+                                  fill="var(--border-strong)"
+                                />
+                              ) : null}
+                              {eH > 0 ? (
+                                <rect
+                                  x={x + barW + 4}
+                                  y={H - pB - eH}
+                                  width={barW}
+                                  height={eH}
+                                  fill={eNeg ? 'var(--neg)' : 'var(--brand-accent)'}
+                                />
+                              ) : null}
+                              {nH > 0 ? (
+                                <rect
+                                  x={x + (barW + 4) * 2}
+                                  y={H - pB - nH}
+                                  width={barW}
+                                  height={nH}
+                                  fill={nNeg ? 'var(--neg)' : 'var(--pos)'}
+                                />
+                              ) : null}
+                              <text
+                                x={x + groupW / 2}
+                                y={H - 5}
+                                textAnchor="middle"
+                                fill="var(--muted-foreground)"
+                                fontFamily="var(--font-mono)"
+                                fontSize="10"
+                              >
+                                {financialPeriodLabel(period, t, locale)}
+                              </text>
+                            </g>
+                          )
+                        })}
+                      </svg>
+                    </div>
+                  )
+                })()
+              : null}
+            {!notice && sectionData.periods.length > 0 ? (
               <FinancialsSummaryTable
                 periods={sectionData.periods}
                 t={t}
@@ -545,7 +560,10 @@ export function KapReportsSection({ symbol }: { symbol: string }) {
   const data = query.data
   const missingData = data !== undefined && isMissingData(data) ? data : null
   const sectionData = data !== undefined && !isMissingData(data) ? data : null
-  const anyRestated = sectionData ? anyServedFigureRestated(sectionData.periods) : false
+  const anyRestated =
+    sectionData && !sectionData.layoutNotice?.applies
+      ? anyServedFigureRestated(sectionData.periods)
+      : false
   const statementsView =
     sectionData !== null &&
     (servesStatements(sectionData.periods) || sectionData.layoutNotice?.applies === true)
@@ -575,13 +593,13 @@ export function KapReportsSection({ symbol }: { symbol: string }) {
                 asOf={sectionData.asOf}
                 locale={locale}
               />
-            ) : (
+            ) : sectionData.periods.length > 0 ? (
               <FinancialsSummaryTable
                 periods={sectionData.periods}
                 t={t}
                 locale={locale}
               />
-            )}
+            ) : null}
             <SectionMarkers
               asOf={sectionData.asOf}
               stale={sectionData.stale}

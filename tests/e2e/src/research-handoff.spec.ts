@@ -11,7 +11,7 @@ import {
 /**
  * TC-RES-028 (L4) — research hand-off (SC-002 research stage).
  *
- * From a screener result row the stock page opens; all seven sections are
+ * From a screener result row the stock page opens; all eight sections are
  * available and navigable; canonical figures carry their as-of dates; the DCF
  * hand-off opens the calculator for this stock.
  *
@@ -35,7 +35,7 @@ const EIGHT_SECTIONS = [
 ]
 
 test.describe('TC-RES-028 research hand-off', () => {
-  test('screener row → stock page with seven sections → DCF hand-off', async ({
+  test('screener row → stock page with eight sections → DCF hand-off', async ({
     page,
   }) => {
     // Every browser request carries its own client IP so the global/auth rate
