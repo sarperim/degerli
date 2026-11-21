@@ -2,22 +2,53 @@ import { useEffect, useRef } from 'react'
 
 import { useTheme } from '@/lib/theme'
 
+const MAGNETIC_SELECTOR = '[data-magnetic], [data-row-link], [data-sector-bar-row]'
+const INTERACTIVE_SELECTOR =
+  'a, button, select, summary, label[for], [role="button"], [role="link"], [role="tab"], [role="option"], [role="menuitem"], [tabindex]:not([tabindex="-1"])'
+const TEXT_INPUT_SELECTOR =
+  'input, textarea, [contenteditable="true"], [contenteditable=""], [role="textbox"]'
+const NON_TEXT_INPUT_TYPES = new Set([
+  'button',
+  'submit',
+  'reset',
+  'checkbox',
+  'radio',
+  'range',
+  'color',
+  'file',
+  'image',
+  'hidden',
+])
+
+function isTextEditableTarget(target: Element | null): boolean {
+  if (!target) return false
+  const el = target.closest(TEXT_INPUT_SELECTOR)
+  if (!el) return false
+  if (el.tagName.toUpperCase() === 'INPUT') {
+    const type = (el.getAttribute('type') ?? 'text').toLowerCase()
+    return !NON_TEXT_INPUT_TYPES.has(type)
+  }
+  return true
+}
+
 /**
- * Tactile atmospheric layers from `geminisonuiux.html` (SLICE-024):
+ * Tactile atmospheric layers from `geminisonuiux.html` (SLICE-024 / SLICE-035):
  *
  * 1. `#global-grid-canvas`: fixed 48px engineering-paper grid canvas that scrolls
  *    with the page and illuminates bronze `+` intersection crosshairs within a
  *    165px radius around the pointer.
  * 2. `.grain-overlay`: subtle fixed SVG fractalNoise film-grain layer.
- * 3. `.cursor-reticle`: 4-corner bronze targeting reticle (`tl`/`tr`/`bl`/`br`)
- *    that smoothly interpolates (`requestAnimationFrame`) to follow the pointer
- *    and magnetically expands around hovered `[data-magnetic]`, `[data-row-link]`,
- *    and `[data-sector-bar-row]` interactive elements. Automatically disabled on
- *    coarse pointers and `prefers-reduced-motion: reduce`.
+ * 3. `.cursor-dot` + `.cursor-reticle`: zero-lag 1:1 center focal dot (`#cursor-dot`)
+ *    paired with a trailing 4-corner amber reticle (`#cursor-reticle`) that
+ *    interpolates (`requestAnimationFrame`), magnetically snaps to `[data-magnetic]`,
+ *    `[data-row-link]`, and `[data-sector-bar-row]`, tightens on interactive controls,
+ *    and morphs into an I-beam over text inputs. Automatically disabled on coarse
+ *    pointers and `prefers-reduced-motion: reduce`.
  */
 export function TactileBackdrop() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const reticleRef = useRef<HTMLDivElement | null>(null)
+  const dotRef = useRef<HTMLDivElement | null>(null)
   const theme = useTheme()
 
   // 1. Global engineering-paper grid + pointer crosshair illumination
@@ -122,82 +153,142 @@ export function TactileBackdrop() {
     }
   }, [theme])
 
-  // 2. Magnetic 4-corner targeting reticle
+  // 2. Cursorless center dot + magnetic 4-corner targeting reticle
   useEffect(() => {
     const ret = reticleRef.current
-    if (!ret || typeof window.matchMedia !== 'function') return
-    if (
-      window.matchMedia('(pointer: coarse)').matches ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-      return
-    }
+    const dot = dotRef.current
+    if (!ret || !dot || typeof window.matchMedia !== 'function') return
 
-    let mx = -100
-    let my = -100
-    let rx = -100
-    let ry = -100
-    let rw = 20
-    let rh = 20
-    let target: HTMLElement | null = null
+    const isFine = window.matchMedia('(pointer: fine)').matches
+    const isCoarse = window.matchMedia('(pointer: coarse)').matches
+    const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!isFine || isCoarse || isReduced) return
+
+    let mouseX = -100
+    let mouseY = -100
+    let currX = -100
+    let currY = -100
+    let currW = 22
+    let currH = 22
+    let activeEl: HTMLElement | null = null
+    let interactive = false
+    let isText = false
+    let pressed = false
+    let visible = false
+    let started = false
     let rafId = 0
 
-    const selector = '[data-magnetic], [data-row-link], [data-sector-bar-row]'
+    const moveDot = (x: number, y: number) => {
+      dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`
+    }
+
+    const setTextMode = (nextIsText: boolean) => {
+      if (isText === nextIsText) return
+      isText = nextIsText
+      dot.classList.toggle('is-text', nextIsText)
+      ret.classList.toggle('is-text', nextIsText)
+    }
+
+    const clearCursor = () => {
+      dot.classList.remove('visible', 'is-text')
+      ret.classList.remove('visible', 'is-text')
+      visible = false
+      activeEl = null
+      interactive = false
+      isText = false
+      pressed = false
+      document.documentElement.classList.remove('cursorless-active')
+    }
 
     const onMouseMove = (e: MouseEvent) => {
-      mx = e.clientX
-      my = e.clientY
-      ret.classList.add('visible')
+      mouseX = e.clientX
+      mouseY = e.clientY
+      if (!started) {
+        currX = mouseX - currW / 2
+        currY = mouseY - currH / 2
+        started = true
+      }
+
+      moveDot(mouseX, mouseY)
+
+      if (!visible) {
+        visible = true
+        dot.classList.add('visible')
+        ret.classList.add('visible')
+        document.documentElement.classList.add('cursorless-active')
+      }
+
+      const targetEl = e.target instanceof Element ? e.target : null
+      if (isTextEditableTarget(targetEl)) {
+        setTextMode(true)
+        activeEl = null
+        interactive = false
+      } else {
+        setTextMode(false)
+        activeEl = targetEl ? targetEl.closest<HTMLElement>(MAGNETIC_SELECTOR) : null
+        interactive = !activeEl && Boolean(targetEl && targetEl.closest(INTERACTIVE_SELECTOR))
+      }
     }
 
-    const onMouseLeave = () => {
-      ret.classList.remove('visible')
+    const onMouseDown = () => {
+      pressed = true
     }
 
-    const onMouseOver = (e: MouseEvent) => {
-      const el = e.target instanceof Element ? e.target.closest<HTMLElement>(selector) : null
-      if (el) target = el
-    }
-
-    const onMouseOut = (e: MouseEvent) => {
-      const el = e.target instanceof Element ? e.target.closest<HTMLElement>(selector) : null
-      if (el && el === target) target = null
+    const onMouseUp = () => {
+      pressed = false
     }
 
     const tick = () => {
-      let tx = mx
-      let ty = my
-      let tw = 20
-      let th = 20
-      if (target && document.body.contains(target)) {
-        const r = target.getBoundingClientRect()
-        tx = r.left + r.width / 2
-        ty = r.top + r.height / 2
-        tw = r.width + 10
-        th = r.height + 8
+      if (activeEl && !activeEl.isConnected) {
+        activeEl = null
       }
-      rx += (tx - rx) * 0.24
-      ry += (ty - ry) * 0.24
-      rw += (tw - rw) * 0.24
-      rh += (th - rh) * 0.24
-      ret.style.width = `${rw.toFixed(1)}px`
-      ret.style.height = `${rh.toFixed(1)}px`
-      ret.style.transform = `translate3d(${(rx - rw / 2).toFixed(1)}px, ${(ry - rh / 2).toFixed(1)}px, 0)`
+
+      let targetW = pressed ? 18 : 22
+      let targetH = pressed ? 18 : 22
+      let targetX = mouseX - targetW / 2
+      let targetY = mouseY - targetH / 2
+
+      if (!isText && activeEl) {
+        const pad = pressed ? 2 : 4
+        const rect = activeEl.getBoundingClientRect()
+        targetX = rect.left - pad
+        targetY = rect.top - pad
+        targetW = rect.width + pad * 2
+        targetH = rect.height + pad * 2
+      } else if (!isText && interactive) {
+        targetW = pressed ? 11 : 14
+        targetH = pressed ? 11 : 14
+        targetX = mouseX - targetW / 2
+        targetY = mouseY - targetH / 2
+      }
+
+      currX += (targetX - currX) * 0.24
+      currY += (targetY - currY) * 0.24
+      currW += (targetW - currW) * 0.24
+      currH += (targetH - currH) * 0.24
+
+      ret.style.width = `${currW.toFixed(1)}px`
+      ret.style.height = `${currH.toFixed(1)}px`
+      ret.style.transform = `translate3d(${currX.toFixed(1)}px, ${currY.toFixed(1)}px, 0)`
+
       rafId = window.requestAnimationFrame(tick)
     }
 
     window.addEventListener('mousemove', onMouseMove, { passive: true })
-    document.addEventListener('mouseleave', onMouseLeave)
-    document.addEventListener('mouseover', onMouseOver, { passive: true })
-    document.addEventListener('mouseout', onMouseOut, { passive: true })
+    window.addEventListener('mousedown', onMouseDown, { passive: true })
+    window.addEventListener('mouseup', onMouseUp, { passive: true })
+    window.addEventListener('blur', clearCursor)
+    document.documentElement.addEventListener('mouseleave', clearCursor)
     rafId = window.requestAnimationFrame(tick)
 
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId)
       window.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseleave', onMouseLeave)
-      document.removeEventListener('mouseover', onMouseOver)
-      document.removeEventListener('mouseout', onMouseOut)
+      window.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('blur', clearCursor)
+      document.documentElement.removeEventListener('mouseleave', clearCursor)
+      document.documentElement.classList.remove('cursorless-active')
     }
   }, [])
 
@@ -210,6 +301,13 @@ export function TactileBackdrop() {
         aria-hidden="true"
       />
       <div className="grain-overlay" data-testid="grain-overlay" aria-hidden="true" />
+      <div
+        ref={dotRef}
+        id="cursor-dot"
+        data-testid="cursor-dot"
+        className="cursor-dot"
+        aria-hidden="true"
+      />
       <div
         ref={reticleRef}
         id="cursor-reticle"
