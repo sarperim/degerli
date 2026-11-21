@@ -31,7 +31,7 @@ Deliver three polish improvements on the Market Overview (`SCR-001`) hero and gl
    - Add a guarded `ResizeObserver` inside `useHeroBackdropCanvas` so the sweeping 64-session BIST 100 backdrop curve tracks hero height changes cleanly.
 
 2. **Full-Viewport Hero Breathing Room (`MarketOverviewPage.tsx`):**
-   - Give the full-bleed hero + 4-column KPI ribbon container `lg:min-h-[calc(100svh-55px)] flex flex-col` with `<header id="hero-section">` vertically centered (`flex flex-1 items-center py-14 sm:py-16 lg:pt-20 lg:pb-16`) so the hero copy, Bayer plate, and 4-column KPI ribbon cleanly frame the initial desktop fold.
+   - Give the full-bleed hero + 4-column KPI ribbon container `lg:min-h-[calc(100svh-55px)] flex flex-col` with `<header id="hero-section">` balanced via `flex flex-1 items-center py-14 sm:py-16 lg:pt-8 lg:pb-[16svh]` so the Market Overview headline copy and Salt Galata Bayer plate sit optically upward while keeping the 4-column KPI ribbon (`BIST 100`, `BIST 30`, `Breadth`, `Covered Volume`) pinned at the bottom of the initial desktop fold.
    - Expand Band 01 (`Market valuation` + `Macro indicators`) vertical padding to `py-16 lg:py-20` so below-the-fold headings are never half-clipped at the bottom of desktop viewports.
 
 3. **De-clutter Header Auth Area (`AuthState.tsx`, catalogs, tests):**
@@ -52,14 +52,14 @@ Deliver three polish improvements on the Market Overview (`SCR-001`) hero and gl
 ## Verification
 
 - [x] `cd src/Web && npm run build && npm run lint && npm run check:i18n && npm run check:advice` passes (`tsc --noEmit && vite build`, `0` lint errors, `889` TR/EN keys in sync).
-- [x] `cd src/Web && npx vitest run src/components/AuthState.test.tsx src/components/AuthState.signedIn.test.tsx src/screens/market-overview/HeroInteractivePlate.test.tsx src/routes/MarketOverviewPage.test.tsx` passes (`4/4` files, `40/40` tests).
+- [x] `cd src/Web && npx vitest run src/components/AuthState.test.tsx src/components/AuthState.signedIn.test.tsx src/screens/market-overview/HeroInteractivePlate.test.tsx src/routes/MarketOverviewPage.test.tsx` passes (`4/4` files, `41/41` tests).
 - [x] `cd tests/e2e && npx tsc --noEmit` passes.
 - [x] `rg -n "header\.anonymous" src/Web tests/e2e` returns zero matches.
-- [ ] CI/E2E Playwright suite passes 100%.
+- [ ] CI/E2E Playwright suite passes 100% on the final PR #212 head commit.
 
 ## Result
 
 - Bundled `src/Web/src/assets/istanbul-financial-archive.webp` (`960×540`, 184 KB WebP) and wired `HeroInteractivePlate.tsx` to dither it by default through the Bayer 4×4 duotone matrix with unmount cancellation, center-cover scaling, procedural fallback while loading/offline, `Swap photo` override support, Salt Galata coordinates (`41.0239° N, 28.9735° E`), wrappable caption bar, and a guarded `ResizeObserver` on the hero backdrop canvas.
 - Updated `en.json` and `tr.json` `marketOverview.hero.plateCaption` to explain Salt Galata (Former Ottoman Bank HQ, 1892, Bankalar Caddesi) and removed the unused `header.anonymous` key (`889` keys in sync).
-- Framed `MarketOverviewPage.tsx` hero + 4-column KPI ribbon within `lg:min-h-[calc(100svh-55px)]` and expanded Band 01 padding (`py-16 lg:py-20`) so below-the-fold sections sit cleanly outside the initial desktop viewport.
-- Removed the redundant `"Guest"` / `"Ziyaretçi"` label from `AuthState.tsx` and updated Vitest + Playwright E2E specs (`core-loop`, `market-overview`, `sign-in`, `account-settings`, `stock-list`) plus added `HeroInteractivePlate.test.tsx` (`4/4` Vitest files, `40/40` tests passing; `tests/e2e` TypeScript clean).
+- Framed `MarketOverviewPage.tsx` hero + 4-column KPI ribbon within `lg:min-h-[calc(100svh-55px)]` using `lg:pt-8 lg:pb-[16svh]` on `<header id="hero-section">` to shift the Market Overview copy and Salt Galata photo plate optically upward while keeping the 4-column KPI strip pinned at the fold bottom, and expanded Band 01 padding (`py-16 lg:py-20`).
+- Removed the redundant `"Guest"` / `"Ziyaretçi"` label from `AuthState.tsx`, updated Vitest + Playwright E2E specs (`core-loop`, `market-overview`, `sign-in`, `account-settings`, `stock-list`), and addressed `SLICE-037` Round 1 review nits (`DR-1` `ResizeObserver` test and `DR-2` `installMockImage()` helper in `HeroInteractivePlate.test.tsx`, `4/4` files, `41/41` Vitest tests passing).
