@@ -173,3 +173,153 @@
     display: none !important;
   }
 }
+
+/* SLICE-039: Split-Rail Fill viewport scroll indicator.
+   A compact 1px bronze progress rail pinned to the right edge. Native main-viewport
+   scrollbars are hidden on fine pointers; nested scroll surfaces keep a quiet 6px bar. */
+@media (hover: hover) and (pointer: fine) {
+  html,
+  body {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  :where(*:not(html):not(body)) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) var(--color-background);
+  }
+
+  :where(*:not(html):not(body))::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  :where(*:not(html):not(body))::-webkit-scrollbar-track {
+    background: var(--color-background);
+  }
+
+  :where(*:not(html):not(body))::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 0;
+  }
+
+  :where(*:not(html):not(body))::-webkit-scrollbar-thumb:hover {
+    background: var(--brand-accent);
+  }
+}
+
+.viewport-scroll-rail {
+  position: fixed;
+  top: clamp(88px, 16vh, 148px);
+  bottom: clamp(48px, 14vh, 132px);
+  right: 2px;
+  width: 22px;
+  z-index: 45;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
+.viewport-scroll-rail[data-overflow='true'] {
+  pointer-events: auto;
+}
+
+.viewport-scroll-rail[data-overflow='true'].is-visible {
+  opacity: 1;
+  transition: opacity 150ms ease-out;
+}
+
+.viewport-scroll-rail__track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 10px;
+  width: 2px;
+}
+
+.viewport-scroll-rail__base {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: var(--color-border);
+  opacity: 0.65;
+}
+
+.viewport-scroll-rail__fill {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--brand-accent);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: width 160ms ease;
+  will-change: transform;
+}
+
+.viewport-scroll-rail:hover .viewport-scroll-rail__fill,
+.viewport-scroll-rail.is-hovered .viewport-scroll-rail__fill,
+.viewport-scroll-rail.is-dragging .viewport-scroll-rail__fill {
+  width: 2px;
+}
+
+.viewport-scroll-rail__tick {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 1px;
+  background: var(--brand-accent);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.viewport-scroll-rail__readout {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--color-muted-foreground);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0) translateY(-50%);
+  transition: opacity 120ms ease;
+  will-change: transform;
+}
+
+.viewport-scroll-rail.is-dragging .viewport-scroll-rail__readout {
+  opacity: 1;
+}
+
+body.scroll-rail-dragging {
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewport-scroll-rail,
+  .viewport-scroll-rail.is-visible,
+  .viewport-scroll-rail__fill,
+  .viewport-scroll-rail__readout {
+    transition-duration: 1ms;
+  }
+}
+
+@media (pointer: coarse), (hover: none) {
+  .viewport-scroll-rail {
+    display: none !important;
+  }
+}

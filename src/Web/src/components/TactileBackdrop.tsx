@@ -4,7 +4,7 @@ import { useTheme } from '@/lib/theme'
 
 const MAGNETIC_SELECTOR = '[data-magnetic], [data-row-link], [data-sector-bar-row]'
 const INTERACTIVE_SELECTOR =
-  'a, button, select, summary, label[for], [role="button"], [role="link"], [role="tab"], [role="option"], [role="menuitem"], [tabindex]:not([tabindex="-1"])'
+  'a, button, select, summary, label[for], [role="button"], [role="link"], [role="tab"], [role="option"], [role="menuitem"], [role="scrollbar"], [tabindex]:not([tabindex="-1"])'
 const TEXT_INPUT_SELECTOR =
   'input, textarea, [contenteditable="true"], [contenteditable=""], [role="textbox"]'
 const NON_TEXT_INPUT_TYPES = new Set([
