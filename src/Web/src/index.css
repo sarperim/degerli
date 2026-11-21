@@ -18,11 +18,6 @@
     overflow-anchor: none;
     overflow-x: clip;
     background-color: var(--color-background);
-    background-image:
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-    background-size: 48px 48px;
-    background-position: top center;
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-size: var(--text-body-lg);
