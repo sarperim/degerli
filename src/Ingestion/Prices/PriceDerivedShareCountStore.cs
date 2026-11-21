@@ -140,32 +140,14 @@ public sealed class PriceDerivedShareCountStore
             }
 
             // The honesty core: three named refusals, each counted, none rounded.
-            if (fact.MarketCap is not { } marketCap || marketCap <= 0m)
+            if (!TryDeriveCount(fact.MarketCap, fact.Close, out var count, out var refusal))
             {
-                Count(withheld, MarketCapMissing);
+                Count(withheld, refusal!);
                 continue;
             }
 
-            if (fact.Close is not { } close || close <= 0m)
-            {
-                Count(withheld, CloseInvalid);
-                continue;
-            }
-
-            var quotient = marketCap / close;
-            // Round to the nearest integer symmetric about the tolerance: a residue just above an
-            // integer and one just below it are equally honest, so the gate below rejects both
-            // beyond `IntegralTolerance` (and a `.5` quotient, 0.5 off, is always withheld).
-            var rounded = decimal.Round(quotient, 0, MidpointRounding.AwayFromZero);
-            if (rounded < 1m || rounded > long.MaxValue || decimal.Abs(quotient - rounded) > IntegralTolerance)
-            {
-                // The operands disagree (or the quotient is not a usable count): withheld, never
-                // rounded to the nearest billion.
-                Count(withheld, NonIntegralQuotient);
-                continue;
-            }
-
-            var count = (long)rounded;
+            var marketCap = fact.MarketCap!.Value;
+            var close = fact.Close!.Value;
 
             if (existing.TryGetValue(instrumentId, out var row))
             {
@@ -220,6 +202,176 @@ public sealed class PriceDerivedShareCountStore
         }
 
         return new PriceDerivedShareCountWriteResult(inserted, updated, unchanged, stale, withheld);
+    }
+
+    /// <summary>
+    /// Derives and stores one row per resolvable instrument from a multi-date backfill payload
+    /// (SLICE-030). For each instrument, selects the <b>most recent</b> dated row whose
+    /// <c>PD ÷ close</c> satisfies the exact <see cref="IntegralTolerance"/> gate, then applies
+    /// the same monotonic as-of and idempotent upsert rules as <see cref="UpsertAsync"/>.
+    /// </summary>
+    public async Task<PriceDerivedShareCountWriteResult> UpsertHistoryAsync(
+        string sourceRef,
+        DateTimeOffset recordedAt,
+        IReadOnlyList<DatedPriceFact> rows,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRef);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var withheld = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (rows.Count == 0)
+        {
+            return new PriceDerivedShareCountWriteResult(0, 0, 0, 0, withheld);
+        }
+
+        var symbols = rows
+            .Select(row => row.Symbol)
+            .Where(symbol => !string.IsNullOrWhiteSpace(symbol))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var instruments = await _db.Instruments
+            .Where(instrument => symbols.Contains(instrument.Symbol))
+            .Select(instrument => new { instrument.Id, instrument.Symbol })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var bySymbol = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var instrument in instruments)
+        {
+            bySymbol[instrument.Symbol] = instrument.Id;
+        }
+
+        var instrumentIds = bySymbol.Values.ToList();
+        var existing = await _db.PriceDerivedShareCounts
+            .Where(row => instrumentIds.Contains(row.InstrumentId))
+            .ToDictionaryAsync(row => row.InstrumentId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var inserted = 0;
+        var updated = 0;
+        var unchanged = 0;
+        var stale = 0;
+
+        foreach (var group in rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Symbol) && bySymbol.ContainsKey(row.Symbol))
+            .GroupBy(row => bySymbol[row.Symbol]))
+        {
+            var instrumentId = group.Key;
+            DatedPriceFact? chosen = null;
+            long chosenCount = 0;
+            string? latestRefusal = null;
+
+            foreach (var candidate in group.OrderByDescending(row => row.Date))
+            {
+                if (TryDeriveCount(candidate.MarketCap, candidate.Close, out var count, out var refusal))
+                {
+                    chosen = candidate;
+                    chosenCount = count;
+                    break;
+                }
+
+                latestRefusal ??= refusal;
+            }
+
+            if (chosen is null)
+            {
+                if (latestRefusal is not null)
+                {
+                    Count(withheld, latestRefusal);
+                }
+
+                continue;
+            }
+
+            var marketCap = chosen.MarketCap!.Value;
+            var close = chosen.Close!.Value;
+            var priceDate = chosen.Date;
+
+            if (existing.TryGetValue(instrumentId, out var row))
+            {
+                if (priceDate < row.PriceDate)
+                {
+                    stale++;
+                    continue;
+                }
+
+                if (priceDate == row.PriceDate
+                    && row.SharesOutstanding == chosenCount
+                    && row.MarketCapRaw == marketCap
+                    && row.CloseRaw == close
+                    && string.Equals(row.SourceRef, sourceRef, StringComparison.Ordinal))
+                {
+                    unchanged++;
+                    continue;
+                }
+
+                row.SharesOutstanding = chosenCount;
+                row.MarketCapRaw = marketCap;
+                row.CloseRaw = close;
+                row.PriceDate = priceDate;
+                row.RecordedAt = recordedAt;
+                row.SourceRef = sourceRef;
+                updated++;
+                continue;
+            }
+
+            var created = new PriceDerivedShareCount
+            {
+                InstrumentId = instrumentId,
+                SharesOutstanding = chosenCount,
+                MarketCapRaw = marketCap,
+                CloseRaw = close,
+                PriceDate = priceDate,
+                RecordedAt = recordedAt,
+                SourceRef = sourceRef,
+            };
+            _db.PriceDerivedShareCounts.Add(created);
+            existing[instrumentId] = created;
+            inserted++;
+        }
+
+        if (inserted + updated > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return new PriceDerivedShareCountWriteResult(inserted, updated, unchanged, stale, withheld);
+    }
+
+    private static bool TryDeriveCount(
+        decimal? marketCap,
+        decimal? close,
+        out long count,
+        out string? refusalReason)
+    {
+        count = 0;
+        if (marketCap is not { } mc || mc <= 0m)
+        {
+            refusalReason = MarketCapMissing;
+            return false;
+        }
+
+        if (close is not { } c || c <= 0m)
+        {
+            refusalReason = CloseInvalid;
+            return false;
+        }
+
+        var quotient = mc / c;
+        // Round to the nearest integer symmetric about the tolerance: a residue just above an
+        // integer and one just below it are equally honest, so the gate below rejects both
+        // beyond `IntegralTolerance` (and a `.5` quotient, 0.5 off, is always withheld).
+        var rounded = decimal.Round(quotient, 0, MidpointRounding.AwayFromZero);
+        if (rounded < 1m || rounded > long.MaxValue || decimal.Abs(quotient - rounded) > IntegralTolerance)
+        {
+            refusalReason = NonIntegralQuotient;
+            return false;
+        }
+
+        count = (long)rounded;
+        refusalReason = null;
+        return true;
     }
 
     private static void Count(IDictionary<string, int> counts, string reason) =>
