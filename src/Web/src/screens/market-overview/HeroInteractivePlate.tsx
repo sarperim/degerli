@@ -199,7 +199,6 @@ export function useHeroBackdropCanvas({
  */
 export function HeroInteractivePlate() {
   const { t } = useTranslation()
-  const theme = useTheme()
   const plateRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const loupeRef = useRef<HTMLDivElement | null>(null)
@@ -324,20 +323,13 @@ export function HeroInteractivePlate() {
 
     const src = c.getImageData(0, 0, w, h)
     const d = src.data
-    const dark = theme === 'dark'
-    const pal: [number, number, number][] = dark
-      ? [
-          [17, 19, 22],
-          [68, 75, 84],
-          [198, 139, 73],
-          [224, 220, 212],
-        ]
-      : [
-          [23, 26, 30],
-          [106, 111, 116],
-          [168, 108, 42],
-          [246, 245, 240],
-        ]
+    // Archival plate stays a dark-room duotone in both themes.
+    const pal: [number, number, number][] = [
+      [17, 19, 22],
+      [68, 75, 84],
+      [198, 139, 73],
+      [224, 220, 212],
+    ]
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -354,7 +346,7 @@ export function HeroInteractivePlate() {
       }
     }
     pCtx.putImageData(src, 0, 0)
-  }, [theme, imageVersion])
+  }, [imageVersion])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current
