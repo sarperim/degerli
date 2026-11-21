@@ -35,7 +35,9 @@ test.describe('TC-MOV-016 dashboard renders anonymously, TR default, equity bloc
     await page.goto('/')
 
     // Anonymous + Turkish default with the language toggle available.
-    await expect(page.getByText(TR('header.anonymous'))).toBeVisible()
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: TR('header.signIn'), exact: true }),
+    ).toBeVisible()
     await expect(
       page.getByRole('heading', { level: 1, name: TR('screens.marketOverview.title') }),
     ).toBeVisible()

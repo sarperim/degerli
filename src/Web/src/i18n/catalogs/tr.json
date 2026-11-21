@@ -33,7 +33,6 @@
     "searchPlaceholder": "Kod veya şirket adı ara",
     "signIn": "Giriş yap",
     "register": "Kayıt ol",
-    "anonymous": "Ziyaretçi",
     "signOut": "Çıkış yap"
   },
   "nav": {
@@ -681,7 +680,7 @@
       "primaryCta": "Hisseleri tara",
       "secondaryCta": "Hisse listesini incele",
       "scrubHint": "64 seanslık BIST 100 EOD eğrisini incelemek için imleci arka plan üzerinde gezdirin",
-      "plateCaption": "ŞEK. 01 — İSTANBUL FİNANS ARŞİVİ",
+      "plateCaption": "Salt Galata — Eski Osmanlı Bankası (1892), Bankalar Caddesi",
       "swapPhoto": "Görsel değiştir"
     },
     "macro": {

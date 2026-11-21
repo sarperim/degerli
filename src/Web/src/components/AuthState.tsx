@@ -47,9 +47,6 @@ export function AuthState() {
 
   return (
     <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs">
-      <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
-        {t('header.anonymous')}
-      </span>
       <Button
         type="button"
         variant="outline"

@@ -774,11 +774,11 @@ export function MarketOverviewPage() {
       className="flex flex-col"
     >
       {/* Full-bleed sweeping hero: canvas curve + 4-col KPI ribbon span 100vw edge-to-edge */}
-      <div className="relative left-1/2 right-1/2 -mt-section -ml-[50vw] -mr-[50vw] w-screen border-b border-border overflow-hidden">
+      <div className="relative left-1/2 right-1/2 -mt-section -ml-[50vw] -mr-[50vw] flex w-screen flex-col overflow-hidden border-b border-border lg:min-h-[calc(100svh-55px)]">
         <header
           ref={heroRef}
           id="hero-section"
-          className="relative overflow-hidden pb-12 pt-10"
+          className="relative flex flex-1 items-center overflow-hidden py-14 sm:py-16 lg:pt-8 lg:pb-[16svh]"
         >
           <canvas
             ref={heroCanvasRef}
@@ -789,7 +789,7 @@ export function MarketOverviewPage() {
           />
 
           <div className="relative z-10 mx-auto grid w-full max-w-content grid-cols-1 items-center gap-10 px-4 sm:px-8 lg:grid-cols-[1.20fr_0.80fr] lg:gap-12">
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
               <div className="flex flex-wrap items-center gap-3">
                 <span
                   data-testid="market-hero-eyebrow"
@@ -902,7 +902,7 @@ export function MarketOverviewPage() {
       </div>
 
       {/* Band 01: Market Valuation + Paired Inflation & Macro */}
-      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen border-b border-border py-12">
+      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen border-b border-border py-16 lg:py-20">
         <div className="mx-auto grid w-full max-w-content grid-cols-1 items-start gap-10 px-4 sm:px-8 lg:grid-cols-[0.36fr_0.64fr] lg:gap-14">
           <MarketValuationBlock query={valuation} />
           <MacroStrip />

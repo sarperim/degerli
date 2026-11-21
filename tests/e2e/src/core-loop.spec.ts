@@ -38,7 +38,9 @@ test.describe('TC-XC-001 SC-002 core loop, anonymous, end-to-end', () => {
     // ---- 1. Dashboard renders (equity blocks + macro), anonymously. ----------
     await page.goto('/')
 
-    await expect(page.getByText(TR('header.anonymous'))).toBeVisible()
+    await expect(
+      page.getByRole('banner').getByRole('button', { name: TR('header.signIn'), exact: true }),
+    ).toBeVisible()
     await expect(
       page.getByRole('heading', {
         level: 1,

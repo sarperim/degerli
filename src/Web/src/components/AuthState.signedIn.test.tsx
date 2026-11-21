@@ -59,8 +59,12 @@ describe('AuthState — signed-in and sign-out (UXR-ACC-010)', () => {
     )
 
     expect(
-      await screen.findByText(catalogValue('tr', 'header.anonymous')),
+      await screen.findByRole('button', { name: catalogValue('tr', 'header.signIn') }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: catalogValue('tr', 'header.register') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('auth-email')).toBeNull()
     expect(
       screen.queryByRole('button', { name: catalogValue('tr', 'header.signOut') }),
     ).not.toBeInTheDocument()

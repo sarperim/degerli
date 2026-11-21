@@ -33,7 +33,6 @@
     "searchPlaceholder": "Search by code or company name",
     "signIn": "Sign in",
     "register": "Register",
-    "anonymous": "Guest",
     "signOut": "Sign out"
   },
   "nav": {
@@ -681,7 +680,7 @@
       "primaryCta": "Screen BIST 100",
       "secondaryCta": "Browse stock list",
       "scrubHint": "Move cursor across the backdrop to scrub the 64-session BIST 100 EOD curve",
-      "plateCaption": "FIG. 01 — İSTANBUL FINANCIAL ARCHIVE",
+      "plateCaption": "Salt Galata — Former Ottoman Bank HQ (1892), Bankalar Caddesi",
       "swapPhoto": "Swap photo"
     },
     "macro": {

@@ -17,25 +17,30 @@ describe('AuthState (component harness sample)', () => {
     renderWithProviders(<AuthState />)
 
     expect(
-      screen.getByText(catalogValue('tr', 'header.anonymous')),
-    ).toBeInTheDocument()
-    expect(
       screen.getByRole('button', { name: catalogValue('tr', 'header.signIn') }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: catalogValue('tr', 'header.register') }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: catalogValue('tr', 'header.signOut') }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('auth-email')).not.toBeInTheDocument()
   })
 
   it('renders EN catalog copy when English is active', () => {
     renderWithProviders(<AuthState />, { language: 'en' })
 
     expect(
-      screen.getByText(catalogValue('en', 'header.anonymous')),
-    ).toBeInTheDocument()
-    expect(
       screen.getByRole('button', { name: catalogValue('en', 'header.signIn') }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: catalogValue('en', 'header.register') }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: catalogValue('en', 'header.signOut') }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('auth-email')).not.toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations', async () => {
