@@ -55,3 +55,76 @@ export function valuationHistoryPoints(
     adjusted: historical.adjusted && point.closeAdjusted !== null,
   }))
 }
+
+/** Supported interval granularities for the historical price chart (SLICE-032). */
+export type ValuationChartGranularity = 'daily' | 'weekly' | 'monthly'
+
+/** Display order for the historical price chart granularity selector. */
+export const VALUATION_CHART_GRANULARITIES: readonly ValuationChartGranularity[] = [
+  'daily',
+  'weekly',
+  'monthly',
+]
+
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+function periodBucketKey(
+  date: string,
+  granularity: Exclude<ValuationChartGranularity, 'daily'>,
+): string {
+  const match = ISO_DATE_RE.exec(date)
+  if (!match) return date
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  const utc = new Date(Date.UTC(year, month - 1, day))
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    return date
+  }
+
+  if (granularity === 'monthly') {
+    return `${match[1]}-${match[2]}`
+  }
+
+  // Shift to Thursday of the same ISO 8601 week (1 = Mon .. 7 = Sun).
+  const dayNum = utc.getUTCDay() || 7
+  utc.setUTCDate(utc.getUTCDate() + 4 - dayNum)
+  const isoYear = utc.getUTCFullYear()
+  const yearStart = Date.UTC(isoYear, 0, 1)
+  const week = Math.ceil(((utc.getTime() - yearStart) / 86400000 + 1) / 7)
+  return `${isoYear}-W${String(week).padStart(2, '0')}`
+}
+
+/**
+ * Aggregate served daily history points into weekly (ISO `YYYY-Www`) or
+ * monthly (`YYYY-MM`) buckets by selecting the last served session in each
+ * bucket. Never interpolates or fabricates missing dates.
+ */
+export function aggregateValuationHistory(
+  points: ValuationHistoryPoint[],
+  granularity: ValuationChartGranularity,
+): ValuationHistoryPoint[] {
+  if (granularity === 'daily' || points.length === 0) return points
+
+  const buckets: ValuationHistoryPoint[] = []
+  const indexByKey = new Map<string, number>()
+
+  for (const point of points) {
+    const key = periodBucketKey(point.date, granularity)
+    const existingIdx = indexByKey.get(key)
+    if (existingIdx === undefined) {
+      indexByKey.set(key, buckets.length)
+      buckets.push(point)
+    } else {
+      buckets[existingIdx] = point
+    }
+  }
+
+  return buckets
+}
