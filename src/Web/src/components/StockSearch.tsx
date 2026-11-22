@@ -155,7 +155,7 @@ export function StockSearch() {
   return (
     <div
       ref={containerRef}
-      className="relative w-full shrink-0 transition-[width] duration-150 motion-reduce:transition-none sm:w-48 sm:focus-within:w-60"
+      className="relative w-full shrink-0 transition-[width] duration-150 motion-reduce:transition-none sm:w-44 2xl:w-48 sm:focus-within:w-56"
     >
       <label htmlFor="header-stock-search" className="sr-only">
         {t('header.searchLabel')}

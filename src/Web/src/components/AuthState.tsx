@@ -27,7 +27,8 @@ export function AuthState() {
       <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
         <span
           data-testid="auth-email"
-          className="hidden max-w-[12rem] truncate font-mono text-[11px] text-muted-foreground sm:inline"
+          title={data.email}
+          className="hidden max-w-[10.5rem] truncate font-mono text-[11px] text-muted-foreground 2xl:inline"
         >
           {data.email}
         </span>

@@ -109,6 +109,16 @@ describe('TC-VAL-022 — My DCF Scenarios list', () => {
       within(error).getByRole('button', { name: TR('common.retry') }),
     ).toBeInTheDocument()
   })
+
+  it('does not render an inline disclaimer duplicate (the shell footer owns it)', async () => {
+    server.use(scenariosListHandler(GROUPED))
+
+    const { container } = renderScenarios()
+    await screen.findByTestId('dcf-scenarios-list')
+
+    // UXR-G-016 is satisfied once by AppShell's footer for research routes.
+    expect(container.querySelector('[data-slot="disclaimer"]')).toBeNull()
+  })
 })
 
 describe('TC-VAL-022 — rename in place', () => {
