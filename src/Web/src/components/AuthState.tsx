@@ -28,7 +28,7 @@ export function AuthState() {
         <span
           data-testid="auth-email"
           title={data.email}
-          className="hidden max-w-[10.5rem] truncate font-mono text-[11px] text-muted-foreground 2xl:inline"
+          className="hidden max-w-[9rem] truncate font-mono text-[11px] text-muted-foreground sm:inline 2xl:max-w-[11.5rem]"
         >
           {data.email}
         </span>

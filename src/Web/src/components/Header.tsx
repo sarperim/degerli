@@ -44,7 +44,7 @@ export function Header() {
         className={cn(
           'mx-auto flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2',
           authenticated
-            ? 'max-w-[1600px] sm:px-6 xl:min-h-[54px] xl:flex-nowrap xl:px-8 xl:py-0'
+            ? 'max-w-[1600px] sm:px-6 min-[1400px]:min-h-[54px] min-[1400px]:flex-nowrap min-[1400px]:px-8 min-[1400px]:py-0'
             : 'max-w-content sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0',
         )}
       >
@@ -68,10 +68,10 @@ export function Header() {
         <nav
           aria-label={t('header.primaryNav')}
           className={cn(
-            'order-last flex w-full flex-wrap items-center border-t border-border/60 pt-2',
+            'order-last flex w-full flex-wrap items-center',
             authenticated
-              ? 'gap-x-3.5 gap-y-1.5 xl:order-none xl:w-auto xl:min-w-0 xl:flex-nowrap xl:border-t-0 xl:pt-0'
-              : 'gap-x-4 gap-y-1 lg:order-none lg:w-auto lg:min-w-0 lg:flex-nowrap lg:border-t-0 lg:pt-0',
+              ? 'gap-x-3.5 gap-y-1.5 border-t border-border/60 pt-2 min-[1400px]:order-none min-[1400px]:w-auto min-[1400px]:min-w-0 min-[1400px]:flex-nowrap min-[1400px]:border-t-0 min-[1400px]:pt-0'
+              : 'gap-x-4 gap-y-1 lg:order-none lg:w-auto lg:min-w-0 lg:flex-nowrap',
           )}
         >
           {routes.map((route) => (
@@ -98,7 +98,7 @@ export function Header() {
           className={cn(
             'ms-auto flex w-full flex-wrap items-center gap-2 sm:w-auto',
             authenticated
-              ? 'xl:shrink-0 xl:flex-nowrap'
+              ? 'min-[1400px]:shrink-0 min-[1400px]:flex-nowrap'
               : 'lg:shrink-0 lg:flex-nowrap',
           )}
         >

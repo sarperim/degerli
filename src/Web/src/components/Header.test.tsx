@@ -18,8 +18,9 @@ import { renderWithProviders } from '@/test/render'
  *
  * The anonymous header keeps the narrow `max-w-content` single-row layout. The
  * signed-in header (6 links, or 7 for a builder) widens to `max-w-[1600px]` and
- * only forces its single desktop row at `xl` (1280px), so all navigation links
- * plus the utility bar fit without being squeezed onto a cramped second line.
+ * only forces its single desktop row at 1400px, so all navigation links plus the
+ * utility bar — including the always-visible account e-mail from `sm` upwards —
+ * fit without being squeezed onto a cramped second line.
  */
 
 const TR = (key: string) => catalogValue('tr', key)
@@ -48,7 +49,8 @@ describe('Header — anonymous layout', () => {
 
     const nav = screen.getByRole('navigation', { name: TR('header.primaryNav') })
     expect(nav).toHaveClass('lg:flex-nowrap')
-    expect(nav).toHaveClass('lg:border-t-0')
+    // The anonymous nav keeps its pre-PR layout: no hairline separator row.
+    expect(nav).not.toHaveClass('border-t')
 
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(3)
@@ -76,16 +78,16 @@ describe('Header — signed-in layout', () => {
 
     const row = getHeaderRow(container)
     expect(row).toHaveClass('max-w-[1600px]')
-    expect(row).toHaveClass('xl:flex-nowrap')
+    expect(row).toHaveClass('min-[1400px]:flex-nowrap')
     expect(row).not.toHaveClass('max-w-content')
 
     const nav = screen.getByRole('navigation', { name: TR('header.primaryNav') })
-    expect(nav).toHaveClass('xl:flex-nowrap')
-    // Below xl the nav sits on its own full-width, hairline-separated row.
+    expect(nav).toHaveClass('min-[1400px]:flex-nowrap')
+    // Below 1400px the nav sits on its own full-width, hairline-separated row.
     expect(nav).toHaveClass('order-last')
     expect(nav).toHaveClass('w-full')
     expect(nav).toHaveClass('border-t')
-    expect(nav).toHaveClass('xl:border-t-0')
+    expect(nav).toHaveClass('min-[1400px]:border-t-0')
 
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(6)
@@ -101,8 +103,10 @@ describe('Header — signed-in layout', () => {
     const email = screen.getByTestId('auth-email')
     expect(email).toHaveAttribute('title', VERIFIED_SESSION_FIXTURE.email)
     expect(email).toHaveTextContent(VERIFIED_SESSION_FIXTURE.email)
-    expect(email).toHaveClass('2xl:inline')
-    expect(email).not.toHaveClass('sm:inline')
+    // The identity stays visible from sm upwards (no B2 regression), bounded.
+    expect(email).toHaveClass('sm:inline')
+    expect(email).toHaveClass('max-w-[9rem]')
+    expect(email).toHaveClass('2xl:max-w-[11.5rem]')
   })
 
   it('has no detectable accessibility violations', async () => {
@@ -123,13 +127,10 @@ describe('Header — builder layout', () => {
     await screen.findByTestId('auth-email')
 
     const nav = screen.getByRole('navigation', { name: TR('header.primaryNav') })
-    expect(nav).toHaveClass('xl:flex-nowrap')
+    expect(nav).toHaveClass('min-[1400px]:flex-nowrap')
 
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(7)
     expect(links.at(-1)).toHaveTextContent(TR('nav.admin'))
-    expect(
-      within(nav).getByRole('link', { name: TR('nav.admin') }),
-    ).toBeInTheDocument()
   })
 })
