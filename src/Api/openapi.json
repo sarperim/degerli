@@ -156,6 +156,12 @@
               "string"
             ]
           },
+          "languagePref": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "password": {
             "type": [
               "null",

@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 
 import { useSession } from '@/lib/auth/session'
+import { clearPendingVerificationToken } from '@/screens/register/pendingVerificationToken'
 import { VerifyEmailScreen } from '@/screens/register/VerifyEmailScreen'
 import { catalogValue } from '@/test/i18n'
 import {
@@ -56,13 +57,20 @@ function renderVerify(entry: string, queryClient = createTestQueryClient()) {
 }
 
 describe('TC-ACC-024 — Verification landing states', () => {
-  it('shows a success notice when the e-mail is verified', async () => {
+  afterEach(() => {
+    clearPendingVerificationToken()
+  })
+
+  it('shows a success notice and continue-to-app link when the e-mail is verified', async () => {
     server.use(sessionHandler(), verifyEmailHandler())
 
     renderVerify('/verify-email?token=valid-token')
 
     expect(await screen.findByText(tr.verifiedTitle)).toBeInTheDocument()
     expect(screen.getByText(tr.verifiedBody)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: catalogValue('tr', 'verifyEmail.continueToApp') }),
+    ).toHaveAttribute('href', '/')
   })
 
   it('explains an expired/invalid link and offers a resend path', async () => {
@@ -98,11 +106,140 @@ describe('TC-ACC-024 — Verification landing states', () => {
     expect(
       await screen.findByText(catalogValue('tr', 'verifyEmail.unauthenticatedTitle')),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: catalogValue('tr', 'verifyEmail.signIn') }),
-    ).toHaveAttribute('href', '/sign-in')
+    const signInLink = screen.getByRole('link', {
+      name: catalogValue('tr', 'verifyEmail.signIn'),
+    })
+    expect(signInLink).toHaveAttribute('href', '/sign-in?returnUrl=%2Fverify-email')
+    expect(signInLink.getAttribute('href')).not.toContain('valid-token')
     // Resend is session-scoped too; offering it here would dead-end (SF2).
     expect(screen.queryByRole('button', { name: tr.resend })).not.toBeInTheDocument()
+  })
+
+  it('auto-completes verification after unauthenticated sign-in return using the in-memory token', async () => {
+    const user = userEvent.setup()
+    let authenticated = false
+    let verifiedToken: string | null = null
+
+    server.use(
+      http.get(`${API_BASE}/auth/session`, () =>
+        HttpResponse.json(
+          authenticated ? UNVERIFIED_SESSION_FIXTURE : { authenticated: false },
+        ),
+      ),
+      http.post(`${API_BASE}/auth/verify-email`, async ({ request }) => {
+        const body = (await request.json()) as { token: string }
+        if (!authenticated) {
+          return HttpResponse.json(
+            {
+              type: 'https://degerli.test/api/v1/errors/unauthenticated',
+              title: 'Unauthenticated',
+              status: 401,
+              code: 'UNAUTHENTICATED',
+              traceId: '00-test-0000000000000000-01',
+            },
+            { status: 401 },
+          )
+        }
+        verifiedToken = body.token
+        return HttpResponse.json({ verified: true })
+      }),
+    )
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={['/verify-email?token=valid-token']}>
+        <Routes>
+          <Route path="/verify-email" element={<VerifyEmailScreen />} />
+          <Route
+            path="/sign-in"
+            element={
+              <a
+                href="/verify-email"
+                onClick={(event) => {
+                  event.preventDefault()
+                  authenticated = true
+                }}
+              >
+                complete-sign-in
+              </a>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+      { queryClient: createTestQueryClient() },
+    )
+
+    const signInLink = await screen.findByRole('link', {
+      name: catalogValue('tr', 'verifyEmail.signIn'),
+    })
+    expect(signInLink).toHaveAttribute('href', '/sign-in?returnUrl=%2Fverify-email')
+
+    // Simulate clicking Sign in → completing sign-in → navigating back to /verify-email without token in URL.
+    await user.click(signInLink)
+    authenticated = true
+
+    renderVerify('/verify-email')
+    expect(await screen.findByText(tr.verifiedTitle)).toBeInTheDocument()
+    expect(verifiedToken).toBe('valid-token')
+  })
+
+  it('shows rate-limited copy with a retry button that succeeds on retry', async () => {
+    const user = userEvent.setup()
+    let attempts = 0
+    server.use(
+      sessionHandler(UNVERIFIED_SESSION_FIXTURE),
+      http.post(`${API_BASE}/auth/verify-email`, () => {
+        attempts += 1
+        if (attempts === 1) {
+          return HttpResponse.json(
+            {
+              type: 'https://degerli.test/api/v1/errors/rate-limited',
+              title: 'Rate limited',
+              status: 429,
+              code: 'RATE_LIMITED',
+              traceId: '00-test-0000000000000000-01',
+            },
+            { status: 429 },
+          )
+        }
+        return HttpResponse.json({ verified: true })
+      }),
+    )
+
+    renderVerify('/verify-email?token=valid-token')
+
+    expect(
+      await screen.findByText(catalogValue('tr', 'verifyEmail.rateLimitedTitle')),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(catalogValue('tr', 'verifyEmail.rateLimitedBody')),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(tr.failedTitle)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: tr.resend })).not.toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: catalogValue('tr', 'verifyEmail.retry') }),
+    )
+    expect(await screen.findByText(tr.verifiedTitle)).toBeInTheDocument()
+    expect(attempts).toBe(2)
+  })
+
+  it('renders verified state when navigating to /verify-email without a token if session is already verified', async () => {
+    let verifyCalls = 0
+    server.use(
+      sessionHandler(VERIFIED_SESSION_FIXTURE),
+      http.post(`${API_BASE}/auth/verify-email`, () => {
+        verifyCalls += 1
+        return HttpResponse.json({ verified: true })
+      }),
+    )
+
+    renderVerify('/verify-email')
+
+    expect(await screen.findByText(tr.verifiedTitle)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: catalogValue('tr', 'verifyEmail.continueToApp') }),
+    ).toHaveAttribute('href', '/')
+    expect(verifyCalls).toBe(0)
   })
 
   it('explains a missing token without calling the verify endpoint', async () => {

@@ -57,6 +57,7 @@ x-api-environment: &api-environment
   Ingestion__Kap__ApiSecret: ${Ingestion__Kap__ApiSecret:-}
   APP_URL: ${APP_URL:?set APP_URL in .env}
   ALERT_EMAIL: ${ALERT_EMAIL:?set ALERT_EMAIL in .env}
+  DataProtection__KeysPath: /app/data-protection-keys
 
 services:
   postgres:
@@ -84,6 +85,8 @@ services:
         condition: service_healthy
     environment:
       <<: *api-environment
+    volumes:
+      - data-protection-keys:/app/data-protection-keys
     # Internal only; Caddy is the single public entrypoint.
     expose:
       - "8080"
@@ -120,3 +123,4 @@ volumes:
   postgres-data:
   caddy-data:
   caddy-config:
+  data-protection-keys:

@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router'
 
 import { AuthState } from '@/components/AuthState'
 import { runA11y } from '@/test/a11y'
@@ -47,5 +49,37 @@ describe('AuthState (component harness sample)', () => {
     const { container } = renderWithProviders(<AuthState />)
 
     await expect(runA11y(container)).resolves.toEqual([])
+  })
+
+  it('navigates in-app to /sign-in and /register without window.location.assign when inside a router', async () => {
+    const user = userEvent.setup()
+    const assignMock = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign: assignMock })
+
+    try {
+      renderWithProviders(
+        <MemoryRouter initialEntries={['/']}>
+          <AuthState />
+          <Routes>
+            <Route path="/" element={<div data-testid="route-home" />} />
+            <Route path="/sign-in" element={<div data-testid="route-sign-in" />} />
+            <Route path="/register" element={<div data-testid="route-register" />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: catalogValue('tr', 'header.signIn') }),
+      )
+      expect(await screen.findByTestId('route-sign-in')).toBeInTheDocument()
+
+      await user.click(
+        screen.getByRole('button', { name: catalogValue('tr', 'header.register') }),
+      )
+      expect(await screen.findByTestId('route-register')).toBeInTheDocument()
+      expect(assignMock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

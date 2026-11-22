@@ -42,6 +42,7 @@ x-api-environment: &api-environment
   # stack (start it with `--profile tools`).
   OpenTelemetry__Enabled: ${OpenTelemetry__Enabled:-false}
   OpenTelemetry__OtlpEndpoint: ${OpenTelemetry__OtlpEndpoint:-http://grafana:4317}
+  DataProtection__KeysPath: /app/data-protection-keys
 
 x-api-volumes: &api-volumes
   - ./src:/app/src
@@ -55,6 +56,7 @@ x-api-volumes: &api-volumes
   - ingestion-bin:/app/src/Ingestion/bin
   - persistence-obj:/app/src/Persistence/obj
   - persistence-bin:/app/src/Persistence/bin
+  - api-dp-keys:/app/data-protection-keys
 
 # The content pipeline compiles Degerli.Core too; give it its own build-output
 # volumes so running it while the API is up cannot race on shared Core obj/bin.
@@ -166,3 +168,4 @@ volumes:
   cp-core-bin:
   cp-contentpipeline-obj:
   cp-contentpipeline-bin:
+  api-dp-keys:

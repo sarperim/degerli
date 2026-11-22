@@ -138,6 +138,23 @@ describe('TC-ACC-030 — request stage (neutral confirmation)', () => {
     )
   })
 
+  it('shows rate-limited copy on the request stage when throttled', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/auth/forgot-password`, 'RATE_LIMITED', {
+        method: 'post',
+      }),
+    )
+
+    renderReset()
+    await user.type(screen.getByLabelText(tr.emailLabel, { exact: false }), VALID_EMAIL)
+    await user.click(screen.getByRole('button', { name: tr.requestSubmit }))
+
+    expect(
+      await screen.findByText(catalogValue('tr', 'passwordReset.rateLimited')),
+    ).toBeInTheDocument()
+  })
+
   it('locks the trigger while the request mutation is pending', async () => {
     const user = userEvent.setup()
     let release!: () => void
@@ -300,5 +317,25 @@ describe('TC-ACC-030 — set-password stage (e-mailed link)', () => {
         screen.queryByRole('button', { name: tr.setSubmitting }),
       ).not.toBeInTheDocument(),
     )
+  })
+
+  it('shows rate-limited copy on the set-password stage when throttled', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/auth/reset-password`, 'RATE_LIMITED', {
+        method: 'post',
+      }),
+    )
+
+    renderReset('/reset-password?token=valid-token')
+    await user.type(
+      screen.getByLabelText(tr.passwordLabel, { exact: false }),
+      VALID_PASSWORD,
+    )
+    await user.click(screen.getByRole('button', { name: tr.setSubmit }))
+
+    expect(
+      await screen.findByText(catalogValue('tr', 'passwordReset.rateLimited')),
+    ).toBeInTheDocument()
   })
 })

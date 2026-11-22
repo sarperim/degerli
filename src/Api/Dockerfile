@@ -43,7 +43,7 @@ COPY --from=build --chown=app:app /app/publish ./
 # contents, not the pre-existing directory. As `USER app` the Serilog file sink
 # cannot create /app/logs → UnauthorizedAccessException at startup, so hand the whole
 # app dir (and the log dir) to `app` before dropping privileges.
-RUN mkdir -p /app/logs && chown -R app:app /app
+RUN mkdir -p /app/logs /app/data-protection-keys && chown -R app:app /app
 
 USER app
 

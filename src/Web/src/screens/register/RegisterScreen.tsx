@@ -27,7 +27,7 @@ import { useDraftStore } from '@/store/draftStore'
  * work via `?returnUrl` + the draft store (UXR-ACC-005, UXR-G-024).
  */
 export function RegisterScreen() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [searchParams] = useSearchParams()
   const rawReturnUrl = searchParams.get('returnUrl')
   // Only honour a site-relative target; a `//host` or `/\host` value would make
@@ -74,11 +74,21 @@ export function RegisterScreen() {
       focusFirstInvalid()
       return
     }
-    register.mutate({ email: trimmedEmail, password, noticeVersion: PRIVACY_NOTICE_VERSION })
+    register.mutate({
+      email: trimmedEmail,
+      password,
+      noticeVersion: PRIVACY_NOTICE_VERSION,
+      languagePref: i18n.resolvedLanguage === 'en' ? 'en' : 'tr',
+    })
   }
 
   const emailTaken =
     register.isError && isApiErrorCode(register.error, 'EMAIL_TAKEN')
+  const rateLimited =
+    register.isError && isApiErrorCode(register.error, 'RATE_LIMITED')
+  const signInTarget = returnUrl
+    ? `/sign-in?returnUrl=${encodeURIComponent(returnUrl)}`
+    : '/sign-in'
 
   if (register.isSuccess) {
     const target = returnUrl ?? '/'
@@ -213,9 +223,15 @@ export function RegisterScreen() {
 
         {register.isError ? (
           <div role="alert" className="flex flex-col gap-2 text-sm text-destructive">
-            <p>{emailTaken ? t('register.emailTaken') : t('register.genericError')}</p>
+            <p>
+              {emailTaken
+                ? t('register.emailTaken')
+                : rateLimited
+                  ? t('register.rateLimited')
+                  : t('register.genericError')}
+            </p>
             {emailTaken ? (
-              <Link className="underline" to="/sign-in">
+              <Link className="underline" to={signInTarget}>
                 {t('register.signInInstead')}
               </Link>
             ) : null}
@@ -226,6 +242,13 @@ export function RegisterScreen() {
           {register.isPending ? t('register.submitting') : t('register.submit')}
         </Button>
       </form>
+
+      <p className="text-sm text-muted-foreground">
+        {t('register.signInPrompt')}{' '}
+        <Link className="underline" to={signInTarget}>
+          {t('register.signInLink')}
+        </Link>
+      </p>
     </section>
   )
 }

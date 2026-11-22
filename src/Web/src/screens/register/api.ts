@@ -1,13 +1,18 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query'
 
-import { apiFetch } from '@/lib/api/client'
+import { apiFetch, clearCsrfToken, isApiErrorCode } from '@/lib/api/client'
 import type {
+  LanguagePref,
   RegisterRequest,
   RegisterResponse,
   ResendVerificationResponse,
   VerifyEmailRequest,
 } from '@/lib/api/contracts'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
+import {
+  clearPendingVerificationToken,
+  setPendingVerificationToken,
+} from '@/screens/register/pendingVerificationToken'
 
 /**
  * Identity mutations for SCR-007 (`03` §6).
@@ -21,6 +26,7 @@ export interface RegisterVariables {
   email: string
   password: string
   noticeVersion: string
+  languagePref?: LanguagePref
 }
 
 export function registerUser(variables: RegisterVariables): Promise<RegisterResponse> {
@@ -28,6 +34,7 @@ export function registerUser(variables: RegisterVariables): Promise<RegisterResp
     email: variables.email,
     password: variables.password,
     consent: { noticeVersion: variables.noticeVersion },
+    ...(variables.languagePref ? { languagePref: variables.languagePref } : {}),
   }
   return apiFetch<RegisterResponse>('/auth/register', {
     method: 'POST',
@@ -44,6 +51,7 @@ export function useRegister(): UseMutationResult<
   return useMutation({
     mutationFn: registerUser,
     onSuccess: () => {
+      clearCsrfToken()
       void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
     },
   })
@@ -62,7 +70,15 @@ export function useVerifyEmail(): UseMutationResult<void, Error, string> {
   return useMutation({
     mutationFn: verifyEmail,
     onSuccess: () => {
+      clearPendingVerificationToken()
       void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
+    },
+    onError: (error, token) => {
+      if (isApiErrorCode(error, 'UNAUTHENTICATED') || isApiErrorCode(error, 'RATE_LIMITED')) {
+        setPendingVerificationToken(token)
+      } else {
+        clearPendingVerificationToken()
+      }
     },
   })
 }

@@ -75,6 +75,10 @@ export function SignInScreen() {
   const lockedOut = login.isError && isApiErrorCode(login.error, 'LOCKED_OUT')
   const invalidCredentials =
     login.isError && isApiErrorCode(login.error, 'INVALID_CREDENTIALS')
+  const rateLimited = login.isError && isApiErrorCode(login.error, 'RATE_LIMITED')
+  const registerTarget = returnUrl
+    ? `/register?returnUrl=${encodeURIComponent(returnUrl)}`
+    : '/register'
 
   return (
     <section
@@ -139,7 +143,9 @@ export function SignInScreen() {
               ? t('signIn.lockedOut')
               : invalidCredentials
                 ? t('signIn.invalidCredentials')
-                : t('signIn.genericError')}
+                : rateLimited
+                  ? t('signIn.rateLimited')
+                  : t('signIn.genericError')}
           </p>
         ) : null}
 
@@ -154,7 +160,7 @@ export function SignInScreen() {
         </Link>
         <p className="text-muted-foreground">
           {t('signIn.registerPrompt')}{' '}
-          <Link className="underline" to="/register">
+          <Link className="underline" to={registerTarget}>
             {t('signIn.registerLink')}
           </Link>
         </p>

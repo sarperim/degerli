@@ -2,6 +2,9 @@ using Degerli.Api.Mail;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -52,7 +55,19 @@ public static class IdentityServiceCollectionExtensions
                 : ActivatorUtilities.CreateInstance<SmtpMailDispatcher>(provider));
 
         services.AddHttpContextAccessor();
-        services.AddDataProtection();
+        services.AddDataProtection().SetApplicationName("Degerli");
+        // Bind lazily from the resolved IConfiguration so both container env vars
+        // (DataProtection__KeysPath) and test-host post-registration overrides work.
+        services.AddOptions<KeyManagementOptions>()
+            .Configure<IConfiguration, ILoggerFactory>((options, resolved, loggerFactory) =>
+            {
+                var keysPath = resolved["DataProtection:KeysPath"];
+                if (!string.IsNullOrWhiteSpace(keysPath))
+                {
+                    Directory.CreateDirectory(keysPath);
+                    options.XmlRepository = new FileSystemXmlRepository(new DirectoryInfo(keysPath), loggerFactory);
+                }
+            });
         services.AddAuthorization();
 
         services.AddIdentityCore<ApplicationUser>(options =>
