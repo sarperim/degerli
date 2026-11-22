@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useInRouterContext, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useSession } from '@/lib/auth/session'
@@ -13,12 +14,67 @@ import { useLogout } from '@/screens/signIn/api'
  * mutation revokes the session server-side and invalidates `['session']`, while
  * the device-local language selection is left untouched (UXR-ACC-010).
  *
- * The anonymous sign-in/register entry points navigate to their routes. They are
- * plain controls (not `Link`s) so the header stays router-independent — it renders
- * in isolation in component tests as well as inside the shell.
+ * The anonymous sign-in/register entry points use SPA navigation when rendered
+ * inside a router (preventing full-page reloads that drop in-memory state and
+ * spend `/auth/*` rate-limit budget), and fall back to `window.location.assign`
+ * when rendered in isolation outside a router.
  */
+function RouterAnonymousActions() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => navigate('/sign-in')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
+      >
+        {t('header.signIn')}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => navigate('/register')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
+      >
+        {t('header.register')}
+      </Button>
+    </div>
+  )
+}
+
+function StandaloneAnonymousActions() {
+  const { t } = useTranslation()
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => window.location.assign('/sign-in')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
+      >
+        {t('header.signIn')}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => window.location.assign('/register')}
+        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
+      >
+        {t('header.register')}
+      </Button>
+    </div>
+  )
+}
+
 export function AuthState() {
   const { t } = useTranslation()
+  const inRouter = useInRouterContext()
   const { data } = useSession()
   const logout = useLogout()
 
@@ -46,25 +102,5 @@ export function AuthState() {
     )
   }
 
-  return (
-    <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => window.location.assign('/sign-in')}
-        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
-      >
-        {t('header.signIn')}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => window.location.assign('/register')}
-        className="h-[30px] rounded-[2px] px-2.5 font-mono text-[11px]"
-      >
-        {t('header.register')}
-      </Button>
-    </div>
-  )
+  return inRouter ? <RouterAnonymousActions /> : <StandaloneAnonymousActions />
 }

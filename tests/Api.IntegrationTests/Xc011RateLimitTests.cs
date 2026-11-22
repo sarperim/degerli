@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
@@ -25,15 +26,16 @@ public sealed class Xc011RateLimitTests : IClassFixture<ApiFactory>
     public async Task Auth_route_sixth_request_within_window_is_rate_limited()
     {
         using var client = _factory.CreateClient();
+        var csrfToken = await FetchCsrfTokenAsync(client);
         const string ip = "203.0.113.31";
 
         for (var i = 1; i <= 5; i++)
         {
-            using var allowed = await GetAuthProbeAsync(client, ip);
+            using var allowed = await PostAuthProbeAsync(client, ip, csrfToken);
             Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         }
 
-        using var rejected = await GetAuthProbeAsync(client, ip);
+        using var rejected = await PostAuthProbeAsync(client, ip, csrfToken);
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
 
         var payload = await rejected.Content.ReadAsStringAsync();
@@ -50,15 +52,16 @@ public sealed class Xc011RateLimitTests : IClassFixture<ApiFactory>
     public async Task A_different_client_ip_has_its_own_budget()
     {
         using var client = _factory.CreateClient();
+        var csrfToken = await FetchCsrfTokenAsync(client);
 
         for (var i = 1; i <= 5; i++)
         {
-            using var allowed = await GetAuthProbeAsync(client, "203.0.113.41");
+            using var allowed = await PostAuthProbeAsync(client, "203.0.113.41", csrfToken);
             Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         }
 
-        // Exhausted .31? No — a fresh IP still has room inside the window.
-        using var other = await GetAuthProbeAsync(client, "203.0.113.42");
+        // Exhausted .41? No — a fresh IP still has room inside the window.
+        using var other = await PostAuthProbeAsync(client, "203.0.113.42", csrfToken);
         Assert.Equal(HttpStatusCode.OK, other.StatusCode);
     }
 
@@ -110,29 +113,91 @@ public sealed class Xc011RateLimitTests : IClassFixture<ApiFactory>
     {
         await using var factory = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
         using var client = factory.CreateClient();
+        var csrfToken = await FetchCsrfTokenAsync(client);
 
         const string clientIp1 = "203.0.113.81";
         const string clientIp2 = "203.0.113.82";
 
         for (var i = 1; i <= 5; i++)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
-            request.Headers.Add("X-Forwarded-For", $"198.51.100.{i}, {clientIp1}");
-            using var allowed = await client.SendAsync(request);
+            using var allowed = await PostAuthProbeAsync(client, $"198.51.100.{i}, {clientIp1}", csrfToken);
             Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         }
 
         // 5 requests on .81 do not block .82 (independent auth budget)
-        using var client2Request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
-        client2Request.Headers.Add("X-Forwarded-For", clientIp2);
-        using var client2Allowed = await client.SendAsync(client2Request);
+        using var client2Allowed = await PostAuthProbeAsync(client, clientIp2, csrfToken);
         Assert.Equal(HttpStatusCode.OK, client2Allowed.StatusCode);
 
         // 6th request with spoofed prefix for clientIp1 is rejected because Production keys on rightmost hop
-        using var sixthRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
-        sixthRequest.Headers.Add("X-Forwarded-For", $"198.51.100.6, {clientIp1}");
-        using var rejected = await client.SendAsync(sixthRequest);
+        using var rejected = await PostAuthProbeAsync(client, $"198.51.100.6, {clientIp1}", csrfToken);
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+    }
+
+    [Fact]
+    public async Task Session_and_csrf_endpoints_do_not_consume_the_auth_mutation_budget()
+    {
+        using var client = _factory.CreateClient();
+        const string ip = "203.0.113.91";
+
+        for (var i = 1; i <= 10; i++)
+        {
+            using var sessionRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/session");
+            sessionRequest.Headers.Add("X-Forwarded-For", ip);
+            using var sessionResponse = await client.SendAsync(sessionRequest);
+            Assert.Equal(HttpStatusCode.OK, sessionResponse.StatusCode);
+        }
+
+        string csrfToken = string.Empty;
+        for (var i = 1; i <= 10; i++)
+        {
+            csrfToken = await FetchCsrfTokenAsync(client, ip);
+        }
+
+        for (var i = 1; i <= 5; i++)
+        {
+            using var allowed = await PostAuthProbeAsync(client, ip, csrfToken);
+            Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+
+        using var rejected = await PostAuthProbeAsync(client, ip, csrfToken);
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+
+        using var document = JsonDocument.Parse(await rejected.Content.ReadAsStringAsync());
+        Assert.Equal("RATE_LIMITED", document.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Trusted_proxy_forwarded_proto_marks_csrf_cookie_secure_while_untrusted_does_not()
+    {
+        var trustedContext = await _factory.Server.SendAsync(ctx =>
+        {
+            ctx.Request.Method = HttpMethods.Get;
+            ctx.Request.Path = "/api/v1/auth/csrf-token";
+            ctx.Request.Scheme = "http";
+            ctx.Connection.RemoteIpAddress = IPAddress.Parse("172.18.0.4");
+            ctx.Request.Headers["X-Forwarded-Proto"] = "https";
+        });
+
+        Assert.Equal(StatusCodes.Status200OK, trustedContext.Response.StatusCode);
+        var trustedCsrfCookie = Assert.Single(
+            trustedContext.Response.Headers.SetCookie.ToArray(),
+            cookie => cookie is not null && cookie.StartsWith("degerli.csrf=", StringComparison.Ordinal));
+        Assert.Contains("secure", trustedCsrfCookie, StringComparison.OrdinalIgnoreCase);
+
+        var untrustedContext = await _factory.Server.SendAsync(ctx =>
+        {
+            ctx.Request.Method = HttpMethods.Get;
+            ctx.Request.Path = "/api/v1/auth/csrf-token";
+            ctx.Request.Scheme = "http";
+            ctx.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.77");
+            ctx.Request.Headers["X-Forwarded-Proto"] = "https";
+        });
+
+        Assert.Equal(StatusCodes.Status200OK, untrustedContext.Response.StatusCode);
+        var untrustedCsrfCookie = Assert.Single(
+            untrustedContext.Response.Headers.SetCookie.ToArray(),
+            cookie => cookie is not null && cookie.StartsWith("degerli.csrf=", StringComparison.Ordinal));
+        Assert.DoesNotContain("secure", untrustedCsrfCookie, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -178,10 +243,28 @@ public sealed class Xc011RateLimitTests : IClassFixture<ApiFactory>
         public IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 
-    private static Task<HttpResponseMessage> GetAuthProbeAsync(HttpClient client, string ip)
+    private static async Task<string> FetchCsrfTokenAsync(HttpClient client, string? ip = null)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            request.Headers.Add("X-Forwarded-For", ip);
+        }
+
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("token").GetString()!;
+    }
+
+    private static Task<HttpResponseMessage> PostAuthProbeAsync(HttpClient client, string ip, string csrfToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/forgot-password")
+        {
+            Content = JsonContent.Create(new { }),
+        };
         request.Headers.Add("X-Forwarded-For", ip);
+        request.Headers.Add("X-CSRF-Token", csrfToken);
         return client.SendAsync(request);
     }
 }

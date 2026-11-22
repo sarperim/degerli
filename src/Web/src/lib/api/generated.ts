@@ -1764,6 +1764,7 @@ export interface components {
         RegisterRequest: {
             consent: null | components["schemas"]["ConsentInput"];
             email: null | string;
+            languagePref?: null | string;
             password: null | string;
         };
         RenameScenarioRequest: {

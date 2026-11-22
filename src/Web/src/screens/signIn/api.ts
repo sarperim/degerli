@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query'
 
-import { apiFetch } from '@/lib/api/client'
+import { apiFetch, clearCsrfToken } from '@/lib/api/client'
 import type { LoginRequest, LoginResponse } from '@/lib/api/contracts'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
+import { clearPendingVerificationToken } from '@/screens/register/pendingVerificationToken'
 
 /**
  * Identity mutations for SCR-008 sign-in and the global sign-out control
@@ -36,6 +37,7 @@ export function useLogin(): UseMutationResult<LoginResponse, Error, LoginVariabl
   return useMutation({
     mutationFn: loginUser,
     onSuccess: () => {
+      clearCsrfToken()
       void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
     },
   })
@@ -50,6 +52,8 @@ export function useLogout(): UseMutationResult<void, Error, void> {
   return useMutation({
     mutationFn: logoutUser,
     onSuccess: () => {
+      clearCsrfToken()
+      clearPendingVerificationToken()
       void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
     },
   })

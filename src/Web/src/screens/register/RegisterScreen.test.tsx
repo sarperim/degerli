@@ -236,4 +236,80 @@ describe('TC-ACC-023 — Register error and outcome states render', () => {
     })
     expect(returnLink).toHaveAttribute('href', '/screener')
   })
+
+  it('renders RATE_LIMITED copy and preserves input', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/auth/register`, 'RATE_LIMITED', {
+        method: 'post',
+      }),
+    )
+
+    renderRegister()
+    await fillValid(user)
+    await user.click(screen.getByRole('button', { name: tr.submit }))
+
+    expect(
+      await screen.findByText(catalogValue('tr', 'register.rateLimited')),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(tr.emailLabel, { exact: false })).toHaveValue(VALID_EMAIL)
+  })
+
+  it('renders a proactive sign-in link and forwards returnUrl on sign-in links', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/auth/register`, 'EMAIL_TAKEN', {
+        method: 'post',
+      }),
+    )
+
+    renderRegister('/register?returnUrl=%2Fscreener')
+    expect(
+      screen.getByRole('link', { name: catalogValue('tr', 'register.signInLink') }),
+    ).toHaveAttribute('href', '/sign-in?returnUrl=%2Fscreener')
+
+    await fillValid(user)
+    await user.click(screen.getByRole('button', { name: tr.submit }))
+
+    await screen.findByText(tr.emailTaken)
+    expect(
+      screen.getByRole('link', { name: catalogValue('tr', 'register.signInInstead') }),
+    ).toHaveAttribute('href', '/sign-in?returnUrl=%2Fscreener')
+  })
+
+  it('sends languagePref: en when rendered in English', async () => {
+    const user = userEvent.setup()
+    let receivedBody: Record<string, unknown> | null = null
+    server.use(
+      http.post(`${API_BASE}/auth/register`, async ({ request }) => {
+        receivedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ email: VALID_EMAIL }, { status: 201 })
+      }),
+    )
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={['/register']}>
+        <RegisterScreen />
+      </MemoryRouter>,
+      { language: 'en' },
+    )
+
+    await user.type(
+      screen.getByLabelText(catalogValue('en', 'register.emailLabel'), { exact: false }),
+      VALID_EMAIL,
+    )
+    await user.type(
+      screen.getByLabelText(catalogValue('en', 'register.passwordLabel'), { exact: false }),
+      VALID_PASSWORD,
+    )
+    await user.click(
+      screen.getByRole('checkbox', { name: catalogValue('en', 'register.consentLabel') }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: catalogValue('en', 'register.submit') }),
+    )
+
+    await screen.findByText(catalogValue('en', 'register.successTitle'))
+    expect(receivedBody).toMatchObject({ languagePref: 'en' })
+  })
 })

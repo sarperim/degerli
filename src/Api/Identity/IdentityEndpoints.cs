@@ -17,7 +17,7 @@ public sealed record ConsentInput(string? NoticeVersion);
 /// Registration request. Unknown fields are ignored by the serializer (payload
 /// evolution, `03` §11) and never stored (BR-ACC-001).
 /// </summary>
-public sealed record RegisterRequest(string? Email, string? Password, ConsentInput? Consent);
+public sealed record RegisterRequest(string? Email, string? Password, ConsentInput? Consent, string? LanguagePref = null);
 
 /// <summary>
 /// Identity endpoint surface owned by TKT-acc-002: registration (account + consent +
@@ -27,9 +27,11 @@ public static class IdentityEndpoints
 {
     public static IEndpointRouteBuilder MapDegerliIdentityEndpoints(this IEndpointRouteBuilder api)
     {
+        var authSession = api.MapGroup("/auth");
+        authSession.MapGet("/session", SessionAsync).AllowAnonymous();
+
         var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
         auth.MapPost("/register", RegisterAsync).AllowAnonymous();
-        auth.MapGet("/session", SessionAsync).AllowAnonymous();
 
         // Later ACC tickets extend the auth surface with their own endpoint files.
         // TKT-acc-005: reset endpoints own their own /auth group, so map from the root.
@@ -85,6 +87,11 @@ public static class IdentityEndpoints
         var email = request!.Email!.Trim();
         var password = request.Password!;
         var noticeVersion = request.Consent!.NoticeVersion!;
+        var normalizedLanguagePref = request.LanguagePref?.Trim();
+        var languagePref = string.Equals(normalizedLanguagePref, "en", StringComparison.Ordinal)
+            || string.Equals(normalizedLanguagePref, "tr", StringComparison.Ordinal)
+            ? normalizedLanguagePref!
+            : "tr";
 
         if (await userManager.FindByEmailAsync(email) is not null)
         {
@@ -95,7 +102,7 @@ public static class IdentityEndpoints
         {
             UserName = email,
             Email = email,
-            LanguagePref = "tr",
+            LanguagePref = languagePref,
         };
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);

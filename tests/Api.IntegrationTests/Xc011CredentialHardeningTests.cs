@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Degerli.Api.Infrastructure;
 using Degerli.Persistence.Entities;
@@ -73,28 +74,67 @@ public sealed class Xc011CredentialHardeningTests : IClassFixture<ApiFactory>
         var overrides = new Dictionary<string, string?> { ["RateLimits:WindowSeconds"] = "1" };
         await using var factory = new ApiFactory(overrides, HealthStatus.Healthy);
         using var client = factory.CreateClient();
+        var csrfToken = await FetchCsrfTokenAsync(client);
         const string ip = "203.0.113.71";
 
         for (var i = 1; i <= 5; i++)
         {
-            using var allowed = await GetAuthProbeAsync(client, ip);
+            using var allowed = await PostAuthProbeAsync(client, ip, csrfToken);
             Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
         }
 
-        using var rejected = await GetAuthProbeAsync(client, ip);
+        using var rejected = await PostAuthProbeAsync(client, ip, csrfToken);
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
 
         // One 1-second window elapses: the fixed window replenishes and the budget resets.
         await Task.Delay(TimeSpan.FromMilliseconds(1500));
 
-        using var afterReset = await GetAuthProbeAsync(client, ip);
+        using var afterReset = await PostAuthProbeAsync(client, ip, csrfToken);
         Assert.Equal(HttpStatusCode.OK, afterReset.StatusCode);
     }
 
-    private static Task<HttpResponseMessage> GetAuthProbeAsync(HttpClient client, string ip)
+    [Fact]
+    public async Task Data_protection_keys_are_persisted_when_keys_path_is_configured()
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/csrf-token");
+        var keysDir = Path.Combine(Path.GetTempPath(), $"degerli-dp-keys-{Guid.NewGuid():N}");
+        try
+        {
+            var overrides = new Dictionary<string, string?> { ["DataProtection:KeysPath"] = keysDir };
+            await using var factory = new ApiFactory(overrides, HealthStatus.Healthy);
+            using var client = factory.CreateClient();
+
+            using var response = await client.GetAsync("/api/v1/auth/csrf-token");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            Assert.True(Directory.Exists(keysDir));
+            var keyFiles = Directory.GetFiles(keysDir, "key-*.xml");
+            Assert.NotEmpty(keyFiles);
+        }
+        finally
+        {
+            if (Directory.Exists(keysDir))
+            {
+                Directory.Delete(keysDir, recursive: true);
+            }
+        }
+    }
+
+    private static async Task<string> FetchCsrfTokenAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/v1/auth/csrf-token");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("token").GetString()!;
+    }
+
+    private static Task<HttpResponseMessage> PostAuthProbeAsync(HttpClient client, string ip, string csrfToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/forgot-password")
+        {
+            Content = JsonContent.Create(new { }),
+        };
         request.Headers.Add("X-Forwarded-For", ip);
+        request.Headers.Add("X-CSRF-Token", csrfToken);
         return client.SendAsync(request);
     }
 }

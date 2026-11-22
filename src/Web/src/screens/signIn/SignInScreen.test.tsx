@@ -197,4 +197,21 @@ describe('SCR-008 — Sign In form contract', () => {
     await waitFor(() => expect(screen.getByTestId('home')).toBeInTheDocument())
     expect(screen.getByTestId('location')).toHaveTextContent('/')
   })
+
+  it('renders RATE_LIMITED copy and forwards returnUrl on the register link', async () => {
+    const user = userEvent.setup()
+    server.use(
+      problemHandler(`${API_BASE}/auth/login`, 'RATE_LIMITED', { method: 'post' }),
+    )
+
+    renderSignIn('/sign-in?returnUrl=%2Fverify-email')
+    expect(
+      screen.getByRole('link', { name: tr.registerLink }),
+    ).toHaveAttribute('href', '/register?returnUrl=%2Fverify-email')
+
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: tr.submit }))
+
+    await screen.findByText(catalogValue('tr', 'signIn.rateLimited'))
+  })
 })

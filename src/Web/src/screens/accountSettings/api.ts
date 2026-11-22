@@ -15,6 +15,7 @@ import type {
   UpdateLanguagePreferenceRequest,
 } from '@/lib/api/contracts'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
+import { clearPendingVerificationToken } from '@/screens/register/pendingVerificationToken'
 
 /**
  * Account-settings data access for SCR-010 (`03-api-design.md` §6; UC-ACC-003).
@@ -90,6 +91,7 @@ export function useDeleteAccount(): UseMutationResult<void, Error, void> {
       // the header and gated surfaces reflect anonymity immediately (mutation
       // matrix §8.4, UXR-ACC-019).
       clearCsrfToken()
+      clearPendingVerificationToken()
       queryClient.clear()
       queryClient.setQueryData<AnonymousSession>(SESSION_QUERY_KEY, {
         authenticated: false,

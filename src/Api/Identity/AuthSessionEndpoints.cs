@@ -33,7 +33,9 @@ public static class AuthSessionEndpoints
     {
         var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
         auth.MapPost("/login", LoginAsync).AllowAnonymous();
-        auth.MapPost("/logout", LogoutAsync).RequireAuthorization();
+
+        var authSession = api.MapGroup("/auth");
+        authSession.MapPost("/logout", LogoutAsync).RequireAuthorization();
         return api;
     }
 

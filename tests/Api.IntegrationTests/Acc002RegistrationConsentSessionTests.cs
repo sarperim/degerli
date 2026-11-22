@@ -202,6 +202,58 @@ public sealed class Acc002RegistrationConsentSessionTests : IClassFixture<Postgr
         Assert.False(document.RootElement.GetProperty("verified").GetBoolean());
     }
 
+    [Fact]
+    public async Task Register_preserves_valid_language_pref_and_falls_back_for_unknown_values()
+    {
+        await using var factory = new DegerliAppFactory(_postgres.ConnectionString);
+
+        using (var englishClient = CreateClient(factory))
+        {
+            var email = UniqueEmail("acc002-lang-en");
+            using var response = await RegisterAsync(englishClient, new
+            {
+                email,
+                password = "ValidPass123!",
+                consent = new { noticeVersion = "2026-10" },
+                languagePref = "en",
+            });
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+            using var me = await GetAsync(englishClient, "/api/v1/me");
+            Assert.Equal(HttpStatusCode.OK, me.StatusCode);
+            using var meDoc = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+            Assert.Equal("en", meDoc.RootElement.GetProperty("languagePref").GetString());
+
+            using var session = await GetAsync(englishClient, "/api/v1/auth/session");
+            Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+            using var sessionDoc = JsonDocument.Parse(await session.Content.ReadAsStringAsync());
+            Assert.Equal("en", sessionDoc.RootElement.GetProperty("languagePref").GetString());
+        }
+
+        using (var fallbackClient = CreateClient(factory))
+        {
+            var email = UniqueEmail("acc002-lang-fr");
+            using var response = await RegisterAsync(fallbackClient, new
+            {
+                email,
+                password = "ValidPass123!",
+                consent = new { noticeVersion = "2026-10" },
+                languagePref = "fr",
+            });
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+            using var me = await GetAsync(fallbackClient, "/api/v1/me");
+            Assert.Equal(HttpStatusCode.OK, me.StatusCode);
+            using var meDoc = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+            Assert.Equal("tr", meDoc.RootElement.GetProperty("languagePref").GetString());
+
+            using var session = await GetAsync(fallbackClient, "/api/v1/auth/session");
+            Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+            using var sessionDoc = JsonDocument.Parse(await session.Content.ReadAsStringAsync());
+            Assert.Equal("tr", sessionDoc.RootElement.GetProperty("languagePref").GetString());
+        }
+    }
+
     private static HttpClient CreateClient(DegerliAppFactory factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions
         {

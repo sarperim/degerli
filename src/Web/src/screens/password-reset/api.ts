@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query'
 
-import { apiFetch } from '@/lib/api/client'
+import { apiFetch, clearCsrfToken } from '@/lib/api/client'
 import type {
   ForgotPasswordRequest,
   ForgotPasswordResponse,
@@ -64,6 +64,7 @@ export function useResetPassword(): UseMutationResult<
   return useMutation({
     mutationFn: resetPassword,
     onSuccess: () => {
+      clearCsrfToken()
       void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
     },
   })

@@ -135,7 +135,9 @@ function RequestStage() {
 
         {forgot.isError ? (
           <p role="alert" className="text-sm text-destructive">
-            {t('passwordReset.requestGenericError')}
+            {isApiErrorCode(forgot.error, 'RATE_LIMITED')
+              ? t('passwordReset.rateLimited')
+              : t('passwordReset.requestGenericError')}
           </p>
         ) : null}
 
@@ -253,7 +255,9 @@ function SetPasswordStage({ token }: { token: string }) {
 
         {reset.isError && !expired ? (
           <p role="alert" className="text-sm text-destructive">
-            {t('passwordReset.setGenericError')}
+            {isApiErrorCode(reset.error, 'RATE_LIMITED')
+              ? t('passwordReset.rateLimited')
+              : t('passwordReset.setGenericError')}
           </p>
         ) : null}
 

@@ -76,11 +76,13 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
  */
 export class ApiError extends Error {
   readonly problem: ProblemDetails | null
+  readonly status: number
 
   constructor(problem: ProblemDetails | null, status: number) {
     super(problem?.title ?? `HTTP ${status}`)
     this.name = 'ApiError'
     this.problem = problem
+    this.status = status
   }
 
   /** Stable machine error code, or `null` for a non-contract failure. */

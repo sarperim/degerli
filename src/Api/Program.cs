@@ -96,9 +96,10 @@ app.MapOpenApi("/api/v1/openapi.json");
 
 var api = app.MapGroup("/api/v1");
 
-// Auth plumbing: the antiforgery token endpoint is anonymous; every unsafe method
-// under /api/v1 must present the token in the X-CSRF-Token header.
-var auth = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
+// Auth plumbing: the antiforgery token endpoint is anonymous and read-only, so it uses
+// the global rate limiter; every unsafe method under /api/v1 must present the token in
+// the X-CSRF-Token header.
+var auth = api.MapGroup("/auth");
 auth.MapGet("/csrf-token", CsrfToken).AllowAnonymous();
 
 // Identity module endpoints (TKT-acc-002): registration + session; the /me read
@@ -161,7 +162,8 @@ if (!app.Environment.IsProduction())
     api.MapGet("/market/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
     api.MapGet("/screener/metrics/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
     api.MapGet("/me/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
-    auth.MapPost("/_probe", () => Results.NoContent()).AllowAnonymous();
+    var authProbe = api.MapGroup("/auth").RequireRateLimiting(RateLimitingSetup.AuthPolicy);
+    authProbe.MapPost("/_probe", () => Results.NoContent()).AllowAnonymous();
     admin.MapGet("/_probe", () => Results.Ok(new { ok = true })).AllowAnonymous();
 }
 

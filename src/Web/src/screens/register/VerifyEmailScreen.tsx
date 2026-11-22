@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router'
 
 import { isApiErrorCode } from '@/lib/api/client'
+import { useSession } from '@/lib/auth/session'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useResendVerification, useVerifyEmail } from '@/screens/register/api'
+import { peekPendingVerificationToken } from '@/screens/register/pendingVerificationToken'
 
 /**
  * SCR-007 — e-mail verification link landing (FR-ACC-008; UXR-ACC-006/021).
@@ -18,13 +20,16 @@ import { useResendVerification, useVerifyEmail } from '@/screens/register/api'
  * `verify-email` is session-scoped on the API, so a valid link opened without a
  * session answers 401 `UNAUTHENTICATED` rather than 410 `TOKEN_EXPIRED` (SF2):
  * that state directs the user to sign in instead of offering a resend that would
- * itself dead-end unauthenticated.
+ * itself dead-end unauthenticated, while holding the token only in memory so
+ * returning to `/verify-email` after sign-in completes verification automatically.
  */
 export function VerifyEmailScreen() {
   const { t } = useTranslation()
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+  const urlToken = searchParams.get('token')
+  const token = urlToken ?? peekPendingVerificationToken()
 
+  const session = useSession()
   const verify = useVerifyEmail()
   const resend = useResendVerification()
   const startedFor = useRef<string | null>(null)
@@ -40,7 +45,7 @@ export function VerifyEmailScreen() {
   // linger in history or a shared URL (S3). `replaceState` bypasses router state,
   // so the verification above still sees the token.
   useEffect(() => {
-    if (!token) return
+    if (!urlToken) return
     const url = new URL(window.location.href)
     if (!url.searchParams.has('token')) return
     url.searchParams.delete('token')
@@ -49,10 +54,17 @@ export function VerifyEmailScreen() {
       '',
       `${url.pathname}${url.search}${url.hash}`,
     )
-  }, [token])
+  }, [urlToken])
 
   const unauthenticated = isApiErrorCode(verify.error, 'UNAUTHENTICATED')
-  const failed = !token || verify.isError
+  const rateLimited = isApiErrorCode(verify.error, 'RATE_LIMITED')
+  const alreadyVerified =
+    !token && session.data?.authenticated === true && session.data.verified === true
+  const verified = verify.isSuccess || alreadyVerified
+  const checking =
+    (Boolean(token) && verify.isPending) ||
+    (!token && !verify.isError && session.isPending)
+  const failed = !verified && !checking && (!token || verify.isError)
 
   return (
     <section
@@ -63,19 +75,24 @@ export function VerifyEmailScreen() {
         {t('verifyEmail.title')}
       </h1>
 
-      {token && verify.isPending ? (
+      {checking ? (
         <p role="status" className="text-muted-foreground">
           {t('verifyEmail.checking')}
         </p>
       ) : null}
 
-      {verify.isSuccess ? (
+      {verified ? (
         <div
           role="status"
-          className="flex flex-col gap-1 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
+          className="flex flex-col gap-3 border-l-2 border-[var(--brand-accent)] bg-muted/30 p-3"
         >
-          <h2 className="font-medium">{t('verifyEmail.verifiedTitle')}</h2>
-          <p className="text-sm text-muted-foreground">{t('verifyEmail.verifiedBody')}</p>
+          <div className="flex flex-col gap-1">
+            <h2 className="font-medium">{t('verifyEmail.verifiedTitle')}</h2>
+            <p className="text-sm text-muted-foreground">{t('verifyEmail.verifiedBody')}</p>
+          </div>
+          <Link className={buttonVariants()} to="/">
+            {t('verifyEmail.continueToApp')}
+          </Link>
         </div>
       ) : null}
 
@@ -88,19 +105,34 @@ export function VerifyEmailScreen() {
             <h2 className="font-medium">
               {unauthenticated
                 ? t('verifyEmail.unauthenticatedTitle')
-                : t('verifyEmail.failedTitle')}
+                : rateLimited
+                  ? t('verifyEmail.rateLimitedTitle')
+                  : t('verifyEmail.failedTitle')}
             </h2>
             <p className="text-sm text-muted-foreground">
               {unauthenticated
                 ? t('verifyEmail.unauthenticatedBody')
-                : t('verifyEmail.failedBody')}
+                : rateLimited
+                  ? t('verifyEmail.rateLimitedBody')
+                  : t('verifyEmail.failedBody')}
             </p>
           </div>
 
           {unauthenticated ? (
-            <Link className={buttonVariants()} to="/sign-in">
+            <Link className={buttonVariants()} to="/sign-in?returnUrl=%2Fverify-email">
               {t('verifyEmail.signIn')}
             </Link>
+          ) : rateLimited ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={verify.isPending}
+              onClick={() => {
+                if (token) verify.mutate(token)
+              }}
+            >
+              {t('verifyEmail.retry')}
+            </Button>
           ) : resend.isSuccess ? (
             <p role="status" className="text-sm text-muted-foreground">
               {t('verifyEmail.resent')}
