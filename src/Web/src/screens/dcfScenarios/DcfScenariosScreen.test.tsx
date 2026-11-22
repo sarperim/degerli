@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 
+import { AppShell } from '@/components/AppShell'
 import type { SavedScenario } from '@/lib/api/contracts'
+import { routeById } from '@/routes/routeConfig'
+import { DcfScenariosScreen } from '@/screens/dcfScenarios/DcfScenariosScreen'
 import { catalogValue } from '@/test/i18n'
 import {
   ANONYMOUS_SESSION_FIXTURE,
@@ -12,8 +16,10 @@ import {
   problemHandler,
   scenariosListHandler,
   sessionHandler,
+  VERIFIED_SESSION_FIXTURE,
 } from '@/test/msw/handlers'
 import { server } from '@/test/msw/server'
+import { renderWithProviders } from '@/test/render'
 import { fill, renderScenarios, resetScenariosTest } from '@/screens/dcfScenarios/testSupport'
 
 /**
@@ -45,6 +51,23 @@ const BETA_BASE: SavedScenario = {
 }
 
 const GROUPED: SavedScenario[] = [DCF_SCENARIO_ALFA, ALFA_AGGRESSIVE, BETA_BASE]
+
+/** Minimal `GET /meta/data-sources` catalog so the shell footer can render. */
+function dataSourcesHandler() {
+  return http.get(`${API_BASE}/meta/data-sources`, () =>
+    HttpResponse.json({
+      sources: [
+        {
+          id: 'isyatirim-prices',
+          class: 'prices',
+          source: 'İş Yatırım',
+          state: 'live',
+          nature: 'eod',
+        },
+      ],
+    }),
+  )
+}
 
 beforeEach(() => resetScenariosTest())
 
@@ -108,6 +131,50 @@ describe('TC-VAL-022 — My DCF Scenarios list', () => {
     expect(
       within(error).getByRole('button', { name: TR('common.retry') }),
     ).toBeInTheDocument()
+  })
+
+  it('does not render an inline disclaimer duplicate (the shell footer owns it)', async () => {
+    server.use(scenariosListHandler(GROUPED))
+
+    const { container } = renderScenarios()
+    await screen.findByTestId('dcf-scenarios-list')
+
+    // UXR-G-016 is satisfied once by AppShell's footer for research routes.
+    expect(container.querySelector('[data-slot="disclaimer"]')).toBeNull()
+  })
+
+  it('renders the informational disclaimer exactly once at route level (shell footer only)', async () => {
+    server.use(
+      sessionHandler(VERIFIED_SESSION_FIXTURE),
+      scenariosListHandler(GROUPED),
+      dataSourcesHandler(),
+    )
+
+    const scenariosRoute = routeById('dcfScenarios')
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <AppShell />,
+          children: [
+            {
+              path: scenariosRoute.path,
+              element: <DcfScenariosScreen />,
+              handle: { research: scenariosRoute.research === true },
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/scenarios'] },
+    )
+
+    const { container } = renderWithProviders(<RouterProvider router={router} />)
+    await screen.findByTestId('dcf-scenarios-list')
+
+    // The shell footer owns the single research disclaimer; the screen adds none.
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-slot="disclaimer"]')).toHaveLength(1),
+    )
   })
 })
 

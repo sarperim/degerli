@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { FolderOpen, Pencil, Trash2 } from 'lucide-react'
 
-import { Disclaimer } from '@/components/Disclaimer'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -45,8 +44,10 @@ import {
  *
  * Anonymous direct access presents the sign-in path scoped to this feature
  * (UXR-VAL-019); an account with no scenarios gets a guidance state (UXR-VAL-020).
- * As a research surface the screen carries the informational-only disclaimer
- * (UXR-G-016).
+ *
+ * As a research surface the informational-only disclaimer (UXR-G-016) is
+ * provided once by AppShell's footer via the route's `research: true` handle;
+ * this screen must not render an inline duplicate.
  */
 
 interface ScenarioGroup {
@@ -390,8 +391,6 @@ export function DcfScenariosScreen() {
         pending={remove.isPending}
         onConfirm={confirmDelete}
       />
-
-      <Disclaimer variant="note" />
     </section>
   )
 }

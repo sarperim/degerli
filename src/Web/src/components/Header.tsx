@@ -40,7 +40,14 @@ export function Header() {
       aria-label={t('header.ariaLabel')}
       className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md"
     >
-      <div className="mx-auto flex max-w-content flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0">
+      <div
+        className={cn(
+          'mx-auto flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2',
+          authenticated
+            ? 'max-w-[1600px] sm:px-6 min-[1400px]:min-h-[54px] min-[1400px]:flex-nowrap min-[1400px]:px-8 min-[1400px]:py-0'
+            : 'max-w-content sm:px-8 lg:min-h-[54px] lg:flex-nowrap lg:py-0',
+        )}
+      >
         <NavLink to="/" data-magnetic="" className="flex shrink-0 items-baseline gap-2">
           <span
             lang="tr"
@@ -48,14 +55,24 @@ export function Header() {
           >
             {t('app.name')}
           </span>
-          <span className="hidden font-mono text-[10px] tracking-[0.06em] text-muted-foreground sm:inline">
+          <span
+            className={cn(
+              'hidden font-mono text-[10px] tracking-[0.06em] text-muted-foreground',
+              authenticated ? '2xl:inline' : 'sm:inline',
+            )}
+          >
             BIST EOD
           </span>
         </NavLink>
 
         <nav
           aria-label={t('header.primaryNav')}
-          className="order-last flex w-full flex-wrap items-center gap-x-4 gap-y-1 lg:order-none lg:w-auto lg:min-w-0"
+          className={cn(
+            'order-last flex w-full flex-wrap items-center',
+            authenticated
+              ? 'gap-x-3.5 gap-y-1.5 border-t border-border/60 pt-2 min-[1400px]:order-none min-[1400px]:w-auto min-[1400px]:min-w-0 min-[1400px]:flex-nowrap min-[1400px]:border-t-0 min-[1400px]:pt-0'
+              : 'gap-x-4 gap-y-1 lg:order-none lg:w-auto lg:min-w-0 lg:flex-nowrap',
+          )}
         >
           {routes.map((route) => (
             <NavLink
@@ -77,7 +94,14 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="ms-auto flex w-full flex-wrap items-center gap-2 sm:w-auto lg:shrink-0 lg:flex-nowrap">
+        <div
+          className={cn(
+            'ms-auto flex w-full flex-wrap items-center gap-2 sm:w-auto',
+            authenticated
+              ? 'min-[1400px]:shrink-0 min-[1400px]:flex-nowrap'
+              : 'lg:shrink-0 lg:flex-nowrap',
+          )}
+        >
           <StockSearch />
           <ThemeToggle />
           <LanguageToggle />
