@@ -9,6 +9,7 @@ using Degerli.Fixtures;
 using Degerli.Ingestion;
 using Degerli.Ingestion.KapPublic;
 using Degerli.Ingestion.Scheduling;
+using Degerli.Ingestion.Sources;
 using Degerli.Persistence;
 using Degerli.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -1477,6 +1478,115 @@ public sealed class KapPublicSourceTests : IClassFixture<WireMockFixture>, IClas
         var http = scope.ServiceProvider.GetRequiredKeyedService<HttpClient>(KapPublicSourceOptions.ClientKey);
         Assert.Equal(HttpVersion.Version20, http.DefaultRequestVersion);
         Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, http.DefaultVersionPolicy);
+    }
+
+    // =================================================================================
+    // SLICE-043 — truncated 429 (`ResponseEnded`) and keep-alive idle timeout
+    // =================================================================================
+
+    [Fact]
+    public void SLICE_043_a_handler_idle_timeout_expires_below_kap_keepalive()
+    {
+        var shipped = new KapPublicSourceOptions();
+        using var handler = KapPublicHttpHandlerFactory.Create(shipped);
+
+        Assert.Equal(TimeSpan.FromSeconds(4), handler.PooledConnectionIdleTimeout);
+        Assert.Equal(TimeSpan.FromMinutes(10), handler.PooledConnectionLifetime);
+    }
+
+    [Fact]
+    public async Task SLICE_043_b_response_ended_on_attempt_1_waits_quota_backoff_once_and_recovers()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            waits.Add(wait);
+            return Task.CompletedTask;
+        };
+
+        var reportBody = RealSourceCatalog.Get(RealSourceCatalog.KapPublicReport).Body;
+        var attempts = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                throw new HttpRequestException(
+                    HttpRequestError.ResponseEnded,
+                    "The response ended prematurely.");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(reportBody, Encoding.UTF8, "text/html"),
+            };
+        });
+
+        var client = BuildClient(handler, clock, quotaDelay: quotaRecorder);
+        var body = await client.GetDetailStringAsync(ReportPath);
+
+        Assert.Equal(reportBody, body);
+        Assert.Equal(2, handler.Requests.Count);
+        var wait = Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs), wait);
+    }
+
+    [Fact]
+    public async Task SLICE_043_c_repeated_response_ended_defers_walk_without_quarantine()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            waits.Add(wait);
+            return Task.CompletedTask;
+        };
+
+        var handler = new RecordingHandler((Func<HttpRequestMessage, HttpResponseMessage>)(_ =>
+            throw new HttpRequestException(
+                HttpRequestError.ResponseEnded,
+                "The response ended prematurely.")));
+
+        var client = BuildClient(handler, clock, quotaDelay: quotaRecorder);
+        var quota = await Assert.ThrowsAsync<KapPublicQuotaException>(
+            () => client.GetDetailStringAsync(ReportPath));
+
+        Assert.True(quota.Deferred);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, quota.ReasonCode);
+        Assert.Equal(TimeSpan.FromMilliseconds(KapPublicSourceOptions.DefaultQuotaBackoffMs), quota.RequiredWait);
+        Assert.Equal(KapPublicHttpSourceClient.MaxQuotaAttempts, handler.Requests.Count);
+        Assert.Single(waits);
+
+        var reader = new KapPublicSourceReader(client, OptionsOf());
+        var read = await reader.ReadReportAsync(1643141);
+        Assert.True(read.IsQuotaDeferred);
+        Assert.True(read.IsSourceDown);
+        Assert.False(read.IsQuarantined);
+        Assert.Equal(KapPublicReasonCodes.WalkQuotaBackoff, read.ReasonCode);
+    }
+
+    [Fact]
+    public async Task SLICE_043_d_ordinary_transport_error_still_throws_source_fetch_exception()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.Zero));
+        var waits = new List<TimeSpan>();
+        KapPublicDelay quotaRecorder = (wait, _) =>
+        {
+            waits.Add(wait);
+            return Task.CompletedTask;
+        };
+
+        var handler = new RecordingHandler((Func<HttpRequestMessage, HttpResponseMessage>)(_ =>
+            throw new HttpRequestException("connection refused")));
+
+        var client = BuildClient(handler, clock, quotaDelay: quotaRecorder);
+        var ex = await Assert.ThrowsAsync<SourceFetchException>(
+            () => client.GetDetailStringAsync(ReportPath));
+
+        Assert.Contains("connection refused", ex.Message, StringComparison.Ordinal);
+        Assert.Single(handler.Requests);
+        Assert.Empty(waits);
     }
 
     // =================================================================================
