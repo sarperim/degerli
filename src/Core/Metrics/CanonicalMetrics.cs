@@ -198,7 +198,14 @@ public static class CanonicalMetrics
         var ebitda = t.Ebitda ?? Sum(ebit, depr);
         var grossProfit = t.GrossProfit ?? Difference(rev, t.Cogs);
         var fcf = FreeCashFlow(t.Ocf, t.Capex);
-        var debt = Sum(t.StDebt, t.LtDebt);
+        // Debt on a present balance sheet (SLICE-042): KAP omits empty debt rows rather than
+        // reporting 0, so a company with no short-term borrowings or zero financial debt carries
+        // NULL for the absent leg(s). Treat an omitted debt leg as 0 whenever the other leg is
+        // present or the balance sheet itself is present (`TotalEquity` or `TotalAssets` non-null);
+        // when no balance sheet exists at all, `debt` remains NULL.
+        decimal? debt = (t.StDebt is not null || t.LtDebt is not null || equity is not null || t.TotalAssets is not null)
+            ? (t.StDebt ?? 0m) + (t.LtDebt ?? 0m)
+            : null;
         var ev = Sum3(mcap, debt, Negate(t.Cash));
         var investedCapital = Sum3(debt, equity, Negate(t.Cash));
         var taxRate = MetricMath.EffectiveTaxRate(t.TaxExp, t.PretaxInc);

@@ -110,6 +110,78 @@ public sealed class ProfileMetricMatrixTests
         Assert.Equal(8m, metrics[MetricCodes.InterestCoverage].Value);
     }
 
+    [Fact]
+    public void SLICE_042_single_debt_leg_omitted_computes_roic_and_ev_metrics()
+    {
+        var baseInput = Input("industrial");
+
+        // Omitted ST_DEBT (e.g., KAP omits empty short-term bank borrowings):
+        // debt = 1000, IC = 1000 + 3000 - 500 = 3500, EV = 9000 + 1000 - 500 = 9500.
+        var noStDebt = ByCode(CanonicalMetrics.Compute(baseInput with
+        {
+            Ttm = baseInput.Ttm with { StDebt = null, LtDebt = 1000m },
+        }));
+
+        Assert.Equal(160m / 3500m, noStDebt[MetricCodes.Roic].Value);
+        Assert.Equal(250m / 3500m, noStDebt[MetricCodes.Croic].Value);
+        Assert.Equal(9500m / 200m, noStDebt[MetricCodes.EvEbit].Value);
+        Assert.Equal(9500m / 250m, noStDebt[MetricCodes.EvEbitda].Value);
+        Assert.Equal((1000m - 500m) / 250m, noStDebt[MetricCodes.NetDebtEbitda].Value);
+
+        // Omitted LT_DEBT:
+        // debt = 2000, IC = 2000 + 3000 - 500 = 4500, EV = 9000 + 2000 - 500 = 10500.
+        var noLtDebt = ByCode(CanonicalMetrics.Compute(baseInput with
+        {
+            Ttm = baseInput.Ttm with { StDebt = 2000m, LtDebt = null },
+        }));
+
+        Assert.Equal(160m / 4500m, noLtDebt[MetricCodes.Roic].Value);
+        Assert.Equal(250m / 4500m, noLtDebt[MetricCodes.Croic].Value);
+        Assert.Equal(10500m / 200m, noLtDebt[MetricCodes.EvEbit].Value);
+        Assert.Equal(10500m / 250m, noLtDebt[MetricCodes.EvEbitda].Value);
+        Assert.Equal((2000m - 500m) / 250m, noLtDebt[MetricCodes.NetDebtEbitda].Value);
+    }
+
+    [Fact]
+    public void SLICE_042_debt_free_balance_sheet_treats_omitted_debt_as_zero()
+    {
+        var baseInput = Input("industrial");
+        var metrics = ByCode(CanonicalMetrics.Compute(baseInput with
+        {
+            Ttm = baseInput.Ttm with { StDebt = null, LtDebt = null },
+        }));
+
+        // debt = 0, IC = 0 + 3000 - 500 = 2500, EV = 9000 + 0 - 500 = 8500.
+        Assert.Equal(160m / 2500m, metrics[MetricCodes.Roic].Value);
+        Assert.Equal(250m / 2500m, metrics[MetricCodes.Croic].Value);
+        Assert.Equal(8500m / 200m, metrics[MetricCodes.EvEbit].Value);
+        Assert.Equal(8500m / 250m, metrics[MetricCodes.EvEbitda].Value);
+        Assert.Equal(-500m / 250m, metrics[MetricCodes.NetDebtEbitda].Value);
+    }
+
+    [Fact]
+    public void SLICE_042_absent_balance_sheet_keeps_debt_metrics_null()
+    {
+        var baseInput = Input("industrial");
+        var metrics = ByCode(CanonicalMetrics.Compute(baseInput with
+        {
+            Ttm = baseInput.Ttm with
+            {
+                StDebt = null,
+                LtDebt = null,
+                TotalEquity = null,
+                TotalAssets = null,
+                Cash = null,
+            },
+        }));
+
+        Assert.Null(metrics[MetricCodes.Roic].Value);
+        Assert.Null(metrics[MetricCodes.Croic].Value);
+        Assert.Null(metrics[MetricCodes.EvEbit].Value);
+        Assert.Null(metrics[MetricCodes.EvEbitda].Value);
+        Assert.Null(metrics[MetricCodes.NetDebtEbitda].Value);
+    }
+
     /// <summary>
     /// TC-MDF-057 (L1) — <c>reit</c> is <em>not</em> a gating profile: it keeps the natural
     /// not-meaningful rules (<c>02</c> §6.2). Only <c>bank</c>/<c>insurance</c> gate.
