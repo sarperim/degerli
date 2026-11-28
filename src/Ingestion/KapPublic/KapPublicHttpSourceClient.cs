@@ -109,7 +109,10 @@ public static class KapPublicHttpHandlerFactory
             // Bounded reuse, like a browser's few long-lived connections: a rotated edge
             // certificate or a closed idle socket must not pin the lane to a dead connection, and
             // an unbounded pool would grow across a long pass.
+            // KAP responds with `keep-alive: timeout=5`, whereas ExportRequestDelayMs is 12 s;
+            // expiring idle pooled sockets at 4 s prevents reusing a half-closed socket.
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            PooledConnectionIdleTimeout = TimeSpan.FromSeconds(4),
             UseCookies = false,
         };
 
@@ -446,8 +449,44 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
                 }
                 catch (HttpRequestException exception)
                 {
+                    if (IsPrematureResponseEnd(exception))
+                    {
+                        var quotaWait = _options.QuotaBackoff;
+                        var remainingBudget = timeout - (_clock.GetUtcNow() - attemptStart);
+                        if (remainingBudget < TimeSpan.Zero)
+                        {
+                            remainingBudget = TimeSpan.Zero;
+                        }
+
+                        if (quotaWait >= remainingBudget || attempt >= MaxQuotaAttempts)
+                        {
+                            throw new KapPublicQuotaException(
+                                $"Public-site request '{method} {path}' ended prematurely in transport (truncated 429 / edge reset); deferring walk ({KapPublicReasonCodes.WalkQuotaBackoff}).",
+                                KapPublicReasonCodes.WalkQuotaBackoff,
+                                quotaWait,
+                                deferred: true);
+                        }
+
+                        try
+                        {
+                            await _quotaDelay(quotaWait, linked.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            throw new KapPublicSourceTimeoutException(
+                                $"Public-site request '{method} {path}' timed out after {timeout.TotalSeconds:0.###} s " +
+                                $"while honoring the source's {quotaWait.TotalSeconds:0.###} s quota backoff " +
+                                $"({KapPublicReasonCodes.RequestTimeout}).");
+                        }
+
+                        continue;
+                    }
+
+                    var detail = exception.InnerException is { Message.Length: > 0 } inner
+                        ? $"{exception.Message} ({inner.Message})"
+                        : exception.Message;
                     throw new SourceFetchException(
-                        $"Public-site request '{method} {path}' failed in transport: {exception.Message}",
+                        $"Public-site request '{method} {path}' failed in transport: {detail}",
                         statusCode: null,
                         body: null,
                         exception);
@@ -541,6 +580,18 @@ public sealed class KapPublicHttpSourceClient : IKapPublicSourceClient
             _flight.Release();
         }
     }
+
+    /// <summary>
+    /// True when the remote edge dropped the connection before finishing the HTTP response
+    /// headers — the exact transport signature of KAP's truncated
+    /// <c>HTTP/1.1 429 Request Limit Exceeded\r\n</c> (missing the blank-line terminator),
+    /// which .NET's strict <see cref="SocketsHttpHandler"/> surfaces as
+    /// <see cref="HttpRequestError.ResponseEnded"/> rather than an HTTP 429 response.
+    /// </summary>
+    private static bool IsPrematureResponseEnd(HttpRequestException exception) =>
+        exception.HttpRequestError == HttpRequestError.ResponseEnded
+        || (exception.InnerException is IOException io
+            && io.Message.Contains("ended prematurely", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The wait a <c>429</c> demands: the <c>Retry-After</c> the source sent, <b>verbatim</b>
